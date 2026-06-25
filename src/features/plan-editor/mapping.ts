@@ -27,7 +27,7 @@ function mapExercise(ex: PlanExerciseResponse, catalog: Catalog): ExerciseRow {
 
   if (sets.length === 0) {
     // notes-only accessory
-    return { id: ex.id, name, ku: !custom, custom, aux: true, reps: '—', mode: 'kg', boxes: [], note: ex.notes ?? '' }
+    return { id: ex.id, exerciseId: ex.exercise_id, name, ku: !custom, custom, isMain: ex.is_main_lift, aux: true, reps: '—', mode: 'kg', boxes: [], note: ex.notes ?? '' }
   }
 
   const mode = sets[0].intensity_mode === 'rpe' ? 'rpe' : 'kg'
@@ -35,7 +35,7 @@ function mapExercise(ex: PlanExerciseResponse, catalog: Catalog): ExerciseRow {
   const hasAmrap = sets.some((s) => s.set_type === 'amrap' || s.target_reps_max != null)
   const baseReps = sets[0].target_reps
   const reps = hasAmrap ? `${baseReps}+` : String(baseReps)
-  return { id: ex.id, name, ku: !custom, custom, aux: false, reps, mode, boxes, note: ex.notes ?? '' }
+  return { id: ex.id, exerciseId: ex.exercise_id, name, ku: !custom, custom, isMain: ex.is_main_lift, aux: false, reps, mode, boxes, note: ex.notes ?? '' }
 }
 
 export function mapPlanToWeeks(plan: PlanWithChildren, catalog: Catalog): Week[] {

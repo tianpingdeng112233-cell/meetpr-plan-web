@@ -17,6 +17,8 @@ interface Props {
   onSwitchPlan?: (id: string) => void
   onNewPlan?: () => void
   onLogout?: () => void
+  onSave?: () => void
+  saving?: boolean
 }
 
 const pill: React.CSSProperties = {
@@ -102,6 +104,15 @@ export function TopBar(p: Props) {
         <span style={{ width: 7, height: 7, borderRadius: '50%', background: p.published ? 'var(--green)' : 'var(--fg-tertiary)' }} />
         <span>{p.statusText}</span>
       </span>
+      {p.onSave && (
+        <button onClick={p.onSave} disabled={p.saving} style={{
+          background: 'transparent', color: 'var(--fg-secondary)', border: '1px solid var(--border-strong)',
+          borderRadius: 10, padding: '8px 14px', fontFamily: 'var(--font-sans)', fontWeight: 600, fontSize: 13,
+          cursor: p.saving ? 'default' : 'pointer', lineHeight: 1, opacity: p.saving ? 0.6 : 1,
+        }}>
+          {p.saving ? '保存中…' : '保存草稿'}
+        </button>
+      )}
       <button onClick={p.onPublish} style={{
         background: p.published ? 'transparent' : '#fff', color: p.published ? '#fff' : '#000',
         border: '1px solid #fff', borderRadius: 10, padding: '9px 18px', fontFamily: 'var(--font-sans)',

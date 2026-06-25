@@ -22,6 +22,8 @@ export interface PlanEditorProps {
   initialPublished?: boolean
   /** Real publish call; when omitted the button just toggles locally (sample mode). */
   onPublish?: () => Promise<void>
+  /** Save current edits back to the backend. */
+  onSave?: (weeks: Week[]) => Promise<void>
   // top-bar switchers (connected mode)
   students?: Switcher[]
   currentStudentId?: string
@@ -251,11 +253,20 @@ export function PlanEditor(props: PlanEditorProps) {
 
   const handleAddRow = () => patchSelDay((d) => ({
     ...d, rest: false,
-    rows: [...d.rows, { id: `n${Date.now()}`, name: '', ku: false, custom: false, aux: false, reps: '—', mode: 'kg' as const, boxes: [], note: '' }],
+    rows: [...d.rows, { id: `n${Date.now()}`, exerciseId: null, name: '', ku: false, custom: false, isMain: false, aux: false, reps: '—', mode: 'kg' as const, boxes: [], note: '' }],
   }))
   const handleClearDay = () => patchSelDay((d) => ({ ...d, rows: [] }))
   const handleSetRest = () => patchSelDay((d) => ({ ...d, rest: true, rows: [] }))
   const handleUnsetRest = () => patchSelDay((d) => ({ ...d, rest: false }))
+
+  const [saving, setSaving] = useState(false)
+  const handleSave = async () => {
+    if (!props.onSave || saving) return
+    setSaving(true); setStatusText('保存中…')
+    try { await props.onSave(weeks); setStatusText('草稿 · 已保存') }
+    catch { setStatusText('保存失败 · 重试') }
+    finally { setSaving(false) }
+  }
 
   const handlePublish = async () => {
     if (published) { setPublished(false); setStatusText('草稿 · 已存'); return }
@@ -291,6 +302,7 @@ export function PlanEditor(props: PlanEditorProps) {
         students={props.students} currentStudentId={props.currentStudentId} onSwitchStudent={props.onSwitchStudent}
         plans={props.plans} currentPlanId={props.currentPlanId} onSwitchPlan={props.onSwitchPlan}
         onNewPlan={props.onNewPlan} onLogout={props.onLogout}
+        onSave={props.onSave ? handleSave : undefined} saving={saving}
       />
       <Toolbar weeksCount={weeksCount} curWeekLabel={curWeekLabel} zoomLabel={`${Math.round(zoom)}%`} />
       <ContextBar

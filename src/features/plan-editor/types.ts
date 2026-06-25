@@ -9,9 +9,11 @@ export interface SetBox {
 /** One exercise line inside a day. */
 export interface ExerciseRow {
   id: string
+  exerciseId: string | null   // bound catalog exercise id; null = unbound (not yet saveable)
   name: string
   ku: boolean        // matched the exercise catalog
   custom: boolean    // coach-created custom exercise
+  isMain: boolean    // backend is_main_lift flag (independent of aux)
   aux: boolean       // accessory with no structured intensity
   reps: string       // target reps, e.g. "5" / "8+" / "—"
   mode: IntensityMode

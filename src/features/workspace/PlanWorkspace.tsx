@@ -4,6 +4,7 @@ import { getCoachStudents, getStudentPlans, getPlan, publishPlan, createPlan } f
 import { listExercises } from '../../api/exercises'
 import { ApiException } from '../../api/client'
 import { mapPlanToWeeks, type Catalog } from '../plan-editor/mapping'
+import { reconcilePlan } from '../plan-editor/reconcile'
 import { PlanEditor } from '../plan-editor/PlanEditor'
 import type { Week } from '../plan-editor/types'
 
@@ -108,6 +109,7 @@ export function PlanWorkspace({ onLogout }: Props) {
         planName={loaded?.plan.name ?? '（暂无计划）'}
         initialPublished={loaded?.plan.status === 'published'}
         onPublish={loaded ? async () => { await publishPlan(loaded.plan.id) } : undefined}
+        onSave={loaded ? async (weeks) => { await reconcilePlan(loaded.plan.id, weeks) } : undefined}
         students={studentOpts}
         currentStudentId={studentId}
         onSwitchStudent={switchStudent}
