@@ -12,6 +12,8 @@ interface PopState { visible: boolean; x: number; y: number; wnum: number; dow: 
 
 const COPY_LABEL = '⎘ 复制上周计划到本周'
 
+interface Switcher { id: string; label: string; tag?: string }
+
 export interface PlanEditorProps {
   initialWeeks: Week[]
   weeksCount: number
@@ -20,9 +22,19 @@ export interface PlanEditorProps {
   initialPublished?: boolean
   /** Real publish call; when omitted the button just toggles locally (sample mode). */
   onPublish?: () => Promise<void>
+  // top-bar switchers (connected mode)
+  students?: Switcher[]
+  currentStudentId?: string
+  onSwitchStudent?: (id: string) => void
+  plans?: Switcher[]
+  currentPlanId?: string
+  onSwitchPlan?: (id: string) => void
+  onNewPlan?: () => void
+  onLogout?: () => void
 }
 
-export function PlanEditor({ initialWeeks, weeksCount, studentName, planName, initialPublished = false, onPublish }: PlanEditorProps) {
+export function PlanEditor(props: PlanEditorProps) {
+  const { initialWeeks, weeksCount, studentName, planName, initialPublished = false, onPublish } = props
   const [weeks, setWeeks] = useState<Week[]>(initialWeeks)
   const [colW, setColW] = useState<ColWidths[]>(() => Array.from({ length: 7 }, () => ({ ...COL_DEFAULTS })))
   const [sel, setSel] = useState<Sel | null>(null)
@@ -274,7 +286,12 @@ export function PlanEditor({ initialWeeks, weeksCount, studentName, planName, in
       overflow: 'hidden', background: 'var(--bg)', color: 'var(--fg-primary)',
       fontFamily: 'var(--font-sans)', fontSize: 13, WebkitFontSmoothing: 'antialiased',
     }}>
-      <TopBar studentName={studentName} planName={planName} published={published} statusText={statusText} onPublish={handlePublish} />
+      <TopBar
+        studentName={studentName} planName={planName} published={published} statusText={statusText} onPublish={handlePublish}
+        students={props.students} currentStudentId={props.currentStudentId} onSwitchStudent={props.onSwitchStudent}
+        plans={props.plans} currentPlanId={props.currentPlanId} onSwitchPlan={props.onSwitchPlan}
+        onNewPlan={props.onNewPlan} onLogout={props.onLogout}
+      />
       <Toolbar weeksCount={weeksCount} curWeekLabel={curWeekLabel} zoomLabel={`${Math.round(zoom)}%`} />
       <ContextBar
         visible={!!sel}

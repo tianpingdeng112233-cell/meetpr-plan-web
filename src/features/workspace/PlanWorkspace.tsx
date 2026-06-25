@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react'
-import type { AuthUser, CoachStudent, PlanResponse, PlanWithChildren } from '../../api/types'
+import { useCallback, useEffect, useState } from 'react'
+import type { CoachStudent, PlanResponse } from '../../api/types'
 import { getCoachStudents, getStudentPlans, getPlan, publishPlan, createPlan } from '../../api/plans'
 import { listExercises } from '../../api/exercises'
 import { ApiException } from '../../api/client'
@@ -7,153 +7,133 @@ import { mapPlanToWeeks, type Catalog } from '../plan-editor/mapping'
 import { PlanEditor } from '../plan-editor/PlanEditor'
 import type { Week } from '../plan-editor/types'
 
-interface Props { user: AuthUser; onLogout: () => void }
-
-type Loaded = { plan: PlanWithChildren; weeks: Week[]; studentName: string }
+interface Props { onLogout: () => void }
+type Loaded = { plan: PlanResponse; weeks: Week[]; weeksCount: number }
 
 function fmtDate(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
-export function PlanWorkspace({ user, onLogout }: Props) {
+export function PlanWorkspace({ onLogout }: Props) {
   const [catalog, setCatalog] = useState<Catalog | null>(null)
-  const [students, setStudents] = useState<CoachStudent[] | null>(null)
-  const [student, setStudent] = useState<CoachStudent | null>(null)
-  const [plans, setPlans] = useState<PlanResponse[] | null>(null)
+  const [students, setStudents] = useState<CoachStudent[]>([])
+  const [studentId, setStudentId] = useState<string>('')
+  const [plans, setPlans] = useState<PlanResponse[]>([])
+  const [planId, setPlanId] = useState<string>('')
   const [loaded, setLoaded] = useState<Loaded | null>(null)
   const [error, setError] = useState('')
-  const [busy, setBusy] = useState(false)
+  const [booting, setBooting] = useState(true)
 
-  useEffect(() => {
-    Promise.all([listExercises(), getCoachStudents()])
-      .then(([ex, st]) => {
-        const cat: Catalog = new Map(ex.map((e) => [e.id, { name: e.name, custom: e.created_by_coach_id != null }]))
-        setCatalog(cat); setStudents(st)
-      })
-      .catch((e) => setError(e instanceof ApiException ? `加载失败（${e.code}）` : '无法连接后端'))
+  const errText = (e: unknown, fb: string) => (e instanceof ApiException ? `${fb}（${e.code}）` : fb)
+
+  const loadPlan = useCallback(async (id: string, cat: Catalog) => {
+    setPlanId(id)
+    const full = await getPlan(id)
+    setLoaded({ plan: full, weeks: mapPlanToWeeks(full, cat), weeksCount: full.plan_weeks })
   }, [])
 
-  const openStudent = async (s: CoachStudent) => {
-    setStudent(s); setPlans(null); setError('')
-    try { setPlans(await getStudentPlans(s.id)) }
-    catch (e) { setError(e instanceof ApiException ? `读取计划失败（${e.code}）` : '读取计划失败') }
-  }
+  const loadStudent = useCallback(async (id: string, cat: Catalog) => {
+    setStudentId(id); setLoaded(null); setPlanId('')
+    const list = await getStudentPlans(id)
+    setPlans(list)
+    if (list.length > 0) await loadPlan(list[0].id, cat)
+  }, [loadPlan])
 
-  const openPlan = async (p: PlanResponse) => {
-    if (!catalog || !student) return
-    setBusy(true); setError('')
-    try {
-      const full = await getPlan(p.id)
-      setLoaded({ plan: full, weeks: mapPlanToWeeks(full, catalog), studentName: student.display_name })
-    } catch (e) {
-      setError(e instanceof ApiException ? `打开计划失败（${e.code}）` : '打开计划失败')
-    } finally { setBusy(false) }
-  }
+  // boot: catalog + roster + first student + first plan
+  useEffect(() => {
+    (async () => {
+      try {
+        const [ex, st] = await Promise.all([listExercises(), getCoachStudents()])
+        const cat: Catalog = new Map(ex.map((e) => [e.id, { name: e.name, custom: e.created_by_coach_id != null }]))
+        setCatalog(cat); setStudents(st)
+        if (st.length > 0) await loadStudent(st[0].id, cat)
+      } catch (e) {
+        setError(errText(e, '无法连接后端'))
+      } finally { setBooting(false) }
+    })()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
+  const switchStudent = (id: string) => {
+    if (!catalog || id === studentId) return
+    loadStudent(id, catalog).catch((e) => setError(errText(e, '切换学员失败')))
+  }
+  const switchPlan = (id: string) => {
+    if (!catalog || id === planId) return
+    loadPlan(id, catalog).catch((e) => setError(errText(e, '打开计划失败')))
+  }
   const newPlan = async () => {
-    if (!student) return
-    setBusy(true); setError('')
+    if (!catalog || !studentId) return
     try {
       const weeks = 12
-      const start = new Date()
-      const end = new Date(); end.setDate(end.getDate() + weeks * 7 - 1)
+      const start = new Date(); const end = new Date(); end.setDate(end.getDate() + weeks * 7 - 1)
       const created = await createPlan({
-        trainee_id: student.id, name: '新计划', start_date: fmtDate(start), end_date: fmtDate(end),
+        trainee_id: studentId, name: '新计划', start_date: fmtDate(start), end_date: fmtDate(end),
         plan_weeks: weeks, source: 'coach', kind: 'regular',
       })
-      await openPlan(created)
-    } catch (e) {
-      setError(e instanceof ApiException ? `新建失败（${e.code}）` : '新建失败'); setBusy(false)
-    }
+      setPlans((prev) => [created, ...prev])
+      await loadPlan(created.id, catalog)
+    } catch (e) { setError(errText(e, '新建失败')) }
   }
 
-  // ---- editor view ----
-  if (loaded) {
+  if (error) {
     return (
-      <div style={{ position: 'relative', height: '100vh' }}>
-        <PlanEditor
-          key={loaded.plan.id}
-          initialWeeks={loaded.weeks}
-          weeksCount={loaded.plan.plan_weeks}
-          studentName={loaded.studentName}
-          planName={loaded.plan.name}
-          initialPublished={loaded.plan.status === 'published'}
-          onPublish={async () => { await publishPlan(loaded.plan.id) }}
-        />
-        <button onClick={() => setLoaded(null)} style={backBtn}>← 返回</button>
-      </div>
+      <Centered>
+        <div style={{ color: 'var(--brand-red)', marginBottom: 14 }}>{error}</div>
+        <button onClick={onLogout} style={btn}>退出重登</button>
+      </Centered>
+    )
+  }
+  if (booting) return <Centered><span style={{ color: 'var(--fg-tertiary)' }}>加载中…</span></Centered>
+  if (students.length === 0) {
+    return (
+      <Centered>
+        <div style={{ color: 'var(--fg-secondary)', marginBottom: 8 }}>该教练账号暂无绑定学员</div>
+        <button onClick={onLogout} style={btn}>退出</button>
+      </Centered>
     )
   }
 
-  // ---- picker view ----
+  const studentName = students.find((s) => s.id === studentId)?.display_name ?? ''
+  const studentOpts = students.map((s) => ({ id: s.id, label: s.display_name, tag: s.status === 'in_evaluation' ? '评估期' : undefined }))
+  const planOpts = plans.map((p) => ({ id: p.id, label: p.name, tag: p.status === 'published' ? '已发布' : '草稿' }))
+
   return (
-    <div style={{ height: '100vh', background: 'var(--bg)', color: '#fff', display: 'flex', flexDirection: 'column' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, height: 48, padding: '0 16px', background: '#000', borderBottom: '1px solid var(--border)' }}>
-        <span style={{ fontWeight: 900, fontSize: 15 }}>MeetPR</span>
-        <span className="t-mono-label" style={{ color: 'var(--fg-tertiary)' }}>COACH / 计划编写</span>
-        <span style={{ flex: 1 }} />
-        <span style={{ color: 'var(--fg-tertiary)', fontSize: 12 }}>{user.phone}</span>
-        <span onClick={onLogout} style={{ cursor: 'pointer', color: 'var(--fg-secondary)', fontSize: 12, padding: '4px 8px' }}>退出</span>
-      </div>
-
-      <div style={{ flex: 1, overflow: 'auto', padding: 24, maxWidth: 760, margin: '0 auto', width: '100%', boxSizing: 'border-box' }}>
-        {error && <div style={{ color: 'var(--brand-red)', marginBottom: 16 }}>{error}</div>}
-
-        {!student && (
-          <>
-            <h2 style={{ fontSize: 18, margin: '4px 0 16px' }}>选择学员</h2>
-            {!students && <div style={{ color: 'var(--fg-tertiary)' }}>加载中…</div>}
-            {students?.length === 0 && <div style={{ color: 'var(--fg-tertiary)' }}>暂无绑定学员</div>}
-            <div style={{ display: 'grid', gap: 8 }}>
-              {students?.map((s) => (
-                <div key={s.id} onClick={() => openStudent(s)} style={rowCard}>
-                  <span style={{ fontWeight: 600 }}>{s.display_name}</span>
-                  {s.status === 'in_evaluation' && <span style={{ marginLeft: 10, fontSize: 11, color: 'var(--amber)' }}>评估期</span>}
-                  <span style={{ flex: 1 }} />
-                  <span style={{ color: 'var(--fg-tertiary)' }}>›</span>
-                </div>
-              ))}
-            </div>
-          </>
-        )}
-
-        {student && (
-          <>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '4px 0 16px' }}>
-              <span onClick={() => { setStudent(null); setPlans(null) }} style={{ cursor: 'pointer', color: 'var(--fg-secondary)' }}>←</span>
-              <h2 style={{ fontSize: 18, margin: 0 }}>{student.display_name} · 计划</h2>
-              <span style={{ flex: 1 }} />
-              <button onClick={newPlan} disabled={busy} style={primaryBtn}>＋ 新建计划</button>
-            </div>
-            {!plans && <div style={{ color: 'var(--fg-tertiary)' }}>加载中…</div>}
-            {plans?.length === 0 && <div style={{ color: 'var(--fg-tertiary)' }}>该学员暂无计划，点「新建计划」开始</div>}
-            <div style={{ display: 'grid', gap: 8 }}>
-              {plans?.map((p) => (
-                <div key={p.id} onClick={() => openPlan(p)} style={rowCard}>
-                  <span style={{ fontWeight: 600 }}>{p.name}</span>
-                  <span style={{ marginLeft: 10, fontSize: 11, color: p.status === 'published' ? 'var(--green)' : 'var(--fg-tertiary)' }}>
-                    {p.status === 'published' ? '已发布' : p.status === 'draft' ? '草稿' : p.status}
-                  </span>
-                  <span style={{ flex: 1 }} />
-                  <span style={{ color: 'var(--fg-tertiary)', fontSize: 12 }}>{p.plan_weeks} 周 · {p.start_date}</span>
-                </div>
-              ))}
-            </div>
-          </>
-        )}
-      </div>
+    <div style={{ position: 'relative', height: '100vh' }}>
+      <PlanEditor
+        key={planId || `empty-${studentId}`}
+        initialWeeks={loaded?.weeks ?? []}
+        weeksCount={loaded?.weeksCount ?? 0}
+        studentName={studentName}
+        planName={loaded?.plan.name ?? '（暂无计划）'}
+        initialPublished={loaded?.plan.status === 'published'}
+        onPublish={loaded ? async () => { await publishPlan(loaded.plan.id) } : undefined}
+        students={studentOpts}
+        currentStudentId={studentId}
+        onSwitchStudent={switchStudent}
+        plans={planOpts}
+        currentPlanId={planId}
+        onSwitchPlan={switchPlan}
+        onNewPlan={newPlan}
+        onLogout={onLogout}
+      />
+      {!loaded && (
+        <div style={{ position: 'absolute', inset: '120px 0 0', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-start', paddingTop: 80, pointerEvents: 'none' }}>
+          <div style={{ color: 'var(--fg-secondary)', marginBottom: 14 }}>{studentName} 暂无计划</div>
+          <button onClick={newPlan} style={{ ...btn, pointerEvents: 'auto' }}>＋ 新建计划</button>
+        </div>
+      )}
     </div>
   )
 }
 
-const rowCard: React.CSSProperties = {
-  display: 'flex', alignItems: 'center', padding: '14px 16px', background: 'var(--surface-1)',
-  border: '1px solid var(--border)', borderRadius: 'var(--r-md)', cursor: 'pointer',
+function Centered({ children }: { children: React.ReactNode }) {
+  return (
+    <div style={{ height: '100vh', background: 'var(--bg)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+      {children}
+    </div>
+  )
 }
-const primaryBtn: React.CSSProperties = {
-  background: '#fff', color: '#000', border: 'none', borderRadius: 'var(--r-md)', padding: '8px 14px', fontWeight: 600, fontSize: 13, cursor: 'pointer',
-}
-const backBtn: React.CSSProperties = {
-  position: 'absolute', left: 12, bottom: 12, zIndex: 70, background: 'var(--surface-2)', color: '#fff',
-  border: '1px solid var(--border-strong)', borderRadius: 'var(--r-md)', padding: '7px 12px', fontSize: 12, cursor: 'pointer',
+const btn: React.CSSProperties = {
+  background: '#fff', color: '#000', border: 'none', borderRadius: 'var(--r-md)', padding: '9px 16px', fontWeight: 600, fontSize: 13, cursor: 'pointer',
 }

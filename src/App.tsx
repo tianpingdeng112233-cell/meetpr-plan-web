@@ -32,7 +32,7 @@ export default function App() {
   }
 
   if (view === 'workspace' && user) {
-    return <PlanWorkspace user={user} onLogout={() => { logout(); setUser(null); setView('login') }} />
+    return <PlanWorkspace onLogout={() => { logout(); setUser(null); setView('login') }} />
   }
 
   return (
