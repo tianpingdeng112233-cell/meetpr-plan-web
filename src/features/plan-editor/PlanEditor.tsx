@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
-import type { ColKey, ColWidths, Week } from './types'
+import type { ColKey, ColWidths, Week, DayCol } from './types'
 import { COL_DEFAULTS, COL_MIN } from './types'
 import { TopBar } from './components/TopBar'
 import { Toolbar } from './components/Toolbar'
@@ -225,14 +225,10 @@ export function PlanEditor(props: PlanEditorProps) {
     setPop((p) => ({ ...p, visible: false }))
   }
 
-  const mutateSelDay = (fn: (rows: Week['days'][number]['rows']) => Week['days'][number]['rows'], makeRest = false) => {
+  const patchSelDay = (updater: (d: DayCol) => DayCol) => {
     if (!sel) return
-    setWeeks((prev) => prev.map((wk) => {
-      if (wk.num !== sel.wnum) return wk
-      return {
-        ...wk,
-        days: wk.days.map((d) => d.dow !== sel.dow ? d : { ...d, rest: makeRest ? true : d.rest, rows: makeRest ? [] : fn(d.rows) }),
-      }
+    setWeeks((prev) => prev.map((wk) => wk.num !== sel.wnum ? wk : {
+      ...wk, days: wk.days.map((d) => d.dow !== sel.dow ? d : updater(d)),
     }))
   }
 
@@ -253,14 +249,13 @@ export function PlanEditor(props: PlanEditorProps) {
     window.setTimeout(() => setCopyDone(false), 1300)
   }
 
-  const handleAddRow = () => {
-    mutateSelDay((rows) => [...rows, {
-      id: `n${Date.now()}`, name: '', ku: false, custom: false, aux: false,
-      reps: '—', mode: 'kg', boxes: [], note: '',
-    }])
-  }
-  const handleClearDay = () => mutateSelDay(() => [])
-  const handleSetRest = () => { mutateSelDay(() => [], true); setSel(null) }
+  const handleAddRow = () => patchSelDay((d) => ({
+    ...d, rest: false,
+    rows: [...d.rows, { id: `n${Date.now()}`, name: '', ku: false, custom: false, aux: false, reps: '—', mode: 'kg' as const, boxes: [], note: '' }],
+  }))
+  const handleClearDay = () => patchSelDay((d) => ({ ...d, rows: [] }))
+  const handleSetRest = () => patchSelDay((d) => ({ ...d, rest: true, rows: [] }))
+  const handleUnsetRest = () => patchSelDay((d) => ({ ...d, rest: false }))
 
   const handlePublish = async () => {
     if (published) { setPublished(false); setStatusText('草稿 · 已存'); return }
@@ -279,6 +274,11 @@ export function PlanEditor(props: PlanEditorProps) {
     const d = wk?.days.find((x) => x.dow === sel.dow)
     return d ? `${d.dowLabel} ${d.dateLabel}（第 ${sel.wnum} 周）` : ''
   })()
+  const selIsRest = (() => {
+    if (!sel) return false
+    const wk = weeks.find((w) => w.num === sel.wnum)
+    return wk?.days.find((x) => x.dow === sel.dow)?.rest ?? false
+  })()
 
   return (
     <div ref={rootRef} style={{
@@ -296,12 +296,14 @@ export function PlanEditor(props: PlanEditorProps) {
       <ContextBar
         visible={!!sel}
         dayLabel={selDayLabel}
+        isRest={selIsRest}
         canCopyPrev={!!sel && sel.wnum > 1}
         copyLabel={copyDone ? '✓ 已复制上周' : COPY_LABEL}
         copyDone={copyDone}
         onCopyPrev={handleCopyPrev}
         onAddRow={handleAddRow}
         onSetRest={handleSetRest}
+        onUnsetRest={handleUnsetRest}
         onClearDay={handleClearDay}
         onClose={() => { setSel(null); setPop((p) => ({ ...p, visible: false })) }}
       />

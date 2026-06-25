@@ -56,9 +56,9 @@ function StrengthCell({ row, width }: { row: ExerciseRow; width: number }) {
 export function DayColumn({ day, colW, selected, onSelect, onResizeStart, onNameClick }: Props) {
   if (day.rest) {
     return (
-      <div className="day restday" data-dow={day.dow} style={{
+      <div className={`day restday${selected ? ' sel' : ''}`} data-dow={day.dow} onClick={onSelect} style={{
         flex: '0 0 auto', width: 48, borderRight: '1px solid var(--border)',
-        background: 'var(--surface-1)', display: 'flex', flexDirection: 'column',
+        background: 'var(--surface-1)', display: 'flex', flexDirection: 'column', cursor: 'pointer',
       }}>
         <div style={{ padding: '5px 0', textAlign: 'center', fontSize: 10, color: 'var(--fg-tertiary)', borderBottom: '1px solid var(--border)', fontWeight: 600 }}>
           {day.dowLabel}
@@ -103,7 +103,7 @@ export function DayColumn({ day, colW, selected, onSelect, onResizeStart, onName
               onClick={(e) => { e.stopPropagation(); onNameClick(row.id, e.currentTarget) }}
               style={{ width: colW.name, padding: '4px 6px', fontSize: 11, color: '#fff', fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', cursor: 'text', display: 'flex', alignItems: 'center' }}
             >
-              {row.name}
+              {row.name || <span style={{ color: 'var(--fg-tertiary)', fontStyle: 'italic' }}>输入动作…</span>}
               {row.ku && <span style={{ color: 'var(--green)', fontSize: 9, marginLeft: 4 }}>✓</span>}
               {row.custom && <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--fg-tertiary)', fontSize: 8, marginLeft: 4, border: '1px solid var(--border-strong)', borderRadius: 3, padding: '0 3px' }}>自定义</span>}
             </div>

@@ -1,12 +1,14 @@
 interface Props {
   visible: boolean
   dayLabel: string
+  isRest: boolean
   canCopyPrev: boolean
   copyLabel: string
   copyDone: boolean
   onCopyPrev: () => void
   onAddRow: () => void
   onSetRest: () => void
+  onUnsetRest: () => void
   onClearDay: () => void
   onClose: () => void
 }
@@ -34,8 +36,14 @@ export function ContextBar(p: Props) {
         {p.copyLabel}
       </span>
       <span className="ctxbtn" onClick={p.onAddRow} style={{ ...btn, color: '#fff' }}>＋ 加动作</span>
-      <span className="ctxbtn" onClick={p.onSetRest} style={{ ...btn, color: 'var(--fg-secondary)' }}>设为休息</span>
-      <span className="ctxbtn" onClick={p.onClearDay} style={{ ...btn, color: 'var(--fg-secondary)' }}>清空本日</span>
+      {p.isRest ? (
+        <span className="ctxbtn" onClick={p.onUnsetRest} style={{ ...btn, color: 'var(--green)', borderColor: 'var(--green)' }}>改为训练日</span>
+      ) : (
+        <>
+          <span className="ctxbtn" onClick={p.onSetRest} style={{ ...btn, color: 'var(--fg-secondary)' }}>设为休息</span>
+          <span className="ctxbtn" onClick={p.onClearDay} style={{ ...btn, color: 'var(--fg-secondary)' }}>清空本日</span>
+        </>
+      )}
       <span style={{ flex: 1 }} />
       <span onClick={p.onClose} style={{ cursor: 'pointer', color: 'var(--fg-tertiary)', fontSize: 12, padding: '4px 8px' }}>✕ 取消选择</span>
     </div>
