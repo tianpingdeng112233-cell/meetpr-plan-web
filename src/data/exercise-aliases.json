@@ -1,0 +1,31 @@
+{
+  "version": 1,
+  "aliases": [
+    { "alias": "低杆深蹲", "canonical": "低杠位深蹲" },
+    { "alias": "高杆深蹲", "canonical": "高杠位深蹲" },
+    { "alias": "低杆位早安", "canonical": "低杆位早安式" },
+    { "alias": "卧推", "canonical": "杠铃卧推" },
+    { "alias": "深蹲", "canonical": "比赛式深蹲" },
+    { "alias": "硬拉", "canonical": "比赛式传统硬拉" },
+    { "alias": "传统硬拉", "canonical": "比赛式传统硬拉" },
+    { "alias": "相扑硬拉", "canonical": "比赛式相扑硬拉" },
+    { "alias": "窄推", "canonical": "窄握卧推" },
+    { "alias": "杠铃上斜卧推", "canonical": "上斜杠铃卧推" },
+    { "alias": "长暂停卧推", "canonical": "暂停卧推" },
+    { "alias": "长暂停深蹲", "canonical": "暂停深蹲" },
+    { "alias": "腘绳弯举", "canonical": "腘绳肌弯举" },
+    { "alias": "三头下压", "canonical": "三头肌下压" },
+    { "alias": "绳索过顶臂屈伸", "canonical": "绳索过头臂屈伸" },
+    { "alias": "坐姿v把划船", "canonical": "坐姿 v 把划船" },
+    { "alias": "罗马尼亚硬拉", "canonical": "杠铃罗马尼亚硬拉" },
+    { "alias": "单腿罗马尼亚硬拉", "canonical": "单腿硬拉" },
+    { "alias": "单臂哑铃划船", "canonical": "哑铃划船" },
+    { "alias": "哈克", "canonical": "哈克深蹲" },
+    { "alias": "哥本哈根支撑", "canonical": "哥本哈根侧平板支撑" },
+    { "alias": "俯身反向飞鸟", "canonical": "俯身飞鸟" },
+    { "alias": "坐姿俯身飞鸟", "canonical": "俯身飞鸟" },
+    { "alias": "哑铃俯身飞鸟", "canonical": "俯身飞鸟" },
+    { "alias": "附身哑铃飞鸟", "canonical": "哑铃飞鸟" },
+    { "alias": "安全杆深蹲", "canonical": "扶手安全杆深蹲" }
+  ]
+}

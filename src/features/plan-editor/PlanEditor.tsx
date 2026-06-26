@@ -6,9 +6,10 @@ import { Toolbar } from './components/Toolbar'
 import { ContextBar } from './components/ContextBar'
 import { DayColumn } from './components/DayColumn'
 import { ExercisePopover } from './components/ExercisePopover'
+import type { ExerciseIndex, ExerciseHit } from './exerciseIndex'
 
 interface Sel { wnum: number; dow: number }
-interface PopState { visible: boolean; x: number; y: number; wnum: number; dow: number; rowId: string }
+interface PopState { visible: boolean; x: number; y: number; wnum: number; dow: number; rowId: string; query: string }
 
 const COPY_LABEL = '⎘ 复制上周计划到本周'
 
@@ -24,6 +25,10 @@ export interface PlanEditorProps {
   onPublish?: () => Promise<void>
   /** Save current edits back to the backend. */
   onSave?: (weeks: Week[]) => Promise<void>
+  /** Exercise catalog + alias index for name-cell binding. */
+  exerciseIndex?: ExerciseIndex | null
+  /** Create a custom exercise and return its id+name (adds to the index). */
+  onCreateExercise?: (name: string) => Promise<{ id: string; name: string }>
   // top-bar switchers (connected mode)
   students?: Switcher[]
   currentStudentId?: string
@@ -45,7 +50,7 @@ export function PlanEditor(props: PlanEditorProps) {
   const [statusText, setStatusText] = useState(initialPublished ? `已发布给 ${studentName}` : '草稿 · 已存')
   const [copyDone, setCopyDone] = useState(false)
   const [curWeekLabel, setCurWeekLabel] = useState('W03 · 第 3 周')
-  const [pop, setPop] = useState<PopState>({ visible: false, x: 0, y: 0, wnum: 0, dow: 0, rowId: '' })
+  const [pop, setPop] = useState<PopState>({ visible: false, x: 0, y: 0, wnum: 0, dow: 0, rowId: '', query: '' })
 
   const rootRef = useRef<HTMLDivElement>(null)
   const scrollerRef = useRef<HTMLDivElement>(null)
@@ -202,10 +207,11 @@ export function PlanEditor(props: PlanEditorProps) {
     if (!root) return
     const r = el.getBoundingClientRect(), rr = root.getBoundingClientRect()
     let left = r.left - rr.left
-    left = Math.max(8, Math.min(left, root.clientWidth - 220))
+    left = Math.max(8, Math.min(left, root.clientWidth - 256))
     let top = r.bottom - rr.top + 4
-    if (top + 250 > root.clientHeight) top = r.top - rr.top - 250
-    setPop({ visible: true, x: left, y: top, wnum, dow, rowId })
+    if (top + 290 > root.clientHeight) top = r.top - rr.top - 290
+    const row = weeks.find((w) => w.num === wnum)?.days.find((d) => d.dow === dow)?.rows.find((r2) => r2.id === rowId)
+    setPop({ visible: true, x: left, y: top, wnum, dow, rowId, query: row?.name ?? '' })
   }
 
   const handleNameClick = (wnum: number, dow: number, rowId: string, el: HTMLElement) => {
@@ -213,18 +219,23 @@ export function PlanEditor(props: PlanEditorProps) {
     openPopover(el, wnum, dow, rowId)
   }
 
-  const pickExercise = (name: string) => {
-    setWeeks((prev) => prev.map((wk) => {
-      if (wk.num !== pop.wnum) return wk
-      return {
-        ...wk,
-        days: wk.days.map((d) => d.dow !== pop.dow ? d : {
-          ...d,
-          rows: d.rows.map((r) => r.id === pop.rowId ? { ...r, name, ku: true, custom: false } : r),
-        }),
-      }
+  const bindRowAt = (target: { wnum: number; dow: number; rowId: string }, exerciseId: string, name: string, custom: boolean) => {
+    setWeeks((prev) => prev.map((wk) => wk.num !== target.wnum ? wk : {
+      ...wk,
+      days: wk.days.map((d) => d.dow !== target.dow ? d : {
+        ...d, rows: d.rows.map((r) => r.id === target.rowId ? { ...r, exerciseId, name, ku: !custom, custom } : r),
+      }),
     }))
+  }
+  const onPickHit = (hit: ExerciseHit) => {
+    bindRowAt({ wnum: pop.wnum, dow: pop.dow, rowId: pop.rowId }, hit.id, hit.name, false)
     setPop((p) => ({ ...p, visible: false }))
+  }
+  const onCreateCustom = async (name: string) => {
+    const target = { wnum: pop.wnum, dow: pop.dow, rowId: pop.rowId }
+    setPop((p) => ({ ...p, visible: false }))
+    if (!props.onCreateExercise) return
+    try { const e = await props.onCreateExercise(name); bindRowAt(target, e.id, e.name, true) } catch { /* ignore */ }
   }
 
   const patchSelDay = (updater: (d: DayCol) => DayCol) => {
@@ -360,7 +371,11 @@ export function PlanEditor(props: PlanEditorProps) {
         <div style={{ textAlign: 'center', color: 'var(--fg-tertiary)', fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '.1em', padding: '10px 7px 20px', textTransform: 'uppercase' }}>▼ W06 … W12 · 共 12 周</div>
       </div>
 
-      <ExercisePopover visible={pop.visible} x={pop.x} y={pop.y} onPick={pickExercise} />
+      <ExercisePopover
+        visible={pop.visible} x={pop.x} y={pop.y}
+        index={props.exerciseIndex ?? null} initialQuery={pop.query}
+        onPick={onPickHit} onCreateCustom={onCreateCustom}
+      />
     </div>
   )
 }

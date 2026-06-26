@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { CoachStudent, PlanResponse } from '../../api/types'
 import { getCoachStudents, getStudentPlans, getPlan, publishPlan, createPlan } from '../../api/plans'
-import { listExercises } from '../../api/exercises'
+import { listExercises, createCustomExercise } from '../../api/exercises'
 import { ApiException } from '../../api/client'
 import { mapPlanToWeeks, type Catalog } from '../plan-editor/mapping'
+import { ExerciseIndex } from '../plan-editor/exerciseIndex'
 import { reconcilePlan } from '../plan-editor/reconcile'
 import { PlanEditor } from '../plan-editor/PlanEditor'
 import type { Week } from '../plan-editor/types'
@@ -17,6 +18,7 @@ function fmtDate(d: Date): string {
 
 export function PlanWorkspace({ onLogout }: Props) {
   const [catalog, setCatalog] = useState<Catalog | null>(null)
+  const [index, setIndex] = useState<ExerciseIndex | null>(null)
   const [students, setStudents] = useState<CoachStudent[]>([])
   const [studentId, setStudentId] = useState<string>('')
   const [plans, setPlans] = useState<PlanResponse[]>([])
@@ -28,9 +30,11 @@ export function PlanWorkspace({ onLogout }: Props) {
   const errText = (e: unknown, fb: string) => (e instanceof ApiException ? `${fb}（${e.code}）` : fb)
 
   const loadPlan = useCallback(async (id: string, cat: Catalog) => {
-    setPlanId(id)
     const full = await getPlan(id)
+    // Set loaded + planId together (after the fetch) so the keyed PlanEditor
+    // remounts once with the real weeks — not an empty mount on an early key change.
     setLoaded({ plan: full, weeks: mapPlanToWeeks(full, cat), weeksCount: full.plan_weeks })
+    setPlanId(id)
   }, [])
 
   const loadStudent = useCallback(async (id: string, cat: Catalog) => {
@@ -46,7 +50,7 @@ export function PlanWorkspace({ onLogout }: Props) {
       try {
         const [ex, st] = await Promise.all([listExercises(), getCoachStudents()])
         const cat: Catalog = new Map(ex.map((e) => [e.id, { name: e.name, custom: e.created_by_coach_id != null }]))
-        setCatalog(cat); setStudents(st)
+        setCatalog(cat); setIndex(new ExerciseIndex(ex)); setStudents(st)
         if (st.length > 0) await loadStudent(st[0].id, cat)
       } catch (e) {
         setError(errText(e, '无法连接后端'))
@@ -110,6 +114,12 @@ export function PlanWorkspace({ onLogout }: Props) {
         initialPublished={loaded?.plan.status === 'published'}
         onPublish={loaded ? async () => { await publishPlan(loaded.plan.id) } : undefined}
         onSave={loaded ? async (weeks) => { await reconcilePlan(loaded.plan.id, weeks) } : undefined}
+        exerciseIndex={index}
+        onCreateExercise={async (name) => {
+          const e = await createCustomExercise(name)
+          index?.add(e)
+          return { id: e.id, name: e.name }
+        }}
         students={studentOpts}
         currentStudentId={studentId}
         onSwitchStudent={switchStudent}
