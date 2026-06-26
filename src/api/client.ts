@@ -3,7 +3,10 @@
 
 import type { TokenPair } from './types'
 
-const BASE = '/api'
+// Dev + Vercel: '/api' (Vite proxy / Vercel rewrite handles it).
+// Self-hosted-from-backend build: set VITE_API_BASE='' so calls hit the backend
+// routes at the same origin (/auth, /plans, …) — no proxy, no CORS, no mixed content.
+const BASE = import.meta.env.VITE_API_BASE ?? '/api'
 const ACCESS_KEY = 'mpw.accessToken'
 const REFRESH_KEY = 'mpw.refreshToken'
 
