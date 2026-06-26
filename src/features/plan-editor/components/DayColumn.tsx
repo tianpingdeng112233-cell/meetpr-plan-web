@@ -8,15 +8,28 @@ interface Props {
   onSelect: () => void
   onResizeStart: (col: ColKey, e: React.MouseEvent) => void
   onNameClick: (rowId: string, el: HTMLElement) => void
+  onEditRow: (rowId: string, updater: (r: ExerciseRow) => ExerciseRow) => void
 }
 
 const head: React.CSSProperties = {
   fontFamily: 'var(--font-mono)', fontSize: 9, letterSpacing: '.06em',
   color: 'var(--fg-tertiary)', textTransform: 'uppercase',
 }
+const stop = (e: React.MouseEvent) => e.stopPropagation()
 
-function StrengthCell({ row, width }: { row: ExerciseRow; width: number }) {
-  if (row.aux || row.boxes.length === 0) {
+const baseInput: React.CSSProperties = {
+  background: 'transparent', border: '1px solid transparent', borderRadius: 3,
+  color: '#fff', fontSize: 11, fontFamily: 'var(--font-sans)', outline: 'none',
+  padding: '1px 2px', boxSizing: 'border-box', fontVariantNumeric: 'tabular-nums',
+}
+
+function setBoxesLen(boxes: ExerciseRow['boxes'], n: number) {
+  if (n <= boxes.length) return boxes.slice(0, n)
+  return [...boxes, ...Array.from({ length: n - boxes.length }, () => ({ val: '', empty: true }))]
+}
+
+function EditableStrength({ row, width, edit }: { row: ExerciseRow; width: number; edit: (u: (r: ExerciseRow) => ExerciseRow) => void }) {
+  if (row.aux) {
     return (
       <div className="gcell" data-c="int" style={{ width, padding: '4px 5px', display: 'flex', alignItems: 'center' }}>
         <span style={{ color: 'var(--fg-tertiary)', fontSize: 11 }}>—</span>
@@ -31,29 +44,32 @@ function StrengthCell({ row, width }: { row: ExerciseRow; width: number }) {
       width, padding: '4px 5px', lineHeight: 1.3, display: 'flex',
       flexWrap: 'wrap', alignItems: 'center', alignContent: 'center',
     }}>
-      <span style={{
-        display: 'inline-flex', alignItems: 'center', fontFamily: 'var(--font-mono)',
-        fontSize: 9, letterSpacing: '.04em', border: '1px solid var(--border-strong)',
-        borderRadius: 3, padding: '1px 4px', margin: '0 5px 3px 0', ...chip,
-      }}>
+      <span
+        title="切换 kg / RPE" onClick={(e) => { stop(e); edit((r) => ({ ...r, mode: r.mode === 'kg' ? 'rpe' : 'kg' })) }}
+        style={{
+          display: 'inline-flex', alignItems: 'center', fontFamily: 'var(--font-mono)', fontSize: 9,
+          letterSpacing: '.04em', border: '1px solid var(--border-strong)', borderRadius: 3,
+          padding: '1px 4px', margin: '0 5px 3px 0', cursor: 'pointer', userSelect: 'none', ...chip,
+        }}
+      >
         {row.mode === 'rpe' ? 'RPE' : 'KG'}
       </span>
-      {row.boxes.map((bx, i) => (
-        <span key={i} style={{
-          display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-          minWidth: 23, height: 19, padding: '0 4px', margin: '0 4px 3px 0',
-          border: bx.empty ? '1px dashed var(--border-strong)' : '1px solid var(--border-strong)',
-          borderRadius: 3, background: bx.empty ? 'transparent' : 'var(--surface-2)',
-          color: '#fff', fontSize: 11, fontVariantNumeric: 'tabular-nums',
-        }}>
-          {bx.empty ? ' ' : bx.val}
-        </span>
+      {row.boxes.map((b, i) => (
+        <input
+          key={i} value={b.empty ? '' : b.val} inputMode="decimal" onClick={stop}
+          onChange={(e) => edit((r) => ({ ...r, boxes: r.boxes.map((x, j) => j === i ? { val: e.target.value, empty: e.target.value.trim() === '' } : x) }))}
+          style={{
+            ...baseInput, width: 36, height: 19, textAlign: 'center', margin: '0 4px 3px 0',
+            border: '1px solid var(--border-strong)', background: b.empty ? 'transparent' : 'var(--surface-2)',
+          }}
+        />
       ))}
+      {row.boxes.length === 0 && <span style={{ color: 'var(--fg-tertiary)', fontSize: 10 }}>填组数→</span>}
     </div>
   )
 }
 
-export function DayColumn({ day, colW, selected, onSelect, onResizeStart, onNameClick }: Props) {
+export function DayColumn({ day, colW, selected, onSelect, onResizeStart, onNameClick, onEditRow }: Props) {
   if (day.rest) {
     return (
       <div className={`day restday${selected ? ' sel' : ''}`} data-dow={day.dow} onClick={onSelect} style={{
@@ -71,17 +87,12 @@ export function DayColumn({ day, colW, selected, onSelect, onResizeStart, onName
   }
 
   const total = COLS.reduce((s, k) => s + colW[k], 0)
-  // cumulative offsets for the column-resize handles
   let acc = 0
   const dividers = COLS.map((k) => { acc += colW[k]; return { col: k, left: acc } })
 
   return (
-    <div
-      className={`day${selected ? ' sel' : ''}`}
-      data-dow={day.dow}
-      onClick={onSelect}
-      style={{ position: 'relative', flex: '0 0 auto', borderRight: '1px solid var(--border)', cursor: 'pointer' }}
-    >
+    <div className={`day${selected ? ' sel' : ''}`} data-dow={day.dow} onClick={onSelect}
+      style={{ position: 'relative', flex: '0 0 auto', borderRight: '1px solid var(--border)', cursor: 'pointer' }}>
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 7, padding: '5px 8px', background: 'var(--surface-1)', borderBottom: '1px solid var(--border)', whiteSpace: 'nowrap', overflow: 'hidden' }}>
         <span style={{ fontWeight: 700, fontSize: 12, color: '#fff' }}>{day.dowLabel}</span>
         <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--fg-tertiary)' }}>{day.dateLabel}</span>
@@ -96,33 +107,57 @@ export function DayColumn({ day, colW, selected, onSelect, onResizeStart, onName
           <div className="gcell" data-c="note" style={{ width: colW.note, padding: '4px 6px', ...head }}>备注</div>
         </div>
 
-        {day.rows.map((row) => (
-          <div key={row.id} className={`exrow${row.aux ? ' aux' : ''}`} style={{ display: 'flex', alignItems: 'stretch', borderTop: '1px solid var(--border)' }}>
-            <div
-              className="gcell" data-c="name" data-namecell=""
-              onClick={(e) => { e.stopPropagation(); onNameClick(row.id, e.currentTarget) }}
-              style={{ width: colW.name, padding: '4px 6px', fontSize: 11, color: '#fff', fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', cursor: 'text', display: 'flex', alignItems: 'center' }}
-            >
-              {row.name || <span style={{ color: 'var(--fg-tertiary)', fontStyle: 'italic' }}>输入动作…</span>}
-              {row.ku && <span style={{ color: 'var(--green)', fontSize: 9, marginLeft: 4 }}>✓</span>}
-              {row.custom && <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--fg-tertiary)', fontSize: 8, marginLeft: 4, border: '1px solid var(--border-strong)', borderRadius: 3, padding: '0 3px' }}>自定义</span>}
+        {day.rows.map((row) => {
+          const edit = (u: (r: ExerciseRow) => ExerciseRow) => onEditRow(row.id, u)
+          return (
+            <div key={row.id} className={`exrow${row.aux ? ' aux' : ''}`} style={{ display: 'flex', alignItems: 'stretch', borderTop: '1px solid var(--border)' }}>
+              <div
+                className="gcell" data-c="name" data-namecell=""
+                onClick={(e) => { e.stopPropagation(); onNameClick(row.id, e.currentTarget) }}
+                style={{ width: colW.name, padding: '4px 6px', fontSize: 11, color: '#fff', fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', cursor: 'text', display: 'flex', alignItems: 'center' }}
+              >
+                {row.name || <span style={{ color: 'var(--fg-tertiary)', fontStyle: 'italic' }}>输入动作…</span>}
+                {row.ku && <span style={{ color: 'var(--green)', fontSize: 9, marginLeft: 4 }}>✓</span>}
+                {row.custom && <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--fg-tertiary)', fontSize: 8, marginLeft: 4, border: '1px solid var(--border-strong)', borderRadius: 3, padding: '0 3px' }}>自定义</span>}
+              </div>
+
+              {/* 组 */}
+              <div className="gcell" data-c="sets" style={{ width: colW.sets, padding: '4px 2px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                {row.aux ? (
+                  <span style={{ fontSize: 11, color: 'var(--fg-secondary)' }}>{setCount(row)}</span>
+                ) : (
+                  <input value={row.boxes.length || ''} inputMode="numeric" onClick={stop}
+                    onChange={(e) => { const n = Math.max(0, Math.min(12, parseInt(e.target.value, 10) || 0)); edit((r) => ({ ...r, boxes: setBoxesLen(r.boxes, n) })) }}
+                    style={{ ...baseInput, width: '100%', textAlign: 'center', color: 'var(--fg-secondary)' }} />
+                )}
+              </div>
+
+              {/* 次 */}
+              <div className="gcell" data-c="reps" style={{ width: colW.reps, padding: '4px 2px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                {row.aux ? (
+                  <span style={{ fontSize: 11, color: 'var(--fg-secondary)' }}>{row.reps}</span>
+                ) : (
+                  <input value={row.reps === '—' ? '' : row.reps} inputMode="text" onClick={stop} placeholder="—"
+                    onChange={(e) => edit((r) => ({ ...r, reps: e.target.value.trim() === '' ? '—' : e.target.value }))}
+                    style={{ ...baseInput, width: '100%', textAlign: 'center', color: 'var(--fg-secondary)' }} />
+                )}
+              </div>
+
+              <EditableStrength row={row} width={colW.int} edit={edit} />
+
+              <div className="gcell" data-c="note" style={{ width: colW.note, padding: '4px 2px', display: 'flex', alignItems: 'center' }}>
+                <input value={row.note} inputMode="text" onClick={stop} placeholder=""
+                  onChange={(e) => edit((r) => ({ ...r, note: e.target.value }))}
+                  style={{ ...baseInput, width: '100%', fontSize: 10, color: 'var(--fg-tertiary)' }} />
+              </div>
             </div>
-            <div className="gcell" data-c="sets" style={{ width: colW.sets, padding: '4px 4px', fontSize: 11, color: 'var(--fg-secondary)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{setCount(row)}</div>
-            <div className="gcell" data-c="reps" style={{ width: colW.reps, padding: '4px 4px', fontSize: 11, color: 'var(--fg-secondary)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{row.reps}</div>
-            <StrengthCell row={row} width={colW.int} />
-            <div className="gcell" data-c="note" style={{ width: colW.note, padding: '4px 6px', fontSize: 10, color: 'var(--fg-tertiary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'flex', alignItems: 'center' }}>{row.note}</div>
-          </div>
-        ))}
+          )
+        })}
       </div>
 
       {dividers.map((d) => (
-        <div
-          key={d.col}
-          className="coldiv"
-          style={{ left: d.left }}
-          onMouseDown={(e) => onResizeStart(d.col, e)}
-          onClick={(e) => e.stopPropagation()}
-        />
+        <div key={d.col} className="coldiv" style={{ left: d.left }}
+          onMouseDown={(e) => onResizeStart(d.col, e)} onClick={(e) => e.stopPropagation()} />
       ))}
     </div>
   )

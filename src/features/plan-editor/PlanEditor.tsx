@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
-import type { ColKey, ColWidths, Week, DayCol } from './types'
+import type { ColKey, ColWidths, Week, DayCol, ExerciseRow } from './types'
 import { COL_DEFAULTS, COL_MIN } from './types'
 import { TopBar } from './components/TopBar'
 import { Toolbar } from './components/Toolbar'
@@ -227,6 +227,13 @@ export function PlanEditor(props: PlanEditorProps) {
       }),
     }))
   }
+  const editRow = (wnum: number, dow: number, rowId: string, updater: (r: ExerciseRow) => ExerciseRow) => {
+    setWeeks((prev) => prev.map((wk) => wk.num !== wnum ? wk : {
+      ...wk,
+      days: wk.days.map((d) => d.dow !== dow ? d : { ...d, rows: d.rows.map((r) => r.id === rowId ? updater(r) : r) }),
+    }))
+  }
+
   const onPickHit = (hit: ExerciseHit) => {
     bindRowAt({ wnum: pop.wnum, dow: pop.dow, rowId: pop.rowId }, hit.id, hit.name, false)
     setPop((p) => ({ ...p, visible: false }))
@@ -360,6 +367,7 @@ export function PlanEditor(props: PlanEditorProps) {
                         onSelect={() => handleSelect(wk.num, day.dow)}
                         onResizeStart={(col, e) => handleResizeStart(day.dow, col, e)}
                         onNameClick={(rowId, el) => handleNameClick(wk.num, day.dow, rowId, el)}
+                        onEditRow={(rowId, updater) => editRow(wk.num, day.dow, rowId, updater)}
                       />
                     ))}
                   </div>
