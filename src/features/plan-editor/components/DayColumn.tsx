@@ -7,7 +7,10 @@ interface Props {
   selected: boolean
   onSelect: () => void
   onResizeStart: (col: ColKey, e: React.MouseEvent) => void
-  onNameClick: (rowId: string, el: HTMLElement) => void
+  onNameFocus: (rowId: string, name: string, el: HTMLElement) => void
+  onNameChange: (rowId: string, value: string, el: HTMLElement) => void
+  onNameBlur: () => void
+  onAddRow: () => void
   onEditRow: (rowId: string, updater: (r: ExerciseRow) => ExerciseRow) => void
 }
 
@@ -69,7 +72,7 @@ function EditableStrength({ row, width, edit }: { row: ExerciseRow; width: numbe
   )
 }
 
-export function DayColumn({ day, colW, selected, onSelect, onResizeStart, onNameClick, onEditRow }: Props) {
+export function DayColumn({ day, colW, selected, onSelect, onResizeStart, onNameFocus, onNameChange, onNameBlur, onAddRow, onEditRow }: Props) {
   if (day.rest) {
     return (
       <div className={`day restday${selected ? ' sel' : ''}`} data-dow={day.dow} onClick={onSelect} style={{
@@ -111,14 +114,17 @@ export function DayColumn({ day, colW, selected, onSelect, onResizeStart, onName
           const edit = (u: (r: ExerciseRow) => ExerciseRow) => onEditRow(row.id, u)
           return (
             <div key={row.id} className={`exrow${row.aux ? ' aux' : ''}`} style={{ display: 'flex', alignItems: 'stretch', borderTop: '1px solid var(--border)' }}>
-              <div
-                className="gcell" data-c="name" data-namecell=""
-                onClick={(e) => { e.stopPropagation(); onNameClick(row.id, e.currentTarget) }}
-                style={{ width: colW.name, padding: '4px 6px', fontSize: 11, color: '#fff', fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', cursor: 'text', display: 'flex', alignItems: 'center' }}
-              >
-                {row.name || <span style={{ color: 'var(--fg-tertiary)', fontStyle: 'italic' }}>输入动作…</span>}
-                {row.ku && <span style={{ color: 'var(--green)', fontSize: 9, marginLeft: 4 }}>✓</span>}
-                {row.custom && <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--fg-tertiary)', fontSize: 8, marginLeft: 4, border: '1px solid var(--border-strong)', borderRadius: 3, padding: '0 3px' }}>自定义</span>}
+              <div className="gcell" data-c="name" style={{ width: colW.name, padding: '4px 4px', display: 'flex', alignItems: 'center', gap: 2, overflow: 'hidden' }}>
+                <input
+                  value={row.name} placeholder="输入动作…"
+                  onMouseDown={stop} onClick={stop}
+                  onFocus={(e) => onNameFocus(row.id, row.name, e.currentTarget)}
+                  onChange={(e) => onNameChange(row.id, e.target.value, e.currentTarget)}
+                  onBlur={onNameBlur}
+                  style={{ ...baseInput, flex: 1, minWidth: 0, color: '#fff', fontWeight: 500 }}
+                />
+                {row.ku && <span style={{ color: 'var(--green)', fontSize: 9, flex: 'none' }}>✓</span>}
+                {row.custom && <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--fg-tertiary)', fontSize: 8, flex: 'none', border: '1px solid var(--border-strong)', borderRadius: 3, padding: '0 3px' }}>定</span>}
               </div>
 
               {/* 组 */}
@@ -153,6 +159,12 @@ export function DayColumn({ day, colW, selected, onSelect, onResizeStart, onName
             </div>
           )
         })}
+        {selected && (
+          <div className="popitem" onClick={(e) => { e.stopPropagation(); onAddRow() }}
+            style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 8px', borderTop: '1px dashed var(--border-strong)', color: 'var(--fg-tertiary)', cursor: 'pointer', fontSize: 11 }}>
+            <span style={{ color: 'var(--brand-red)', fontWeight: 700 }}>＋</span> 加动作
+          </div>
+        )}
       </div>
 
       {dividers.map((d) => (

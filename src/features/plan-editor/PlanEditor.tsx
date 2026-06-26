@@ -202,22 +202,23 @@ export function PlanEditor(props: PlanEditorProps) {
     setPop((p) => ({ ...p, visible: false }))
   }
 
-  const openPopover = (el: HTMLElement, wnum: number, dow: number, rowId: string) => {
+  const positionPopAt = (el: HTMLElement, wnum: number, dow: number, rowId: string, query: string) => {
     const root = rootRef.current
     if (!root) return
     const r = el.getBoundingClientRect(), rr = root.getBoundingClientRect()
-    let left = r.left - rr.left
-    left = Math.max(8, Math.min(left, root.clientWidth - 256))
-    let top = r.bottom - rr.top + 4
-    if (top + 290 > root.clientHeight) top = r.top - rr.top - 290
-    const row = weeks.find((w) => w.num === wnum)?.days.find((d) => d.dow === dow)?.rows.find((r2) => r2.id === rowId)
-    setPop({ visible: true, x: left, y: top, wnum, dow, rowId, query: row?.name ?? '' })
+    const left = Math.max(8, Math.min(r.left - rr.left, root.clientWidth - 256))
+    let top = r.bottom - rr.top + 2
+    if (top + 260 > root.clientHeight) top = r.top - rr.top - 260
+    setPop({ visible: true, x: left, y: top, wnum, dow, rowId, query })
   }
-
-  const handleNameClick = (wnum: number, dow: number, rowId: string, el: HTMLElement) => {
-    setSel({ wnum, dow })
-    openPopover(el, wnum, dow, rowId)
+  const handleNameFocus = (wnum: number, dow: number, rowId: string, name: string, el: HTMLElement) => {
+    positionPopAt(el, wnum, dow, rowId, name)
   }
+  const handleNameChange = (wnum: number, dow: number, rowId: string, value: string, el: HTMLElement) => {
+    editRow(wnum, dow, rowId, (r) => ({ ...r, name: value, exerciseId: null, ku: false, custom: false }))
+    positionPopAt(el, wnum, dow, rowId, value)
+  }
+  const handleNameBlur = () => { window.setTimeout(() => setPop((p) => ({ ...p, visible: false })), 160) }
 
   const bindRowAt = (target: { wnum: number; dow: number; rowId: string }, exerciseId: string, name: string, custom: boolean) => {
     setWeeks((prev) => prev.map((wk) => wk.num !== target.wnum ? wk : {
@@ -269,10 +270,13 @@ export function PlanEditor(props: PlanEditorProps) {
     window.setTimeout(() => setCopyDone(false), 1300)
   }
 
-  const handleAddRow = () => patchSelDay((d) => ({
-    ...d, rest: false,
-    rows: [...d.rows, { id: `n${Date.now()}`, exerciseId: null, name: '', ku: false, custom: false, isMain: false, aux: false, reps: '—', mode: 'kg' as const, boxes: [], note: '' }],
-  }))
+  const blankRow = (): ExerciseRow => ({ id: `n${Date.now()}-${Math.round(performance.now())}`, exerciseId: null, name: '', ku: false, custom: false, isMain: false, aux: false, reps: '—', mode: 'kg', boxes: [], note: '' })
+  const addRowToDay = (wnum: number, dow: number) => {
+    setWeeks((prev) => prev.map((wk) => wk.num !== wnum ? wk : {
+      ...wk, days: wk.days.map((d) => d.dow !== dow ? d : { ...d, rest: false, rows: [...d.rows, blankRow()] }),
+    }))
+  }
+  const handleAddRow = () => { if (sel) addRowToDay(sel.wnum, sel.dow) }
   const handleClearDay = () => patchSelDay((d) => ({ ...d, rows: [] }))
   const handleSetRest = () => patchSelDay((d) => ({ ...d, rest: true, rows: [] }))
   const handleUnsetRest = () => patchSelDay((d) => ({ ...d, rest: false }))
@@ -366,7 +370,10 @@ export function PlanEditor(props: PlanEditorProps) {
                         selected={sel?.wnum === wk.num && sel?.dow === day.dow}
                         onSelect={() => handleSelect(wk.num, day.dow)}
                         onResizeStart={(col, e) => handleResizeStart(day.dow, col, e)}
-                        onNameClick={(rowId, el) => handleNameClick(wk.num, day.dow, rowId, el)}
+                        onNameFocus={(rowId, name, el) => handleNameFocus(wk.num, day.dow, rowId, name, el)}
+                        onNameChange={(rowId, value, el) => handleNameChange(wk.num, day.dow, rowId, value, el)}
+                        onNameBlur={handleNameBlur}
+                        onAddRow={() => addRowToDay(wk.num, day.dow)}
                         onEditRow={(rowId, updater) => editRow(wk.num, day.dow, rowId, updater)}
                       />
                     ))}
@@ -381,7 +388,7 @@ export function PlanEditor(props: PlanEditorProps) {
 
       <ExercisePopover
         visible={pop.visible} x={pop.x} y={pop.y}
-        index={props.exerciseIndex ?? null} initialQuery={pop.query}
+        index={props.exerciseIndex ?? null} query={pop.query}
         onPick={onPickHit} onCreateCustom={onCreateCustom}
       />
     </div>
