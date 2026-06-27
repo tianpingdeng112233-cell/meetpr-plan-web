@@ -7,6 +7,7 @@ import { ContextBar } from './components/ContextBar'
 import { DayColumn } from './components/DayColumn'
 import { ExercisePopover } from './components/ExercisePopover'
 import type { ExerciseIndex, ExerciseHit } from './exerciseIndex'
+import type { ParsedWeek } from './import'
 
 interface Sel { wnum: number; dow: number }
 interface PopState { visible: boolean; x: number; y: number; wnum: number; dow: number; rowId: string; query: string }
@@ -38,6 +39,16 @@ export interface PlanEditorProps {
   onSwitchPlan?: (id: string) => void
   onNewPlan?: () => void
   onLogout?: () => void
+  /** Current plan start date; enables xlsx import date remapping. */
+  planStartDate?: string
+}
+
+function hasGridContent(weeks: Week[]): boolean {
+  return weeks.some((week) => week.days.some((day) => day.rows.length > 0))
+}
+
+function hasParsedWeekContent(week: ParsedWeek): boolean {
+  return week.days.some((day) => day.exercises.length > 0)
 }
 
 export function PlanEditor(props: PlanEditorProps) {
@@ -290,6 +301,59 @@ export function PlanEditor(props: PlanEditorProps) {
     finally { setSaving(false) }
   }
 
+  const handleImport = async (file: File) => {
+    if (!props.exerciseIndex || !props.planStartDate) {
+      setStatusText('导入失败 · 计划或动作库未就绪')
+      return
+    }
+    if (hasGridContent(weeks) && !window.confirm('当前网格已有内容，导入会覆盖当前计划。是否继续？')) return
+
+    setStatusText('导入中…')
+    try {
+      const importer = await import('./import')
+      const sheets = importer.readWorkbook(await file.arrayBuffer())
+      const grid = importer.selectSheet(sheets)
+      if (!grid) {
+        window.alert('没识别出训练周，请确认选的是计划表')
+        setStatusText('导入失败 · 未识别计划表')
+        return
+      }
+
+      const offset = importer.detectDayOffset(grid)
+      const parsedWeeks: ParsedWeek[] = importer.weekBlocks(grid, offset).map((block, blockIndex) => ({
+        blockIndex,
+        dateSerials: block.dateSerials,
+        days: Array.from({ length: 7 }, (_, day) => importer.parseDay(grid, block.contentRows, day, offset)),
+      }))
+      const sourceWeekCount = parsedWeeks.filter(hasParsedWeekContent).length
+      const nextWeeks = importer.buildWeeks(parsedWeeks, props.exerciseIndex, weeksCount, props.planStartDate)
+
+      if (nextWeeks.length === 0) {
+        window.alert('没识别出训练周，请确认选的是计划表')
+        setStatusText('导入失败 · 未识别计划表')
+        return
+      }
+
+      setWeeks(nextWeeks)
+      setSel(null)
+      setPop((p) => ({ ...p, visible: false }))
+      const imported = nextWeeks.length
+      const dropped = sourceWeekCount - imported
+      let truncation: string
+      if (dropped > 0) {
+        truncation = `原表 ${sourceWeekCount} 周，只导入最新一期共 ${imported} 周`
+        if (weeksCount < 12) truncation += `（当前计划 ${weeksCount} 周；调到 12 可导满一期）`
+      } else {
+        truncation = `已导入 ${imported} 周 · 未保存`
+      }
+      setStatusText(truncation)
+      if (dropped > 0) window.alert(truncation)
+    } catch {
+      window.alert('导入失败，请确认文件是 .xlsx 计划表')
+      setStatusText('导入失败 · 重试')
+    }
+  }
+
   const handlePublish = async () => {
     if (published) { setPublished(false); setStatusText('草稿 · 已存'); return }
     setStatusText('发布中…')
@@ -325,6 +389,7 @@ export function PlanEditor(props: PlanEditorProps) {
         plans={props.plans} currentPlanId={props.currentPlanId} onSwitchPlan={props.onSwitchPlan}
         onNewPlan={props.onNewPlan} onLogout={props.onLogout}
         onSave={props.onSave ? handleSave : undefined} saving={saving}
+        onImport={props.exerciseIndex && props.planStartDate ? handleImport : undefined}
       />
       <Toolbar weeksCount={weeksCount} curWeekLabel={curWeekLabel} zoomLabel={`${Math.round(zoom)}%`} />
       <ContextBar
@@ -383,7 +448,7 @@ export function PlanEditor(props: PlanEditorProps) {
             </div>
           </div>
         </div>
-        <div style={{ textAlign: 'center', color: 'var(--fg-tertiary)', fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '.1em', padding: '10px 7px 20px', textTransform: 'uppercase' }}>▼ W06 … W12 · 共 12 周</div>
+        <div style={{ textAlign: 'center', color: 'var(--fg-tertiary)', fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '.1em', padding: '10px 7px 20px', textTransform: 'uppercase' }}>▼ 共 {weeks.length} 周</div>
       </div>
 
       <ExercisePopover

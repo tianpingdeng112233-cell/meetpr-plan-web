@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 
 interface Option { id: string; label: string; tag?: string }
 
@@ -19,6 +19,7 @@ interface Props {
   onLogout?: () => void
   onSave?: () => void
   saving?: boolean
+  onImport?: (file: File) => void | Promise<void>
 }
 
 const pill: React.CSSProperties = {
@@ -59,6 +60,7 @@ function Dropdown({ open, options, currentId, onPick, onNew, newLabel }: {
 
 export function TopBar(p: Props) {
   const [menu, setMenu] = useState<'student' | 'plan' | null>(null)
+  const fileRef = useRef<HTMLInputElement>(null)
   const connected = !!p.students
   const close = () => setMenu(null)
 
@@ -104,6 +106,28 @@ export function TopBar(p: Props) {
         <span style={{ width: 7, height: 7, borderRadius: '50%', background: p.published ? 'var(--green)' : 'var(--fg-tertiary)' }} />
         <span>{p.statusText}</span>
       </span>
+      {p.onImport && (
+        <>
+          <input
+            ref={fileRef}
+            type="file"
+            accept=".xlsx"
+            style={{ display: 'none' }}
+            onChange={(e) => {
+              const file = e.currentTarget.files?.[0]
+              e.currentTarget.value = ''
+              if (file) void p.onImport?.(file)
+            }}
+          />
+          <button onClick={() => fileRef.current?.click()} style={{
+            background: 'transparent', color: 'var(--fg-secondary)', border: '1px solid var(--border-strong)',
+            borderRadius: 10, padding: '8px 14px', fontFamily: 'var(--font-sans)', fontWeight: 600, fontSize: 13,
+            cursor: 'pointer', lineHeight: 1,
+          }}>
+            导入 .xlsx
+          </button>
+        </>
+      )}
       {p.onSave && (
         <button onClick={p.onSave} disabled={p.saving} style={{
           background: 'transparent', color: 'var(--fg-secondary)', border: '1px solid var(--border-strong)',

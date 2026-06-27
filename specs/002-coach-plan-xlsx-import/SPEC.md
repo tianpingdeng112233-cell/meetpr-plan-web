@@ -14,7 +14,8 @@
 
 - **不写 per-set `coach_note` / `failed` / `backoff`**:编辑器模型(`SetBox{val,empty}` + 行级 `note`)与 `reconcile` 当前只支持「逐组 val + 行级 note + 末组 amrap(reps 带 `+`)」。导入**降级**到这个能力面:`力竭`/`70%top`/`tempo`/解析不掉的串 → **行级 `note`**(教练可见可改),**不**扩 `SetBox`/UI/wire。扩 set_type/coach_note 全链路 = 后续 spec。
 - **不新建计划**:导入**替换当前打开计划**的内存 `Week[]`。
-- **plan_weeks 对齐**:本步保存复用现有 `reconcile`。导入**截取到当前 `plan.plan_weeks`**:原表周数 > 计划 → 只填前 `plan_weeks` 周 + UI 提示(「原表 N 周、当前计划 M 周,已填前 M 周;要导全先把计划周数调到 N」);原表更少 → 填到实际周数即可。**网格显示范围 = 保存范围一致**,`reconcile` 不会撞后端 `week_number ≤ plan_weeks` 约束而保存失败。更新 plan_weeks 以容纳全部周 + 清掉超出周 = 紧随其后一小步(见 §开放)。
+- **导入窗口 + plan_weeks**:导入**只取原表最近 12 周**(`LATEST_WEEKS`,只导最新一期,见 §模块函数 `buildWeeks`),再**截取到当前 `plan.plan_weeks`**(planWeeks≥12 → 12 周全进;<12 → 取这 12 周窗口的前 planWeeks)。**网格显示 = 保存范围一致**,`reconcile` 不撞后端 `week_number ≤ plan_weeks`。UI 提示「原表 N 周,只导入最新一期共 X 周」。
+- ⚠️ **保存持久化不完整(本步已知,与 #29 部署一起收尾)**:导入只替换编辑器内存 `Week[]`;现有 `reconcile` 只增改传入的周,**不会删掉后端计划里多出/更早的周**,也不 PATCH plan 的 `plan_weeks`/`start_date`。所以导入后保存会留旧周残留 + 日期回退。完整持久化(删超范围周 + 对齐 plan_weeks/start_date)见 §开放;且 save 当前还撞 #29 未部署的 `plan_weeks` 校验、本就跑不通。**本步交付=导入显示态。**
 - **%top / 训练最大值**;**同格多动作 `+`/换行拆分精修**(拆不动整串进行级 note);**服务端解析**。
 - **不追求逐组精准**:拿不准降级进 `note`,教练在网格改——设计前提。
 
@@ -58,7 +59,7 @@ interface ParsedWeek { blockIndex: number; dateSerials: (number | null)[]; days:
 | `weekBlocks` | `(grid: Grid, offset: number) => { headerRow; dateSerials; contentRows }[]`。日期行开块;`contentRows` = `occupiedRows` 中落在 (headerRow, 下一 headerRow) 且在 7 日跨度内非空的行。 |
 | `parseSetLine` | `(setsCell, intensityCell, float1, float2) => { reps; mode; values; amrap; note }`。`组*次`(`4*8`)定组数+reps;逐组重量 `110/115/120/120`→values、爬坡 `80→90 +5`→铺、广播单值;RPE 串 `6788`→`['6','7','8','8']`(`rpe` 标记列定 mode);**仅字面 `amrap`** → `amrap=true`(reps 末尾加 `+`,经 `reconcile` 落 backend `set_type='amrap'`);`力竭`/`降组`/`70%top`/tempo/`长暂停2s`/解析不掉的串 → **行级 `note`**(本步不写 `failed`/`backoff`,见 §非目标)。**数值内部可算,写入 `values` 必须是规范化字符串**(不传 number)。 |
 | `parseDay` | 按 `dayColumns(dayIndex, offset)` 逐行读;`休息`→rest;空名+有组次=续行追加上一动作;多行名(换行)→逐行一动作。 |
-| `buildWeeks` | `(parsed: ParsedWeek[], index: ExerciseIndex, planWeeks: number, startDate: string) => Week[]`。**空周(无动作)滤掉**;余下 week_number 从 **1 顺排**、**截取到 `planWeeks`**(见 §非目标)。展示字段(`num2`/`range`/`isCurrent`/`dowLabel`/`dateLabel`)由 `startDate` 计算(**复用 `mapPlanToWeeks` 的日期逻辑**);**xlsx `dateSerials` 只用于 sheet 选择,不用于展示**——计划按 plan 的 `start_date` 重新定日(同 iOS spec 043)。每动作 `index.resolve(rawName)`:命中 → `exerciseId=resolved.id`、`custom = resolved.created_by_coach_id != null`、`ku = !custom`、`isMain = resolved.is_competition_lift \|\| resolved.main_lift_family != null`;**未命中 → `exerciseId:null, ku:false, custom:false`**(待绑定)。`boxes` 由 `values` 生成;`reps`/`mode`/`note` 照搬;无结构动作 `aux:true`。 |
+| `buildWeeks` | `(parsed: ParsedWeek[], index: ExerciseIndex, planWeeks: number, startDate: string) => Week[]`。**空周(无动作)滤掉**;**取最近 `LATEST_WEEKS`=12 周**(一个 mesocycle;教练表常连续写多周期,只导**最新一期**——David 2026-06-27,注意事项页「整个周期为12周」),再**截取到 `planWeeks`**;week_number 从 **1 顺排**。展示字段(`num2`/`range`/`isCurrent`/`dowLabel`/`dateLabel`)按**原表日期**定(**option A,2026-06-27 David 定**):`importStartDate(sourceWeeks)` = 取到的最近 12 周里第一周的周一(`dateSerials` Excel 序列 `(s−25569)·86400000` → 日期)作开始日,复用 `mapPlanToWeeks` 日期逻辑铺每天;原表无日期才回退传入 `startDate`。**保留原表日期、不再按 plan `start_date` 重锚**(注:存回后端时把 plan `start_date` PATCH 成此值才能持久,属 §开放 后续)。每动作 `index.resolve(rawName)`:命中 → `exerciseId=resolved.id`、`custom = resolved.created_by_coach_id != null`、`ku = !custom`、`isMain = resolved.is_competition_lift \|\| resolved.main_lift_family != null`;**未命中 → `exerciseId:null, ku:false, custom:false`**(待绑定)。`boxes` 由 `values` 生成;`reps`/`mode`/`note` 照搬;无结构动作 `aux:true`。 |
 
 > `dayColumns(d, offset) = { nameCol: offset+5d, setsCol: +1, intensityCol: +2, float1: +3, float2: +4 }`(1-based)。
 
@@ -80,13 +81,13 @@ interface ParsedWeek { blockIndex: number; dateSerials: (number | null)[]; days:
 
 ## 测试(TDD)
 
-- **smoke(先行)**:SheetJS 读 committed 的真 WPS fixture(一份 WPS 另存的 2 天迷你计划 `.xlsx`,放 `src/features/plan-editor/import/__fixtures__/`)→ 断言拿到 sheet + cell。
+- **smoke**:`readWorkbook` 用 SheetJS 自写的最小 workbook(`XLSX.write`)round-trip 验证(committed,不放真人数据)。**WPS 兼容**(裸 ArrayBuffer 退化成空 Sheet1 的那条)靠**本地真文件 e2e + 浏览器验收**(邓天平/许可/吕子豪)——合成 fixture 无法复现 WPS-特定 zip,且不提交真人训练数据。
 - **纯函数单测**(合成 `Grid`):`detectDayOffset`(offset 1 vs 2、文本型大数序列、小数字不误判)、`selectSheet`(recency + 跳无内容页 + 文本序列)、`parseSetLine`(组次/逐组重量/RPE 串/爬坡/**仅字面 amrap→reps `+`**、**力竭/降组→行级 note**、tempo→note)、`buildWeeks`(空周滤、命中绑定、**未匹配→exerciseId:null/ku:false/custom:false**、别名 canonical 必须在 catalog 内)。
-- **端到端**(dev,本地;**当前计划 `plan_weeks=14`**):`邓天平.xlsx` → 网格 14 周、深蹲/卧推/硬拉带重量、未匹配可见可绑。
+- **端到端**(dev,本地,已浏览器验):`吕子豪.xlsx`(原表 27 周)→ **取最近 12 周**(4/13–7/5)进网格、日期取自原表、深蹲/卧推/硬拉带重量、未匹配可见可绑;`邓天平.xlsx`/`许可.xlsx` 同路径。
 
 ## 开放 / 紧随其后
 
-- plan_weeks 对齐 + 清掉超出周(保存语义完整化)。
+- **保存对齐(plan_weeks + start_date)**:导入时按原表自动 PATCH plan 的 `plan_weeks`(= 原表周数,免截断 + UI 那条提示)与 `start_date`(= `importStartDate`,让原表日期保存后 reload 仍在),并清掉超出周。本步只做编辑器内显示,这步让它持久。
 - per-set `coach_note`/`failed`/`backoff` 全链路(扩 `SetBox`/UI/`mapPlanToWeeks`/`reconcile`)。
 - 同格多动作 `+`/换行拆分精修。
 

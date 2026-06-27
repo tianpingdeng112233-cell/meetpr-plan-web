@@ -111,6 +111,7 @@ export function PlanWorkspace({ onLogout }: Props) {
         weeksCount={loaded?.weeksCount ?? 0}
         studentName={studentName}
         planName={loaded?.plan.name ?? '（暂无计划）'}
+        planStartDate={loaded?.plan.start_date}
         initialPublished={loaded?.plan.status === 'published'}
         onPublish={loaded ? async () => { await publishPlan(loaded.plan.id) } : undefined}
         onSave={loaded ? async (weeks) => { await reconcilePlan(loaded.plan.id, weeks) } : undefined}

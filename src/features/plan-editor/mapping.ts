@@ -1,7 +1,7 @@
 import type { PlanWithChildren, PlanExerciseResponse } from '../../api/types'
 import type { Week, DayCol, ExerciseRow, SetBox } from './types'
 
-const DOW = ['周一', '周二', '周三', '周四', '周五', '周六', '周日']
+export const DOW_LABELS = ['周一', '周二', '周三', '周四', '周五', '周六', '周日']
 
 export interface CatalogEntry { name: string; custom: boolean }
 export type Catalog = Map<string, CatalogEntry>
@@ -13,11 +13,26 @@ function fmtNum(s: string): string {
   return String(Number(n.toFixed(2)))
 }
 
-function addDays(iso: string, days: number): Date {
+export function addDays(iso: string, days: number): Date {
   const [y, m, d] = iso.split('-').map(Number)
   return new Date(y, m - 1, d + days)
 }
-function mdLabel(dt: Date): string { return `${dt.getMonth() + 1}/${dt.getDate()}` }
+export function mdLabel(dt: Date): string { return `${dt.getMonth() + 1}/${dt.getDate()}` }
+
+export function planDayDateLabel(startDate: string, weekNumber: number, dow: number): string {
+  return mdLabel(addDays(startDate, (weekNumber - 1) * 7 + dow))
+}
+
+export function planWeekRangeLabel(startDate: string, weekNumber: number): string {
+  return `${planDayDateLabel(startDate, weekNumber, 0)} – ${planDayDateLabel(startDate, weekNumber, 6)}`
+}
+
+export function currentPlanWeek(startDate: string): number {
+  const start = addDays(startDate, 0)
+  const today = new Date()
+  const dayDiff = Math.floor((today.getTime() - start.getTime()) / 86_400_000)
+  return dayDiff >= 0 ? Math.floor(dayDiff / 7) + 1 : -1
+}
 
 function mapExercise(ex: PlanExerciseResponse, catalog: Catalog): ExerciseRow {
   const entry = catalog.get(ex.exercise_id)
@@ -40,10 +55,7 @@ function mapExercise(ex: PlanExerciseResponse, catalog: Catalog): ExerciseRow {
 
 export function mapPlanToWeeks(plan: PlanWithChildren, catalog: Catalog): Week[] {
   // today's week (relative to start_date), for the "current week" marker
-  const start = addDays(plan.start_date, 0)
-  const today = new Date()
-  const dayDiff = Math.floor((today.getTime() - start.getTime()) / 86_400_000)
-  const curWeek = dayDiff >= 0 ? Math.floor(dayDiff / 7) + 1 : -1
+  const curWeek = currentPlanWeek(plan.start_date)
 
   // index backend days by week -> day_of_week
   const byWeek = new Map<number, Map<number, PlanExerciseResponse[]>>()
@@ -58,18 +70,18 @@ export function mapPlanToWeeks(plan: PlanWithChildren, catalog: Catalog): Week[]
     const dayMap = byWeek.get(w)
     const days: DayCol[] = []
     for (let dow = 0; dow < 7; dow++) {
-      const dateLabel = mdLabel(addDays(plan.start_date, (w - 1) * 7 + dow))
+      const dateLabel = planDayDateLabel(plan.start_date, w, dow)
       const exs = dayMap?.get(dow + 1)
       if (!exs || exs.length === 0) {
-        days.push({ dow, dowLabel: DOW[dow], dateLabel, rest: true, rows: [] })
+        days.push({ dow, dowLabel: DOW_LABELS[dow], dateLabel, rest: true, rows: [] })
       } else {
-        days.push({ dow, dowLabel: DOW[dow], dateLabel, rest: false, rows: exs.map((e) => mapExercise(e, catalog)) })
+        days.push({ dow, dowLabel: DOW_LABELS[dow], dateLabel, rest: false, rows: exs.map((e) => mapExercise(e, catalog)) })
       }
     }
     weeks.push({
       num: w,
       num2: String(w).padStart(2, '0'),
-      range: `${mdLabel(addDays(plan.start_date, (w - 1) * 7))} – ${mdLabel(addDays(plan.start_date, (w - 1) * 7 + 6))}`,
+      range: planWeekRangeLabel(plan.start_date, w),
       isCurrent: w === curWeek,
       vol: '',
       days,
