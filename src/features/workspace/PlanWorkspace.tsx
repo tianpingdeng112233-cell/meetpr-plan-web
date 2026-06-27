@@ -5,7 +5,7 @@ import { listExercises, createCustomExercise } from '../../api/exercises'
 import { ApiException } from '../../api/client'
 import { mapPlanToWeeks, type Catalog } from '../plan-editor/mapping'
 import { ExerciseIndex } from '../plan-editor/exerciseIndex'
-import { reconcilePlan } from '../plan-editor/reconcile'
+import { reconcilePlan, reconcileImportedPlan } from '../plan-editor/reconcile'
 import { PlanEditor } from '../plan-editor/PlanEditor'
 import type { Week } from '../plan-editor/types'
 
@@ -114,7 +114,10 @@ export function PlanWorkspace({ onLogout }: Props) {
         planStartDate={loaded?.plan.start_date}
         initialPublished={loaded?.plan.status === 'published'}
         onPublish={loaded ? async () => { await publishPlan(loaded.plan.id) } : undefined}
-        onSave={loaded ? async (weeks) => { await reconcilePlan(loaded.plan.id, weeks) } : undefined}
+        onSave={loaded ? async (weeks, importStart) => {
+          if (importStart) await reconcileImportedPlan(loaded.plan.id, weeks, importStart)
+          else await reconcilePlan(loaded.plan.id, weeks)
+        } : undefined}
         exerciseIndex={index}
         onCreateExercise={async (name) => {
           const e = await createCustomExercise(name)

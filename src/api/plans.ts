@@ -16,6 +16,10 @@ export const getStudentPlans = (studentId: string, status?: PlanStatus[]) => {
 export const getPlan = (planId: string) => api.get<PlanWithChildren>(`/plans/${planId}`)
 
 export const createPlan = (body: CreatePlanBody) => api.post<PlanResponse>('/plans', body)
+export const patchPlan = (
+  planId: string,
+  body: { name?: string; start_date?: string; end_date?: string; plan_weeks?: number },
+) => api.patch<PlanResponse>(`/plans/${planId}`, body)
 export const publishPlan = (planId: string) => api.post<PlanResponse>(`/plans/${planId}/publish`)
 
 // nested tree mutations

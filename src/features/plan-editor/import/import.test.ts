@@ -248,7 +248,7 @@ describe('buildWeeks', () => {
       },
     ]
 
-    const weeks = buildWeeks(parsed, index, 1, '2026-06-01')
+    const { weeks } = buildWeeks(parsed, index, 1, '2026-06-01')
 
     expect(weeks).toHaveLength(1)
     expect(weeks[0].num).toBe(1)
@@ -265,7 +265,7 @@ describe('buildWeeks', () => {
 
   it('does not resolve aliases whose canonical exercise is absent from the catalog', () => {
     const index = new ExerciseIndex([exercise('other', '杠铃卧推')])
-    const weeks = buildWeeks([{
+    const { weeks } = buildWeeks([{
       blockIndex: 0,
       dateSerials: [],
       days: [{ dayOfWeek: 0, rest: false, exercises: [{ rawName: '低杆深蹲', reps: '5', mode: 'kg', values: ['100'], note: '' }] }],

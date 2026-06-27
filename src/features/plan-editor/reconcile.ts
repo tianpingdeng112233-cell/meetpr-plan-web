@@ -7,7 +7,8 @@ import type { Week, ExerciseRow } from './types'
 import type {
   PlanWithChildren, PlanExerciseResponse, CreatePlanSetBody, IntensityModeWire, SetType,
 } from '../../api/types'
-import { getPlan, createDay, deleteDay, createExercise, createSet } from '../../api/plans'
+import { getPlan, createDay, deleteDay, createExercise, createSet, patchPlan } from '../../api/plans'
+import { addDays } from './mapping'
 
 interface DesiredExercise {
   exercise_id: string
@@ -62,6 +63,26 @@ function canonServer(exs: PlanExerciseResponse[]): string {
 }
 
 const EMPTY = '[]'
+
+function fmtISO(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+/** Save an *imported* plan: align the backend plan to the import — delete weeks
+ *  beyond it, set plan_weeks + start_date (+ end_date) to the source — so the imported
+ *  dates and week count survive a reload, then reconcile the days. Delete happens
+ *  before shrinking plan_weeks so it can't violate `week_number ≤ plan_weeks`. */
+export async function reconcileImportedPlan(
+  planId: string, weeks: Week[], startDate: string,
+): Promise<SaveResult> {
+  const server: PlanWithChildren = await getPlan(planId)
+  for (const day of server.days) {
+    if (day.week_number > weeks.length) await deleteDay(day.id)
+  }
+  const endDate = fmtISO(addDays(startDate, weeks.length * 7 - 1))
+  await patchPlan(planId, { plan_weeks: weeks.length, start_date: startDate, end_date: endDate })
+  return reconcilePlan(planId, weeks)
+}
 
 export async function reconcilePlan(planId: string, weeks: Week[]): Promise<SaveResult> {
   // live server tree as the diff baseline (never trust a stale snapshot)

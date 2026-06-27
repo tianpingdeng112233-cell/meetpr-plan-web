@@ -25,7 +25,7 @@ export interface PlanEditorProps {
   /** Real publish call; when omitted the button just toggles locally (sample mode). */
   onPublish?: () => Promise<void>
   /** Save current edits back to the backend. */
-  onSave?: (weeks: Week[]) => Promise<void>
+  onSave?: (weeks: Week[], importStart?: string | null) => Promise<void>
   /** Exercise catalog + alias index for name-cell binding. */
   exerciseIndex?: ExerciseIndex | null
   /** Create a custom exercise and return its id+name (adds to the index). */
@@ -54,6 +54,9 @@ function hasParsedWeekContent(week: ParsedWeek): boolean {
 export function PlanEditor(props: PlanEditorProps) {
   const { initialWeeks, weeksCount, studentName, planName, initialPublished = false, onPublish } = props
   const [weeks, setWeeks] = useState<Week[]>(initialWeeks)
+  // Plan start date derived from an import, threaded to the save so the backend plan's
+  // start_date/plan_weeks are aligned (imported dates + week count survive reload).
+  const [importedStart, setImportedStart] = useState<string | null>(null)
   const [colW, setColW] = useState<ColWidths[]>(() => Array.from({ length: 7 }, () => ({ ...COL_DEFAULTS })))
   const [sel, setSel] = useState<Sel | null>(null)
   const [zoom, setZoom] = useState(100)
@@ -296,7 +299,7 @@ export function PlanEditor(props: PlanEditorProps) {
   const handleSave = async () => {
     if (!props.onSave || saving) return
     setSaving(true); setStatusText('保存中…')
-    try { await props.onSave(weeks); setStatusText('草稿 · 已保存') }
+    try { await props.onSave(weeks, importedStart); setImportedStart(null); setStatusText('草稿 · 已保存') }
     catch { setStatusText('保存失败 · 重试') }
     finally { setSaving(false) }
   }
@@ -326,7 +329,7 @@ export function PlanEditor(props: PlanEditorProps) {
         days: Array.from({ length: 7 }, (_, day) => importer.parseDay(grid, block.contentRows, day, offset)),
       }))
       const sourceWeekCount = parsedWeeks.filter(hasParsedWeekContent).length
-      const nextWeeks = importer.buildWeeks(parsedWeeks, props.exerciseIndex, weeksCount, props.planStartDate)
+      const { weeks: nextWeeks, startDate: importStart } = importer.buildWeeks(parsedWeeks, props.exerciseIndex, weeksCount, props.planStartDate)
 
       if (nextWeeks.length === 0) {
         window.alert('没识别出训练周，请确认选的是计划表')
@@ -335,6 +338,7 @@ export function PlanEditor(props: PlanEditorProps) {
       }
 
       setWeeks(nextWeeks)
+      setImportedStart(importStart)
       setSel(null)
       setPop((p) => ({ ...p, visible: false }))
       const imported = nextWeeks.length

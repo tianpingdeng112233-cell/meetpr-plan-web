@@ -427,7 +427,9 @@ export function importStartDate(weeks: ParsedWeek[]): string | null {
   return excelSerialToISODate((first.dateSerials[idx] as number) - idx)
 }
 
-export function buildWeeks(parsed: ParsedWeek[], index: ExerciseIndex, planWeeks: number, startDate: string): Week[] {
+export function buildWeeks(
+  parsed: ParsedWeek[], index: ExerciseIndex, planWeeks: number, startDate: string,
+): { weeks: Week[]; startDate: string } {
   // Latest mesocycle first (last LATEST_WEEKS of the plan), then fit into the current
   // plan's week count.
   const sourceWeeks = parsed
@@ -439,7 +441,7 @@ export function buildWeeks(parsed: ParsedWeek[], index: ExerciseIndex, planWeeks
   const effectiveStart = importStartDate(sourceWeeks) ?? startDate
   const curWeek = currentPlanWeek(effectiveStart)
 
-  return sourceWeeks.map((sourceWeek, weekIndex) => {
+  const weeks = sourceWeeks.map((sourceWeek, weekIndex) => {
     const weekNumber = weekIndex + 1
     const byDay = new Map(sourceWeek.days.map((day) => [day.dayOfWeek, day]))
     const days: DayCol[] = []
@@ -466,4 +468,7 @@ export function buildWeeks(parsed: ParsedWeek[], index: ExerciseIndex, planWeeks
       days,
     }
   })
+  // startDate = the plan start derived from the sheet, so the caller can PATCH the
+  // backend plan's start_date and the imported dates survive a reload.
+  return { weeks, startDate: effectiveStart }
 }
