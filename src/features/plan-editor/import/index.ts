@@ -428,14 +428,14 @@ export function importStartDate(weeks: ParsedWeek[]): string | null {
 }
 
 export function buildWeeks(
-  parsed: ParsedWeek[], index: ExerciseIndex, planWeeks: number, startDate: string,
+  parsed: ParsedWeek[], index: ExerciseIndex, startDate: string,
 ): { weeks: Week[]; startDate: string } {
-  // Latest mesocycle first (last LATEST_WEEKS of the plan), then fit into the current
-  // plan's week count.
+  // Import the latest mesocycle: the last LATEST_WEEKS weeks that have content. The save
+  // (reconcileImportedPlan) sizes the plan to the imported week count, so the import no
+  // longer caps to the current plan's plan_weeks.
   const sourceWeeks = parsed
     .filter(weekHasExercises)
     .slice(-LATEST_WEEKS)
-    .slice(0, Math.max(0, planWeeks))
   // Date the plan from the sheet itself so imported dates match the source (spec 002
   // option A); fall back to the plan's own start_date only when the sheet has no dates.
   const effectiveStart = importStartDate(sourceWeeks) ?? startDate

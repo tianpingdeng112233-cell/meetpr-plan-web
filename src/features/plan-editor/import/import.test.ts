@@ -219,7 +219,7 @@ describe('parseDay', () => {
 })
 
 describe('buildWeeks', () => {
-  it('filters empty weeks, dates from the source sheet, truncates to planWeeks and binds catalog hits', () => {
+  it('filters empty weeks, dates from the source sheet, keeps the content weeks and binds catalog hits', () => {
     const index = new ExerciseIndex([
       exercise('bench', '杠铃卧推', { is_competition_lift: true }),
       exercise('custom', '自定义动作', { created_by_coach_id: 'coach-1' }),
@@ -248,9 +248,9 @@ describe('buildWeeks', () => {
       },
     ]
 
-    const { weeks } = buildWeeks(parsed, index, 1, '2026-06-01')
+    const { weeks } = buildWeeks(parsed, index, '2026-06-01')
 
-    expect(weeks).toHaveLength(1)
+    expect(weeks).toHaveLength(2) // both content weeks kept (empty block filtered); no plan-size cap
     expect(weeks[0].num).toBe(1)
     expect(weeks[0].num2).toBe('01')
     expect(weeks[0].days[0].dateLabel).toBe('12/29') // dated from the sheet (serial 46020 = 2025-12-29), not the passed start
@@ -269,7 +269,7 @@ describe('buildWeeks', () => {
       blockIndex: 0,
       dateSerials: [],
       days: [{ dayOfWeek: 0, rest: false, exercises: [{ rawName: '低杆深蹲', reps: '5', mode: 'kg', values: ['100'], note: '' }] }],
-    }], index, 4, '2026-06-01')
+    }], index, '2026-06-01')
 
     expect(weeks[0].days[0].rows[0]).toMatchObject({
       exerciseId: null,

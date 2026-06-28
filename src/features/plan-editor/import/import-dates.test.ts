@@ -28,7 +28,7 @@ describe('import dates — keep the source plan dates (spec 002 option A)', () =
   })
 
   it('buildWeeks dates the plan from the sheet, ignoring the passed start_date', () => {
-    const { weeks, startDate } = buildWeeks([weekAt(46020)], STUB, 14, '2099-01-01')
+    const { weeks, startDate } = buildWeeks([weekAt(46020)], STUB, '2099-01-01')
     expect(startDate).toBe('2025-12-29') // derived from the xlsx, returned for the save PATCH
     expect(weeks[0].range).toBe('12/29 – 1/4') // from the xlsx serial, not 2099
   })
@@ -36,7 +36,7 @@ describe('import dates — keep the source plan dates (spec 002 option A)', () =
   it('imports only the latest 12 weeks of a long continuous plan', () => {
     // 27 consecutive weeks (吕子豪 2026 sheet); David: keep the latest 12 only.
     const weeks = Array.from({ length: 27 }, (_, i) => weekAt(46020 + i * 7))
-    const { weeks: built } = buildWeeks(weeks, STUB, 52, '2099-01-01')
+    const { weeks: built } = buildWeeks(weeks, STUB, '2099-01-01')
     expect(built).toHaveLength(12)
     expect(built[0].num).toBe(1) // re-numbered from 1
     expect(built[0].days[0].dateLabel).toBe('4/13') // original week 16 = 2026-04-13

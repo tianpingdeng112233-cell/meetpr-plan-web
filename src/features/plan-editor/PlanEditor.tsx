@@ -329,7 +329,7 @@ export function PlanEditor(props: PlanEditorProps) {
         days: Array.from({ length: 7 }, (_, day) => importer.parseDay(grid, block.contentRows, day, offset)),
       }))
       const sourceWeekCount = parsedWeeks.filter(hasParsedWeekContent).length
-      const { weeks: nextWeeks, startDate: importStart } = importer.buildWeeks(parsedWeeks, props.exerciseIndex, weeksCount, props.planStartDate)
+      const { weeks: nextWeeks, startDate: importStart } = importer.buildWeeks(parsedWeeks, props.exerciseIndex, props.planStartDate)
 
       if (nextWeeks.length === 0) {
         window.alert('没识别出训练周，请确认选的是计划表')
@@ -346,7 +346,6 @@ export function PlanEditor(props: PlanEditorProps) {
       let truncation: string
       if (dropped > 0) {
         truncation = `原表 ${sourceWeekCount} 周，只导入最新一期共 ${imported} 周`
-        if (weeksCount < 12) truncation += `（当前计划 ${weeksCount} 周；调到 12 可导满一期）`
       } else {
         truncation = `已导入 ${imported} 周 · 未保存`
       }
