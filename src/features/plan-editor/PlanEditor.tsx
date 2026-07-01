@@ -7,6 +7,7 @@ import { ContextBar } from './components/ContextBar'
 import { DayColumn } from './components/DayColumn'
 import { ExercisePopover } from './components/ExercisePopover'
 import type { ExerciseIndex, ExerciseHit } from './exerciseIndex'
+import { createAutosaver } from './autosave'
 
 interface Sel { wnum: number; dow: number }
 interface PopState { visible: boolean; x: number; y: number; wnum: number; dow: number; rowId: string; query: string }
@@ -286,12 +287,41 @@ export function PlanEditor(props: PlanEditorProps) {
   const handleUnsetRest = () => patchSelDay((d) => ({ ...d, rest: false }))
 
   const [saving, setSaving] = useState(false)
+
+  // --- 草稿自动保存 ---------------------------------------------------------------------------
+  // Only drafts autosave. A published plan is live to the student, so silently persisting edits
+  // would reopen the overwrite the publish guard closes — those stay manual (「更新计划」+ confirm).
+  const latestWeeks = useRef(weeks)
+  latestWeeks.current = weeks
+  // Reassigned every render so the debounced timer always saves the latest weeks / props / status.
+  const autoSaveRef = useRef<() => Promise<void>>(async () => {})
+  autoSaveRef.current = async () => {
+    if (!props.onSave || published || saving) return // published never autosaves; skip if a save is already running
+    setSaving(true); setStatusText('自动保存中…')
+    try { await props.onSave(latestWeeks.current); setStatusText('草稿 · 已自动保存') }
+    catch { setStatusText('自动保存失败 · 改动已保留') }
+    finally { setSaving(false) }
+  }
+  const autosaver = useRef(createAutosaver({ delay: 1500, save: () => autoSaveRef.current() }))
+
+  const skipFirstAutosave = useRef(true)
+  useEffect(() => {
+    if (skipFirstAutosave.current) { skipFirstAutosave.current = false; return } // ignore the initial load
+    if (published || !props.onSave) { autosaver.current.cancel(); return }
+    autosaver.current.schedule()
+  }, [weeks, published]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    const a = autosaver.current
+    return () => { a.flush(); a.dispose() } // leaving this plan: persist the last edits, then stop
+  }, [])
+
   const handleSave = async () => {
     if (!props.onSave || saving) return
     // Saving reconciles into the same plan id in place, so editing a *published* plan changes
     // what the student is looking at right now — confirm instead of silently overwriting their
     // live plan. This is the 发布后「更新计划」path (there is no retract; edits update in place).
     if (published && !window.confirm(`「${planName}」正在发布给 ${studentName}，保存会立即改变 ta 正在看的计划。确认保存？`)) return
+    autosaver.current.cancel() // manual save supersedes any pending autosave
     setSaving(true); setStatusText('保存中…')
     try { await props.onSave(weeks); setStatusText(published ? `已更新 ${studentName} 的计划` : '草稿 · 已保存') }
     catch { setStatusText('保存失败 · 重试') }
