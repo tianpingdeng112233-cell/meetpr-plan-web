@@ -4,6 +4,7 @@
 // plan_set ids (and any student references) survive.
 
 import type { Week, ExerciseRow } from './types'
+import { isContentfulUnbound } from './types'
 import type {
   PlanWithChildren, PlanExerciseResponse, CreatePlanSetBody, IntensityModeWire, SetType,
 } from '../../api/types'
@@ -97,7 +98,13 @@ export async function reconcilePlan(planId: string, weeks: Week[]): Promise<Save
     for (let dow = 0; dow < 7; dow++) {
       const dayCol = wk.days.find((d) => d.dow === dow)
       const desired: DesiredExercise[] = (dayCol && !dayCol.rest)
-        ? dayCol.rows.map((r) => { const d = rowToDesired(r); if (!d) skippedRows++; return d }).filter((d): d is DesiredExercise => d !== null)
+        ? dayCol.rows.map((r) => {
+            const d = rowToDesired(r)
+            // Only count rows that would actually lose content — empty placeholder rows
+            // also produce null but skipping them loses nothing, so they must not inflate the warning.
+            if (!d && isContentfulUnbound(r)) skippedRows++
+            return d
+          }).filter((d): d is DesiredExercise => d !== null)
         : []
       const orig = origByKey.get(`${wk.num}:${dow + 1}`)
       const origCanon = orig ? canonServer(orig.exercises) : EMPTY

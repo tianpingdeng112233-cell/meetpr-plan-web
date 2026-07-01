@@ -121,10 +121,11 @@ export function PlanWorkspace({ onLogout }: Props) {
           setPlans((prev) => prev.map((p) => (p.id === updated.id ? updated : p)))
           setLoaded((prev) => (prev && prev.plan.id === updated.id ? { ...prev, plan: updated } : prev))
         } : undefined}
-        onSave={loaded ? async (weeks, importStart) => {
-          if (importStart) await reconcileImportedPlan(loaded.plan.id, weeks, importStart)
-          else await reconcilePlan(loaded.plan.id, weeks)
-        } : undefined}
+        onSave={loaded ? (weeks, importStart) => (
+          importStart
+            ? reconcileImportedPlan(loaded.plan.id, weeks, importStart)
+            : reconcilePlan(loaded.plan.id, weeks)
+        ) : undefined}
         exerciseIndex={index}
         onCreateExercise={async (name) => {
           const e = await createCustomExercise(name)

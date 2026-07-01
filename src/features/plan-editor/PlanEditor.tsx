@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { ColKey, ColWidths, Week, DayCol, ExerciseRow } from './types'
-import { COL_DEFAULTS, COL_MIN } from './types'
+import { COL_DEFAULTS, COL_MIN, isContentfulUnbound } from './types'
 import { TopBar } from './components/TopBar'
 import { Toolbar } from './components/Toolbar'
 import { ContextBar } from './components/ContextBar'
@@ -8,6 +8,7 @@ import { DayColumn } from './components/DayColumn'
 import { ExercisePopover } from './components/ExercisePopover'
 import type { ExerciseIndex, ExerciseHit } from './exerciseIndex'
 import type { ParsedWeek } from './import'
+import type { SaveResult } from './reconcile'
 
 interface Sel { wnum: number; dow: number }
 interface PopState { visible: boolean; x: number; y: number; wnum: number; dow: number; rowId: string; query: string }
@@ -24,8 +25,8 @@ export interface PlanEditorProps {
   initialPublished?: boolean
   /** Real publish call; when omitted the button just toggles locally (sample mode). */
   onPublish?: () => Promise<void>
-  /** Save current edits back to the backend. */
-  onSave?: (weeks: Week[], importStart?: string | null) => Promise<void>
+  /** Save current edits back to the backend; resolves with how many contentful rows were skipped. */
+  onSave?: (weeks: Week[], importStart?: string | null) => Promise<SaveResult>
   /** Exercise catalog + alias index for name-cell binding. */
   exerciseIndex?: ExerciseIndex | null
   /** Create a custom exercise and return its id+name (adds to the index). */
@@ -302,12 +303,25 @@ export function PlanEditor(props: PlanEditorProps) {
   const [saving, setSaving] = useState(false)
   const handleSave = async () => {
     if (!props.onSave || saving) return
+    // Rows with a name or filled sets but no catalog binding get dropped by save reconciliation
+    // (and delete+recreate can erase them from a day that changed). Warn before that silent loss
+    // so the coach can bind them first — the post-save status line alone is too easy to miss.
+    const unbound = weeks.reduce(
+      (n, wk) => n + wk.days.reduce((m, d) => (d.rest ? m : m + d.rows.filter(isContentfulUnbound).length), 0),
+      0,
+    )
+    if (unbound > 0 && !window.confirm(`有 ${unbound} 行填了动作名或重量、但没绑定到动作库（名字后没有 ✓），保存时会被跳过、不会写入。建议先在名称下拉里选中动作再保存。仍要保存吗？`)) return
     // Saving reconciles into the same plan id in place, so editing a *published* plan changes
     // what the student is looking at right now — confirm instead of silently overwriting their
     // live plan. This is the 发布后「更新计划」path (there is no retract; edits update in place).
     if (published && !window.confirm(`「${planName}」正在发布给 ${studentName}，保存会立即改变 ta 正在看的计划。确认保存？`)) return
     setSaving(true); setStatusText('保存中…')
-    try { await props.onSave(weeks, importedStart); setImportedStart(null); setStatusText(published ? `已更新 ${studentName} 的计划` : '草稿 · 已保存') }
+    try {
+      const res = await props.onSave(weeks, importedStart)
+      setImportedStart(null)
+      const base = published ? `已更新 ${studentName} 的计划` : '草稿 · 已保存'
+      setStatusText(res.skippedRows > 0 ? `${base} · ${res.skippedRows} 行未绑定被跳过` : base)
+    }
     catch { setStatusText('保存失败 · 重试') }
     finally { setSaving(false) }
   }

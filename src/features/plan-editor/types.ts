@@ -50,3 +50,13 @@ export function setCount(row: ExerciseRow): string {
   if (row.aux || row.boxes.length === 0) return '—'
   return String(row.boxes.length)
 }
+
+/** True when a row carries real content — an exercise name or any filled set —
+ *  yet isn't bound to a catalog exercise. Save reconciliation drops such rows
+ *  (and delete+recreate can erase them from a day that changed), so they are a
+ *  data-loss risk the coach must be warned about. Empty placeholder rows return
+ *  false: skipping them loses nothing. */
+export function isContentfulUnbound(row: ExerciseRow): boolean {
+  if (row.exerciseId) return false
+  return row.name.trim() !== '' || row.boxes.some((b) => !b.empty && b.val !== '')
+}
