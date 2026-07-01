@@ -47,6 +47,10 @@ export function PlanEditor(props: PlanEditorProps) {
   const [sel, setSel] = useState<Sel | null>(null)
   const [zoom, setZoom] = useState(100)
   const [published, setPublished] = useState(initialPublished)
+  // Authoritative "the student is seeing this plan right now" flag: set once the plan is
+  // published to the backend, and never cleared here — there is no backend unpublish, and the
+  // local-only 撤回 must not be able to downgrade it (that would reopen silent live overwrites).
+  const [serverPublished, setServerPublished] = useState(initialPublished)
   const [statusText, setStatusText] = useState(initialPublished ? `已发布给 ${studentName}` : '草稿 · 已存')
   const [copyDone, setCopyDone] = useState(false)
   const [curWeekLabel, setCurWeekLabel] = useState('W03 · 第 3 周')
@@ -284,8 +288,12 @@ export function PlanEditor(props: PlanEditorProps) {
   const [saving, setSaving] = useState(false)
   const handleSave = async () => {
     if (!props.onSave || saving) return
+    // Saving reconciles into the same plan id in place, so editing a *published* plan changes
+    // what the student is looking at right now. Make that explicit instead of silently
+    // overwriting their live plan. Keyed off serverPublished (not local `published`, which 撤回 fakes).
+    if (serverPublished && !window.confirm(`「${planName}」正在发布给 ${studentName}，保存会立即改变 ta 正在看的计划。确认保存？`)) return
     setSaving(true); setStatusText('保存中…')
-    try { await props.onSave(weeks); setStatusText('草稿 · 已保存') }
+    try { await props.onSave(weeks); setStatusText(serverPublished ? `已更新 ${studentName} 的计划` : '草稿 · 已保存') }
     catch { setStatusText('保存失败 · 重试') }
     finally { setSaving(false) }
   }
@@ -294,7 +302,7 @@ export function PlanEditor(props: PlanEditorProps) {
     if (published) { setPublished(false); setStatusText('草稿 · 已存'); return }
     setStatusText('发布中…')
     try {
-      if (onPublish) await onPublish()
+      if (onPublish) { await onPublish(); setServerPublished(true) }
       setPublished(true); setStatusText(`已发布给 ${studentName} · 刚刚`)
     } catch {
       setStatusText('发布失败 · 重试')
