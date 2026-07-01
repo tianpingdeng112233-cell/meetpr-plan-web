@@ -115,13 +115,14 @@ export function TopBar(p: Props) {
       )}
       <button
         onClick={p.onPublish}
-        disabled={p.published}
+        disabled={p.published || p.saving}
         title={p.published ? '已发布给学员,不可撤回;编辑后点「更新计划」推送修改' : undefined}
         style={{
           background: p.published ? 'transparent' : '#fff', color: p.published ? 'var(--green)' : '#000',
           border: p.published ? '1px solid var(--green)' : '1px solid #fff', borderRadius: 10, padding: '9px 18px',
           fontFamily: 'var(--font-sans)', fontWeight: 600, fontSize: 13,
-          cursor: p.published ? 'default' : 'pointer', lineHeight: 1, opacity: p.published ? 0.75 : 1,
+          cursor: (p.published || p.saving) ? 'default' : 'pointer', lineHeight: 1,
+          opacity: p.published ? 0.75 : (p.saving ? 0.6 : 1),
         }}
       >
         {p.published ? '已发布' : '发布给学员'}

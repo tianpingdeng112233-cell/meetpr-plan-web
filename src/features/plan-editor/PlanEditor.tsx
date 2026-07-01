@@ -352,22 +352,31 @@ export function PlanEditor(props: PlanEditorProps) {
   const handlePublish = async () => {
     // 发布后不可撤回:后端没有 unpublish 接口,发布后不再本地假撤回(那只会让教练以为学员看不到了)。
     // 想改计划走「更新计划」(handleSave)。按钮在已发布后已禁用,这里再兜底一次。
-    if (published || publishing.current) return
+    // saving 时也不发布:避免在后台 reconcile 半途翻页发布,发布按钮已 disabled,这里再兜底。
+    if (published || publishing.current || saving) return
     // Latch publishing so nothing autosaves while the client still thinks this is a draft — client
     // `published` only flips true after the round-trip below, and an autosave in that window would
     // silently overwrite the just-published plan.
     publishing.current = true
     saver.current.cancelAutosave()
+    const snapshot = latestWeeks.current // to detect edits typed during the publish round-trip
+    let becamePublished = false
     try {
-      // Persist any pending draft edits first, so the published plan is exactly what the coach sees.
-      if (!(await saver.current.flush())) { setStatusText('发布失败 · 计划未存,请重试'); publishing.current = false; return }
+      // saveNow persists the latest draft AND awaits any in-flight autosave reconcile, so no
+      // background draft write is still running when the plan flips to published (so-所见即所发).
+      if (!(await saver.current.saveNow())) { setStatusText('发布失败 · 计划未存,请重试'); return }
       setStatusText('发布中…')
       if (onPublish) await onPublish()
-      setPublished(true); setStatusText(`已发布给 ${studentName} · 刚刚`)
-      // publishing stays latched: published is now true, which keeps autosave off for this plan.
+      setPublished(true); becamePublished = true
+      // Edits typed during the round-trip aren't in the published plan — surface them, never drop silently.
+      setStatusText(latestWeeks.current !== snapshot
+        ? `已发布给 ${studentName} · 有改动未保存,点「更新计划」推送`
+        : `已发布给 ${studentName} · 刚刚`)
     } catch {
-      publishing.current = false // publish failed → still a draft, allow autosave to resume
       setStatusText('发布失败 · 重试')
+    } finally {
+      publishing.current = false // always unlatch so 更新计划 / autosave work afterwards
+      if (!becamePublished) saver.current.scheduleAutosave() // still a draft: re-arm so a window edit isn't stranded
     }
   }
 

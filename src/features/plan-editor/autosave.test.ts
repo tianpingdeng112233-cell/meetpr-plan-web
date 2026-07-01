@@ -103,6 +103,30 @@ describe('createSaveController', () => {
     expect(d.runs).toEqual(['v1', 'v2'])      // second persist saw the newest content
   })
 
+  // Publish safety (review finding 1): saveNow() must AWAIT an already in-flight reconcile, so a
+  // background draft write can't still be running when the caller (publish) proceeds.
+  it('saveNow awaits an already in-flight persist before resolving', async () => {
+    let value = 'v1'
+    const d = deferredPersist(() => value)
+    const c = createSaveController({ delay: 1500, persist: d.persist })
+
+    c.scheduleAutosave()
+    await vi.advanceTimersByTimeAsync(1500) // persist #1 in flight, dirty already cleared to false
+    expect(d.persist).toHaveBeenCalledTimes(1)
+
+    let resolved = false
+    const p = c.saveNow().then(() => { resolved = true })
+    await Promise.resolve()
+    expect(resolved).toBe(false) // saveNow does NOT resolve while the reconcile is still running
+    d.resolve()                  // in-flight persist #1 settles -> drain loops for saveNow's forced persist #2
+    await Promise.resolve(); await Promise.resolve()
+    expect(resolved).toBe(false) // still pending: saveNow awaits the forced persist too
+    d.resolve()                  // persist #2 settles -> drain exits
+    await p
+    expect(resolved).toBe(true)
+    expect(d.persist).toHaveBeenCalledTimes(2)
+  })
+
   it('flush during an in-flight persist still persists the last edit (unmount safety)', async () => {
     let value = 'v1'
     const d = deferredPersist(() => value)
