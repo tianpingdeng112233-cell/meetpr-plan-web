@@ -300,23 +300,21 @@ export function PlanEditor(props: PlanEditorProps) {
   latestWeeks.current = weeks
   const saveMode = useRef<'auto' | 'manual'>('auto')
   const publishing = useRef(false) // latched across a publish round-trip so nothing autosaves mid-publish
+  const publishedRef = useRef(published) // fresh published for the unmount cleanup (which closes over [] deps)
+  publishedRef.current = published
 
-  // Reassigned every render so the controller always persists the latest weeks / props / status.
+  // The save queue is DRAFT-ONLY. Reassigned every render so it always persists the latest weeks.
+  // A published plan is refused here (resolves "done" without writing) — it is persisted solely by
+  // handleSave's explicit confirmed path, so no queued/latched/flushed write can ever silently
+  // overwrite a plan the student is watching.
   const persistRef = useRef<() => Promise<boolean>>(async () => true)
   persistRef.current = async () => {
-    if (!props.onSave) return true
-    const isUpdate = published // a published plan being updated in place (「更新计划」)
+    if (!props.onSave || published) return true
     const auto = saveMode.current === 'auto'
-    setSaving(true)
-    setStatusText(isUpdate ? '更新中…' : (auto ? '自动保存中…' : '保存中…'))
-    try {
-      await props.onSave(latestWeeks.current)
-      setStatusText(isUpdate ? `已更新 ${studentName} 的计划` : (auto ? '草稿 · 已自动保存' : '草稿 · 已保存'))
-      return true
-    } catch {
-      setStatusText(isUpdate ? '更新失败 · 重试' : (auto ? '自动保存失败 · 改动已保留' : '保存失败 · 重试'))
-      return false
-    } finally { setSaving(false) }
+    setSaving(true); setStatusText(auto ? '自动保存中…' : '保存中…')
+    try { await props.onSave(latestWeeks.current); setStatusText(auto ? '草稿 · 已自动保存' : '草稿 · 已保存'); return true }
+    catch { setStatusText(auto ? '自动保存失败 · 改动已保留' : '保存失败 · 重试'); return false }
+    finally { setSaving(false) }
   }
   const saver = useRef(createSaveController({ delay: 1500, persist: () => persistRef.current() }))
 
@@ -329,17 +327,26 @@ export function PlanEditor(props: PlanEditorProps) {
   }, [weeks, published]) // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     const s = saver.current
-    return () => { void s.flush() } // leaving this plan: persist any pending draft edits to it
+    // Leaving this plan: persist any pending DRAFT edits to it. Never flush a published plan — its
+    // writes are explicit-confirm only, never a silent background reconcile.
+    return () => { if (!publishedRef.current) void s.flush() }
   }, [])
 
   const handleSave = async () => {
     if (!props.onSave || saving || publishing.current) return
-    // Saving reconciles into the same plan id in place, so editing a *published* plan changes
-    // what the student is looking at right now — confirm instead of silently overwriting their
-    // live plan. This is the 发布后「更新计划」path (there is no retract; edits update in place).
-    if (published && !window.confirm(`「${planName}」正在发布给 ${studentName}，保存会立即改变 ta 正在看的计划。确认保存？`)) return
+    if (published) {
+      // 更新计划: reconciles in place, changing what the student sees right now — confirm first.
+      // This is the ONLY way a published plan is persisted: an explicit, confirmed, one-shot write
+      // that never enters the autosave queue, so nothing can later replay it (e.g. an unmount flush).
+      if (!window.confirm(`「${planName}」正在发布给 ${studentName}，保存会立即改变 ta 正在看的计划。确认保存？`)) return
+      setSaving(true); setStatusText('更新中…')
+      try { await props.onSave(latestWeeks.current); setStatusText(`已更新 ${studentName} 的计划`) }
+      catch { setStatusText('更新失败 · 重试') }
+      finally { setSaving(false) }
+      return
+    }
     saveMode.current = 'manual'
-    await saver.current.saveNow()
+    await saver.current.saveNow() // draft: goes through the shared queue
   }
 
   const handlePublish = async () => {
