@@ -7,7 +7,7 @@ import { ContextBar } from './components/ContextBar'
 import { DayColumn } from './components/DayColumn'
 import { ExercisePopover } from './components/ExercisePopover'
 import type { ExerciseIndex, ExerciseHit } from './exerciseIndex'
-import { createAutosaver } from './autosave'
+import { createSaveController } from './autosave'
 
 interface Sel { wnum: number; dow: number }
 interface PopState { visible: boolean; x: number; y: number; wnum: number; dow: number; rowId: string; query: string }
@@ -288,55 +288,78 @@ export function PlanEditor(props: PlanEditorProps) {
 
   const [saving, setSaving] = useState(false)
 
-  // --- 草稿自动保存 ---------------------------------------------------------------------------
-  // Only drafts autosave. A published plan is live to the student, so silently persisting edits
-  // would reopen the overwrite the publish guard closes — those stay manual (「更新计划」+ confirm).
+  // --- 保存与草稿自动保存 --------------------------------------------------------------------
+  // All persistence funnels through one serialized controller: the manual button, the debounced
+  // draft autosave, and the leave-plan flush share a single in-flight queue, so concurrent triggers
+  // never drop an edit or double-reconcile.
+  //
+  // A published plan is live to the student, so it NEVER autosaves — that would silently overwrite
+  // what the student sees, the exact thing the publish guard prevents. Only drafts autosave; a
+  // published plan persists only via the explicit「更新计划」+ confirm path (handleSave).
   const latestWeeks = useRef(weeks)
   latestWeeks.current = weeks
-  // Reassigned every render so the debounced timer always saves the latest weeks / props / status.
-  const autoSaveRef = useRef<() => Promise<void>>(async () => {})
-  autoSaveRef.current = async () => {
-    if (!props.onSave || published || saving) return // published never autosaves; skip if a save is already running
-    setSaving(true); setStatusText('自动保存中…')
-    try { await props.onSave(latestWeeks.current); setStatusText('草稿 · 已自动保存') }
-    catch { setStatusText('自动保存失败 · 改动已保留') }
-    finally { setSaving(false) }
+  const saveMode = useRef<'auto' | 'manual'>('auto')
+  const publishing = useRef(false) // latched across a publish round-trip so nothing autosaves mid-publish
+
+  // Reassigned every render so the controller always persists the latest weeks / props / status.
+  const persistRef = useRef<() => Promise<boolean>>(async () => true)
+  persistRef.current = async () => {
+    if (!props.onSave) return true
+    const isUpdate = published // a published plan being updated in place (「更新计划」)
+    const auto = saveMode.current === 'auto'
+    setSaving(true)
+    setStatusText(isUpdate ? '更新中…' : (auto ? '自动保存中…' : '保存中…'))
+    try {
+      await props.onSave(latestWeeks.current)
+      setStatusText(isUpdate ? `已更新 ${studentName} 的计划` : (auto ? '草稿 · 已自动保存' : '草稿 · 已保存'))
+      return true
+    } catch {
+      setStatusText(isUpdate ? '更新失败 · 重试' : (auto ? '自动保存失败 · 改动已保留' : '保存失败 · 重试'))
+      return false
+    } finally { setSaving(false) }
   }
-  const autosaver = useRef(createAutosaver({ delay: 1500, save: () => autoSaveRef.current() }))
+  const saver = useRef(createSaveController({ delay: 1500, persist: () => persistRef.current() }))
 
   const skipFirstAutosave = useRef(true)
   useEffect(() => {
     if (skipFirstAutosave.current) { skipFirstAutosave.current = false; return } // ignore the initial load
-    if (published || !props.onSave) { autosaver.current.cancel(); return }
-    autosaver.current.schedule()
+    if (published || publishing.current || !props.onSave) { saver.current.cancelAutosave(); return }
+    saveMode.current = 'auto'
+    saver.current.scheduleAutosave()
   }, [weeks, published]) // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
-    const a = autosaver.current
-    return () => { a.flush(); a.dispose() } // leaving this plan: persist the last edits, then stop
+    const s = saver.current
+    return () => { void s.flush() } // leaving this plan: persist any pending draft edits to it
   }, [])
 
   const handleSave = async () => {
-    if (!props.onSave || saving) return
+    if (!props.onSave || saving || publishing.current) return
     // Saving reconciles into the same plan id in place, so editing a *published* plan changes
     // what the student is looking at right now — confirm instead of silently overwriting their
     // live plan. This is the 发布后「更新计划」path (there is no retract; edits update in place).
     if (published && !window.confirm(`「${planName}」正在发布给 ${studentName}，保存会立即改变 ta 正在看的计划。确认保存？`)) return
-    autosaver.current.cancel() // manual save supersedes any pending autosave
-    setSaving(true); setStatusText('保存中…')
-    try { await props.onSave(weeks); setStatusText(published ? `已更新 ${studentName} 的计划` : '草稿 · 已保存') }
-    catch { setStatusText('保存失败 · 重试') }
-    finally { setSaving(false) }
+    saveMode.current = 'manual'
+    await saver.current.saveNow()
   }
 
   const handlePublish = async () => {
     // 发布后不可撤回:后端没有 unpublish 接口,发布后不再本地假撤回(那只会让教练以为学员看不到了)。
     // 想改计划走「更新计划」(handleSave)。按钮在已发布后已禁用,这里再兜底一次。
-    if (published) return
-    setStatusText('发布中…')
+    if (published || publishing.current) return
+    // Latch publishing so nothing autosaves while the client still thinks this is a draft — client
+    // `published` only flips true after the round-trip below, and an autosave in that window would
+    // silently overwrite the just-published plan.
+    publishing.current = true
+    saver.current.cancelAutosave()
     try {
+      // Persist any pending draft edits first, so the published plan is exactly what the coach sees.
+      if (!(await saver.current.flush())) { setStatusText('发布失败 · 计划未存,请重试'); publishing.current = false; return }
+      setStatusText('发布中…')
       if (onPublish) await onPublish()
       setPublished(true); setStatusText(`已发布给 ${studentName} · 刚刚`)
+      // publishing stays latched: published is now true, which keeps autosave off for this plan.
     } catch {
+      publishing.current = false // publish failed → still a draft, allow autosave to resume
       setStatusText('发布失败 · 重试')
     }
   }

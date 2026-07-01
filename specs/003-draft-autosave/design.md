@@ -19,8 +19,9 @@
 
 ## 结构(隔离边界)
 
-- **`src/features/plan-editor/autosave.ts` — `createAutosaver({ delay, save })`**:纯 JS 定时器逻辑,不含 React。暴露 `schedule()`(防抖重排)/ `flush()`(立即落一次待存)/ `cancel()`(取消待存)/ `dispose()`(卸载后阻止再排程)。承载 debounce + 并发合并,`setTimeout` 驱动 → 用 `vi.useFakeTimers()` 可完整单测(仓库无 RTL,把可测逻辑抽离到这里)。
-- **PlanEditor 接线**:`useRef(createAutosaver(...))` + 一个 `useEffect([weeks, published])` 跳首帧后 `schedule()`(published 时 `cancel()`),另一个卸载 `useEffect` `flush()`+`dispose()`。真正的落库 `save` 用 `ref` 指向最新闭包(读最新 `weeks` / `onSave`),状态文字仍在 PlanEditor。
+- **`src/features/plan-editor/autosave.ts` — `createSaveController({ delay, persist })`**:纯 JS,不含 React。**单一串行化保存队列**——手动保存、防抖自动保存、离开计划的 flush 全走同一个 in-flight 队列(`drain` 循环:`while(dirty){dirty=false; await persist()}`),所以并发触发**永不丢编辑、永不双重 reconcile**。`persist()` 由 PlanEditor 提供、自己读最新内容、返回是否成功(失败则保留 dirty 等下次重试)。暴露 `scheduleAutosave()` / `saveNow()`(立即,可 await 成败)/ `flush()`(有待存才落,卸载用)/ `cancelAutosave()`(只丢防抖计时器、不清 dirty)。`setTimeout` 驱动 → `vi.useFakeTimers()` 完整单测(仓库无 RTL,可测逻辑抽到这里)。
+- **PlanEditor 接线**:`persistRef` 每次 render 重新赋值(读最新 `weeks`/`onSave`/`published`/状态文字);`useRef(createSaveController(...))`;`useEffect([weeks, published])` 跳首帧后 `scheduleAutosave()`(`published || publishing` 时 `cancelAutosave()`);卸载 `useEffect` `flush()`。手动按钮 → `saveNow()`。
+- **发布协调(publishing 闩)**:客户端 `published` 只在发布往返**之后**才置真,存在一个"服务端已发布、客户端还以为是草稿"的窗口。`handlePublish` 一进来就 `publishing.current=true` + `cancelAutosave()`,然后 **`flush()` 先把待存草稿落库**(所见即所发),再 `onPublish()`,最后 `setPublished(true)`;失败才解闩。调度 effect 与手动保存都查 `publishing`,发布窗口内一律不自动保存。
 
 ## 范围 / 分支
 
@@ -28,4 +29,10 @@
 
 ## 测试
 
-`autosave.test.ts`(fake timers):防抖只存一次、advance < delay 不存、`flush` 立即存、并发途中再改会二次存、`cancel` 不存、`dispose` 后不再排程。组件接线因无 RTL 靠类型 + 手动验证。
+`autosave.test.ts`(fake timers,9 例):防抖只存一次、advance < delay 不存、`saveNow` 成/败、`saveNow` 失败保留 dirty 下次重试、`flush` 有待存才落、`cancelAutosave` 丢计时器但 flush 仍能落、**并发途中再改会二次存且存的是最新内容(findings 3/4 回归)**、**in-flight 中 flush 仍落最后一版(卸载安全)**。组件接线因无 RTL 靠类型 + 手动验证 + adversarial review。
+
+## 评审发现的并发问题(已修)
+首版(`createAutosaver`)经 8-agent adversarial review 抓到 5 个真 bug,故改成上面的串行控制器 + publishing 闩:
+- **HIGH · published 覆盖**:发布往返期间(client `published` 仍 false)已排程的自动保存计时器 / 卸载 flush 会静默 reconcile 刚发布的计划 → publishing 闩 + 发布前先 flush 草稿修复。
+- **HIGH · 草稿丢数据**:手动保存 in-flight 时到达的编辑被 `if(saving)return` 吞掉不重排;卸载 flush 在 in-flight 时空转 + `dispose` 抑制重排 → 串行队列 drain 循环(永不丢)修复。
+- **MEDIUM · 发布吞最后编辑**:1.5s debounce 内编辑后立刻发布,`cancel` 丢掉未落库编辑 → 发布前 `flush()` 修复(所见即所发)。

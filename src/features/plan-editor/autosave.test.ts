@@ -1,84 +1,122 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { createAutosaver } from './autosave'
+import { createSaveController } from './autosave'
 
-describe('createAutosaver', () => {
+const ok = () => Promise.resolve(true)
+
+// A persist stub that stays "in flight" until you call its .resolve(); records how many times
+// it ran and what each run observed via the getter.
+function deferredPersist(getValue: () => unknown) {
+  const runs: unknown[] = []
+  let pending: (() => void) | null = null
+  const persist = vi.fn(() => new Promise<boolean>((res) => {
+    runs.push(getValue())
+    pending = () => res(true)
+  }))
+  return { persist, runs, resolve: () => { const p = pending; pending = null; p?.() } }
+}
+
+describe('createSaveController', () => {
   beforeEach(() => vi.useFakeTimers())
   afterEach(() => vi.useRealTimers())
 
-  it('does not save before the delay elapses', () => {
-    const save = vi.fn()
-    const a = createAutosaver({ delay: 1500, save })
-    a.schedule()
+  it('does not persist before the debounce elapses', () => {
+    const persist = vi.fn(ok)
+    const c = createSaveController({ delay: 1500, persist })
+    c.scheduleAutosave()
     vi.advanceTimersByTime(1499)
-    expect(save).not.toHaveBeenCalled()
+    expect(persist).not.toHaveBeenCalled()
   })
 
-  it('saves once after the delay', () => {
-    const save = vi.fn()
-    const a = createAutosaver({ delay: 1500, save })
-    a.schedule()
-    vi.advanceTimersByTime(1500)
-    expect(save).toHaveBeenCalledTimes(1)
+  it('persists once after the debounce', async () => {
+    const persist = vi.fn(ok)
+    const c = createSaveController({ delay: 1500, persist })
+    c.scheduleAutosave()
+    await vi.advanceTimersByTimeAsync(1500)
+    expect(persist).toHaveBeenCalledTimes(1)
   })
 
-  it('debounces rapid schedules into a single save', () => {
-    const save = vi.fn()
-    const a = createAutosaver({ delay: 1500, save })
-    a.schedule(); vi.advanceTimersByTime(1000)
-    a.schedule(); vi.advanceTimersByTime(1000) // resets: only 1000ms since the last schedule
-    expect(save).not.toHaveBeenCalled()
-    vi.advanceTimersByTime(500) // 1500ms since the last schedule
-    expect(save).toHaveBeenCalledTimes(1)
+  it('debounces rapid edits into a single persist', async () => {
+    const persist = vi.fn(ok)
+    const c = createSaveController({ delay: 1500, persist })
+    c.scheduleAutosave(); vi.advanceTimersByTime(1000)
+    c.scheduleAutosave(); vi.advanceTimersByTime(1000)
+    expect(persist).not.toHaveBeenCalled()
+    await vi.advanceTimersByTimeAsync(500)
+    expect(persist).toHaveBeenCalledTimes(1)
   })
 
-  it('flush saves immediately when a save is armed', () => {
-    const save = vi.fn()
-    const a = createAutosaver({ delay: 1500, save })
-    a.schedule()
-    a.flush()
-    expect(save).toHaveBeenCalledTimes(1)
+  it('saveNow persists immediately and reports success', async () => {
+    const persist = vi.fn(ok)
+    const c = createSaveController({ delay: 1500, persist })
+    await expect(c.saveNow()).resolves.toBe(true)
+    expect(persist).toHaveBeenCalledTimes(1)
   })
 
-  it('flush is a no-op when nothing is armed', () => {
-    const save = vi.fn()
-    const a = createAutosaver({ delay: 1500, save })
-    a.flush()
-    expect(save).not.toHaveBeenCalled()
+  it('saveNow reports false when persist fails, and keeps the edit pending to retry', async () => {
+    const persist = vi.fn().mockResolvedValueOnce(false).mockResolvedValue(true)
+    const c = createSaveController({ delay: 1500, persist })
+    await expect(c.saveNow()).resolves.toBe(false)
+    // edit is still pending -> a later flush retries it
+    await expect(c.flush()).resolves.toBe(true)
+    expect(persist).toHaveBeenCalledTimes(2)
   })
 
-  it('cancel drops an armed save', () => {
-    const save = vi.fn()
-    const a = createAutosaver({ delay: 1500, save })
-    a.schedule()
-    a.cancel()
+  it('flush persists pending edits, and is a no-op when nothing is pending', async () => {
+    const persist = vi.fn(ok)
+    const c = createSaveController({ delay: 1500, persist })
+    await expect(c.flush()).resolves.toBe(true) // nothing pending
+    expect(persist).not.toHaveBeenCalled()
+    c.scheduleAutosave() // arm (marks dirty) but do not let the timer fire
+    await c.flush()
+    expect(persist).toHaveBeenCalledTimes(1)
+  })
+
+  it('cancelAutosave drops the timer but keeps the edit pending for flush', async () => {
+    const persist = vi.fn(ok)
+    const c = createSaveController({ delay: 1500, persist })
+    c.scheduleAutosave()
+    c.cancelAutosave()
     vi.advanceTimersByTime(5000)
-    expect(save).not.toHaveBeenCalled()
+    expect(persist).not.toHaveBeenCalled() // timer dropped
+    await c.flush()
+    expect(persist).toHaveBeenCalledTimes(1) // but the edit was not lost
   })
 
-  it('re-saves when edits land while a save is in flight', async () => {
-    let resolveFirst: () => void = () => {}
-    const save = vi.fn(() => new Promise<void>((r) => { resolveFirst = r }))
-    const a = createAutosaver({ delay: 1500, save })
-    a.schedule()
-    await vi.advanceTimersByTimeAsync(1500) // save #1 starts, stays in flight
-    expect(save).toHaveBeenCalledTimes(1)
-    a.schedule() // edit arrives mid-flight
-    await vi.advanceTimersByTimeAsync(1500) // this run sees in-flight -> marks dirty, no 2nd call yet
-    expect(save).toHaveBeenCalledTimes(1)
-    resolveFirst() // #1 settles -> re-arm because dirty
-    await vi.advanceTimersByTimeAsync(1500) // save #2 runs
-    expect(save).toHaveBeenCalledTimes(2)
+  // The core data-loss guarantee (review findings 3 & 4): an edit that lands while a persist is
+  // in flight must still be persisted afterwards — and it must persist the NEWEST content.
+  it('re-persists the latest content when an edit lands mid-flight (no drop)', async () => {
+    let value = 'v1'
+    const d = deferredPersist(() => value)
+    const c = createSaveController({ delay: 1500, persist: d.persist })
+
+    value = 'v1'; c.saveNow()                 // persist #1 starts, in flight, reads v1
+    await Promise.resolve()
+    expect(d.persist).toHaveBeenCalledTimes(1)
+
+    value = 'v2'; c.scheduleAutosave()        // edit arrives mid-flight
+    await vi.advanceTimersByTimeAsync(1500)   // its timer fires but a drain is already running
+    expect(d.persist).toHaveBeenCalledTimes(1) // no overlapping second persist
+
+    d.resolve()                               // #1 settles -> drain loops because dirty
+    await Promise.resolve(); await Promise.resolve()
+    expect(d.persist).toHaveBeenCalledTimes(2)
+    expect(d.runs).toEqual(['v1', 'v2'])      // second persist saw the newest content
   })
 
-  it('dispose prevents further saves and post-flight re-arming', () => {
-    const save = vi.fn()
-    const a = createAutosaver({ delay: 1500, save })
-    a.schedule()
-    a.dispose()
-    vi.advanceTimersByTime(5000)
-    expect(save).not.toHaveBeenCalled()
-    a.schedule() // ignored after dispose
-    vi.advanceTimersByTime(5000)
-    expect(save).not.toHaveBeenCalled()
+  it('flush during an in-flight persist still persists the last edit (unmount safety)', async () => {
+    let value = 'v1'
+    const d = deferredPersist(() => value)
+    const c = createSaveController({ delay: 1500, persist: d.persist })
+
+    value = 'v1'; c.scheduleAutosave()
+    await vi.advanceTimersByTimeAsync(1500)   // persist #1 in flight
+    expect(d.persist).toHaveBeenCalledTimes(1)
+
+    value = 'v2'; c.scheduleAutosave()        // last edit before leaving
+    c.flush()                                 // unmount flush while #1 is in flight
+    d.resolve()                               // #1 settles -> must persist v2
+    await Promise.resolve(); await Promise.resolve()
+    expect(d.persist).toHaveBeenCalledTimes(2)
+    expect(d.runs[1]).toBe('v2')
   })
 })

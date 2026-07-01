@@ -1,56 +1,54 @@
-// Debounced, coalescing autosaver. Pure timer logic (no React) so it unit-tests with fake timers.
+// Serialized save controller for the plan editor.
 //
-//   schedule() — (re)arm the debounce; after `delay` ms idle, run save().
-//   flush()    — if a save is armed, run it now (used on unmount to persist the last edits).
-//   cancel()   — drop an armed save without running it.
-//   dispose()  — stop for good: cancel and prevent any post-in-flight re-arming.
+// One persist runs at a time; if content changes while a persist is in flight, the controller
+// persists again afterwards — so the latest edits are never dropped (this is what makes the
+// debounced autosave, the manual "save now", and the unmount flush safe to interleave). They all
+// funnel through the same queue.
 //
-// If edits land while a save is in flight, it re-saves once afterwards so the backend
-// converges to the latest content (save() is expected to read the newest state each call).
+//   scheduleAutosave() — content changed on a draft: (re)arm the debounce.
+//   saveNow()          — persist now; resolves true on success, false if a persist failed.
+//   flush()            — persist pending edits now, only if there are any (used on unmount).
+//   cancelAutosave()   — drop the debounce timer WITHOUT persisting (edits stay pending).
+//
+// persist() is supplied by the caller, reads the latest content itself, and resolves to whether it
+// succeeded. On failure the controller keeps the edits pending so the next trigger retries them.
 
-export interface Autosaver {
-  schedule: () => void
-  flush: () => void
-  cancel: () => void
-  dispose: () => void
+export interface SaveController {
+  scheduleAutosave: () => void
+  saveNow: () => Promise<boolean>
+  flush: () => Promise<boolean>
+  cancelAutosave: () => void
 }
 
-export function createAutosaver(opts: { delay: number; save: () => void | Promise<void> }): Autosaver {
+export function createSaveController(opts: { delay: number; persist: () => Promise<boolean> }): SaveController {
   let timer: ReturnType<typeof setTimeout> | null = null
-  let inFlight = false
-  let dirtyWhileInFlight = false
-  let disposed = false
+  let draining: Promise<boolean> | null = null
+  let dirty = false
 
-  const run = async () => {
-    timer = null
-    if (inFlight) { dirtyWhileInFlight = true; return } // a save is running; re-save after it settles
-    inFlight = true
-    try {
-      await opts.save()
-    } finally {
-      inFlight = false
-      if (!disposed && dirtyWhileInFlight) { dirtyWhileInFlight = false; schedule() }
+  const drain = async (): Promise<boolean> => {
+    let ok = true
+    while (dirty) {
+      dirty = false
+      ok = await opts.persist()
+      if (!ok) { dirty = true; break } // persist failed: keep edits pending for a later retry
     }
+    return ok
   }
-
-  const schedule = () => {
-    if (disposed) return
-    if (timer) clearTimeout(timer)
-    timer = setTimeout(() => { void run() }, opts.delay)
+  // Ensure a single drain loop is running; concurrent callers share (and await) the same one.
+  const kick = (): Promise<boolean> => {
+    if (!draining) draining = drain().finally(() => { draining = null })
+    return draining
   }
+  const clearTimer = () => { if (timer) { clearTimeout(timer); timer = null } }
 
-  const cancel = () => {
-    if (timer) { clearTimeout(timer); timer = null }
+  const scheduleAutosave = () => {
+    dirty = true
+    clearTimer()
+    timer = setTimeout(() => { timer = null; void kick() }, opts.delay)
   }
+  const saveNow = (): Promise<boolean> => { dirty = true; clearTimer(); return kick() }
+  const flush = (): Promise<boolean> => { clearTimer(); return dirty ? kick() : Promise.resolve(true) }
+  const cancelAutosave = () => { clearTimer() }
 
-  const flush = () => {
-    if (timer) { clearTimeout(timer); timer = null; void run() }
-  }
-
-  const dispose = () => {
-    disposed = true
-    cancel()
-  }
-
-  return { schedule, flush, cancel, dispose }
+  return { scheduleAutosave, saveNow, flush, cancelAutosave }
 }
