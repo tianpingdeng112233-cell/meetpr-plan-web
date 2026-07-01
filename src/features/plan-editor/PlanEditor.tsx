@@ -309,6 +309,12 @@ export function PlanEditor(props: PlanEditorProps) {
       setStatusText('导入失败 · 计划或动作库未就绪')
       return
     }
+    // Never import over a published plan — saving would silently overwrite what the
+    // student is already seeing. Direct the coach to a fresh draft instead.
+    if (published) {
+      window.alert(`「${planName}」已发布给 ${studentName}，导入会直接覆盖学员正在看的计划。\n请先点右上「新建计划」，在新的草稿里导入。`)
+      return
+    }
     if (hasGridContent(weeks) && !window.confirm('当前网格已有内容，导入会覆盖当前计划。是否继续？')) return
 
     setStatusText('导入中…')
