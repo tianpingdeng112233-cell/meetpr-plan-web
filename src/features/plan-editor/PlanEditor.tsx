@@ -60,11 +60,11 @@ export function PlanEditor(props: PlanEditorProps) {
   const [colW, setColW] = useState<ColWidths[]>(() => Array.from({ length: 7 }, () => ({ ...COL_DEFAULTS })))
   const [sel, setSel] = useState<Sel | null>(null)
   const [zoom, setZoom] = useState(100)
+  // Authoritative published state, initialized from the backend plan status. Monotonic:
+  // set true on a real publish and never cleared — there is no backend unpublish, so 发布后不可撤回.
+  // Once the student can see the plan, editing updates it in place (handleSave, the「更新计划」path)
+  // instead of pretending to retract it — a fake local retract only misleads the coach.
   const [published, setPublished] = useState(initialPublished)
-  // Authoritative "the student is seeing this plan right now" flag: set once the plan is
-  // published to the backend, and never cleared here — there is no backend unpublish, and the
-  // local-only 撤回 must not be able to downgrade it (that would reopen silent live overwrites).
-  const [serverPublished, setServerPublished] = useState(initialPublished)
   const [statusText, setStatusText] = useState(initialPublished ? `已发布给 ${studentName}` : '草稿 · 已存')
   const [copyDone, setCopyDone] = useState(false)
   const [curWeekLabel, setCurWeekLabel] = useState('W03 · 第 3 周')
@@ -303,11 +303,11 @@ export function PlanEditor(props: PlanEditorProps) {
   const handleSave = async () => {
     if (!props.onSave || saving) return
     // Saving reconciles into the same plan id in place, so editing a *published* plan changes
-    // what the student is looking at right now. Make that explicit instead of silently
-    // overwriting their live plan. Keyed off serverPublished (not local `published`, which 撤回 fakes).
-    if (serverPublished && !window.confirm(`「${planName}」正在发布给 ${studentName}，保存会立即改变 ta 正在看的计划。确认保存？`)) return
+    // what the student is looking at right now — confirm instead of silently overwriting their
+    // live plan. This is the 发布后「更新计划」path (there is no retract; edits update in place).
+    if (published && !window.confirm(`「${planName}」正在发布给 ${studentName}，保存会立即改变 ta 正在看的计划。确认保存？`)) return
     setSaving(true); setStatusText('保存中…')
-    try { await props.onSave(weeks, importedStart); setImportedStart(null); setStatusText(serverPublished ? `已更新 ${studentName} 的计划` : '草稿 · 已保存') }
+    try { await props.onSave(weeks, importedStart); setImportedStart(null); setStatusText(published ? `已更新 ${studentName} 的计划` : '草稿 · 已保存') }
     catch { setStatusText('保存失败 · 重试') }
     finally { setSaving(false) }
   }
@@ -318,9 +318,8 @@ export function PlanEditor(props: PlanEditorProps) {
       return
     }
     // Never import over a published plan — saving would silently overwrite what the
-    // student is already seeing. Direct the coach to a fresh draft instead. Keyed off
-    // serverPublished (not local `published`, which 撤回 fakes) so 撤回→导入→保存 can't slip through.
-    if (serverPublished) {
+    // student is already seeing. Direct the coach to a fresh draft instead.
+    if (published) {
       window.alert(`「${planName}」已发布给 ${studentName}，导入会直接覆盖学员正在看的计划。\n请先点右上「新建计划」，在新的草稿里导入。`)
       return
     }
@@ -373,10 +372,12 @@ export function PlanEditor(props: PlanEditorProps) {
   }
 
   const handlePublish = async () => {
-    if (published) { setPublished(false); setStatusText('草稿 · 已存'); return }
+    // 发布后不可撤回:后端没有 unpublish 接口,发布后不再本地假撤回(那只会让教练以为学员看不到了)。
+    // 想改计划走「更新计划」(handleSave)。按钮在已发布后已禁用,这里再兜底一次。
+    if (published) return
     setStatusText('发布中…')
     try {
-      if (onPublish) { await onPublish(); setServerPublished(true) }
+      if (onPublish) await onPublish()
       setPublished(true); setStatusText(`已发布给 ${studentName} · 刚刚`)
     } catch {
       setStatusText('发布失败 · 重试')
