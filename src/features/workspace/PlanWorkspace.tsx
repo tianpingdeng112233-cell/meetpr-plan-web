@@ -128,7 +128,14 @@ export function PlanWorkspace({ onLogout }: Props) {
         studentName={studentName}
         planName={loaded?.plan.name ?? '（暂无计划）'}
         initialPublished={loaded?.plan.status === 'published'}
-        onPublish={loaded ? async () => { await publishPlan(loaded.plan.id) } : undefined}
+        onPublish={loaded ? async () => {
+          const updated = await publishPlan(loaded.plan.id)
+          // Reflect the now-live status in the parent-owned list + loaded plan, so the plan
+          // switcher's「草稿/已发布」tag can't contradict the editor — no UI shows「草稿」for a
+          // plan the student is already seeing. (publishPlan returns the updated plan.)
+          setPlans((prev) => prev.map((p) => (p.id === updated.id ? updated : p)))
+          setLoaded((prev) => (prev && prev.plan.id === updated.id ? { ...prev, plan: updated } : prev))
+        } : undefined}
         onSave={loaded ? async (weeks) => { await reconcilePlan(loaded.plan.id, weeks) } : undefined}
         exerciseIndex={index}
         onCreateExercise={async (name) => {
