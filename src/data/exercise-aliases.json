@@ -34,6 +34,16 @@
     { "alias": "单腿RDL", "canonical": "单腿罗马尼亚硬拉" },
     { "alias": "单腿 RDL(纯单腿)", "canonical": "单腿罗马尼亚硬拉(纯单腿)" },
     { "alias": "B 站距 RDL", "canonical": "B 站距罗马尼亚硬拉" },
-    { "alias": "单腿 RDL(B 站距)", "canonical": "单腿罗马尼亚硬拉(B 站距)" }
+    { "alias": "单腿 RDL(B 站距)", "canonical": "单腿罗马尼亚硬拉(B 站距)" },
+    { "alias": "相扑站高 (下陷)硬拉", "canonical": "超程(赤字)相扑" },
+    { "alias": "绳索十字夹胸", "canonical": "绳索交叉" },
+    { "alias": "绳索夹胸", "canonical": "绳索飞鸟" },
+    { "alias": "器械胸推", "canonical": "器械推胸" },
+    { "alias": "彭德雷划船（潘德雷）", "canonical": "潘德雷划船" },
+    { "alias": "摆锤深蹲", "canonical": "钟摆深蹲" },
+    { "alias": "臀推", "canonical": "杠铃臀冲" },
+    { "alias": "弹力绳-坐姿划船", "canonical": "弹力带坐姿划船" },
+    { "alias": "弹力带-腿外展", "canonical": "弹力带髋外展" },
+    { "alias": "单侧射手俯卧撑", "canonical": "射手俯卧撑" }
   ]
 }
