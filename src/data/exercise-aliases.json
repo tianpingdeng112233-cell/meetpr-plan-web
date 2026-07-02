@@ -26,6 +26,15 @@
     { "alias": "坐姿俯身飞鸟", "canonical": "俯身飞鸟" },
     { "alias": "哑铃俯身飞鸟", "canonical": "俯身飞鸟" },
     { "alias": "附身哑铃飞鸟", "canonical": "哑铃飞鸟" },
-    { "alias": "安全杆深蹲", "canonical": "扶手安全杆深蹲" }
+    { "alias": "安全杆深蹲", "canonical": "扶手安全杆深蹲" },
+    { "alias": "弹力带绕髋RDL", "canonical": "弹力带绕髋罗马尼亚硬拉" },
+    { "alias": "抓举握距RDL", "canonical": "抓举握距罗马尼亚硬拉" },
+    { "alias": "前后站单腿罗拉", "canonical": "前后站单腿罗马尼亚硬拉" },
+    { "alias": "相扑RDL", "canonical": "相扑罗马尼亚硬拉" },
+    { "alias": "节奏RDL", "canonical": "节奏罗马尼亚硬拉" },
+    { "alias": "单腿RDL", "canonical": "单腿罗马尼亚硬拉" },
+    { "alias": "单腿 RDL(纯单腿)", "canonical": "单腿罗马尼亚硬拉(纯单腿)" },
+    { "alias": "B 站距 RDL", "canonical": "B 站距罗马尼亚硬拉" },
+    { "alias": "单腿 RDL(B 站距)", "canonical": "单腿罗马尼亚硬拉(B 站距)" }
   ]
 }
