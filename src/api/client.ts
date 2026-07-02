@@ -51,20 +51,49 @@ async function raw(path: string, opts: ReqOpts): Promise<Response> {
   })
 }
 
+const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms))
+
+// The backend rate-limits globally (100 req/min). Importing a plan reconciles as
+// hundreds of per-set writes, so a single import blows through the window. A 429 is
+// rejected before the handler runs — the request did NOT take effect — so retrying is
+// safe. Back off on the server's Retry-After / RateLimit-Reset hint (capped) a bounded
+// number of times so a large import rides through the limit slowly instead of failing.
+const MAX_RATE_LIMIT_RETRIES = 6
+function retryAfterMs(res: Response): number {
+  const secs = Number(res.headers.get('Retry-After') ?? res.headers.get('RateLimit-Reset'))
+  const wait = Number.isFinite(secs) && secs > 0 ? secs * 1000 : 2000
+  return Math.min(wait, 60_000)
+}
+
+// raw() + bounded 429 backoff. Shared by request() AND refreshTokens() so a rate-limited
+// refresh isn't mistaken for an invalid token (which would wipe a good session mid-import).
+async function rawRetrying(path: string, opts: ReqOpts): Promise<Response> {
+  let res = await raw(path, opts)
+  for (let i = 0; res.status === 429 && i < MAX_RATE_LIMIT_RETRIES; i++) {
+    await sleep(retryAfterMs(res))
+    res = await raw(path, opts)
+  }
+  return res
+}
+
 async function refreshTokens(): Promise<boolean> {
   const refreshToken = getRefreshToken()
   if (!refreshToken) return false
-  const res = await raw('/auth/refresh', { method: 'POST', body: { refreshToken }, auth: false })
-  if (!res.ok) { clearTokens(); return false }
+  const res = await rawRetrying('/auth/refresh', { method: 'POST', body: { refreshToken }, auth: false })
+  if (res.status === 429) return false // still rate-limited after backoff: keep tokens, surface upstream
+  if (!res.ok) { clearTokens(); return false } // genuinely invalid refresh token
   const tokens = (await res.json()) as TokenPair
   setTokens(tokens)
   return true
 }
 
 export async function request<T>(path: string, opts: ReqOpts = {}): Promise<T> {
-  let res = await raw(path, opts)
+  // 429 backoff lives in rawRetrying; here we refresh once on 401. Order matters: an
+  // import's backoff can span minutes, so a 401 can surface *after* the 429 retries when
+  // the access token expires mid-wait — rawRetrying returns that 401, and we refresh then.
+  let res = await rawRetrying(path, opts)
   if (res.status === 401 && opts.auth !== false) {
-    if (await refreshTokens()) res = await raw(path, opts)
+    if (await refreshTokens()) res = await rawRetrying(path, opts)
   }
   if (!res.ok) {
     let code = `HTTP_${res.status}`
