@@ -9,6 +9,7 @@ import { ExercisePopover } from './components/ExercisePopover'
 import type { ExerciseIndex, ExerciseHit } from './exerciseIndex'
 import type { ParsedWeek } from './import'
 import type { SaveResult } from './reconcile'
+import { createSaveController } from './autosave'
 
 interface Sel { wnum: number; dow: number }
 interface PopState { visible: boolean; x: number; y: number; wnum: number; dow: number; rowId: string; query: string }
@@ -55,9 +56,10 @@ function hasParsedWeekContent(week: ParsedWeek): boolean {
 export function PlanEditor(props: PlanEditorProps) {
   const { initialWeeks, weeksCount, studentName, planName, initialPublished = false, onPublish } = props
   const [weeks, setWeeks] = useState<Week[]>(initialWeeks)
-  // Plan start date derived from an import, threaded to the save so the backend plan's
-  // start_date/plan_weeks are aligned (imported dates + week count survive reload).
-  const [importedStart, setImportedStart] = useState<string | null>(null)
+  // Plan start date derived from an import, threaded to the next save so the backend plan's
+  // start_date/plan_weeks are aligned (imported dates + week count survive reload). A ref, not
+  // state: the save queue's drain loop reads it between renders, and nothing renders from it.
+  const importedStart = useRef<string | null>(null)
   const [colW, setColW] = useState<ColWidths[]>(() => Array.from({ length: 7 }, () => ({ ...COL_DEFAULTS })))
   const [sel, setSel] = useState<Sel | null>(null)
   const [zoom, setZoom] = useState(100)
@@ -301,34 +303,127 @@ export function PlanEditor(props: PlanEditorProps) {
   const handleUnsetRest = () => patchSelDay((d) => ({ ...d, rest: false }))
 
   const [saving, setSaving] = useState(false)
-  const handleSave = async () => {
-    if (!props.onSave || saving) return
-    // Rows with a name or filled sets but no catalog binding get dropped by save reconciliation
-    // (and delete+recreate can erase them from a day that changed). Warn before that silent loss
-    // so the coach can bind them first — the post-save status line alone is too easy to miss.
-    const unbound = weeks.reduce(
-      (n, wk) => n + wk.days.reduce((m, d) => (d.rest ? m : m + d.rows.filter(isContentfulUnbound).length), 0),
-      0,
-    )
-    if (unbound > 0 && !window.confirm(`有 ${unbound} 行填了动作名或重量、但没绑定到动作库（名字后没有 ✓），保存时会被跳过、不会写入。建议先在名称下拉里选中动作再保存。仍要保存吗？`)) return
-    // Saving reconciles into the same plan id in place, so editing a *published* plan changes
-    // what the student is looking at right now — confirm instead of silently overwriting their
-    // live plan. This is the 发布后「更新计划」path (there is no retract; edits update in place).
-    if (published && !window.confirm(`「${planName}」正在发布给 ${studentName}，保存会立即改变 ta 正在看的计划。确认保存？`)) return
-    setSaving(true); setStatusText('保存中…')
+
+  // --- 保存与草稿自动保存 --------------------------------------------------------------------
+  // All persistence funnels through one serialized controller: the manual button, the debounced
+  // draft autosave, and the leave-plan flush share a single in-flight queue, so concurrent triggers
+  // never drop an edit or double-reconcile.
+  //
+  // A published plan is live to the student, so it NEVER autosaves — that would silently overwrite
+  // what the student sees, the exact thing the publish guard prevents. Only drafts autosave; a
+  // published plan persists only via the explicit「更新计划」+ confirm path (handleSave).
+  const latestWeeks = useRef(weeks)
+  latestWeeks.current = weeks
+  const saveMode = useRef<'auto' | 'manual'>('auto')
+  const publishing = useRef(false) // latched across a publish round-trip so nothing autosaves mid-publish
+  const publishedRef = useRef(published) // fresh published for the unmount cleanup (which closes over [] deps)
+  publishedRef.current = published
+
+  // Rows with a name or filled sets but no catalog binding get dropped by save reconciliation
+  // (and delete+recreate can erase them from a day that changed). The explicit save/publish paths
+  // warn before that silent loss so the coach can bind them first — autosave can't block on a
+  // confirm, so there the loss is only surfaced in the status line via skippedRows.
+  const countUnbound = (wks: Week[]) => wks.reduce(
+    (n, wk) => n + wk.days.reduce((m, d) => (d.rest ? m : m + d.rows.filter(isContentfulUnbound).length), 0),
+    0,
+  )
+
+  // The save queue is DRAFT-ONLY. Reassigned every render so it always persists the latest weeks.
+  // A published plan is refused here (resolves "done" without writing) — it is persisted solely by
+  // handleSave's explicit confirmed path, so no queued/latched/flushed write can ever silently
+  // overwrite a plan the student is watching.
+  const persistRef = useRef<() => Promise<boolean>>(async () => true)
+  persistRef.current = async () => {
+    if (!props.onSave || published) return true
+    const auto = saveMode.current === 'auto'
+    const importStart = importedStart.current
+    setSaving(true); setStatusText(auto ? '自动保存中…' : '保存中…')
     try {
-      const res = await props.onSave(weeks, importedStart)
-      setImportedStart(null)
-      const base = published ? `已更新 ${studentName} 的计划` : '草稿 · 已保存'
+      const res = await props.onSave(latestWeeks.current, importStart)
+      // Clear only the token this save consumed: an import landing mid-flight writes a fresh
+      // token, and the drain loop's next pass must still deliver it via reconcileImportedPlan —
+      // clearing unconditionally would strand the imported start_date/plan_weeks client-side.
+      if (importedStart.current === importStart) importedStart.current = null
+      const base = auto ? '草稿 · 已自动保存' : '草稿 · 已保存'
       setStatusText(res.skippedRows > 0 ? `${base} · ${res.skippedRows} 行未绑定被跳过` : base)
+      return true
     }
-    catch { setStatusText('保存失败 · 重试') }
+    catch { setStatusText(auto ? '自动保存失败 · 改动已保留' : '保存失败 · 重试'); return false }
     finally { setSaving(false) }
+  }
+  const saver = useRef(createSaveController({ delay: 1500, persist: () => persistRef.current() }))
+
+  const skipFirstAutosave = useRef(true)
+  useEffect(() => {
+    if (skipFirstAutosave.current) { skipFirstAutosave.current = false; return } // ignore the initial load
+    if (published || publishing.current || !props.onSave) { saver.current.cancelAutosave(); return }
+    saveMode.current = 'auto'
+    saver.current.scheduleAutosave()
+  }, [weeks, published]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    const s = saver.current
+    // Leaving this plan: persist any pending DRAFT edits to it. Never flush a published plan — its
+    // writes are explicit-confirm only, never a silent background reconcile.
+    return () => { if (!publishedRef.current) void s.flush() }
+  }, [])
+
+  // Unbound contentful rows can't be persisted at all (reconcile skips them), so autosave's
+  //「已自动保存」can lull the coach while those rows still live only in this tab. The loss becomes
+  // real exactly at the exits — closing/reloading the page, or switching plan/student/logout (the
+  // editor unmounts and the flush skips them too) — so every exit is guarded. Sample mode (no
+  // onSave) has nothing persistable to lose and stays quiet.
+  const canPersist = useRef(!!props.onSave)
+  canPersist.current = !!props.onSave
+  useEffect(() => {
+    const onBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (!canPersist.current || countUnbound(latestWeeks.current) === 0) return
+      e.preventDefault()
+      e.returnValue = '' // Chrome still needs returnValue for the native leave prompt
+    }
+    window.addEventListener('beforeunload', onBeforeUnload)
+    return () => window.removeEventListener('beforeunload', onBeforeUnload)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+  const confirmLeaveUnbound = () => {
+    if (!canPersist.current) return true
+    const unbound = countUnbound(latestWeeks.current)
+    return unbound === 0 || window.confirm(`有 ${unbound} 行填了动作名或重量、但没绑定到动作库（名字后没有 ✓），它们无法保存，离开这个计划后会丢失。仍要离开吗？`)
+  }
+  const guardLeave = (fn?: () => void) => fn ? () => { if (confirmLeaveUnbound()) fn() } : undefined
+  const guardLeaveId = (fn?: (id: string) => void) => fn ? (id: string) => { if (confirmLeaveUnbound()) fn(id) } : undefined
+
+  const handleSave = async () => {
+    if (!props.onSave || saving || publishing.current) return
+    const unbound = countUnbound(latestWeeks.current)
+    if (unbound > 0 && !window.confirm(`有 ${unbound} 行填了动作名或重量、但没绑定到动作库（名字后没有 ✓），保存时会被跳过、不会写入。建议先在名称下拉里选中动作再保存。仍要保存吗？`)) return
+    if (published) {
+      // 更新计划: reconciles in place, changing what the student sees right now — confirm first.
+      // This is the ONLY way a published plan is persisted: an explicit, confirmed, one-shot write
+      // that never enters the autosave queue, so nothing can later replay it (e.g. an unmount flush).
+      if (!window.confirm(`「${planName}」正在发布给 ${studentName}，保存会立即改变 ta 正在看的计划。确认保存？`)) return
+      setSaving(true); setStatusText('更新中…')
+      try {
+        const res = await props.onSave(latestWeeks.current)
+        setStatusText(res.skippedRows > 0 ? `已更新 ${studentName} 的计划 · ${res.skippedRows} 行未绑定被跳过` : `已更新 ${studentName} 的计划`)
+      }
+      catch { setStatusText('更新失败 · 重试') }
+      finally { setSaving(false) }
+      return
+    }
+    saveMode.current = 'manual'
+    await saver.current.saveNow() // draft: goes through the shared queue
   }
 
   const handleImport = async (file: File) => {
     if (!props.exerciseIndex || !props.planStartDate) {
       setStatusText('导入失败 · 计划或动作库未就绪')
+      return
+    }
+    // No importing inside the publish round-trip (client `published` is still false there): if
+    // the publish wins, the plan flips to published and the imported weeks are stranded — never
+    // autosaved, never carried by「更新计划」. Refuse instead of racing; also covers in-flight saves.
+    if (publishing.current || saving) {
+      setStatusText('正在保存或发布 · 请稍候再导入')
       return
     }
     // Never import over a published plan — saving would silently overwrite what the
@@ -366,7 +461,7 @@ export function PlanEditor(props: PlanEditorProps) {
       }
 
       setWeeks(nextWeeks)
-      setImportedStart(importStart)
+      importedStart.current = importStart
       setSel(null)
       setPop((p) => ({ ...p, visible: false }))
       const imported = nextWeeks.length
@@ -388,13 +483,35 @@ export function PlanEditor(props: PlanEditorProps) {
   const handlePublish = async () => {
     // 发布后不可撤回:后端没有 unpublish 接口,发布后不再本地假撤回(那只会让教练以为学员看不到了)。
     // 想改计划走「更新计划」(handleSave)。按钮在已发布后已禁用,这里再兜底一次。
-    if (published) return
-    setStatusText('发布中…')
+    // saving 时也不发布:避免在后台 reconcile 半途翻页发布,发布按钮已 disabled,这里再兜底。
+    if (published || publishing.current || saving) return
+    // Publishing flushes the draft via saveNow below, which skips unbound rows just like a manual
+    // save — but here the loss lands in the plan the student is about to see. Warn before latching.
+    const unbound = countUnbound(latestWeeks.current)
+    if (unbound > 0 && !window.confirm(`有 ${unbound} 行填了动作名或重量、但没绑定到动作库（名字后没有 ✓），发布时会被跳过、学员看不到这些行。建议先在名称下拉里选中动作再发布。仍要发布吗？`)) return
+    // Latch publishing so nothing autosaves while the client still thinks this is a draft — client
+    // `published` only flips true after the round-trip below, and an autosave in that window would
+    // silently overwrite the just-published plan.
+    publishing.current = true
+    saver.current.cancelAutosave()
+    const snapshot = latestWeeks.current // to detect edits typed during the publish round-trip
+    let becamePublished = false
     try {
+      // saveNow persists the latest draft AND awaits any in-flight autosave reconcile, so no
+      // background draft write is still running when the plan flips to published (so-所见即所发).
+      if (!(await saver.current.saveNow())) { setStatusText('发布失败 · 计划未存,请重试'); return }
+      setStatusText('发布中…')
       if (onPublish) await onPublish()
-      setPublished(true); setStatusText(`已发布给 ${studentName} · 刚刚`)
+      setPublished(true); becamePublished = true
+      // Edits typed during the round-trip aren't in the published plan — surface them, never drop silently.
+      setStatusText(latestWeeks.current !== snapshot
+        ? `已发布给 ${studentName} · 有改动未保存,点「更新计划」推送`
+        : `已发布给 ${studentName} · 刚刚`)
     } catch {
       setStatusText('发布失败 · 重试')
+    } finally {
+      publishing.current = false // always unlatch so 更新计划 / autosave work afterwards
+      if (!becamePublished) saver.current.scheduleAutosave() // still a draft: re-arm so a window edit isn't stranded
     }
   }
 
@@ -418,9 +535,9 @@ export function PlanEditor(props: PlanEditorProps) {
     }}>
       <TopBar
         studentName={studentName} planName={planName} published={published} statusText={statusText} onPublish={handlePublish}
-        students={props.students} currentStudentId={props.currentStudentId} onSwitchStudent={props.onSwitchStudent}
-        plans={props.plans} currentPlanId={props.currentPlanId} onSwitchPlan={props.onSwitchPlan}
-        onNewPlan={props.onNewPlan} onLogout={props.onLogout}
+        students={props.students} currentStudentId={props.currentStudentId} onSwitchStudent={guardLeaveId(props.onSwitchStudent)}
+        plans={props.plans} currentPlanId={props.currentPlanId} onSwitchPlan={guardLeaveId(props.onSwitchPlan)}
+        onNewPlan={guardLeave(props.onNewPlan)} onLogout={guardLeave(props.onLogout)}
         onSave={props.onSave ? handleSave : undefined} saving={saving}
         onImport={props.exerciseIndex && props.planStartDate ? handleImport : undefined}
       />

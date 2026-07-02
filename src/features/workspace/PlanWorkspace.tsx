@@ -7,6 +7,8 @@ import { mapPlanToWeeks, type Catalog } from '../plan-editor/mapping'
 import { ExerciseIndex } from '../plan-editor/exerciseIndex'
 import { reconcilePlan, reconcileImportedPlan } from '../plan-editor/reconcile'
 import { PlanEditor } from '../plan-editor/PlanEditor'
+import { buildWeeks as buildSampleWeeks } from '../plan-editor/sampleData'
+import { SamplePreviewBanner } from './SamplePreviewBanner'
 import type { Week } from '../plan-editor/types'
 
 interface Props { onLogout: () => void }
@@ -91,11 +93,25 @@ export function PlanWorkspace({ onLogout }: Props) {
   }
   if (booting) return <Centered><span style={{ color: 'var(--fg-tertiary)' }}>加载中…</span></Centered>
   if (students.length === 0) {
+    // No bound students yet — instead of a dead-end, drop the coach into the editor populated
+    // with a read-only sample plan so the layout is visible, with a persistent banner that
+    // marks it as a sample and surfaces the invite code (the real way to get a student).
+    // Omitting students/plans/onSave/onPublish keeps the editor in disconnected sample mode:
+    // switchers are static, save/import buttons hide, publish only toggles locally.
+    const sampleWeeks = buildSampleWeeks()
     return (
-      <Centered>
-        <div style={{ color: 'var(--fg-secondary)', marginBottom: 8 }}>该教练账号暂无绑定学员</div>
-        <button onClick={onLogout} style={btn}>退出</button>
-      </Centered>
+      <div style={{ position: 'relative', height: '100vh' }}>
+        <PlanEditor
+          key="sample-preview"
+          initialWeeks={sampleWeeks}
+          weeksCount={sampleWeeks.length}
+          studentName="示例学员"
+          planName="示例计划"
+          exerciseIndex={index}
+          onLogout={onLogout}
+        />
+        <SamplePreviewBanner onRefresh={() => window.location.reload()} />
+      </div>
     )
   }
 
