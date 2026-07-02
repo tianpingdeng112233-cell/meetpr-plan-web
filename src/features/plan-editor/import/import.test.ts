@@ -221,7 +221,7 @@ describe('parseDay', () => {
 describe('buildWeeks', () => {
   it('filters empty weeks, dates from the source sheet, keeps the content weeks and binds catalog hits', () => {
     const index = new ExerciseIndex([
-      exercise('bench', '杠铃卧推', { is_competition_lift: true }),
+      exercise('bench', '竞技卧推', { is_competition_lift: true }),
       exercise('custom', '自定义动作', { created_by_coach_id: 'coach-1' }),
       exercise('lowbar', '低杠位深蹲', { main_lift_family: 'squat' }),
     ])
@@ -257,7 +257,7 @@ describe('buildWeeks', () => {
     expect(weeks[0].range).toBe('12/29 – 1/4')
 
     const [bench, custom, missing, lowbar] = weeks[0].days[0].rows
-    expect(bench).toMatchObject({ exerciseId: 'bench', name: '杠铃卧推', ku: true, custom: false, isMain: true, aux: false })
+    expect(bench).toMatchObject({ exerciseId: 'bench', name: '竞技卧推', ku: true, custom: false, isMain: true, aux: false })
     expect(custom).toMatchObject({ exerciseId: 'custom', ku: false, custom: true, isMain: false, aux: true })
     expect(missing).toMatchObject({ exerciseId: null, ku: false, custom: false, isMain: false, aux: false })
     expect(lowbar).toMatchObject({ exerciseId: 'lowbar', name: '低杠位深蹲', isMain: true })
