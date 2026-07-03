@@ -1,5 +1,5 @@
 import type { DayCol, ColWidths, ColKey, ExerciseRow } from '../types'
-import { COLS, setCount } from '../types'
+import { COLS } from '../types'
 
 interface Props {
   day: DayCol
@@ -12,6 +12,7 @@ interface Props {
   onNameBlur: () => void
   onAddRow: () => void
   onEditRow: (rowId: string, updater: (r: ExerciseRow) => ExerciseRow) => void
+  onDeleteRow: (rowId: string) => void
 }
 
 const head: React.CSSProperties = {
@@ -72,7 +73,7 @@ function EditableStrength({ row, width, edit }: { row: ExerciseRow; width: numbe
   )
 }
 
-export function DayColumn({ day, colW, selected, onSelect, onResizeStart, onNameFocus, onNameChange, onNameBlur, onAddRow, onEditRow }: Props) {
+export function DayColumn({ day, colW, selected, onSelect, onResizeStart, onNameFocus, onNameChange, onNameBlur, onAddRow, onEditRow, onDeleteRow }: Props) {
   if (day.rest) {
     return (
       <div className={`day restday${selected ? ' sel' : ''}`} data-dow={day.dow} onClick={onSelect} style={{
@@ -113,7 +114,7 @@ export function DayColumn({ day, colW, selected, onSelect, onResizeStart, onName
         {day.rows.map((row) => {
           const edit = (u: (r: ExerciseRow) => ExerciseRow) => onEditRow(row.id, u)
           return (
-            <div key={row.id} className={`exrow${row.aux ? ' aux' : ''}`} style={{ display: 'flex', alignItems: 'stretch', borderTop: '1px solid var(--border)' }}>
+            <div key={row.id} data-rowid={row.id} className={`exrow${row.aux ? ' aux' : ''}`} style={{ display: 'flex', alignItems: 'stretch', borderTop: '1px solid var(--border)' }}>
               <div className="gcell" data-c="name" style={{ width: colW.name, padding: '4px 4px', display: 'flex', alignItems: 'center', gap: 2, overflow: 'hidden' }}>
                 <input
                   value={row.name} placeholder="输入动作…"
@@ -127,34 +128,34 @@ export function DayColumn({ day, colW, selected, onSelect, onResizeStart, onName
                 {row.custom && <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--fg-tertiary)', fontSize: 8, flex: 'none', border: '1px solid var(--border-strong)', borderRadius: 3, padding: '0 3px' }}>定</span>}
               </div>
 
-              {/* 组 */}
+              {/* 组 — editable on aux rows too: a zero-set (note-driven) row can't publish, so
+                  typing a count here is how the coach turns it into a real tracked exercise. */}
               <div className="gcell" data-c="sets" style={{ width: colW.sets, padding: '4px 2px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                {row.aux ? (
-                  <span style={{ fontSize: 11, color: 'var(--fg-secondary)' }}>{setCount(row)}</span>
-                ) : (
-                  <input value={row.boxes.length || ''} inputMode="numeric" onClick={stop}
-                    onChange={(e) => { const n = Math.max(0, Math.min(12, parseInt(e.target.value, 10) || 0)); edit((r) => ({ ...r, boxes: setBoxesLen(r.boxes, n) })) }}
-                    style={{ ...baseInput, width: '100%', textAlign: 'center', color: 'var(--fg-secondary)' }} />
-                )}
+                <input value={row.boxes.length || ''} inputMode="numeric" onClick={stop} placeholder={row.aux ? '—' : ''}
+                  onChange={(e) => { const n = Math.max(0, Math.min(12, parseInt(e.target.value, 10) || 0)); edit((r) => ({ ...r, boxes: setBoxesLen(r.boxes, n), aux: n > 0 ? false : r.aux })) }}
+                  style={{ ...baseInput, width: '100%', textAlign: 'center', color: 'var(--fg-secondary)' }} />
               </div>
 
               {/* 次 */}
               <div className="gcell" data-c="reps" style={{ width: colW.reps, padding: '4px 2px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                {row.aux ? (
-                  <span style={{ fontSize: 11, color: 'var(--fg-secondary)' }}>{row.reps}</span>
-                ) : (
-                  <input value={row.reps === '—' ? '' : row.reps} inputMode="text" onClick={stop} placeholder="—"
-                    onChange={(e) => edit((r) => ({ ...r, reps: e.target.value.trim() === '' ? '—' : e.target.value }))}
-                    style={{ ...baseInput, width: '100%', textAlign: 'center', color: 'var(--fg-secondary)' }} />
-                )}
+                <input value={row.reps === '—' ? '' : row.reps} inputMode="text" onClick={stop} placeholder="—"
+                  onChange={(e) => edit((r) => ({ ...r, reps: e.target.value.trim() === '' ? '—' : e.target.value }))}
+                  style={{ ...baseInput, width: '100%', textAlign: 'center', color: 'var(--fg-secondary)' }} />
               </div>
 
               <EditableStrength row={row} width={colW.int} edit={edit} />
 
-              <div className="gcell" data-c="note" style={{ width: colW.note, padding: '4px 2px', display: 'flex', alignItems: 'center' }}>
+              <div className="gcell" data-c="note" style={{ width: colW.note, padding: '4px 2px', display: 'flex', alignItems: 'center', position: 'relative' }}>
                 <input value={row.note} inputMode="text" onClick={stop} placeholder=""
                   onChange={(e) => edit((r) => ({ ...r, note: e.target.value }))}
-                  style={{ ...baseInput, width: '100%', fontSize: 10, color: 'var(--fg-tertiary)' }} />
+                  style={{ ...baseInput, width: '100%', fontSize: 10, color: 'var(--fg-tertiary)', paddingRight: 14 }} />
+                <span className="rowdel" title="删除这一行"
+                  onClick={(e) => { e.stopPropagation(); onDeleteRow(row.id) }}
+                  style={{
+                    position: 'absolute', right: 2, top: '50%', transform: 'translateY(-50%)',
+                    width: 14, height: 14, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    borderRadius: 4, fontSize: 10, color: 'var(--fg-tertiary)', cursor: 'pointer',
+                  }}>✕</span>
               </div>
             </div>
           )

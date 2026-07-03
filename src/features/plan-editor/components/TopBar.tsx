@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react'
 
-interface Option { id: string; label: string; tag?: string }
+interface Option { id: string; label: string; tag?: string; sub?: string }
 
 interface Props {
   studentName: string
@@ -16,10 +16,16 @@ interface Props {
   currentPlanId?: string
   onSwitchPlan?: (id: string) => void
   onNewPlan?: () => void
+  /** Rename the current plan (plan dropdown's ✎ row). */
+  onRenamePlan?: () => void
   onLogout?: () => void
   onSave?: () => void
   saving?: boolean
   onImport?: (file: File) => void | Promise<void>
+  /** Rows needing attention (unbound / no sets); click cycles to the next one. */
+  issueCount?: number
+  issueHint?: string
+  onJumpIssue?: () => void
 }
 
 const pill: React.CSSProperties = {
@@ -30,8 +36,9 @@ const pill: React.CSSProperties = {
 const caret: React.CSSProperties = { color: 'var(--fg-tertiary)', fontSize: 9 }
 const label: React.CSSProperties = { fontSize: 11, color: 'var(--fg-tertiary)' }
 
-function Dropdown({ open, options, currentId, onPick, onNew, newLabel }: {
+function Dropdown({ open, options, currentId, onPick, onNew, newLabel, onRenameCurrent }: {
   open: boolean; options: Option[]; currentId?: string; onPick: (id: string) => void; onNew?: () => void; newLabel?: string
+  onRenameCurrent?: () => void
 }) {
   if (!open) return null
   return (
@@ -44,10 +51,19 @@ function Dropdown({ open, options, currentId, onPick, onNew, newLabel }: {
         <div key={o.id} className="popitem" onClick={(e) => { e.stopPropagation(); onPick(o.id) }}
           style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', color: o.id === currentId ? '#fff' : 'var(--fg-secondary)', fontWeight: o.id === currentId ? 600 : 400 }}>
           {o.id === currentId && <span style={{ color: 'var(--brand-red)', fontSize: 10 }}>●</span>}
-          <span style={{ flex: 1 }}>{o.label}</span>
-          {o.tag && <span style={{ fontSize: 10, color: 'var(--fg-tertiary)' }}>{o.tag}</span>}
+          <span style={{ flex: 1, minWidth: 0 }}>
+            {o.label}
+            {o.sub && <span style={{ display: 'block', fontSize: 10, fontWeight: 400, color: 'var(--fg-tertiary)', fontFamily: 'var(--font-mono)' }}>{o.sub}</span>}
+          </span>
+          {o.tag && <span style={{ fontSize: 10, color: 'var(--fg-tertiary)', flex: 'none' }}>{o.tag}</span>}
         </div>
       ))}
+      {onRenameCurrent && (
+        <div className="popitem" onClick={(e) => { e.stopPropagation(); onRenameCurrent() }}
+          style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '9px 12px', color: 'var(--fg-secondary)', borderTop: '1px solid var(--border)' }}>
+          <span>✎</span> 重命名当前计划
+        </div>
+      )}
       {onNew && (
         <div className="popitem" onClick={(e) => { e.stopPropagation(); onNew() }}
           style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '9px 12px', color: 'var(--fg-secondary)', borderTop: '1px solid var(--border)' }}>
@@ -92,13 +108,23 @@ export function TopBar(p: Props) {
         {p.planName} <span style={caret}>▼</span>
         {connected && (
           <Dropdown open={menu === 'plan'} options={p.plans ?? []} currentId={p.currentPlanId}
-            onPick={(id) => { close(); p.onSwitchPlan?.(id) }} onNew={p.onNewPlan ? () => { close(); p.onNewPlan!() } : undefined} newLabel="新建计划" />
+            onPick={(id) => { close(); p.onSwitchPlan?.(id) }} onNew={p.onNewPlan ? () => { close(); p.onNewPlan!() } : undefined} newLabel="新建计划"
+            onRenameCurrent={p.onRenamePlan ? () => { close(); p.onRenamePlan!() } : undefined} />
         )}
       </span>
 
       <span style={{ flex: 1 }} />
 
       {p.onLogout && <span onClick={p.onLogout} style={{ cursor: 'pointer', color: 'var(--fg-tertiary)', fontSize: 12, padding: '4px 8px' }}>退出</span>}
+      {(p.issueCount ?? 0) > 0 && (
+        <button onClick={p.onJumpIssue} title={p.issueHint} style={{
+          display: 'inline-flex', alignItems: 'center', gap: 6, padding: '5px 10px',
+          background: 'var(--amber-soft)', color: 'var(--amber)', border: '1px solid var(--amber)',
+          borderRadius: 999, fontSize: 12, fontWeight: 600, cursor: 'pointer', lineHeight: 1,
+        }}>
+          ⚠ {p.issueCount} 处待核对
+        </button>
+      )}
       <span style={{
         display: 'inline-flex', alignItems: 'center', gap: 8, fontFamily: 'var(--font-mono)', fontSize: 11,
         letterSpacing: '.03em', color: p.published ? 'var(--green)' : 'var(--fg-secondary)',

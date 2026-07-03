@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { CoachStudent, PlanResponse } from '../../api/types'
-import { getCoachStudents, getStudentPlans, getPlan, publishPlan, createPlan } from '../../api/plans'
+import { getCoachStudents, getStudentPlans, getPlan, publishPlan, createPlan, patchPlan } from '../../api/plans'
 import { listExercises, createCustomExercise } from '../../api/exercises'
 import { ApiException } from '../../api/client'
 import { mapPlanToWeeks, type Catalog } from '../plan-editor/mapping'
@@ -117,7 +117,14 @@ export function PlanWorkspace({ onLogout }: Props) {
 
   const studentName = students.find((s) => s.id === studentId)?.display_name ?? ''
   const studentOpts = students.map((s) => ({ id: s.id, label: s.display_name, tag: s.status === 'in_evaluation' ? '评估期' : undefined }))
-  const planOpts = plans.map((p) => ({ id: p.id, label: p.name, tag: p.status === 'published' ? '已发布' : '草稿' }))
+  // "M/D 起 · N 周" so same-named plans stay tellable-apart in the switcher.
+  const fmtStart = (iso: string) => { const [, m, d] = iso.split('-'); return `${Number(m)}/${Number(d)}` }
+  const planOpts = plans.map((p) => ({
+    id: p.id,
+    label: p.name,
+    sub: `${fmtStart(p.start_date)} 起 · ${p.plan_weeks} 周`,
+    tag: p.status === 'published' ? '已发布' : '草稿',
+  }))
 
   return (
     <div style={{ position: 'relative', height: '100vh' }}>
@@ -137,11 +144,17 @@ export function PlanWorkspace({ onLogout }: Props) {
           setPlans((prev) => prev.map((p) => (p.id === updated.id ? updated : p)))
           setLoaded((prev) => (prev && prev.plan.id === updated.id ? { ...prev, plan: updated } : prev))
         } : undefined}
-        onSave={loaded ? (weeks, importStart) => (
+        onSave={loaded ? (weeks, importStart, onProgress) => (
           importStart
-            ? reconcileImportedPlan(loaded.plan.id, weeks, importStart)
-            : reconcilePlan(loaded.plan.id, weeks)
+            ? reconcileImportedPlan(loaded.plan.id, weeks, importStart, onProgress)
+            : reconcilePlan(loaded.plan.id, weeks, onProgress)
         ) : undefined}
+        onRename={loaded ? async (name) => {
+          const updated = await patchPlan(loaded.plan.id, { name })
+          // Keep the switcher list + the loaded plan in sync so the new name shows everywhere.
+          setPlans((prev) => prev.map((p) => (p.id === updated.id ? updated : p)))
+          setLoaded((prev) => (prev && prev.plan.id === updated.id ? { ...prev, plan: updated } : prev))
+        } : undefined}
         exerciseIndex={index}
         onCreateExercise={async (name) => {
           const e = await createCustomExercise(name)

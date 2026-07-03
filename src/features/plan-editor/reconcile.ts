@@ -73,8 +73,13 @@ function fmtISO(d: Date): string {
  *  beyond it, set plan_weeks + start_date (+ end_date) to the source — so the imported
  *  dates and week count survive a reload, then reconcile the days. Delete happens
  *  before shrinking plan_weeks so it can't violate `week_number ≤ plan_weeks`. */
+/** Per-day save progress: `done` of `total` changed days written. Lets the editor
+ *  show real movement during multi-minute saves (429 backoff makes big imports slow)
+ *  instead of a frozen-looking「自动保存中…」. */
+export type SaveProgress = (done: number, total: number) => void
+
 export async function reconcileImportedPlan(
-  planId: string, weeks: Week[], startDate: string,
+  planId: string, weeks: Week[], startDate: string, onProgress?: SaveProgress,
 ): Promise<SaveResult> {
   const server: PlanWithChildren = await getPlan(planId)
   for (const day of server.days) {
@@ -82,18 +87,22 @@ export async function reconcileImportedPlan(
   }
   const endDate = fmtISO(addDays(startDate, weeks.length * 7 - 1))
   await patchPlan(planId, { plan_weeks: weeks.length, start_date: startDate, end_date: endDate })
-  return reconcilePlan(planId, weeks)
+  return reconcilePlan(planId, weeks, onProgress)
 }
 
-export async function reconcilePlan(planId: string, weeks: Week[]): Promise<SaveResult> {
+export async function reconcilePlan(
+  planId: string, weeks: Week[], onProgress?: SaveProgress,
+): Promise<SaveResult> {
   // live server tree as the diff baseline (never trust a stale snapshot)
   const server: PlanWithChildren = await getPlan(planId)
   const origByKey = new Map<string, PlanWithChildren['days'][number]>()
   for (const day of server.days) origByKey.set(`${day.week_number}:${day.day_of_week}`, day)
 
-  let changedDays = 0
   let skippedRows = 0
 
+  // Diff first so the total is known before writing (progress needs it)…
+  interface DayWork { wnum: number; dow: number; origId: string | null; desired: DesiredExercise[] }
+  const work: DayWork[] = []
   for (const wk of weeks) {
     for (let dow = 0; dow < 7; dow++) {
       const dayCol = wk.days.find((d) => d.dow === dow)
@@ -110,20 +119,25 @@ export async function reconcilePlan(planId: string, weeks: Week[]): Promise<Save
       const origCanon = orig ? canonServer(orig.exercises) : EMPTY
       const desCanon = desired.length ? canonDesired(desired) : EMPTY
       if (origCanon === desCanon) continue
-
-      changedDays++
-      if (orig) await deleteDay(orig.id) // cascades exercises + sets
-      if (desired.length) {
-        const day = await createDay(planId, { day_of_week: dow + 1, week_number: wk.num, sort_order: 0 })
-        for (let i = 0; i < desired.length; i++) {
-          const ex = desired[i]
-          const pe = await createExercise(day.id, {
-            exercise_id: ex.exercise_id, is_main_lift: ex.is_main_lift, sort_order: i, notes: ex.notes,
-          })
-          for (const s of ex.sets) await createSet(pe.id, s)
-        }
-      }
+      work.push({ wnum: wk.num, dow, origId: orig?.id ?? null, desired })
     }
   }
-  return { changedDays, skippedRows }
+
+  // …then write day by day, reporting progress after each settled day.
+  for (let w = 0; w < work.length; w++) {
+    const { wnum, dow, origId, desired } = work[w]
+    if (origId) await deleteDay(origId) // cascades exercises + sets
+    if (desired.length) {
+      const day = await createDay(planId, { day_of_week: dow + 1, week_number: wnum, sort_order: 0 })
+      for (let i = 0; i < desired.length; i++) {
+        const ex = desired[i]
+        const pe = await createExercise(day.id, {
+          exercise_id: ex.exercise_id, is_main_lift: ex.is_main_lift, sort_order: i, notes: ex.notes,
+        })
+        for (const s of ex.sets) await createSet(pe.id, s)
+      }
+    }
+    onProgress?.(w + 1, work.length)
+  }
+  return { changedDays: work.length, skippedRows }
 }

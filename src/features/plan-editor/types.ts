@@ -60,3 +60,12 @@ export function isContentfulUnbound(row: ExerciseRow): boolean {
   if (row.exerciseId) return false
   return row.name.trim() !== '' || row.boxes.some((b) => !b.empty && b.val !== '')
 }
+
+/** True when a row IS bound but has no filled set — reconcile persists it as an
+ *  exercise with zero sets, which the backend's publish completeness gate rejects
+ *  (PLAN_PUBLISH_INCOMPLETE). Common after xlsx import when the source row had a
+ *  name but no 组×次 data. The coach must fill sets or delete the row to publish. */
+export function isBoundNoSets(row: ExerciseRow): boolean {
+  if (!row.exerciseId) return false
+  return !row.boxes.some((b) => !b.empty && b.val !== '')
+}

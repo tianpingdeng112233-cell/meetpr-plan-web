@@ -24,10 +24,13 @@ export function clearTokens(): void {
 export class ApiException extends Error {
   status: number
   code: string
-  constructor(status: number, code: string, message?: string) {
-    super(message ?? code)
+  /** Parsed error body beyond `error` — e.g. PLAN_PUBLISH_INCOMPLETE's counts. */
+  details: Record<string, unknown>
+  constructor(status: number, code: string, details: Record<string, unknown> = {}) {
+    super(code)
     this.status = status
     this.code = code
+    this.details = details
   }
 }
 
@@ -97,8 +100,12 @@ export async function request<T>(path: string, opts: ReqOpts = {}): Promise<T> {
   }
   if (!res.ok) {
     let code = `HTTP_${res.status}`
-    try { const j = await res.json(); if (j?.error) code = j.error } catch { /* ignore */ }
-    throw new ApiException(res.status, code)
+    let details: Record<string, unknown> = {}
+    try {
+      const j = (await res.json()) as Record<string, unknown>
+      if (typeof j?.error === 'string') { const { error, ...rest } = j; code = error; details = rest }
+    } catch { /* ignore */ }
+    throw new ApiException(res.status, code, details)
   }
   if (res.status === 204) return undefined as T
   return (await res.json()) as T

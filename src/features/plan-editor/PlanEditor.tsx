@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { ColKey, ColWidths, Week, DayCol, ExerciseRow } from './types'
-import { COL_DEFAULTS, COL_MIN, isContentfulUnbound } from './types'
+import { COL_DEFAULTS, COL_MIN, isContentfulUnbound, isBoundNoSets } from './types'
+import { ApiException } from '../../api/client'
 import { TopBar } from './components/TopBar'
 import { Toolbar } from './components/Toolbar'
 import { ContextBar } from './components/ContextBar'
@@ -27,7 +28,13 @@ export interface PlanEditorProps {
   /** Real publish call; when omitted the button just toggles locally (sample mode). */
   onPublish?: () => Promise<void>
   /** Save current edits back to the backend; resolves with how many contentful rows were skipped. */
-  onSave?: (weeks: Week[], importStart?: string | null) => Promise<SaveResult>
+  onSave?: (
+    weeks: Week[],
+    importStart?: string | null,
+    onProgress?: (done: number, total: number) => void,
+  ) => Promise<SaveResult>
+  /** Rename the current plan (backend PATCH); parent also refreshes its plan list. */
+  onRename?: (name: string) => Promise<void> | void
   /** Exercise catalog + alias index for name-cell binding. */
   exerciseIndex?: ExerciseIndex | null
   /** Create a custom exercise and return its id+name (adds to the index). */
@@ -103,7 +110,9 @@ export function PlanEditor(props: PlanEditorProps) {
 
   const computeFit = useCallback(() => {
     const sc = scrollerRef.current
-    if (!sc) return
+    // Mid-layout resizes can sample a 0-width scroller; a 0 fit scale collapses the whole
+    // grid to nothing and never recovers — keep the last good fit instead.
+    if (!sc || sc.clientWidth === 0) return
     fitScaleRef.current = Math.min(1.15, sc.clientWidth / natW())
   }, [natW])
 
@@ -255,6 +264,13 @@ export function PlanEditor(props: PlanEditorProps) {
       days: wk.days.map((d) => d.dow !== dow ? d : { ...d, rows: d.rows.map((r) => r.id === rowId ? updater(r) : r) }),
     }))
   }
+  const deleteRow = (wnum: number, dow: number, rowId: string) => {
+    setWeeks((prev) => prev.map((wk) => wk.num !== wnum ? wk : {
+      ...wk,
+      days: wk.days.map((d) => d.dow !== dow ? d : { ...d, rows: d.rows.filter((r) => r.id !== rowId) }),
+    }))
+    setPop((p) => (p.rowId === rowId ? { ...p, visible: false } : p))
+  }
 
   const onPickHit = (hit: ExerciseHit) => {
     bindRowAt({ wnum: pop.wnum, dow: pop.dow, rowId: pop.rowId }, hit.id, hit.name, false)
@@ -319,10 +335,26 @@ export function PlanEditor(props: PlanEditorProps) {
   const publishedRef = useRef(published) // fresh published for the unmount cleanup (which closes over [] deps)
   publishedRef.current = published
 
-  // Rows with a name or filled sets but no catalog binding get dropped by save reconciliation
-  // (and delete+recreate can erase them from a day that changed). The explicit save/publish paths
-  // warn before that silent loss so the coach can bind them first — autosave can't block on a
-  // confirm, so there the loss is only surfaced in the status line via skippedRows.
+  // Rows the coach still has to deal with, in grid order:
+  //  - unbound: has a name or filled sets but no catalog binding — save reconciliation drops
+  //    these (and delete+recreate can erase them from a changed day), so they are a data-loss
+  //    risk. The explicit save/publish paths warn before that loss; autosave can't block on a
+  //    confirm, so there it's only surfaced in the status line via skippedRows.
+  //  - noSets: bound but without a single filled set — persists as a zero-set exercise, which
+  //    the backend's publish completeness gate rejects (PLAN_PUBLISH_INCOMPLETE).
+  // The ⚠ chip in the top bar counts both and jumps the coach to the next one.
+  interface IssueRow { rowId: string; kind: 'unbound' | 'noSets' }
+  const findIssueRows = (wks: Week[]): IssueRow[] => {
+    const issues: IssueRow[] = []
+    for (const wk of wks) for (const d of wk.days) {
+      if (d.rest) continue
+      for (const r of d.rows) {
+        if (isContentfulUnbound(r)) issues.push({ rowId: r.id, kind: 'unbound' })
+        else if (isBoundNoSets(r)) issues.push({ rowId: r.id, kind: 'noSets' })
+      }
+    }
+    return issues
+  }
   const countUnbound = (wks: Week[]) => wks.reduce(
     (n, wk) => n + wk.days.reduce((m, d) => (d.rest ? m : m + d.rows.filter(isContentfulUnbound).length), 0),
     0,
@@ -337,13 +369,23 @@ export function PlanEditor(props: PlanEditorProps) {
     if (!props.onSave || published) return true
     const auto = saveMode.current === 'auto'
     const importStart = importedStart.current
-    setSaving(true); setStatusText(auto ? '自动保存中…' : '保存中…')
+    const verb = auto ? '自动保存中…' : '保存中…'
+    setSaving(true); setStatusText(verb)
     try {
-      const res = await props.onSave(latestWeeks.current, importStart)
+      // Big saves (imports) crawl through the backend rate limit for minutes — show real
+      // per-day movement so the coach can tell progress from a hang. Tiny saves stay quiet.
+      const onProgress = (done: number, total: number) => {
+        if (total > 3) setStatusText(`${verb} ${done}/${total} 天`)
+      }
+      const savedWeeks = latestWeeks.current
+      const res = await props.onSave(savedWeeks, importStart, onProgress)
       // Clear only the token this save consumed: an import landing mid-flight writes a fresh
       // token, and the drain loop's next pass must still deliver it via reconcileImportedPlan —
       // clearing unconditionally would strand the imported start_date/plan_weeks client-side.
       if (importedStart.current === importStart) importedStart.current = null
+      // Same generation rule for the unsaved flag: edits typed while this save was in flight
+      // are NOT in what we just persisted, so they must keep the leave guards armed.
+      if (latestWeeks.current === savedWeeks) unsavedRef.current = false
       const base = auto ? '草稿 · 已自动保存' : '草稿 · 已保存'
       setStatusText(res.skippedRows > 0 ? `${base} · ${res.skippedRows} 行未绑定被跳过` : base)
       return true
@@ -353,9 +395,17 @@ export function PlanEditor(props: PlanEditorProps) {
   }
   const saver = useRef(createSaveController({ delay: 1500, persist: () => persistRef.current() }))
 
+  // Content edited but not yet confirmed persisted — drives the leave guards below.
+  const unsavedRef = useRef(false)
+  const prevWeeksRef = useRef(weeks)
   const skipFirstAutosave = useRef(true)
   useEffect(() => {
+    const weeksChanged = prevWeeksRef.current !== weeks
+    prevWeeksRef.current = weeks
     if (skipFirstAutosave.current) { skipFirstAutosave.current = false; return } // ignore the initial load
+    // Only a real edit marks content unsaved — this effect also fires when `published`
+    // flips (same weeks identity), which must not re-arm the guard.
+    if (weeksChanged && props.onSave) unsavedRef.current = true
     if (published || publishing.current || !props.onSave) { saver.current.cancelAutosave(); return }
     saveMode.current = 'auto'
     saver.current.scheduleAutosave()
@@ -370,13 +420,18 @@ export function PlanEditor(props: PlanEditorProps) {
   // Unbound contentful rows can't be persisted at all (reconcile skips them), so autosave's
   //「已自动保存」can lull the coach while those rows still live only in this tab. The loss becomes
   // real exactly at the exits — closing/reloading the page, or switching plan/student/logout (the
-  // editor unmounts and the flush skips them too) — so every exit is guarded. Sample mode (no
-  // onSave) has nothing persistable to lose and stays quiet.
+  // editor unmounts and the flush skips them too) — so every exit is guarded. Closing while a
+  // save is scheduled/in flight would strand a partial write too, so that blocks as well.
+  // Sample mode (no onSave) has nothing persistable to lose and stays quiet.
   const canPersist = useRef(!!props.onSave)
   canPersist.current = !!props.onSave
+  const savingRef = useRef(saving)
+  savingRef.current = saving
   useEffect(() => {
     const onBeforeUnload = (e: BeforeUnloadEvent) => {
-      if (!canPersist.current || countUnbound(latestWeeks.current) === 0) return
+      if (!canPersist.current) return
+      const atRisk = savingRef.current || unsavedRef.current || countUnbound(latestWeeks.current) > 0
+      if (!atRisk) return
       e.preventDefault()
       e.returnValue = '' // Chrome still needs returnValue for the native leave prompt
     }
@@ -387,10 +442,53 @@ export function PlanEditor(props: PlanEditorProps) {
   const confirmLeaveUnbound = () => {
     if (!canPersist.current) return true
     const unbound = countUnbound(latestWeeks.current)
-    return unbound === 0 || window.confirm(`有 ${unbound} 行填了动作名或重量、但没绑定到动作库（名字后没有 ✓），它们无法保存，离开这个计划后会丢失。仍要离开吗？`)
+    if (unbound > 0 && !window.confirm(`有 ${unbound} 行填了动作名或重量、但没绑定到动作库（名字后没有 ✓），它们无法保存，离开这个计划后会丢失。仍要离开吗？`)) return false
+    // A published plan never autosaves and its unmount flush is skipped — edits not yet
+    // pushed via「更新计划」die with the tab/switch, so warn about those too.
+    if (publishedRef.current && unsavedRef.current
+      && !window.confirm('这份已发布计划有修改还没点「更新计划」推送，离开后这些修改会丢失。仍要离开吗？')) return false
+    return true
   }
   const guardLeave = (fn?: () => void) => fn ? () => { if (confirmLeaveUnbound()) fn() } : undefined
   const guardLeaveId = (fn?: (id: string) => void) => fn ? (id: string) => { if (confirmLeaveUnbound()) fn(id) } : undefined
+
+  // ---- ⚠ 待核对 chip: cycle through problem rows (unbound / zero-set) -----------------------
+  const issueCursor = useRef(0)
+  const issues = findIssueRows(weeks)
+  const issueHint = (() => {
+    const unbound = issues.filter((i) => i.kind === 'unbound').length
+    const noSets = issues.length - unbound
+    const parts = []
+    if (unbound) parts.push(`${unbound} 行未绑定动作库（保存会被跳过）`)
+    if (noSets) parts.push(`${noSets} 个动作组数/强度没填全（无法发布）`)
+    return `点击逐个定位：${parts.join('；')}`
+  })()
+  const jumpToNextIssue = () => {
+    const cur = findIssueRows(latestWeeks.current)
+    if (cur.length === 0) return
+    const issue = cur[issueCursor.current % cur.length]
+    issueCursor.current++
+    const rowEl = rootRef.current?.querySelector<HTMLElement>(`[data-rowid="${issue.rowId}"]`)
+    if (!rowEl) return
+    rowEl.scrollIntoView({ block: 'center', inline: 'center' })
+    // Unbound → the name cell (opens the binding search). Zero-set → the first empty
+    // strength box if the count is already set, else 组数 — a set only counts once its
+    // strength value is filled, so point the coach at the actual missing field.
+    const input = issue.kind === 'unbound'
+      ? rowEl.querySelector<HTMLInputElement>('input:not([inputmode])')
+      : [...rowEl.querySelectorAll<HTMLInputElement>('input[inputmode="decimal"]')].find((b) => b.value === '')
+        ?? rowEl.querySelector<HTMLInputElement>('input[inputmode="numeric"]')
+    window.setTimeout(() => input?.focus(), 60) // after the scroll settles
+  }
+
+  // ---- 跳到周 -------------------------------------------------------------------------------
+  const jumpToWeek = (num: number) => {
+    const sc = scrollerRef.current
+    const band = sc?.querySelector<HTMLElement>(`.weekband[data-wnum="${num}"]`)
+    if (!sc || !band) return
+    const br = band.getBoundingClientRect(), sr = sc.getBoundingClientRect()
+    sc.scrollTop += (br.top - sr.top) - 6
+  }
 
   const handleSave = async () => {
     if (!props.onSave || saving || publishing.current) return
@@ -403,7 +501,11 @@ export function PlanEditor(props: PlanEditorProps) {
       if (!window.confirm(`「${planName}」正在发布给 ${studentName}，保存会立即改变 ta 正在看的计划。确认保存？`)) return
       setSaving(true); setStatusText('更新中…')
       try {
-        const res = await props.onSave(latestWeeks.current)
+        const savedWeeks = latestWeeks.current
+        const res = await props.onSave(savedWeeks, null,
+          (done, total) => { if (total > 3) setStatusText(`更新中… ${done}/${total} 天`) })
+        // Edits typed during the round-trip aren't in what was pushed — keep the guards armed.
+        if (latestWeeks.current === savedWeeks) unsavedRef.current = false
         setStatusText(res.skippedRows > 0 ? `已更新 ${studentName} 的计划 · ${res.skippedRows} 行未绑定被跳过` : `已更新 ${studentName} 的计划`)
       }
       catch { setStatusText('更新失败 · 重试') }
@@ -464,6 +566,11 @@ export function PlanEditor(props: PlanEditorProps) {
       importedStart.current = importStart
       setSel(null)
       setPop((p) => ({ ...p, visible: false }))
+      // Name the plan after the file (usually the student), so the plan switcher stops
+      // filling up with indistinguishable「新计划」s. The coach can rename via the dropdown.
+      const fileBase = file.name.replace(/\.[^.]+$/, '').trim()
+      // Best-effort: a failed rename must not fail the import (the coach can rename manually).
+      if (fileBase && props.onRename) void Promise.resolve(props.onRename(fileBase)).catch(() => {})
       const imported = nextWeeks.length
       const dropped = sourceWeekCount - imported
       let truncation: string
@@ -485,10 +592,18 @@ export function PlanEditor(props: PlanEditorProps) {
     // 想改计划走「更新计划」(handleSave)。按钮在已发布后已禁用,这里再兜底一次。
     // saving 时也不发布:避免在后台 reconcile 半途翻页发布,发布按钮已 disabled,这里再兜底。
     if (published || publishing.current || saving) return
+    // Pre-flight: rows the publish would lose or that the backend will refuse. Zero-set bound
+    // rows make the server reject with PLAN_PUBLISH_INCOMPLETE — block up front with a pointer
+    // to the ⚠ chip instead of letting the coach discover it as an opaque failure.
+    const noSets = findIssueRows(latestWeeks.current).filter((i) => i.kind === 'noSets').length
+    if (noSets > 0) {
+      window.alert(`还不能发布：有 ${noSets} 个动作的组数/强度没填全，学员端无法显示，后端会拒绝发布。\n点顶栏「⚠ 待核对」逐个定位，补全组数和强度、或删掉这些行（行尾 ✕）。`)
+      return
+    }
     // Publishing flushes the draft via saveNow below, which skips unbound rows just like a manual
     // save — but here the loss lands in the plan the student is about to see. Warn before latching.
     const unbound = countUnbound(latestWeeks.current)
-    if (unbound > 0 && !window.confirm(`有 ${unbound} 行填了动作名或重量、但没绑定到动作库（名字后没有 ✓），发布时会被跳过、学员看不到这些行。建议先在名称下拉里选中动作再发布。仍要发布吗？`)) return
+    if (unbound > 0 && !window.confirm(`有 ${unbound} 行填了动作名或重量、但没绑定到动作库（名字后没有 ✓），发布时会被跳过、学员看不到这些行。\n点「取消」后可用顶栏「⚠ 待核对」逐个定位处理。仍要发布吗？`)) return
     // Latch publishing so nothing autosaves while the client still thinks this is a draft — client
     // `published` only flips true after the round-trip below, and an autosave in that window would
     // silently overwrite the just-published plan.
@@ -499,7 +614,12 @@ export function PlanEditor(props: PlanEditorProps) {
     try {
       // saveNow persists the latest draft AND awaits any in-flight autosave reconcile, so no
       // background draft write is still running when the plan flips to published (so-所见即所发).
-      if (!(await saver.current.saveNow())) { setStatusText('发布失败 · 计划未存,请重试'); return }
+      if (!(await saver.current.saveNow())) {
+        window.alert('发布中断：计划保存失败（改动已保留在本页）。请检查网络后重新点发布。')
+        setStatusText('发布失败 · 计划未存,请重试')
+        saver.current.scheduleAutosave() // dirty is still set — re-arm so the save retries itself
+        return
+      }
       setStatusText('发布中…')
       if (onPublish) await onPublish()
       setPublished(true); becamePublished = true
@@ -507,11 +627,29 @@ export function PlanEditor(props: PlanEditorProps) {
       setStatusText(latestWeeks.current !== snapshot
         ? `已发布给 ${studentName} · 有改动未保存,点「更新计划」推送`
         : `已发布给 ${studentName} · 刚刚`)
-    } catch {
+    } catch (e) {
+      // The status line gets repainted by later saves — a publish failure must explain itself
+      // in a dialog the coach actually reads, in coach language, not a machine code.
+      const code = e instanceof ApiException ? e.code : ''
+      const detail = e instanceof ApiException ? e.details : {}
+      if (code === 'PLAN_PUBLISH_INCOMPLETE') {
+        const n = Number(detail.empty_exercise_count ?? 0) || '若干'
+        window.alert(`发布被拒：有 ${n} 个动作没有任何组数据，学员端无法显示。\n点顶栏「⚠ 待核对」定位这些行，补上组数或删除后再发布。`)
+      } else if (code === 'PLAN_DAYS_EXCEED_WEEKS') {
+        window.alert(`发布被拒：有训练日排在计划周数（${weeksCount} 周）之外，请删除多余的周或调整计划周数。`)
+      } else if (code === 'EVALUATION_IN_PROGRESS') {
+        window.alert('发布被拒：该学员的评估期还在进行中，评估期内只能发布 1 周适应计划。')
+      } else if (code === 'PLAN_NOT_DRAFT') {
+        window.alert('这份计划已经发布过了。刷新页面获取最新状态。')
+      } else {
+        window.alert(`发布失败${code ? `（${code}）` : ''}，请稍后重试。`)
+      }
       setStatusText('发布失败 · 重试')
     } finally {
       publishing.current = false // always unlatch so 更新计划 / autosave work afterwards
-      if (!becamePublished) saver.current.scheduleAutosave() // still a draft: re-arm so a window edit isn't stranded
+      // Re-arm only if the coach actually edited during the round-trip — a blanket re-arm
+      // triggers a no-op save whose「已自动保存」repaints over the failure status above.
+      if (!becamePublished && latestWeeks.current !== snapshot) saver.current.scheduleAutosave()
     }
   }
 
@@ -538,10 +676,16 @@ export function PlanEditor(props: PlanEditorProps) {
         students={props.students} currentStudentId={props.currentStudentId} onSwitchStudent={guardLeaveId(props.onSwitchStudent)}
         plans={props.plans} currentPlanId={props.currentPlanId} onSwitchPlan={guardLeaveId(props.onSwitchPlan)}
         onNewPlan={guardLeave(props.onNewPlan)} onLogout={guardLeave(props.onLogout)}
+        onRenamePlan={props.onRename ? () => {
+          const name = window.prompt('计划名称', planName)?.trim()
+          if (name && name !== planName) void props.onRename!(name)
+        } : undefined}
         onSave={props.onSave ? handleSave : undefined} saving={saving}
         onImport={props.exerciseIndex && props.planStartDate ? handleImport : undefined}
+        issueCount={issues.length} issueHint={issueHint} onJumpIssue={jumpToNextIssue}
       />
-      <Toolbar weeksCount={weeksCount} curWeekLabel={curWeekLabel} zoomLabel={`${Math.round(zoom)}%`} />
+      <Toolbar weeksCount={weeksCount} curWeekLabel={curWeekLabel} zoomLabel={`${Math.round(zoom)}%`}
+        weekNums={weeks.map((w) => w.num)} onJumpWeek={jumpToWeek} />
       <ContextBar
         visible={!!sel}
         dayLabel={selDayLabel}
@@ -590,6 +734,7 @@ export function PlanEditor(props: PlanEditorProps) {
                         onNameBlur={handleNameBlur}
                         onAddRow={() => addRowToDay(wk.num, day.dow)}
                         onEditRow={(rowId, updater) => editRow(wk.num, day.dow, rowId, updater)}
+                        onDeleteRow={(rowId) => deleteRow(wk.num, day.dow, rowId)}
                       />
                     ))}
                   </div>
