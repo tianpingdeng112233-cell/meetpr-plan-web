@@ -43,13 +43,13 @@ npm run build      # tsc --noEmit && vite build，产物进 dist/
 
 ## 部署
 
-托管在 **Vercel**：https://meetpr-plan-web.vercel.app
+**后端同源 serve**（2026-07-04 起）：站点由 MeetPR 后端直接 serve（`express.static('web')` + 内容协商 SPA fallback），教练**免 VPN** 访问 **http://121.40.160.241:3000/**。
 
-- **手动部署**，没有接 Git 自动发布：在仓库根目录跑 `npx vercel --prod`（等价于 `npm run deploy`）。
-- 后端对接靠 [`vercel.json`](vercel.json) 的 **rewrite 服务端代理**：`/api/:path*` → `http://121.40.160.241:3000/:path*`。浏览器只对同源 `/api` 发请求，Vercel 边缘把它转给 MeetPR 后端，同样是为了绕开 CORS 和 mixed-content（后端是 http，站点是 https）。
-- ⚠️ **大陆访问需开 VPN / 科学上网**——站点托管在海外。这条也写进了给教练的使用指南。
+- 构建产物 `VITE_API_BASE='' npm run build` 放进后端镜像的 `web/`（同源，无需 `/api` 代理）；随后端 `staging` 分支 build-push CI 出镜像，David 在阿里云 SAE（华东1·杭州）手动部署。
+- ⚠️ **Vercel 方案（`meetpr-plan-web.vercel.app`）已弃用**：其 `/api/*` 代理明文 HTTP 后端已坏（502），别再让教练用。
+- 本地开发：`npm run dev` @ 5180（Vite 代理直连后端，免 VPN）。
 
-> 分支现状有坑：GitHub 默认分支与生产实际部署的分支不一致。动分支/部署前先读 [`CLAUDE.md`](CLAUDE.md) 的「分支现状警告」。
+> 分支已归一到 `main`（2026-07-04，`origin/HEAD → main`，默认分支即生产血脉）；仅剩 `feat/002-xlsx-import` 死血脉退休中。细节见 [`CLAUDE.md`](CLAUDE.md) §①「分支现状：双血脉已解」。
 
 ---
 
