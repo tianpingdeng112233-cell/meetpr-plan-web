@@ -2,13 +2,23 @@
 
 给在本仓库干活的 agent（Claude / Codex）看。产品定位、栈、Quick start 见 [`README.md`](README.md)，这里只记**容易踩雷、光看代码看不出来**的东西。
 
+**身份卡（速查 · 坐标；细节见下方分节）**
+
+| 字段 | 值 |
+|---|---|
+| 路径 / 栈 | `~/Projects/apps/meetpr-plan-web`；React 18 + Vite 5 + TS + Tailwind；`npm run dev` @ 5180 |
+| trunk | 默认分支 = `main`（2026-07-04 已归一切换，`origin/HEAD → main`）。`feat/002-xlsx-import` = 死血脉退休中（删除归 **去重波收尾**，别在此删、别动 PR #3） |
+| 部署 | 后端**同源** serve，教练访问 `http://121.40.160.241:3000/`（Vercel 方案已弃用）；`npm run dev` 也直连同后端 |
+| 测试账号 | 教练 `+8613900000001` / 学员 吕子豪（详见 ③）；**密码在 Bitwarden，永不入库**；⚠️ 部分早期测试号直写过 prod RDS |
+| 主 worktree | 与 dedup / autosave 等波共享 → 动仓前 `git worktree list`，被占则另开独立树 |
+
 ---
 
-## ① ⚠️ 分支现状警告：repo 处于「双血脉」状态
+## ① 分支现状：双血脉已解，归一到 `main`（2026-07-04）
 
-**GitHub 默认分支不是生产部署源。** 两条线各自带着对方没有的修复，trunk 归一待 David 拍板。在没归一之前，**动别名表、动分支、做任何跨分支合并前，先停下核实**。
+> **✅ 已归一**：`origin/HEAD → main`，`main` 即生产血脉与默认分支。`feat/002-xlsx-import` = 死血脉退休中（删除归**去重波收尾**，别在此删）。下表是归一前（2026-07-03 审计）的历史快照，保留用来解释**为什么 main 是生产血脉**——别再当作待拍板事项。改别名表前仍按下方方法用 token 实测 prod catalog 命名。
 
-审计时（2026-07-03）实测的两条血脉：
+归一前实测的两条血脉（历史快照）：
 
 | | GitHub 默认分支 | 生产部署源 |
 |---|---|---|
@@ -21,7 +31,7 @@
 - 上面的 tip / 条数是**审计快照，会过期**。真要动之前用 `git log --oneline origin/main origin/feat/002-xlsx-import` 复核，别信这张表的绝对值。
 - **判断 prod 现在到底跑哪套命名，唯一可靠方法是带 token 实测线上后端**：`GET /exercises`（经站点 `/api/exercises` 代理，或直连 `http://121.40.160.241:3000/exercises`），看动作名实际叫什么，再决定别名该指向谁。别拿本地任一分支的 catalog 当准。
 
-**这条 docs 分支基于 `feat/002-xlsx-import`（GitHub 默认分支）开，纯新增文档零代码改动——归一前别动 `main`。**
+**本 docs 分支已 rebase 到 `main`（归一后）：纯新增文档 + 顶部身份卡，零代码改动；不含 feat/002 的死别名 commit。**
 
 ---
 
@@ -56,4 +66,4 @@
 
 - **发布 422 UX 缺口**：`PLAN_PUBLISH_INCOMPLETE` 目前对教练不够友好——没有精确指出是哪天/哪个动作导致不完整。需要把 422 详情映射到具体格子并高亮。
 - **批量写端点**：治本方案是后端提供批量写接口，一把提交整份计划，替掉现在几百个 per-set 请求 + 429 退避的权宜。对应 **spec 009（已 Draft，在 backend 仓）**，落地后 web 侧 reconcile 可大幅简化、限流坑基本消除。
-- **trunk 归一**：见 ①，等 David 拍板后把两条血脉合成一条并重设 `origin/HEAD`。
+- ~~**trunk 归一**~~：✅ 已完成（2026-07-04，归一到 `main`，`origin/HEAD → main`）。残留仅 `feat/002-xlsx-import` 分支退休（删除归去重波收尾）。
