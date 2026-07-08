@@ -2,7 +2,7 @@ import http from 'node:http'
 import https from 'node:https'
 
 const TARGET = process.env.BACKEND_TARGET ?? 'http://121.40.160.241:3000'
-const UPSTREAM_TIMEOUT_MS = 25000
+const UPSTREAM_TIMEOUT_MS = 12000
 const UPSTREAM_ATTEMPTS = 2
 
 const HOP_BY_HOP_HEADERS = new Set([
@@ -53,24 +53,45 @@ function requestUpstream(req, headers, body) {
   return new Promise((resolve, reject) => {
     const url = targetUrl(req)
     const client = url.protocol === 'https:' ? https : http
-    const upstreamReq = client.request(url, {
+    let settled = false
+    let timeout
+    let upstreamReq
+
+    const finish = (callback) => {
+      if (settled) return
+      settled = true
+      clearTimeout(timeout)
+      callback()
+    }
+
+    timeout = setTimeout(() => {
+      upstreamReq?.destroy(new Error('UPSTREAM_TIMEOUT'))
+    }, UPSTREAM_TIMEOUT_MS)
+
+    upstreamReq = client.request(url, {
       method: req.method,
       headers: headerObject(headers),
-      timeout: UPSTREAM_TIMEOUT_MS,
+      agent: false,
     }, (upstreamRes) => {
+      upstreamRes.setTimeout(UPSTREAM_TIMEOUT_MS, () => {
+        upstreamReq.destroy(new Error('UPSTREAM_TIMEOUT'))
+      })
+      upstreamRes.on('error', (error) => finish(() => reject(error)))
       const chunks = []
       upstreamRes.on('data', (chunk) => chunks.push(Buffer.from(chunk)))
       upstreamRes.on('end', () => {
-        resolve({
+        finish(() => resolve({
           statusCode: upstreamRes.statusCode ?? 502,
           headers: upstreamRes.headers,
           body: Buffer.concat(chunks),
-        })
+        }))
       })
     })
 
-    upstreamReq.on('timeout', () => upstreamReq.destroy(new Error('UPSTREAM_TIMEOUT')))
-    upstreamReq.on('error', reject)
+    upstreamReq.setTimeout(UPSTREAM_TIMEOUT_MS, () => {
+      upstreamReq.destroy(new Error('UPSTREAM_TIMEOUT'))
+    })
+    upstreamReq.on('error', (error) => finish(() => reject(error)))
     if (body !== undefined) upstreamReq.write(body)
     upstreamReq.end()
   })
