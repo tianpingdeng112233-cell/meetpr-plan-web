@@ -25,10 +25,16 @@ function numStr(v: string): string {
   return Number.isNaN(n) ? v : String(n)
 }
 
-function parseReps(reps: string): { reps: number; amrap: boolean } {
+function parseReps(reps: string): { reps: number; repsMax: number | null; amrap: boolean } {
+  const range = reps.match(/(\d{1,2})\s*(?:-|–|—|~|到|至)\s*(\d{1,2})/)
+  if (range) {
+    const lo = Math.min(Math.max(Number(range[1]), 1), 50)
+    const hi = Math.min(Math.max(Number(range[2]), lo), 50)
+    return { reps: lo, repsMax: hi, amrap: false }
+  }
   const amrap = reps.includes('+')
   const n = parseInt(reps, 10)
-  return { reps: Number.isFinite(n) ? Math.min(Math.max(n, 1), 50) : 1, amrap }
+  return { reps: Number.isFinite(n) ? Math.min(Math.max(n, 1), 50) : 1, repsMax: null, amrap }
 }
 
 /** A bound row -> desired backend exercise. Unbound rows (no exerciseId) -> null. */
@@ -36,10 +42,11 @@ function rowToDesired(row: ExerciseRow): DesiredExercise | null {
   if (!row.exerciseId) return null
   const mode: IntensityModeWire = row.mode === 'rpe' ? 'rpe' : 'weight'
   const filled = row.boxes.filter((b) => !b.empty && b.val !== '')
-  const { reps, amrap } = parseReps(row.reps)
+  const { reps, repsMax, amrap } = parseReps(row.reps)
   const sets: CreatePlanSetBody[] = filled.map((b, i) => ({
     set_number: i + 1,
     target_reps: reps,
+    target_reps_max: repsMax,
     intensity_mode: mode,
     target_value: numStr(b.val),
     set_type: (amrap && i === filled.length - 1 ? 'amrap' : 'working') as SetType,
@@ -50,7 +57,9 @@ function rowToDesired(row: ExerciseRow): DesiredExercise | null {
 function canonDesired(exs: DesiredExercise[]): string {
   return JSON.stringify(exs.map((e) => ({
     x: e.exercise_id, m: e.is_main_lift, n: e.notes ?? '',
-    s: e.sets.map((s) => [s.set_number, s.target_reps, s.intensity_mode, numStr(s.target_value), s.set_type]),
+    s: e.sets.map((s) => [
+      s.set_number, s.target_reps, s.target_reps_max ?? null, s.intensity_mode, numStr(s.target_value), s.set_type,
+    ]),
   })))
 }
 
@@ -59,7 +68,9 @@ function canonServer(exs: PlanExerciseResponse[]): string {
   return JSON.stringify(sorted.map((e) => ({
     x: e.exercise_id, m: e.is_main_lift, n: e.notes ?? '',
     s: [...e.sets].sort((a, b) => a.set_number - b.set_number)
-      .map((s) => [s.set_number, s.target_reps, s.intensity_mode, numStr(s.target_value), s.set_type]),
+      .map((s) => [
+        s.set_number, s.target_reps, s.target_reps_max ?? null, s.intensity_mode, numStr(s.target_value), s.set_type,
+      ]),
   })))
 }
 

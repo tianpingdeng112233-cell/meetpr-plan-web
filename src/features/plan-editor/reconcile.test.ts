@@ -58,4 +58,26 @@ describe('reconcilePlan — skippedRows counts only contentful unbound rows', ()
     const res = await reconcilePlan('p', [weekWithMondayRows(rows)])
     expect(res.skippedRows).toBe(0)
   })
+
+  it('writes rep ranges as target_reps_max and includes the max in diffing', async () => {
+    const rows = [
+      row({
+        id: 'a',
+        exerciseId: 'ex1',
+        name: '帕洛夫推+旋转',
+        reps: '10-12',
+        boxes: [{ val: '9', empty: false }],
+        mode: 'rpe',
+      }),
+    ]
+
+    await reconcilePlan('p', [weekWithMondayRows(rows)])
+
+    expect(plans.createSet).toHaveBeenCalledWith('pe1', expect.objectContaining({
+      target_reps: 10,
+      target_reps_max: 12,
+      intensity_mode: 'rpe',
+      target_value: '9',
+    }))
+  })
 })

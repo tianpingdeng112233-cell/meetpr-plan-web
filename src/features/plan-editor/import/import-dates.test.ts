@@ -12,7 +12,7 @@ function weekAt(serialBase: number): ParsedWeek {
       {
         dayOfWeek: 0,
         rest: false,
-        exercises: [{ rawName: '深蹲', reps: '5', mode: 'kg', values: ['100'], note: '' }],
+        exercises: [{ rawName: '深蹲', setCount: 1, reps: '5', mode: 'kg', values: ['100'], note: '' }],
       },
     ],
   }

@@ -16,6 +16,7 @@ export interface Grid {
 
 export interface ParsedExercise {
   rawName: string
+  setCount: number
   reps: string
   mode: IntensityMode
   values: string[]
@@ -41,6 +42,7 @@ export interface WeekBlock {
 }
 
 export interface ParsedSetLine {
+  setCount: number
   reps: string
   mode: IntensityMode
   values: string[]
@@ -186,10 +188,33 @@ function normalizeDecimal(n: number): string {
   return String(Number(rounded.toFixed(2)))
 }
 
+function repsText(min: string, max?: string): string {
+  const lo = Number(min)
+  const hi = max == null ? null : Number(max)
+  if (!Number.isFinite(lo)) return '—'
+  if (hi == null || !Number.isFinite(hi) || hi === lo) return String(lo)
+  return `${lo}-${hi}`
+}
+
 function parseSetReps(text: string): { setCount: number; reps: string } {
-  const match = text.match(/(\d{1,2})\s*(?:[*xX×]\s*|组\s*)(\d{1,2})/)
-  if (!match) return { setCount: 0, reps: '—' }
-  return { setCount: Number(match[1]), reps: String(Number(match[2])) }
+  const full = text.match(
+    /(\d{1,2})\s*(?:[*xX×]\s*|组\s*)(\d{1,2})(?:\s*(?:-|–|—|~|到|至)\s*(\d{1,2}))?\s*(?:个|次)?/,
+  )
+  if (full) return { setCount: Number(full[1]), reps: repsText(full[2], full[3]) }
+
+  const setOnly = text.match(/(\d{1,2})\s*组/)
+  if (!setOnly) return { setCount: 0, reps: '—' }
+
+  const rest = text.slice((setOnly.index ?? 0) + setOnly[0].length)
+  const range = rest.match(/(\d{1,2})\s*(?:-|–|—|~|到|至)\s*(\d{1,2})\s*(?:个|次)?/)
+  if (range) return { setCount: Number(setOnly[1]), reps: repsText(range[1], range[2]) }
+
+  if (!/\brpe\b/i.test(rest)) {
+    const single = rest.match(/(\d{1,2})\s*(?:个|次)?/)
+    if (single) return { setCount: Number(setOnly[1]), reps: repsText(single[1]) }
+  }
+
+  return { setCount: Number(setOnly[1]), reps: '—' }
 }
 
 function noteJoin(parts: string[]): string {
@@ -278,6 +303,8 @@ function unknownNoteForField(field: string): string {
   const cleaned = cleanValueText(field)
     .replace(/\d+(?:\.\d+)?\s*%\s*top|%top|\btop\b/gi, '')
     .replace(/\b\d{1,2}\s*(?:[*xX×]\s*|组\s*)\d{1,2}\b/g, '')
+    .replace(/\d{1,2}\s*组/g, '')
+    .replace(/\d{1,2}\s*(?:-|–|—|~|到|至)\s*\d{1,2}\s*(?:个|次)?/g, '')
     .trim()
   if (!cleaned || parsePlainNumber(cleaned) != null) return ''
   return cleaned
@@ -312,6 +339,7 @@ export function parseSetLine(setsCell: string, intensityCell: string, float1: st
   })
 
   return {
+    setCount,
     reps: amrap && baseReps !== '—' && !baseReps.endsWith('+') ? `${baseReps}+` : baseReps,
     mode,
     values,
@@ -364,6 +392,7 @@ export function parseDay(grid: Grid, rows: number[], dayIndex: number, offset: n
       const last = exercises[exercises.length - 1]
       if (!last) continue
       last.values.push(...line.values)
+      if (last.setCount === 0 && line.setCount > 0) last.setCount = line.setCount
       if (last.reps === '—' && line.reps !== '—') last.reps = line.reps
       if (line.note) last.note = appendNote(last.note, line.note)
       continue
@@ -372,6 +401,7 @@ export function parseDay(grid: Grid, rows: number[], dayIndex: number, offset: n
     for (const name of names) {
       exercises.push({
         rawName: name,
+        setCount: line.setCount,
         reps: line.reps,
         mode: line.mode,
         values: [...line.values],
@@ -393,7 +423,10 @@ function resolveExercise(index: ExerciseIndex, name: string): ExerciseResponse |
 
 function rowFromParsed(exercise: ParsedExercise, resolved: ExerciseResponse | null, id: string): ExerciseRow {
   const custom = resolved?.created_by_coach_id != null
-  const boxes: SetBox[] = exercise.values.map((value) => ({ val: value, empty: value.trim() === '' }))
+  const values = exercise.values.length > 0
+    ? exercise.values
+    : Array.from({ length: exercise.setCount }, () => '')
+  const boxes: SetBox[] = values.map((value) => ({ val: value, empty: value.trim() === '' }))
   return {
     id,
     exerciseId: resolved?.id ?? null,

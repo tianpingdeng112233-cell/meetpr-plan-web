@@ -140,6 +140,7 @@ describe('weekBlocks and selectSheet', () => {
 describe('parseSetLine', () => {
   it('parses set and reps with broadcast kg values', () => {
     expect(parseSetLine('3*5', '100', '', '')).toMatchObject({
+      setCount: 3,
       reps: '5',
       mode: 'kg',
       values: ['100', '100', '100'],
@@ -155,6 +156,7 @@ describe('parseSetLine', () => {
 
   it('parses compact RPE strings when an rpe marker is present', () => {
     expect(parseSetLine('4*12', '6788', 'rpe', '')).toMatchObject({
+      setCount: 4,
       reps: '12',
       mode: 'rpe',
       values: ['6', '7', '8', '8'],
@@ -187,6 +189,26 @@ describe('parseSetLine', () => {
     expect(result.note).toContain('长暂停2s')
     expect(result.note).toContain('降组')
   })
+
+  it('parses set-only prescriptions with repeated rpe values', () => {
+    expect(parseSetLine('4 组', 'rpe', '9', '')).toMatchObject({
+      setCount: 4,
+      reps: '—',
+      mode: 'rpe',
+      values: ['9', '9', '9', '9'],
+      note: '',
+    })
+  })
+
+  it('parses set-only prescriptions with rep ranges in a later cell', () => {
+    expect(parseSetLine('4 组', '', '10 到 12 个', '')).toMatchObject({
+      setCount: 4,
+      reps: '10-12',
+      mode: 'kg',
+      values: [],
+      note: '',
+    })
+  })
 })
 
 describe('parseDay', () => {
@@ -216,6 +238,34 @@ describe('parseDay', () => {
     expect(parsed.exercises[1].rawName).toBe('卧推')
     expect(parsed.exercises[2].rawName).toBe('划船')
   })
+
+  it('keeps set-only rows so bodyweight accessory work is imported', () => {
+    const g = grid([
+      [2, 1, '平板侧支撑'],
+      [2, 2, '4 组'],
+      [2, 3, 'rpe'],
+      [2, 4, '9'],
+      [3, 1, '帕洛夫推+旋转'],
+      [3, 2, '4 组'],
+      [3, 4, '10 到 12 个'],
+    ])
+
+    const parsed = parseDay(g, [2, 3], 0, 1)
+
+    expect(parsed.exercises[0]).toMatchObject({
+      rawName: '平板侧支撑',
+      setCount: 4,
+      reps: '—',
+      mode: 'rpe',
+      values: ['9', '9', '9', '9'],
+    })
+    expect(parsed.exercises[1]).toMatchObject({
+      rawName: '帕洛夫推+旋转',
+      setCount: 4,
+      reps: '10-12',
+      values: [],
+    })
+  })
 })
 
 describe('buildWeeks', () => {
@@ -234,17 +284,17 @@ describe('buildWeeks', () => {
           dayOfWeek: 0,
           rest: false,
           exercises: [
-            { rawName: '卧推', reps: '5', mode: 'kg', values: ['80'], note: '' },
-            { rawName: '自定义动作', reps: '—', mode: 'kg', values: [], note: '4*12' },
-            { rawName: '不存在', reps: '8', mode: 'rpe', values: ['7'], note: '' },
-            { rawName: '低杆深蹲', reps: '3', mode: 'kg', values: ['120'], note: '' },
+            { rawName: '卧推', setCount: 1, reps: '5', mode: 'kg', values: ['80'], note: '' },
+            { rawName: '自定义动作', setCount: 0, reps: '—', mode: 'kg', values: [], note: '4*12' },
+            { rawName: '不存在', setCount: 1, reps: '8', mode: 'rpe', values: ['7'], note: '' },
+            { rawName: '低杆深蹲', setCount: 1, reps: '3', mode: 'kg', values: ['120'], note: '' },
           ],
         }],
       },
       {
         blockIndex: 2,
         dateSerials: [46027],
-        days: [{ dayOfWeek: 1, rest: false, exercises: [{ rawName: '卧推', reps: '3', mode: 'kg', values: ['90'], note: '' }] }],
+        days: [{ dayOfWeek: 1, rest: false, exercises: [{ rawName: '卧推', setCount: 1, reps: '3', mode: 'kg', values: ['90'], note: '' }] }],
       },
     ]
 
@@ -263,12 +313,44 @@ describe('buildWeeks', () => {
     expect(lowbar).toMatchObject({ exerciseId: 'lowbar', name: '低杠位深蹲', isMain: true })
   })
 
+  it('keeps set count boxes for set-only rows without inventing intensity values', () => {
+    const index = new ExerciseIndex([exercise('pallof', '帕洛夫推+旋转')])
+    const { weeks } = buildWeeks([{
+      blockIndex: 0,
+      dateSerials: [],
+      days: [{
+        dayOfWeek: 0,
+        rest: false,
+        exercises: [{
+          rawName: '帕洛夫推+旋转',
+          setCount: 4,
+          reps: '10-12',
+          mode: 'kg',
+          values: [],
+          note: '',
+        }],
+      }],
+    }], index, '2026-06-01')
+
+    expect(weeks[0].days[0].rows[0]).toMatchObject({
+      exerciseId: 'pallof',
+      reps: '10-12',
+      aux: false,
+      boxes: [
+        { val: '', empty: true },
+        { val: '', empty: true },
+        { val: '', empty: true },
+        { val: '', empty: true },
+      ],
+    })
+  })
+
   it('does not resolve aliases whose canonical exercise is absent from the catalog', () => {
     const index = new ExerciseIndex([exercise('other', '杠铃卧推')])
     const { weeks } = buildWeeks([{
       blockIndex: 0,
       dateSerials: [],
-      days: [{ dayOfWeek: 0, rest: false, exercises: [{ rawName: '低杆深蹲', reps: '5', mode: 'kg', values: ['100'], note: '' }] }],
+      days: [{ dayOfWeek: 0, rest: false, exercises: [{ rawName: '低杆深蹲', setCount: 1, reps: '5', mode: 'kg', values: ['100'], note: '' }] }],
     }], index, '2026-06-01')
 
     expect(weeks[0].days[0].rows[0]).toMatchObject({
