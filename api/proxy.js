@@ -1,3 +1,6 @@
+import http from 'node:http'
+import https from 'node:https'
+
 const TARGET = process.env.BACKEND_TARGET ?? 'http://121.40.160.241:3000'
 const UPSTREAM_TIMEOUT_MS = 25000
 const UPSTREAM_ATTEMPTS = 2
@@ -40,6 +43,39 @@ function bodyFor(req) {
   return JSON.stringify(req.body)
 }
 
+function headerObject(headers) {
+  const out = {}
+  headers.forEach((value, key) => { out[key] = value })
+  return out
+}
+
+function requestUpstream(req, headers, body) {
+  return new Promise((resolve, reject) => {
+    const url = targetUrl(req)
+    const client = url.protocol === 'https:' ? https : http
+    const upstreamReq = client.request(url, {
+      method: req.method,
+      headers: headerObject(headers),
+      timeout: UPSTREAM_TIMEOUT_MS,
+    }, (upstreamRes) => {
+      const chunks = []
+      upstreamRes.on('data', (chunk) => chunks.push(Buffer.from(chunk)))
+      upstreamRes.on('end', () => {
+        resolve({
+          statusCode: upstreamRes.statusCode ?? 502,
+          headers: upstreamRes.headers,
+          body: Buffer.concat(chunks),
+        })
+      })
+    })
+
+    upstreamReq.on('timeout', () => upstreamReq.destroy(new Error('UPSTREAM_TIMEOUT')))
+    upstreamReq.on('error', reject)
+    if (body !== undefined) upstreamReq.write(body)
+    upstreamReq.end()
+  })
+}
+
 export default async function handler(req, res) {
   const headers = new Headers()
   for (const [key, value] of Object.entries(req.headers)) {
@@ -52,32 +88,25 @@ export default async function handler(req, res) {
   try {
     let upstream = null
     let lastError = null
-    for (let attempt = 1; attempt <= UPSTREAM_ATTEMPTS; attempt++) {
-      const controller = new AbortController()
-      const timeout = setTimeout(() => controller.abort(), UPSTREAM_TIMEOUT_MS)
+    const method = req.method ?? 'GET'
+    const attempts = method === 'GET' || method === 'HEAD' ? UPSTREAM_ATTEMPTS : 1
+    const body = bodyFor(req)
+    for (let attempt = 1; attempt <= attempts; attempt++) {
       try {
-        upstream = await fetch(targetUrl(req), {
-          method: req.method,
-          headers,
-          body: bodyFor(req),
-          redirect: 'manual',
-          signal: controller.signal,
-        })
+        upstream = await requestUpstream(req, headers, body)
         break
       } catch (error) {
         lastError = error
-        if (attempt === UPSTREAM_ATTEMPTS) throw error
-      } finally {
-        clearTimeout(timeout)
+        if (attempt === attempts) throw error
       }
     }
     if (!upstream) throw lastError ?? new Error('No upstream response')
 
-    res.statusCode = upstream.status
-    upstream.headers.forEach((value, key) => {
+    res.statusCode = upstream.statusCode
+    for (const [key, value] of Object.entries(upstream.headers)) {
       if (!HOP_BY_HOP_HEADERS.has(key.toLowerCase())) res.setHeader(key, value)
-    })
-    res.send(Buffer.from(await upstream.arrayBuffer()))
+    }
+    res.send(upstream.body)
   } catch (error) {
     const name = error instanceof Error ? error.name : 'UnknownError'
     const message = error instanceof Error ? error.message : String(error)
