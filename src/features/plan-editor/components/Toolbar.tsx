@@ -21,7 +21,7 @@ export function Toolbar({ weeksCount, curWeekLabel, zoomLabel, weekNums, onJumpW
       <span className="t-mono-label" style={{ fontSize: 10, letterSpacing: '.1em', color: 'var(--fg-tertiary)' }}>MESOCYCLE</span>
       <span style={{ fontWeight: 600 }}>{weeksCount} 周 · 周期化</span>
       <span style={{ width: 1, height: 16, background: 'var(--border)' }} />
-      <span style={{ color: 'var(--fg-tertiary)' }}>当前</span>
+      <span style={{ color: 'var(--fg-tertiary)' }}>可见</span>
       <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--brand-red)', fontWeight: 600, letterSpacing: '.04em' }}>
         {curWeekLabel}
       </span>

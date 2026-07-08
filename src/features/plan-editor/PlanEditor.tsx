@@ -64,6 +64,18 @@ function hasParsedWeekContent(week: ParsedWeek): boolean {
   return week.days.some((day) => day.exercises.length > 0)
 }
 
+function weekLabel(num: number): string {
+  return `W${String(num).padStart(2, '0')} · 第 ${num} 周`
+}
+
+function importRangeLabel(weeks: Week[]): string {
+  const first = weeks[0]
+  const last = weeks[weeks.length - 1]
+  const start = first?.days[0]?.dateLabel
+  const end = last?.days[6]?.dateLabel
+  return start && end ? `${start}–${end}` : ''
+}
+
 export function PlanEditor(props: PlanEditorProps) {
   const { initialWeeks, weeksCount, studentName, planName, initialPublished = false, onPublish } = props
   const [weeks, setWeeks] = useState<Week[]>(initialWeeks)
@@ -81,7 +93,7 @@ export function PlanEditor(props: PlanEditorProps) {
   const [published, setPublished] = useState(initialPublished)
   const [statusText, setStatusText] = useState(initialPublished ? `已发布给 ${studentName}` : '草稿 · 已存')
   const [copyDone, setCopyDone] = useState(false)
-  const [curWeekLabel, setCurWeekLabel] = useState('W03 · 第 3 周')
+  const [curWeekLabel, setCurWeekLabel] = useState('—')
   const [pop, setPop] = useState<PopState>({ visible: false, x: 0, y: 0, wnum: 0, dow: 0, rowId: '', query: '' })
   const [createExercise, setCreateExercise] = useState<CreateExerciseState>({ open: false, initialName: '', bindTarget: null })
   const [creatingExercise, setCreatingExercise] = useState(false)
@@ -135,7 +147,7 @@ export function PlanEditor(props: PlanEditorProps) {
     sc.querySelectorAll<HTMLElement>('.weekband').forEach((b) => {
       if (b.getBoundingClientRect().top - top <= 12) cur = b.dataset.wnum ?? null
     })
-    if (cur) setCurWeekLabel(`W${String(cur).padStart(2, '0')} · 第 ${cur} 周`)
+    if (cur) setCurWeekLabel(weekLabel(Number(cur)))
   }, [])
 
   // ---- initial fit + scroll to current week ----
@@ -596,7 +608,13 @@ export function PlanEditor(props: PlanEditorProps) {
 
       setWeeks(nextWeeks)
       importedStart.current = importStart
-      setSel(null)
+      const targetWeek = nextWeeks.find((week) => week.isCurrent) ?? nextWeeks[0]
+      const firstTrain = targetWeek?.days.find((day) => !day.rest)
+      setSel(targetWeek && firstTrain ? { wnum: targetWeek.num, dow: firstTrain.dow } : null)
+      if (targetWeek) {
+        setCurWeekLabel(weekLabel(targetWeek.num))
+        window.setTimeout(() => jumpToWeek(targetWeek.num), 80)
+      }
       setPop((p) => ({ ...p, visible: false }))
       // Name the plan after the file (usually the student), so the plan switcher stops
       // filling up with indistinguishable「新计划」s. The coach can rename via the dropdown.
@@ -611,6 +629,8 @@ export function PlanEditor(props: PlanEditorProps) {
       } else {
         truncation = `已导入 ${imported} 周 · 未保存`
       }
+      const range = importRangeLabel(nextWeeks)
+      if (range) truncation += `（${range}）`
       setStatusText(truncation)
       if (dropped > 0) window.alert(truncation)
     } catch {
