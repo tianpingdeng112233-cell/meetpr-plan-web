@@ -7,13 +7,17 @@ import { Toolbar } from './components/Toolbar'
 import { ContextBar } from './components/ContextBar'
 import { DayColumn } from './components/DayColumn'
 import { ExercisePopover } from './components/ExercisePopover'
+import { CustomExerciseDialog } from './components/CustomExerciseDialog'
 import type { ExerciseIndex, ExerciseHit } from './exerciseIndex'
+import type { CreateCustomExerciseInput } from '../../api/exercises'
 import type { ParsedWeek } from './import'
 import type { SaveResult } from './reconcile'
 import { createSaveController } from './autosave'
 
 interface Sel { wnum: number; dow: number }
 interface PopState { visible: boolean; x: number; y: number; wnum: number; dow: number; rowId: string; query: string }
+interface RowTarget { wnum: number; dow: number; rowId: string }
+interface CreateExerciseState { open: boolean; initialName: string; bindTarget: RowTarget | null }
 
 const COPY_LABEL = '⎘ 复制上周计划到本周'
 
@@ -38,7 +42,7 @@ export interface PlanEditorProps {
   /** Exercise catalog + alias index for name-cell binding. */
   exerciseIndex?: ExerciseIndex | null
   /** Create a custom exercise and return its id+name (adds to the index). */
-  onCreateExercise?: (name: string) => Promise<{ id: string; name: string }>
+  onCreateExercise?: (input: CreateCustomExerciseInput) => Promise<{ id: string; name: string }>
   // top-bar switchers (connected mode)
   students?: Switcher[]
   currentStudentId?: string
@@ -79,6 +83,9 @@ export function PlanEditor(props: PlanEditorProps) {
   const [copyDone, setCopyDone] = useState(false)
   const [curWeekLabel, setCurWeekLabel] = useState('W03 · 第 3 周')
   const [pop, setPop] = useState<PopState>({ visible: false, x: 0, y: 0, wnum: 0, dow: 0, rowId: '', query: '' })
+  const [createExercise, setCreateExercise] = useState<CreateExerciseState>({ open: false, initialName: '', bindTarget: null })
+  const [creatingExercise, setCreatingExercise] = useState(false)
+  const [createExerciseError, setCreateExerciseError] = useState('')
 
   const rootRef = useRef<HTMLDivElement>(null)
   const scrollerRef = useRef<HTMLDivElement>(null)
@@ -276,11 +283,36 @@ export function PlanEditor(props: PlanEditorProps) {
     bindRowAt({ wnum: pop.wnum, dow: pop.dow, rowId: pop.rowId }, hit.id, hit.name, false)
     setPop((p) => ({ ...p, visible: false }))
   }
+  const openCreateExercise = (initialName = '', bindTarget: RowTarget | null = null) => {
+    if (!props.onCreateExercise) return
+    setCreateExerciseError('')
+    setCreateExercise({ open: true, initialName, bindTarget })
+  }
+  const closeCreateExercise = () => {
+    if (creatingExercise) return
+    setCreateExercise((s) => ({ ...s, open: false }))
+    setCreateExerciseError('')
+  }
   const onCreateCustom = async (name: string) => {
     const target = { wnum: pop.wnum, dow: pop.dow, rowId: pop.rowId }
     setPop((p) => ({ ...p, visible: false }))
-    if (!props.onCreateExercise) return
-    try { const e = await props.onCreateExercise(name); bindRowAt(target, e.id, e.name, true) } catch { /* ignore */ }
+    openCreateExercise(name, target)
+  }
+  const submitCreateExercise = async (input: CreateCustomExerciseInput) => {
+    if (!props.onCreateExercise || creatingExercise) return
+    setCreatingExercise(true)
+    setCreateExerciseError('')
+    try {
+      const e = await props.onCreateExercise(input)
+      if (createExercise.bindTarget) bindRowAt(createExercise.bindTarget, e.id, e.name, true)
+      setStatusText(`已创建动作「${e.name}」`)
+      setCreateExercise({ open: false, initialName: '', bindTarget: null })
+    } catch (e) {
+      const code = e instanceof ApiException ? e.code : ''
+      setCreateExerciseError(code ? `创建失败（${code}）` : '创建失败，请重试')
+    } finally {
+      setCreatingExercise(false)
+    }
   }
 
   const patchSelDay = (updater: (d: DayCol) => DayCol) => {
@@ -682,6 +714,7 @@ export function PlanEditor(props: PlanEditorProps) {
         } : undefined}
         onSave={props.onSave ? handleSave : undefined} saving={saving}
         onImport={props.exerciseIndex && props.planStartDate ? handleImport : undefined}
+        onNewExercise={props.onCreateExercise ? () => openCreateExercise() : undefined}
         issueCount={issues.length} issueHint={issueHint} onJumpIssue={jumpToNextIssue}
       />
       <Toolbar weeksCount={weeksCount} curWeekLabel={curWeekLabel} zoomLabel={`${Math.round(zoom)}%`}
@@ -749,7 +782,15 @@ export function PlanEditor(props: PlanEditorProps) {
       <ExercisePopover
         visible={pop.visible} x={pop.x} y={pop.y}
         index={props.exerciseIndex ?? null} query={pop.query}
-        onPick={onPickHit} onCreateCustom={onCreateCustom}
+        onPick={onPickHit} onCreateCustom={props.onCreateExercise ? onCreateCustom : undefined}
+      />
+      <CustomExerciseDialog
+        open={createExercise.open}
+        initialName={createExercise.initialName}
+        saving={creatingExercise}
+        error={createExerciseError}
+        onClose={closeCreateExercise}
+        onSubmit={submitCreateExercise}
       />
     </div>
   )

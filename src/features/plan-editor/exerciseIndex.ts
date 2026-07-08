@@ -50,5 +50,12 @@ export class ExerciseIndex {
     return hits.slice(0, limit)
   }
 
-  add(e: ExerciseResponse) { this.catalog.push(e); this.byName.set(e.name, e) }
+  add(e: ExerciseResponse) {
+    if (!this.catalog.some((item) => item.id === e.id)) this.catalog.push(e)
+    this.byName.set(e.name, e)
+  }
+
+  withAdded(e: ExerciseResponse): ExerciseIndex {
+    return new ExerciseIndex(this.catalog.some((item) => item.id === e.id) ? this.catalog : [...this.catalog, e])
+  }
 }

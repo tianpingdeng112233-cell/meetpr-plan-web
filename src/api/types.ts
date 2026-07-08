@@ -83,11 +83,63 @@ export interface ExerciseResponse {
   id: string
   name: string
   name_en: string | null
-  exercise_type: string
-  main_lift_family: string | null
+  exercise_type: ExerciseType
+  main_lift_family: LiftFamily | null
   is_competition_lift: boolean
   created_by_coach_id: string | null
   created_at: string
+}
+
+export type LiftFamily = 'squat' | 'bench' | 'deadlift'
+export type ExerciseType = 'main_lift' | 'main_lift_variation' | 'accessory'
+export type MuscleGroup =
+  | 'adductor'
+  | 'back'
+  | 'biceps'
+  | 'calf'
+  | 'cardio'
+  | 'chest'
+  | 'core'
+  | 'forearm'
+  | 'glute'
+  | 'grip'
+  | 'hamstring'
+  | 'hip'
+  | 'hip_flexor'
+  | 'mobility'
+  | 'quad'
+  | 'shoulder'
+  | 'tibialis'
+  | 'trap'
+  | 'triceps'
+export type Equipment =
+  | 'band'
+  | 'barbell'
+  | 'bodyweight'
+  | 'cable'
+  | 'dumbbell'
+  | 'kettlebell'
+  | 'machine'
+  | 'other'
+  | 'specialty_bar'
+export type MovementPattern =
+  | 'squat'
+  | 'hip_hinge'
+  | 'horizontal_push'
+  | 'vertical_push'
+  | 'horizontal_pull'
+  | 'vertical_pull'
+  | 'warm_up'
+  | 'other'
+
+export interface CreateCustomExerciseBody {
+  name: string
+  exercise_type: 'accessory'
+  main_lift_family: null
+  is_competition_lift: false
+  muscle_groups: MuscleGroup[]
+  equipment: Equipment[]
+  movement_pattern: MovementPattern[]
 }
 
 // ---- request bodies ----

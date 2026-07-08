@@ -22,6 +22,7 @@ interface Props {
   onSave?: () => void
   saving?: boolean
   onImport?: (file: File) => void | Promise<void>
+  onNewExercise?: () => void
   /** Rows needing attention (unbound / no sets); click cycles to the next one. */
   issueCount?: number
   issueHint?: string
@@ -132,6 +133,15 @@ export function TopBar(p: Props) {
         <span style={{ width: 7, height: 7, borderRadius: '50%', background: p.published ? 'var(--green)' : 'var(--fg-tertiary)' }} />
         <span>{p.statusText}</span>
       </span>
+      {p.onNewExercise && (
+        <button onClick={p.onNewExercise} disabled={p.saving} style={{
+          background: 'transparent', color: 'var(--fg-secondary)', border: '1px solid var(--border-strong)',
+          borderRadius: 10, padding: '8px 13px', fontFamily: 'var(--font-sans)', fontWeight: 600, fontSize: 13,
+          cursor: p.saving ? 'default' : 'pointer', lineHeight: 1, opacity: p.saving ? 0.6 : 1,
+        }}>
+          ＋ 动作
+        </button>
+      )}
       {p.onImport && (
         <>
           <input

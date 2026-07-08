@@ -156,9 +156,15 @@ export function PlanWorkspace({ onLogout }: Props) {
           setLoaded((prev) => (prev && prev.plan.id === updated.id ? { ...prev, plan: updated } : prev))
         } : undefined}
         exerciseIndex={index}
-        onCreateExercise={async (name) => {
-          const e = await createCustomExercise(name)
-          index?.add(e)
+        onCreateExercise={async (input) => {
+          const e = await createCustomExercise(input)
+          const custom = e.created_by_coach_id != null
+          setCatalog((prev) => {
+            const next = new Map(prev ?? [])
+            next.set(e.id, { name: e.name, custom })
+            return next
+          })
+          setIndex((prev) => (prev ? prev.withAdded(e) : new ExerciseIndex([e])))
           return { id: e.id, name: e.name }
         }}
         students={studentOpts}

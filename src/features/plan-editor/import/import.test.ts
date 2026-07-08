@@ -51,7 +51,7 @@ function exercise(
     id,
     name,
     name_en: null,
-    exercise_type: 'strength',
+    exercise_type: 'accessory',
     main_lift_family: null,
     is_competition_lift: false,
     created_by_coach_id: null,
