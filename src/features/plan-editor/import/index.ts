@@ -415,27 +415,38 @@ export function excelSerialToISODate(serial: number): string {
   return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`
 }
 
-/** Plan start date taken from the sheet itself: Monday of the first week that has
- *  exercises, so imported dates match the source (spec 002 — keep original dates).
+/** Plan start date taken from the sheet itself: Monday of the first selected
+ *  calendar week, so imported dates match the source (spec 002 — keep original dates).
  *  Serials run Mon..Sun consecutively, so `serial − dayIndex` is that week's Monday.
  *  nil when no usable date serial is present. */
 export function importStartDate(weeks: ParsedWeek[]): string | null {
-  const first = weeks.find(weekHasExercises)
+  const first = weeks.find((week) => week.dateSerials.some((s) => s != null && s >= 10_000))
   if (!first) return null
   const idx = first.dateSerials.findIndex((s) => s != null && s >= 10_000)
   if (idx < 0) return null
   return excelSerialToISODate((first.dateSerials[idx] as number) - idx)
 }
 
+function latestCalendarWindow(parsed: ParsedWeek[]): ParsedWeek[] {
+  const contentIndexes: number[] = []
+  parsed.forEach((week, index) => {
+    if (weekHasExercises(week)) contentIndexes.push(index)
+  })
+  if (contentIndexes.length === 0) return []
+
+  const firstContentIndex = contentIndexes[0]
+  const lastContentIndex = contentIndexes[contentIndexes.length - 1]
+  const startIndex = Math.max(firstContentIndex, lastContentIndex - LATEST_WEEKS + 1)
+  return parsed.slice(startIndex, lastContentIndex + 1)
+}
+
 export function buildWeeks(
   parsed: ParsedWeek[], index: ExerciseIndex, startDate: string,
 ): { weeks: Week[]; startDate: string } {
-  // Import the latest mesocycle: the last LATEST_WEEKS weeks that have content. The save
-  // (reconcileImportedPlan) sizes the plan to the imported week count, so the import no
-  // longer caps to the current plan's plan_weeks.
-  const sourceWeeks = parsed
-    .filter(weekHasExercises)
-    .slice(-LATEST_WEEKS)
+  // Import the latest mesocycle as a calendar window ending at the last week with content.
+  // Keep empty weeks inside that window; dropping them would compress later dated content
+  // (for example July rows) into earlier labels after save/reload.
+  const sourceWeeks = latestCalendarWindow(parsed)
   // Date the plan from the sheet itself so imported dates match the source (spec 002
   // option A); fall back to the plan's own start_date only when the sheet has no dates.
   const effectiveStart = importStartDate(sourceWeeks) ?? startDate

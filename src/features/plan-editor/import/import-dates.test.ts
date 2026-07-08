@@ -18,12 +18,20 @@ function weekAt(serialBase: number): ParsedWeek {
   }
 }
 
+function emptyWeekAt(serialBase: number): ParsedWeek {
+  return {
+    blockIndex: 0,
+    dateSerials: Array.from({ length: 7 }, (_, d) => serialBase + d),
+    days: Array.from({ length: 7 }, (_, dayOfWeek) => ({ dayOfWeek, rest: false, exercises: [] })),
+  }
+}
+
 describe('import dates — keep the source plan dates (spec 002 option A)', () => {
   it('converts an Excel date serial to an ISO date', () => {
     expect(excelSerialToISODate(46020)).toBe('2025-12-29') // 许可 2026 sheet, week 1 Monday
   })
 
-  it('derives the plan start from the first content week Monday', () => {
+  it('derives the plan start from the first selected calendar week Monday', () => {
     expect(importStartDate([weekAt(46020)])).toBe('2025-12-29')
   })
 
@@ -40,5 +48,25 @@ describe('import dates — keep the source plan dates (spec 002 option A)', () =
     expect(built).toHaveLength(12)
     expect(built[0].num).toBe(1) // re-numbered from 1
     expect(built[0].days[0].dateLabel).toBe('4/13') // original week 16 = 2026-04-13
+  })
+
+  it('keeps blank calendar weeks inside the latest import window so late rows keep their dates', () => {
+    // Real coach sheets can contain an older block, several blank template weeks,
+    // then a newer block ending in July. Those blank weeks must not be filtered out
+    // or the July sessions get relabeled as June in the editor and after save.
+    const may11 = 46153
+    const weeks: ParsedWeek[] = [
+      weekAt(may11),
+      ...Array.from({ length: 5 }, (_, i) => emptyWeekAt(may11 + (i + 1) * 7)),
+      ...Array.from({ length: 6 }, (_, i) => weekAt(may11 + (i + 6) * 7)),
+    ]
+
+    const { weeks: built, startDate } = buildWeeks(weeks, STUB, '2099-01-01')
+
+    expect(startDate).toBe('2026-05-11')
+    expect(built).toHaveLength(12)
+    expect(built[6].range).toBe('6/22 – 6/28')
+    expect(built[11].range).toBe('7/27 – 8/2')
+    expect(built[11].days[0].rows).toHaveLength(1)
   })
 })
