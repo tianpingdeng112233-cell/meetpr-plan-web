@@ -168,9 +168,10 @@ describe('parseSetLine', () => {
       .toEqual(['80', '85', '90', '90'])
   })
 
-  it('only turns literal amrap into reps plus', () => {
+  it('only turns literal amrap into reps plus and maps failure to RPE 10', () => {
     const amrap = parseSetLine('2*12 amrap', 'rpe9', '', '')
     const failure = parseSetLine('2*12 力竭', '9', 'rpe', '')
+    const forceOnly = parseSetLine('4 组', '力竭', '', '')
 
     expect(amrap.reps).toBe('12+')
     expect(amrap.amrap).toBe(true)
@@ -178,7 +179,15 @@ describe('parseSetLine', () => {
     expect(amrap.values).toEqual(['9', '9'])
     expect(failure.reps).toBe('12')
     expect(failure.amrap).toBe(false)
-    expect(failure.note).toContain('力竭')
+    expect(failure.mode).toBe('rpe')
+    expect(failure.values).toEqual(['9', '9'])
+    expect(failure.note).not.toContain('力竭')
+    expect(forceOnly).toMatchObject({
+      setCount: 4,
+      mode: 'rpe',
+      values: ['10', '10', '10', '10'],
+      note: '',
+    })
   })
 
   it('keeps failed, backoff, top-percent, tempo and unknown strings in row note', () => {
@@ -207,6 +216,16 @@ describe('parseSetLine', () => {
       mode: 'kg',
       values: [],
       note: '',
+    })
+  })
+
+  it('recognizes bodyweight prescriptions without inventing load values', () => {
+    expect(parseSetLine('4 组', '', '10-15 个', '先自重')).toMatchObject({
+      setCount: 4,
+      reps: '10-15',
+      mode: 'bodyweight',
+      values: [],
+      note: '先自重',
     })
   })
 })

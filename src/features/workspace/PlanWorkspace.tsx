@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useState } from 'react'
-import type { CoachStudent, PlanResponse } from '../../api/types'
-import { getCoachStudents, getStudentPlans, getPlan, publishPlan, createPlan, patchPlan } from '../../api/plans'
+import type { CoachStudent, ExerciseResponse, PlanResponse } from '../../api/types'
+import {
+  getCoachStudents, getStudentPlans, getPlan, publishPlan, createPlan, patchPlan, getStudentOnboarding,
+} from '../../api/plans'
 import { listExercises, createCustomExercise } from '../../api/exercises'
 import { ApiException } from '../../api/client'
 import { mapPlanToWeeks, type Catalog } from '../plan-editor/mapping'
-import { ExerciseIndex } from '../plan-editor/exerciseIndex'
+import { displayExerciseName, ExerciseIndex } from '../plan-editor/exerciseIndex'
 import { reconcilePlan, reconcileImportedPlan } from '../plan-editor/reconcile'
 import { PlanEditor } from '../plan-editor/PlanEditor'
 import { buildWeeks as buildSampleWeeks } from '../plan-editor/sampleData'
@@ -20,6 +22,7 @@ function fmtDate(d: Date): string {
 
 export function PlanWorkspace({ onLogout }: Props) {
   const [catalog, setCatalog] = useState<Catalog | null>(null)
+  const [exerciseList, setExerciseList] = useState<ExerciseResponse[]>([])
   const [index, setIndex] = useState<ExerciseIndex | null>(null)
   const [students, setStudents] = useState<CoachStudent[]>([])
   const [studentId, setStudentId] = useState<string>('')
@@ -39,21 +42,25 @@ export function PlanWorkspace({ onLogout }: Props) {
     setPlanId(id)
   }, [])
 
-  const loadStudent = useCallback(async (id: string, cat: Catalog) => {
+  const loadStudent = useCallback(async (id: string, cat: Catalog, exercises: ExerciseResponse[] = exerciseList) => {
     setStudentId(id); setLoaded(null); setPlanId('')
-    const list = await getStudentPlans(id)
+    const [list, onboarding] = await Promise.all([
+      getStudentPlans(id),
+      getStudentOnboarding(id).catch(() => null),
+    ])
+    setIndex(new ExerciseIndex(exercises, { deadliftStyle: onboarding?.deadlift_style }))
     setPlans(list)
     if (list.length > 0) await loadPlan(list[0].id, cat)
-  }, [loadPlan])
+  }, [exerciseList, loadPlan])
 
   // boot: catalog + roster + first student + first plan
   useEffect(() => {
     (async () => {
       try {
         const [ex, st] = await Promise.all([listExercises(), getCoachStudents()])
-        const cat: Catalog = new Map(ex.map((e) => [e.id, { name: e.name, custom: e.created_by_coach_id != null }]))
-        setCatalog(cat); setIndex(new ExerciseIndex(ex)); setStudents(st)
-        if (st.length > 0) await loadStudent(st[0].id, cat)
+        const cat: Catalog = new Map(ex.map((e) => [e.id, { name: displayExerciseName(e.name), custom: e.created_by_coach_id != null }]))
+        setExerciseList(ex); setCatalog(cat); setIndex(new ExerciseIndex(ex)); setStudents(st)
+        if (st.length > 0) await loadStudent(st[0].id, cat, ex)
       } catch (e) {
         setError(errText(e, '无法连接后端'))
       } finally { setBooting(false) }
@@ -159,9 +166,10 @@ export function PlanWorkspace({ onLogout }: Props) {
         onCreateExercise={async (input) => {
           const e = await createCustomExercise(input)
           const custom = e.created_by_coach_id != null
+          setExerciseList((prev) => (prev.some((item) => item.id === e.id) ? prev : [...prev, e]))
           setCatalog((prev) => {
             const next = new Map(prev ?? [])
-            next.set(e.id, { name: e.name, custom })
+            next.set(e.id, { name: displayExerciseName(e.name), custom })
             return next
           })
           setIndex((prev) => (prev ? prev.withAdded(e) : new ExerciseIndex([e])))

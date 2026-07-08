@@ -80,4 +80,29 @@ describe('reconcilePlan — skippedRows counts only contentful unbound rows', ()
       target_value: '9',
     }))
   })
+
+  it('persists bodyweight rows as publishable sets with a bodyweight coach note', async () => {
+    const rows = [
+      row({
+        id: 'a',
+        exerciseId: 'ex1',
+        name: '双杠臂屈伸',
+        reps: '10-15',
+        mode: 'bodyweight',
+        boxes: Array.from({ length: 4 }, () => ({ val: '', empty: true })),
+        note: '先自重',
+      }),
+    ]
+
+    await reconcilePlan('p', [weekWithMondayRows(rows)])
+
+    expect(plans.createSet).toHaveBeenCalledTimes(4)
+    expect(plans.createSet).toHaveBeenCalledWith('pe1', expect.objectContaining({
+      target_reps: 10,
+      target_reps_max: 15,
+      intensity_mode: 'rpe',
+      target_value: '10',
+      coach_note: '自重',
+    }))
+  })
 })

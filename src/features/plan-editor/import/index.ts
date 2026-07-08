@@ -198,11 +198,11 @@ function repsText(min: string, max?: string): string {
 
 function parseSetReps(text: string): { setCount: number; reps: string } {
   const full = text.match(
-    /(\d{1,2})\s*(?:[*xX×]\s*|组\s*)(\d{1,2})(?:\s*(?:-|–|—|~|到|至)\s*(\d{1,2}))?\s*(?:个|次)?/,
+    /(\d{1,2})\s*(?:[*xX×]\s*|[组組]\s*)(\d{1,2})(?:\s*(?:-|–|—|~|到|至)\s*(\d{1,2}))?\s*(?:个|次)?/,
   )
   if (full) return { setCount: Number(full[1]), reps: repsText(full[2], full[3]) }
 
-  const setOnly = text.match(/(\d{1,2})\s*组/)
+  const setOnly = text.match(/(\d{1,2})\s*[组組]/)
   if (!setOnly) return { setCount: 0, reps: '—' }
 
   const rest = text.slice((setOnly.index ?? 0) + setOnly[0].length)
@@ -302,8 +302,8 @@ function parseValuesFromField(cleaned: string, setCount: number, mode: Intensity
 function unknownNoteForField(field: string): string {
   const cleaned = cleanValueText(field)
     .replace(/\d+(?:\.\d+)?\s*%\s*top|%top|\btop\b/gi, '')
-    .replace(/\b\d{1,2}\s*(?:[*xX×]\s*|组\s*)\d{1,2}\b/g, '')
-    .replace(/\d{1,2}\s*组/g, '')
+    .replace(/\b\d{1,2}\s*(?:[*xX×]\s*|[组組]\s*)\d{1,2}\b/g, '')
+    .replace(/\d{1,2}\s*[组組]/g, '')
     .replace(/\d{1,2}\s*(?:-|–|—|~|到|至)\s*\d{1,2}\s*(?:个|次)?/g, '')
     .trim()
   if (!cleaned || parsePlainNumber(cleaned) != null) return ''
@@ -315,8 +315,11 @@ export function parseSetLine(setsCell: string, intensityCell: string, float1: st
   const allText = fields.join(' ')
   const { setCount, reps: baseReps } = parseSetReps(allText)
   const amrap = /\bamrap\b/i.test(allText)
-  const mode: IntensityMode = /\brpe\s*\d*|\brpe\b/i.test(allText) ? 'rpe' : 'kg'
-  const notes = extractMarkerNotes(fields)
+  const hasFailure = /力竭/.test(allText)
+  const mode: IntensityMode = /自重|徒手|bodyweight/i.test(allText)
+    ? 'bodyweight'
+    : (/\brpe\s*\d*|\brpe\b/i.test(allText) || hasFailure) ? 'rpe' : 'kg'
+  const notes = extractMarkerNotes(fields).filter((note) => !(hasFailure && note === '力竭'))
 
   let values: string[] = []
   let consumedFieldIndex = -1
@@ -332,10 +335,14 @@ export function parseSetLine(setsCell: string, intensityCell: string, float1: st
     }
   }
 
+  if (values.length === 0 && hasFailure && setCount > 0) {
+    values = Array.from({ length: setCount }, () => '10')
+  }
+
   valueFields.forEach((field, index) => {
     if (index === consumedFieldIndex) return
     const note = unknownNoteForField(field)
-    if (note && !/^rpe$/i.test(note)) notes.push(note)
+    if (note && !/^rpe$/i.test(note) && note !== '力竭') notes.push(note)
   })
 
   return {

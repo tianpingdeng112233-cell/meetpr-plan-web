@@ -1,12 +1,15 @@
 import { api } from './client'
 import type {
-  CoachStudent, PlanResponse, PlanWithChildren, PlanStatus,
+  CoachStudent, StudentOnboardingProfile, PlanResponse, PlanWithChildren, PlanStatus,
   CreatePlanBody, CreatePlanDayBody, CreatePlanExerciseBody, CreatePlanSetBody,
   PlanDayResponse, PlanExerciseResponse, PlanSetResponse,
 } from './types'
 
 export const getCoachStudents = () =>
   api.get<{ students: CoachStudent[] }>('/coach/students').then((r) => r.students)
+
+export const getStudentOnboarding = (studentId: string) =>
+  api.get<StudentOnboardingProfile>(`/students/${studentId}/onboarding`)
 
 export const getStudentPlans = (studentId: string, status?: PlanStatus[]) => {
   const q = status?.length ? `?status=${status.join(',')}` : ''

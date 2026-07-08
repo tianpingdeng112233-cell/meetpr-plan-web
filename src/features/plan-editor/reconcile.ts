@@ -40,8 +40,10 @@ function parseReps(reps: string): { reps: number; repsMax: number | null; amrap:
 /** A bound row -> desired backend exercise. Unbound rows (no exerciseId) -> null. */
 function rowToDesired(row: ExerciseRow): DesiredExercise | null {
   if (!row.exerciseId) return null
-  const mode: IntensityModeWire = row.mode === 'rpe' ? 'rpe' : 'weight'
-  const filled = row.boxes.filter((b) => !b.empty && b.val !== '')
+  const mode: IntensityModeWire = row.mode === 'rpe' || row.mode === 'bodyweight' ? 'rpe' : 'weight'
+  const filled = row.mode === 'bodyweight'
+    ? row.boxes.map(() => ({ val: '10', empty: false }))
+    : row.boxes.filter((b) => !b.empty && b.val !== '')
   const { reps, repsMax, amrap } = parseReps(row.reps)
   const sets: CreatePlanSetBody[] = filled.map((b, i) => ({
     set_number: i + 1,
@@ -50,6 +52,7 @@ function rowToDesired(row: ExerciseRow): DesiredExercise | null {
     intensity_mode: mode,
     target_value: numStr(b.val),
     set_type: (amrap && i === filled.length - 1 ? 'amrap' : 'working') as SetType,
+    coach_note: row.mode === 'bodyweight' ? '自重' : undefined,
   }))
   return { exercise_id: row.exerciseId, is_main_lift: row.isMain, notes: row.note || null, sets }
 }
@@ -58,7 +61,7 @@ function canonDesired(exs: DesiredExercise[]): string {
   return JSON.stringify(exs.map((e) => ({
     x: e.exercise_id, m: e.is_main_lift, n: e.notes ?? '',
     s: e.sets.map((s) => [
-      s.set_number, s.target_reps, s.target_reps_max ?? null, s.intensity_mode, numStr(s.target_value), s.set_type,
+      s.set_number, s.target_reps, s.target_reps_max ?? null, s.intensity_mode, numStr(s.target_value), s.set_type, s.coach_note ?? null,
     ]),
   })))
 }
@@ -69,7 +72,7 @@ function canonServer(exs: PlanExerciseResponse[]): string {
     x: e.exercise_id, m: e.is_main_lift, n: e.notes ?? '',
     s: [...e.sets].sort((a, b) => a.set_number - b.set_number)
       .map((s) => [
-        s.set_number, s.target_reps, s.target_reps_max ?? null, s.intensity_mode, numStr(s.target_value), s.set_type,
+        s.set_number, s.target_reps, s.target_reps_max ?? null, s.intensity_mode, numStr(s.target_value), s.set_type, s.coach_note ?? null,
       ]),
   })))
 }

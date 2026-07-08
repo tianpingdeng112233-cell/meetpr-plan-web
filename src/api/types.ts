@@ -29,6 +29,10 @@ export interface CoachStudent {
   evaluation: { id: string; expected_end_at: string; overdue: boolean } | null
 }
 
+export interface StudentOnboardingProfile {
+  deadlift_style: 'conventional' | 'sumo' | null
+}
+
 export interface PlanResponse {
   id: string
   coach_id: string | null

@@ -45,8 +45,11 @@ function mapExercise(ex: PlanExerciseResponse, catalog: Catalog): ExerciseRow {
     return { id: ex.id, exerciseId: ex.exercise_id, name, ku: !custom, custom, isMain: ex.is_main_lift, aux: true, reps: '—', mode: 'kg', boxes: [], note: ex.notes ?? '' }
   }
 
-  const mode = sets[0].intensity_mode === 'rpe' ? 'rpe' : 'kg'
-  const boxes: SetBox[] = sets.map((s) => ({ empty: false, val: fmtNum(s.target_value) }))
+  const bodyweight = sets.every((s) => /自重|bodyweight/i.test(s.coach_note ?? ''))
+  const mode = bodyweight ? 'bodyweight' : sets[0].intensity_mode === 'rpe' ? 'rpe' : 'kg'
+  const boxes: SetBox[] = sets.map((s) => (
+    bodyweight ? { empty: true, val: '' } : { empty: false, val: fmtNum(s.target_value) }
+  ))
   const baseReps = sets[0].target_reps
   const repsMax = sets[0].target_reps_max
   const hasAmrap = sets.some((s) => s.set_type === 'amrap')

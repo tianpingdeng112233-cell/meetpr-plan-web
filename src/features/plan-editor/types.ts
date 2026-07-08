@@ -1,4 +1,4 @@
-export type IntensityMode = 'kg' | 'rpe'
+export type IntensityMode = 'kg' | 'rpe' | 'bodyweight'
 
 /** One per-set strength box: a value or an empty slot. */
 export interface SetBox {
@@ -67,5 +67,6 @@ export function isContentfulUnbound(row: ExerciseRow): boolean {
  *  name but no 组×次 data. The coach must fill sets or delete the row to publish. */
 export function isBoundNoSets(row: ExerciseRow): boolean {
   if (!row.exerciseId) return false
+  if (row.mode === 'bodyweight' && row.boxes.length > 0) return false
   return !row.boxes.some((b) => !b.empty && b.val !== '')
 }

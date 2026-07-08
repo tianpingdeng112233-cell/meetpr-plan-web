@@ -1,5 +1,6 @@
 const TARGET = process.env.BACKEND_TARGET ?? 'http://121.40.160.241:3000'
-const UPSTREAM_TIMEOUT_MS = 8000
+const UPSTREAM_TIMEOUT_MS = 25000
+const UPSTREAM_ATTEMPTS = 2
 
 const HOP_BY_HOP_HEADERS = new Set([
   'connection',
@@ -48,17 +49,29 @@ export default async function handler(req, res) {
   }
   if (req.body != null && !headers.has('content-type')) headers.set('content-type', 'application/json')
 
-  const controller = new AbortController()
-  const timeout = setTimeout(() => controller.abort(), UPSTREAM_TIMEOUT_MS)
-
   try {
-    const upstream = await fetch(targetUrl(req), {
-      method: req.method,
-      headers,
-      body: bodyFor(req),
-      redirect: 'manual',
-      signal: controller.signal,
-    })
+    let upstream = null
+    let lastError = null
+    for (let attempt = 1; attempt <= UPSTREAM_ATTEMPTS; attempt++) {
+      const controller = new AbortController()
+      const timeout = setTimeout(() => controller.abort(), UPSTREAM_TIMEOUT_MS)
+      try {
+        upstream = await fetch(targetUrl(req), {
+          method: req.method,
+          headers,
+          body: bodyFor(req),
+          redirect: 'manual',
+          signal: controller.signal,
+        })
+        break
+      } catch (error) {
+        lastError = error
+        if (attempt === UPSTREAM_ATTEMPTS) throw error
+      } finally {
+        clearTimeout(timeout)
+      }
+    }
+    if (!upstream) throw lastError ?? new Error('No upstream response')
 
     res.statusCode = upstream.status
     upstream.headers.forEach((value, key) => {
@@ -75,7 +88,5 @@ export default async function handler(req, res) {
       message,
     })
     res.status(502).json({ error: 'BACKEND_PROXY_UNREACHABLE', reason: name })
-  } finally {
-    clearTimeout(timeout)
   }
 }

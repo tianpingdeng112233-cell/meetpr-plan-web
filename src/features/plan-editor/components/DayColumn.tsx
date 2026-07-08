@@ -40,7 +40,8 @@ function EditableStrength({ row, width, edit }: { row: ExerciseRow; width: numbe
       </div>
     )
   }
-  const chip = row.mode === 'rpe'
+  const nextMode = row.mode === 'kg' ? 'rpe' : row.mode === 'rpe' ? 'bodyweight' : 'kg'
+  const chip = row.mode === 'rpe' || row.mode === 'bodyweight'
     ? { color: '#fff', background: 'var(--surface-3)' }
     : { color: 'var(--fg-tertiary)', background: 'transparent' }
   return (
@@ -49,16 +50,19 @@ function EditableStrength({ row, width, edit }: { row: ExerciseRow; width: numbe
       flexWrap: 'wrap', alignItems: 'center', alignContent: 'center',
     }}>
       <span
-        title="切换 kg / RPE" onClick={(e) => { stop(e); edit((r) => ({ ...r, mode: r.mode === 'kg' ? 'rpe' : 'kg' })) }}
+        title="切换 KG / RPE / 自重" onClick={(e) => { stop(e); edit((r) => ({ ...r, mode: nextMode })) }}
         style={{
           display: 'inline-flex', alignItems: 'center', fontFamily: 'var(--font-mono)', fontSize: 9,
           letterSpacing: '.04em', border: '1px solid var(--border-strong)', borderRadius: 3,
           padding: '1px 4px', margin: '0 5px 3px 0', cursor: 'pointer', userSelect: 'none', ...chip,
         }}
       >
-        {row.mode === 'rpe' ? 'RPE' : 'KG'}
+        {row.mode === 'rpe' ? 'RPE' : row.mode === 'bodyweight' ? '自重' : 'KG'}
       </span>
-      {row.boxes.map((b, i) => (
+      {row.mode === 'bodyweight' && row.boxes.length > 0 && (
+        <span style={{ color: 'var(--fg-secondary)', fontSize: 11, margin: '0 4px 3px 0' }}>每组自重</span>
+      )}
+      {row.mode !== 'bodyweight' && row.boxes.map((b, i) => (
         <input
           key={i} value={b.empty ? '' : b.val} inputMode="decimal" onClick={stop}
           onChange={(e) => edit((r) => ({ ...r, boxes: r.boxes.map((x, j) => j === i ? { val: e.target.value, empty: e.target.value.trim() === '' } : x) }))}
