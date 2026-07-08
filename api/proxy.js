@@ -1,4 +1,5 @@
-const TARGET = 'http://121.40.160.241:3000'
+const TARGET = process.env.BACKEND_TARGET ?? 'http://121.40.160.241:3000'
+const UPSTREAM_TIMEOUT_MS = 8000
 
 const HOP_BY_HOP_HEADERS = new Set([
   'connection',
@@ -47,12 +48,16 @@ export default async function handler(req, res) {
   }
   if (req.body != null && !headers.has('content-type')) headers.set('content-type', 'application/json')
 
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), UPSTREAM_TIMEOUT_MS)
+
   try {
     const upstream = await fetch(targetUrl(req), {
       method: req.method,
       headers,
       body: bodyFor(req),
       redirect: 'manual',
+      signal: controller.signal,
     })
 
     res.statusCode = upstream.status
@@ -60,7 +65,17 @@ export default async function handler(req, res) {
       if (!HOP_BY_HOP_HEADERS.has(key.toLowerCase())) res.setHeader(key, value)
     })
     res.send(Buffer.from(await upstream.arrayBuffer()))
-  } catch {
-    res.status(502).json({ error: 'BACKEND_PROXY_UNREACHABLE' })
+  } catch (error) {
+    const name = error instanceof Error ? error.name : 'UnknownError'
+    const message = error instanceof Error ? error.message : String(error)
+    console.error('backend_proxy_unreachable', {
+      target: TARGET,
+      path: asArray(req.query.path).join('/'),
+      error: name,
+      message,
+    })
+    res.status(502).json({ error: 'BACKEND_PROXY_UNREACHABLE', reason: name })
+  } finally {
+    clearTimeout(timeout)
   }
 }
