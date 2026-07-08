@@ -15,6 +15,7 @@ import type { Week } from '../plan-editor/types'
 
 interface Props { onLogout: () => void }
 type Loaded = { plan: PlanResponse; weeks: Week[]; weeksCount: number }
+const LAST_PLAN_PREFIX = 'mpw.lastPlan.'
 
 function fmtDate(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
@@ -33,6 +34,9 @@ export function PlanWorkspace({ onLogout }: Props) {
   const [booting, setBooting] = useState(true)
 
   const errText = (e: unknown, fb: string) => (e instanceof ApiException ? `${fb}（${e.code}）` : fb)
+  const sortedPlans = (list: PlanResponse[]) => [...list].sort((a, b) => (
+    new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
+  ))
 
   const loadPlan = useCallback(async (id: string, cat: Catalog) => {
     const full = await getPlan(id)
@@ -40,6 +44,7 @@ export function PlanWorkspace({ onLogout }: Props) {
     // remounts once with the real weeks — not an empty mount on an early key change.
     setLoaded({ plan: full, weeks: mapPlanToWeeks(full, cat), weeksCount: full.plan_weeks })
     setPlanId(id)
+    localStorage.setItem(`${LAST_PLAN_PREFIX}${full.trainee_id}`, id)
   }, [])
 
   const loadStudent = useCallback(async (id: string, cat: Catalog, exercises: ExerciseResponse[] = exerciseList) => {
@@ -49,8 +54,11 @@ export function PlanWorkspace({ onLogout }: Props) {
       getStudentOnboarding(id).catch(() => null),
     ])
     setIndex(new ExerciseIndex(exercises, { deadliftStyle: onboarding?.deadlift_style }))
-    setPlans(list)
-    if (list.length > 0) await loadPlan(list[0].id, cat)
+    const sorted = sortedPlans(list)
+    setPlans(sorted)
+    const remembered = localStorage.getItem(`${LAST_PLAN_PREFIX}${id}`)
+    const initial = sorted.find((plan) => plan.id === remembered) ?? sorted[0]
+    if (initial) await loadPlan(initial.id, cat)
   }, [exerciseList, loadPlan])
 
   // boot: catalog + roster + first student + first plan

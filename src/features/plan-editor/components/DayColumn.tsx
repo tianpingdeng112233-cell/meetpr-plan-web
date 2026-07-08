@@ -12,6 +12,7 @@ interface Props {
   onNameBlur: () => void
   onAddRow: () => void
   onEditRow: (rowId: string, updater: (r: ExerciseRow) => ExerciseRow) => void
+  onMoveRow: (rowId: string, dir: -1 | 1) => void
   onDeleteRow: (rowId: string) => void
 }
 
@@ -77,7 +78,7 @@ function EditableStrength({ row, width, edit }: { row: ExerciseRow; width: numbe
   )
 }
 
-export function DayColumn({ day, colW, selected, onSelect, onResizeStart, onNameFocus, onNameChange, onNameBlur, onAddRow, onEditRow, onDeleteRow }: Props) {
+export function DayColumn({ day, colW, selected, onSelect, onResizeStart, onNameFocus, onNameChange, onNameBlur, onAddRow, onEditRow, onMoveRow, onDeleteRow }: Props) {
   if (day.rest) {
     return (
       <div className={`day restday${selected ? ' sel' : ''}`} data-dow={day.dow} onClick={onSelect} style={{
@@ -115,7 +116,7 @@ export function DayColumn({ day, colW, selected, onSelect, onResizeStart, onName
           <div className="gcell" data-c="note" style={{ width: colW.note, padding: '4px 6px', ...head }}>备注</div>
         </div>
 
-        {day.rows.map((row) => {
+        {day.rows.map((row, rowIndex) => {
           const edit = (u: (r: ExerciseRow) => ExerciseRow) => onEditRow(row.id, u)
           return (
             <div key={row.id} data-rowid={row.id} className={`exrow${row.aux ? ' aux' : ''}`} style={{ display: 'flex', alignItems: 'stretch', borderTop: '1px solid var(--border)' }}>
@@ -130,6 +131,20 @@ export function DayColumn({ day, colW, selected, onSelect, onResizeStart, onName
                 />
                 {row.ku && <span style={{ color: 'var(--green)', fontSize: 9, flex: 'none' }}>✓</span>}
                 {row.custom && <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--fg-tertiary)', fontSize: 8, flex: 'none', border: '1px solid var(--border-strong)', borderRadius: 3, padding: '0 3px' }}>定</span>}
+                <span style={{ display: 'inline-flex', flexDirection: 'column', gap: 1, flex: 'none' }}>
+                  <button title="上移" disabled={rowIndex === 0} onMouseDown={stop} onClick={(e) => { stop(e); onMoveRow(row.id, -1) }}
+                    style={{
+                      width: 13, height: 11, padding: 0, border: 'none', background: 'transparent',
+                      color: rowIndex === 0 ? 'var(--fg-tertiary)' : 'var(--fg-secondary)', cursor: rowIndex === 0 ? 'default' : 'pointer',
+                      fontSize: 8, lineHeight: '10px',
+                    }}>▲</button>
+                  <button title="下移" disabled={rowIndex === day.rows.length - 1} onMouseDown={stop} onClick={(e) => { stop(e); onMoveRow(row.id, 1) }}
+                    style={{
+                      width: 13, height: 11, padding: 0, border: 'none', background: 'transparent',
+                      color: rowIndex === day.rows.length - 1 ? 'var(--fg-tertiary)' : 'var(--fg-secondary)',
+                      cursor: rowIndex === day.rows.length - 1 ? 'default' : 'pointer', fontSize: 8, lineHeight: '10px',
+                    }}>▼</button>
+                </span>
               </div>
 
               {/* 组 — editable on aux rows too: a zero-set (note-driven) row can't publish, so

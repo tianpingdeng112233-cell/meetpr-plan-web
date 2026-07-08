@@ -290,6 +290,21 @@ export function PlanEditor(props: PlanEditorProps) {
     }))
     setPop((p) => (p.rowId === rowId ? { ...p, visible: false } : p))
   }
+  const moveRow = (wnum: number, dow: number, rowId: string, dir: -1 | 1) => {
+    setWeeks((prev) => prev.map((wk) => wk.num !== wnum ? wk : {
+      ...wk,
+      days: wk.days.map((d) => {
+        if (d.dow !== dow) return d
+        const index = d.rows.findIndex((r) => r.id === rowId)
+        const target = index + dir
+        if (index < 0 || target < 0 || target >= d.rows.length) return d
+        const rows = [...d.rows]
+        const [row] = rows.splice(index, 1)
+        rows.splice(target, 0, row)
+        return { ...d, rows }
+      }),
+    }))
+  }
 
   const onPickHit = (hit: ExerciseHit) => {
     bindRowAt({ wnum: pop.wnum, dow: pop.dow, rowId: pop.rowId }, hit.id, hit.name, false)
@@ -787,6 +802,7 @@ export function PlanEditor(props: PlanEditorProps) {
                         onNameBlur={handleNameBlur}
                         onAddRow={() => addRowToDay(wk.num, day.dow)}
                         onEditRow={(rowId, updater) => editRow(wk.num, day.dow, rowId, updater)}
+                        onMoveRow={(rowId, dir) => moveRow(wk.num, day.dow, rowId, dir)}
                         onDeleteRow={(rowId) => deleteRow(wk.num, day.dow, rowId)}
                       />
                     ))}
