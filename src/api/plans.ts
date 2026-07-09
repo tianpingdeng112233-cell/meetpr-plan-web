@@ -8,6 +8,9 @@ import type {
 export const getCoachStudents = () =>
   api.get<{ students: CoachStudent[] }>('/coach/students').then((r) => r.students)
 
+export const renameCoachStudent = (studentId: string, displayName: string) =>
+  api.patch<CoachStudent>(`/coach/students/${studentId}`, { display_name: displayName })
+
 export const getStudentOnboarding = (studentId: string) =>
   api.get<StudentOnboardingProfile>(`/students/${studentId}/onboarding`)
 

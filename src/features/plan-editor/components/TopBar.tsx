@@ -18,6 +18,8 @@ interface Props {
   onNewPlan?: () => void | Promise<void>
   /** Rename the current plan (plan dropdown's ✎ row). */
   onRenamePlan?: () => void
+  /** Rename the selected student (student dropdown's ✎ row). */
+  onRenameStudent?: () => void
   onLogout?: () => void | Promise<void>
   onSave?: () => void
   saving?: boolean
@@ -38,9 +40,9 @@ const pill: React.CSSProperties = {
 const caret: React.CSSProperties = { color: 'var(--fg-tertiary)', fontSize: 9 }
 const label: React.CSSProperties = { fontSize: 11, color: 'var(--fg-tertiary)' }
 
-function Dropdown({ open, options, currentId, onPick, onNew, newLabel, onRenameCurrent }: {
+function Dropdown({ open, options, currentId, onPick, onNew, newLabel, onRenameCurrent, renameLabel }: {
   open: boolean; options: Option[]; currentId?: string; onPick: (id: string) => void | Promise<void>; onNew?: () => void | Promise<void>; newLabel?: string
-  onRenameCurrent?: () => void
+  onRenameCurrent?: () => void; renameLabel?: string
 }) {
   if (!open) return null
   return (
@@ -63,7 +65,7 @@ function Dropdown({ open, options, currentId, onPick, onNew, newLabel, onRenameC
       {onRenameCurrent && (
         <div className="popitem" onClick={(e) => { e.stopPropagation(); onRenameCurrent() }}
           style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '9px 12px', color: 'var(--fg-secondary)', borderTop: '1px solid var(--border)' }}>
-          <span>✎</span> 重命名当前计划
+          <span>✎</span> {renameLabel ?? '重命名当前计划'}
         </div>
       )}
       {onNew && (
@@ -101,7 +103,9 @@ export function TopBar(p: Props) {
         {p.studentName} <span style={caret}>▼</span>
         {connected && (
           <Dropdown open={menu === 'student'} options={p.students!} currentId={p.currentStudentId}
-            onPick={(id) => { close(); void p.onSwitchStudent?.(id) }} />
+            onPick={(id) => { close(); void p.onSwitchStudent?.(id) }}
+            onRenameCurrent={p.onRenameStudent ? () => { close(); p.onRenameStudent!() } : undefined}
+            renameLabel="修改学员姓名" />
         )}
       </span>
 
@@ -111,7 +115,8 @@ export function TopBar(p: Props) {
         {connected && (
           <Dropdown open={menu === 'plan'} options={p.plans ?? []} currentId={p.currentPlanId}
             onPick={(id) => { close(); void p.onSwitchPlan?.(id) }} onNew={p.onNewPlan ? () => { close(); void p.onNewPlan!() } : undefined} newLabel="新建计划"
-            onRenameCurrent={p.onRenamePlan ? () => { close(); p.onRenamePlan!() } : undefined} />
+            onRenameCurrent={p.onRenamePlan ? () => { close(); p.onRenamePlan!() } : undefined}
+            renameLabel="重命名当前计划" />
         )}
       </span>
 
