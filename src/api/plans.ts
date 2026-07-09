@@ -24,6 +24,18 @@ export const patchPlan = (
   body: { name?: string; start_date?: string; end_date?: string; plan_weeks?: number },
 ) => api.patch<PlanResponse>(`/plans/${planId}`, body)
 export const publishPlan = (planId: string) => api.post<PlanResponse>(`/plans/${planId}/publish`)
+/**
+ * Persist coach-confirmed, past plan sessions as *assumed* completions. These
+ * records remain distinct from a student's real training logs and do not feed
+ * e1RM/PR calculations.
+ */
+export const markImportedHistory = (planId: string) =>
+  api.post<{
+    plan_id: string
+    created_set_logs: number
+    existing_set_logs: number
+    assumed: true
+  }>(`/plans/${planId}/imported-history`, { confirm: true })
 
 // nested tree mutations
 export const createDay = (planId: string, body: CreatePlanDayBody) =>

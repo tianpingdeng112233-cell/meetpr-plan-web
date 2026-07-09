@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { CoachStudent, ExerciseResponse, PlanResponse } from '../../api/types'
 import {
   getCoachStudents, getStudentPlans, getPlan, publishPlan, createPlan, patchPlan, getStudentOnboarding,
+  markImportedHistory,
 } from '../../api/plans'
 import { listExercises, createCustomExercise } from '../../api/exercises'
 import { ApiException } from '../../api/client'
@@ -193,11 +194,31 @@ export function PlanWorkspace({ onLogout }: Props) {
           setPlans((prev) => prev.map((p) => (p.id === updated.id ? updated : p)))
           setLoaded((prev) => (prev && prev.plan.id === updated.id ? { ...prev, plan: updated } : prev))
         } : undefined}
-        onSave={loaded ? (weeks, importStart, onProgress) => (
-          importStart
-            ? reconcileImportedPlan(loaded.plan.id, weeks, importStart, onProgress)
-            : reconcilePlan(loaded.plan.id, weeks, onProgress)
-        ) : undefined}
+        onSave={loaded ? async (weeks, importStart, markPastAsAssumedComplete, onProgress) => {
+          const result = importStart
+            ? await reconcileImportedPlan(loaded.plan.id, weeks, importStart, onProgress)
+            : await reconcilePlan(loaded.plan.id, weeks, onProgress)
+          if (importStart && markPastAsAssumedComplete) await markImportedHistory(loaded.plan.id)
+          if (result.planStartDate && result.planEndDate && result.planWeeks != null) {
+            const calendar = {
+              start_date: result.planStartDate,
+              end_date: result.planEndDate,
+              plan_weeks: result.planWeeks,
+            }
+            // The editor remains mounted after an import/date shift. Update the
+            // parent-owned plan too, otherwise the next shift/undo would derive
+            // from stale metadata even though the backend already accepted it.
+            setPlans((prev) => prev.map((plan) => (
+              plan.id === loaded.plan.id ? { ...plan, ...calendar } : plan
+            )))
+            setLoaded((prev) => (
+              prev && prev.plan.id === loaded.plan.id
+                ? { ...prev, plan: { ...prev.plan, ...calendar }, weeksCount: calendar.plan_weeks }
+                : prev
+            ))
+          }
+          return result
+        } : undefined}
         onRename={loaded ? async (name) => {
           const updated = await patchPlan(loaded.plan.id, { name })
           // Keep the switcher list + the loaded plan in sync so the new name shows everywhere.
