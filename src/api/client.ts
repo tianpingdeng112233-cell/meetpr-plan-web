@@ -3,7 +3,7 @@
 
 import type { TokenPair } from './types'
 
-// Dev + Vercel: '/api' (Vite proxy / Vercel rewrite handles it).
+// Dev: '/api' (Vite dev-server proxy handles it).
 // Self-hosted-from-backend build: set VITE_API_BASE='' so calls hit the backend
 // routes at the same origin (/auth, /plans, …) — no proxy, no CORS, no mixed content.
 function configuredApiBase(): string {
