@@ -44,6 +44,8 @@ export interface PlanEditorProps {
   ) => Promise<SaveResult>
   /** Rename the current plan (backend PATCH); parent also refreshes its plan list. */
   onRename?: (name: string) => Promise<void> | void
+  /** Rename the selected student (backend PATCH); parent refreshes the roster label. */
+  onRenameStudent?: (name: string) => Promise<void> | void
   /** Exercise catalog + alias index for name-cell binding. */
   exerciseIndex?: ExerciseIndex | null
   /** Create a custom exercise and return its id+name (adds to the index). */
@@ -1089,6 +1091,14 @@ export function PlanEditor(props: PlanEditorProps) {
         onRenamePlan={props.onRename ? () => {
           const name = window.prompt('计划名称', planName)?.trim()
           if (name && name !== planName) void props.onRename!(name)
+        } : undefined}
+        onRenameStudent={props.onRenameStudent ? () => {
+          const name = window.prompt('学员姓名', studentName)?.trim()
+          if (name && name !== studentName) {
+            void Promise.resolve(props.onRenameStudent!(name)).catch(() => {
+              window.alert('修改学员姓名失败，请稍后重试')
+            })
+          }
         } : undefined}
         onSave={props.onSave && !published ? handleSave : undefined} saving={saving}
         onImport={props.exerciseIndex && props.planStartDate ? handleImport : undefined}

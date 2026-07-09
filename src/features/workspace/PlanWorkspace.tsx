@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { CoachStudent, ExerciseResponse, PlanResponse } from '../../api/types'
 import {
   getCoachStudents, getStudentPlans, getPlan, publishPlan, createPlan, patchPlan, getStudentOnboarding,
-  markImportedHistory,
+  markImportedHistory, renameCoachStudent,
 } from '../../api/plans'
 import { listExercises, createCustomExercise } from '../../api/exercises'
 import { ApiException } from '../../api/client'
@@ -224,6 +224,12 @@ export function PlanWorkspace({ onLogout }: Props) {
           // Keep the switcher list + the loaded plan in sync so the new name shows everywhere.
           setPlans((prev) => prev.map((p) => (p.id === updated.id ? updated : p)))
           setLoaded((prev) => (prev && prev.plan.id === updated.id ? { ...prev, plan: updated } : prev))
+        } : undefined}
+        onRenameStudent={studentId ? async (name) => {
+          const updated = await renameCoachStudent(studentId, name)
+          setStudents((prev) => prev.map((student) => (
+            student.id === updated.id ? { ...student, display_name: updated.display_name } : student
+          )))
         } : undefined}
         exerciseIndex={index}
         onCreateExercise={async (input) => {
