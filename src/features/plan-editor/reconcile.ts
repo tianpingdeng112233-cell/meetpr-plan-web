@@ -4,7 +4,7 @@
 // plan_set ids (and any student references) survive.
 
 import type { Week, ExerciseRow } from './types'
-import { isContentfulUnbound } from './types'
+import { isBoundNoSets, isContentfulUnbound } from './types'
 import type {
   PlanWithChildren, PlanExerciseResponse, CreatePlanSetBody, IntensityModeWire, SetType,
 } from '../../api/types'
@@ -18,7 +18,45 @@ interface DesiredExercise {
   sets: CreatePlanSetBody[]
 }
 
-export interface SaveResult { changedDays: number; skippedRows: number }
+export interface SaveResult {
+  changedDays: number
+  skippedRows: number
+  /** Present when reconciliation also changed the plan calendar metadata. */
+  planStartDate?: string
+  planEndDate?: string
+  planWeeks?: number
+}
+
+/** The grid only models uniform, working-set prescriptions. Refuse to flatten
+ * richer backend data into a lossy representation; the coach can preserve it
+ * in the native editor until this UI gains per-set editing. */
+export class ReconciliationError extends Error {
+  constructor(public readonly code: 'PLAN_NOT_DRAFT' | 'PLAN_REQUIRES_NATIVE_EDITOR' | 'PLAN_SET_SPEC_INCOMPLETE') {
+    super(code)
+  }
+}
+
+function assertEditableServerTree(server: PlanWithChildren): void {
+  // The nullish guard keeps this pure helper usable with intentionally minimal
+  // fixtures; a real API response always carries a status.
+  if (server.status != null && server.status !== 'draft') throw new ReconciliationError('PLAN_NOT_DRAFT')
+  for (const day of server.days) for (const exercise of day.exercises) {
+    const sets = [...exercise.sets].sort((a, b) => a.set_number - b.set_number)
+    if (sets.length === 0) continue
+    const first = sets[0]
+    const bodyweight = sets.every((set) => /自重|bodyweight/i.test(set.coach_note ?? ''))
+    const supported = sets.every((set, index) => (
+      set.set_number === index + 1
+      && set.target_reps === first.target_reps
+      && set.target_reps_max === first.target_reps_max
+      && set.intensity_mode === first.intensity_mode
+      && set.rest_seconds == null
+      && (bodyweight || set.coach_note == null)
+      && (set.set_type === 'working' || (index === sets.length - 1 && set.set_type === 'amrap'))
+    ))
+    if (!supported) throw new ReconciliationError('PLAN_REQUIRES_NATIVE_EDITOR')
+  }
+}
 
 function numStr(v: string): string {
   const n = Number(v)
@@ -96,12 +134,19 @@ export async function reconcileImportedPlan(
   planId: string, weeks: Week[], startDate: string, onProgress?: SaveProgress,
 ): Promise<SaveResult> {
   const server: PlanWithChildren = await getPlan(planId)
+  assertEditableServerTree(server)
   for (const day of server.days) {
     if (day.week_number > weeks.length) await deleteDay(day.id)
   }
   const endDate = fmtISO(addDays(startDate, weeks.length * 7 - 1))
   await patchPlan(planId, { plan_weeks: weeks.length, start_date: startDate, end_date: endDate })
-  return reconcilePlan(planId, weeks, onProgress)
+  const result = await reconcilePlan(planId, weeks, onProgress)
+  return {
+    ...result,
+    planStartDate: startDate,
+    planEndDate: endDate,
+    planWeeks: weeks.length,
+  }
 }
 
 export async function reconcilePlan(
@@ -109,6 +154,7 @@ export async function reconcilePlan(
 ): Promise<SaveResult> {
   // live server tree as the diff baseline (never trust a stale snapshot)
   const server: PlanWithChildren = await getPlan(planId)
+  assertEditableServerTree(server)
   const origByKey = new Map<string, PlanWithChildren['days'][number]>()
   for (const day of server.days) origByKey.set(`${day.week_number}:${day.day_of_week}`, day)
 
@@ -122,6 +168,9 @@ export async function reconcilePlan(
       const dayCol = wk.days.find((d) => d.dow === dow)
       const desired: DesiredExercise[] = (dayCol && !dayCol.rest)
         ? dayCol.rows.map((r) => {
+            if (r.exerciseId && isBoundNoSets(r)) {
+              throw new ReconciliationError('PLAN_SET_SPEC_INCOMPLETE')
+            }
             const d = rowToDesired(r)
             // Only count rows that would actually lose content — empty placeholder rows
             // also produce null but skipping them loses nothing, so they must not inflate the warning.

@@ -127,6 +127,23 @@ describe('createSaveController', () => {
     expect(d.persist).toHaveBeenCalledTimes(2)
   })
 
+  it('flush waits for an already in-flight persist even when no new edit is dirty', async () => {
+    const d = deferredPersist(() => 'v1')
+    const c = createSaveController({ delay: 1500, persist: d.persist })
+
+    c.scheduleAutosave()
+    await vi.advanceTimersByTimeAsync(1500)
+    expect(d.persist).toHaveBeenCalledTimes(1)
+
+    let resolved = false
+    const flush = c.flush().then(() => { resolved = true })
+    await Promise.resolve()
+    expect(resolved).toBe(false)
+    d.resolve()
+    await flush
+    expect(resolved).toBe(true)
+  })
+
   it('flush during an in-flight persist still persists the last edit (unmount safety)', async () => {
     let value = 'v1'
     const d = deferredPersist(() => value)

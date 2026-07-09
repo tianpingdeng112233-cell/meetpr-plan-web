@@ -105,4 +105,73 @@ describe('reconcilePlan — skippedRows counts only contentful unbound rows', ()
       coach_note: '自重',
     }))
   })
+
+  it('refuses to rewrite a published plan before issuing destructive requests', async () => {
+    vi.mocked(plans.getPlan).mockResolvedValue({
+      id: 'p', plan_weeks: 1, start_date: '2026-01-01', status: 'published', days: [],
+    } as never)
+
+    await expect(reconcilePlan('p', [weekWithMondayRows([])])).rejects.toMatchObject({
+      code: 'PLAN_NOT_DRAFT',
+    })
+    expect(plans.deleteDay).not.toHaveBeenCalled()
+    expect(plans.createDay).not.toHaveBeenCalled()
+  })
+
+  it('rejects incomplete bound prescriptions before replacing any server day', async () => {
+    vi.mocked(plans.getPlan).mockResolvedValue({
+      id: 'p',
+      plan_weeks: 1,
+      start_date: '2026-01-01',
+      days: [{ id: 'old-day', week_number: 1, day_of_week: 1, exercises: [] }],
+    } as never)
+    const incomplete = row({
+      exerciseId: 'ex1',
+      name: '深蹲',
+      reps: '5',
+      boxes: [{ val: '', empty: true }],
+    })
+
+    await expect(reconcilePlan('p', [weekWithMondayRows([incomplete])])).rejects.toMatchObject({
+      code: 'PLAN_SET_SPEC_INCOMPLETE',
+    })
+    expect(plans.deleteDay).not.toHaveBeenCalled()
+    expect(plans.createDay).not.toHaveBeenCalled()
+  })
+
+  it('refuses backend plans with richer per-set fields rather than flattening them', async () => {
+    vi.mocked(plans.getPlan).mockResolvedValue({
+      id: 'p',
+      plan_weeks: 1,
+      start_date: '2026-01-01',
+      days: [{
+        id: 'old-day',
+        week_number: 1,
+        day_of_week: 1,
+        exercises: [{
+          id: 'pe1',
+          exercise_id: 'ex1',
+          is_main_lift: false,
+          sort_order: 0,
+          notes: null,
+          sets: [{
+            id: 'set1',
+            set_number: 1,
+            target_reps: 5,
+            target_reps_max: null,
+            intensity_mode: 'weight',
+            target_value: '100',
+            set_type: 'working',
+            coach_note: null,
+            rest_seconds: 120,
+          }],
+        }],
+      }],
+    } as never)
+
+    await expect(reconcilePlan('p', [weekWithMondayRows([])])).rejects.toMatchObject({
+      code: 'PLAN_REQUIRES_NATIVE_EDITOR',
+    })
+    expect(plans.deleteDay).not.toHaveBeenCalled()
+  })
 })

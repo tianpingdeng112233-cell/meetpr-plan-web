@@ -154,6 +154,15 @@ describe('parseSetLine', () => {
       .toEqual(['110', '115', '120', '120'])
   })
 
+  it('expands repeated slash-list kg values', () => {
+    expect(parseSetLine('4*8', '110/115/120*2', '', '').values)
+      .toEqual(['110', '115', '120', '120'])
+    expect(parseSetLine('4*8', '112.5/117.5/122.5*2', '', '').values)
+      .toEqual(['112.5', '117.5', '122.5', '122.5'])
+    expect(parseSetLine('4＊8', '112.5/117.5/122.5＊2', '', '').values)
+      .toEqual(['112.5', '117.5', '122.5', '122.5'])
+  })
+
   it('parses compact RPE strings when an rpe marker is present', () => {
     expect(parseSetLine('4*12', '6788', 'rpe', '')).toMatchObject({
       setCount: 4,
@@ -184,6 +193,7 @@ describe('parseSetLine', () => {
     expect(failure.note).not.toContain('力竭')
     expect(forceOnly).toMatchObject({
       setCount: 4,
+      reps: '1',
       mode: 'rpe',
       values: ['10', '10', '10', '10'],
       note: '',
@@ -195,7 +205,8 @@ describe('parseSetLine', () => {
 
     expect(result.values).toEqual([])
     expect(result.note).toContain('70%top')
-    expect(result.note).toContain('长暂停2s')
+    expect(result.note).toContain('2s')
+    expect(result.note).not.toContain('长暂停2s')
     expect(result.note).toContain('降组')
   })
 
@@ -228,6 +239,54 @@ describe('parseSetLine', () => {
       note: '先自重',
     })
   })
+
+  it('keeps explicit bodyweight failure rows in bodyweight mode', () => {
+    expect(parseSetLine('四组', '力竭', '自重', '')).toMatchObject({
+      setCount: 4,
+      reps: '1',
+      mode: 'bodyweight',
+      values: [],
+      note: '自重',
+    })
+  })
+
+  it('keeps band and timed accessory prescriptions publishable without kg values', () => {
+    expect(parseSetLine('4*8', '弹力带中等磅数', '', '')).toMatchObject({
+      setCount: 4,
+      reps: '8',
+      mode: 'bodyweight',
+      values: [],
+      note: '弹力带中等磅数',
+    })
+    expect(parseSetLine('4 组', '30s-60s', '', '')).toMatchObject({
+      setCount: 4,
+      reps: '1',
+      mode: 'bodyweight',
+      values: [],
+      note: '30s-60s',
+    })
+    expect(parseSetLine('4 组', '20-40s', '', '')).toMatchObject({
+      setCount: 4,
+      reps: '1',
+      mode: 'bodyweight',
+      values: [],
+      note: '20-40s',
+    })
+    expect(parseSetLine('4组', '20到40秒', '', '')).toMatchObject({
+      setCount: 4,
+      reps: '1',
+      mode: 'bodyweight',
+      values: [],
+      note: '20-40s',
+    })
+    expect(parseSetLine('3组', '30s', '', '')).toMatchObject({
+      setCount: 3,
+      reps: '1',
+      mode: 'bodyweight',
+      values: [],
+      note: '30s',
+    })
+  })
 })
 
 describe('parseDay', () => {
@@ -235,6 +294,12 @@ describe('parseDay', () => {
     const g = grid([[2, 1, '休息']])
 
     expect(parseDay(g, [2], 0, 1)).toEqual({ dayOfWeek: 0, rest: true, exercises: [] })
+  })
+
+  it('ignores event-only labels instead of importing them as exercises', () => {
+    const g = grid([[2, 1, '无锡 IPF']])
+
+    expect(parseDay(g, [2], 0, 1)).toEqual({ dayOfWeek: 0, rest: false, exercises: [] })
   })
 
   it('splits multiline names and appends blank-name continuation rows', () => {
@@ -283,6 +348,84 @@ describe('parseDay', () => {
       setCount: 4,
       reps: '10-12',
       values: [],
+    })
+  })
+
+  it('normalizes long-pause lift names and keeps only duration in notes', () => {
+    const g = grid([
+      [2, 1, '长暂停深蹲2s'],
+      [2, 2, '4*3'],
+      [2, 3, '170'],
+    ])
+
+    const parsed = parseDay(g, [2], 0, 1)
+
+    expect(parsed.exercises[0]).toMatchObject({
+      rawName: '暂停深蹲',
+      note: '2s',
+      setCount: 4,
+      reps: '3',
+      values: ['170', '170', '170', '170'],
+    })
+  })
+
+  it('normalizes pause lift names with duration suffix', () => {
+    const g = grid([
+      [2, 1, '暂停深蹲 1s'],
+      [2, 2, '4*3'],
+      [2, 3, '87.5/92.5/97.5/97.5'],
+    ])
+
+    const parsed = parseDay(g, [2], 0, 1)
+
+    expect(parsed.exercises[0]).toMatchObject({
+      rawName: '暂停深蹲',
+      note: '1s',
+      setCount: 4,
+      reps: '3',
+      values: ['87.5', '92.5', '97.5', '97.5'],
+    })
+  })
+
+  it('normalizes spoto pause names with duration suffix', () => {
+    const g = grid([
+      [2, 1, 'spoto 暂停 1s'],
+      [2, 2, '4*3'],
+      [2, 3, 'rpe'],
+      [2, 4, '6777'],
+    ])
+
+    const parsed = parseDay(g, [2], 0, 1)
+
+    expect(parsed.exercises[0]).toMatchObject({
+      rawName: 'spoto 暂停卧推',
+      note: '1s',
+      setCount: 4,
+      reps: '3',
+      mode: 'rpe',
+      values: ['6', '7', '7', '7'],
+    })
+  })
+
+  it('extracts tempo suffixes from compact exercise names', () => {
+    const g = grid([
+      [2, 1, '安全杆节奏蹲310'],
+      [2, 2, '3*5'],
+      [2, 4, '60%top'],
+      [3, 1, '传统硬拉 500'],
+      [3, 2, '3*5'],
+      [3, 4, '60%top'],
+    ])
+
+    const parsed = parseDay(g, [2, 3], 0, 1)
+
+    expect(parsed.exercises[0]).toMatchObject({
+      rawName: '安全杠节奏深蹲',
+      note: '60%top · tempo 3-1-0',
+    })
+    expect(parsed.exercises[1]).toMatchObject({
+      rawName: '传统硬拉',
+      note: '60%top · tempo 5-0-0',
     })
   })
 })
@@ -364,6 +507,64 @@ describe('buildWeeks', () => {
     })
   })
 
+  it('splits plus-composite names only when every part resolves', () => {
+    const index = new ExerciseIndex([
+      exercise('seal-row', '海豹划船'),
+      exercise('pulldown', '高位下拉'),
+      exercise('pallof', '帕洛夫推+旋转'),
+    ])
+    const { weeks } = buildWeeks([{
+      blockIndex: 0,
+      dateSerials: [],
+      days: [{
+        dayOfWeek: 0,
+        rest: false,
+        exercises: [
+          { rawName: '海豹划船+高位下拉', setCount: 4, reps: '12', mode: 'rpe', values: ['6', '7', '8', '8'], note: '' },
+          { rawName: '帕洛夫推+旋转', setCount: 4, reps: '8', mode: 'bodyweight', values: [], note: '弹力带' },
+        ],
+      }],
+    }], index, '2026-06-01')
+
+    expect(weeks[0].days[0].rows.map((row) => row.name)).toEqual([
+      '海豹划船',
+      '高位下拉',
+      '帕洛夫推+旋转',
+    ])
+    expect(weeks[0].days[0].rows[0].boxes).toHaveLength(4)
+    expect(weeks[0].days[0].rows[1].boxes).toHaveLength(4)
+    expect(weeks[0].days[0].rows[2]).toMatchObject({ mode: 'bodyweight', note: '弹力带' })
+  })
+
+  it('expands two-arm-choice shorthand into a biceps and triceps choice', () => {
+    const index = new ExerciseIndex([
+      exercise('curl', '哑铃二头弯举'),
+      exercise('triceps-choice', '三头肌自选'),
+    ])
+    const { weeks } = buildWeeks([{
+      blockIndex: 0,
+      dateSerials: [],
+      days: [{
+        dayOfWeek: 0,
+        rest: false,
+        exercises: [{
+          rawName: '二三头自选*2',
+          setCount: 4,
+          reps: '12',
+          mode: 'rpe',
+          values: ['6', '7', '8', '8'],
+          note: '',
+        }],
+      }],
+    }], index, '2026-06-01')
+
+    expect(weeks[0].days[0].rows).toHaveLength(2)
+    expect(weeks[0].days[0].rows).toEqual(expect.arrayContaining([
+      expect.objectContaining({ exerciseId: 'curl', name: '哑铃二头弯举', note: '自选' }),
+      expect.objectContaining({ exerciseId: 'triceps-choice', name: '三头肌自选', note: '自选' }),
+    ]))
+  })
+
   it('does not resolve aliases whose canonical exercise is absent from the catalog', () => {
     const index = new ExerciseIndex([exercise('other', '杠铃卧推')])
     const { weeks } = buildWeeks([{
@@ -377,6 +578,64 @@ describe('buildWeeks', () => {
       name: '低杆深蹲',
       ku: false,
       custom: false,
+    })
+  })
+
+  it('maps long-pause deadlift to the student deadlift style and keeps pause duration', () => {
+    const index = new ExerciseIndex([
+      exercise('conv-pause', '传统暂停硬拉', { main_lift_family: 'deadlift' }),
+      exercise('sumo-pause', '相扑暂停硬拉', { main_lift_family: 'deadlift' }),
+    ], { deadliftStyle: 'sumo' })
+    const { weeks } = buildWeeks([{
+      blockIndex: 0,
+      dateSerials: [],
+      days: [{
+        dayOfWeek: 0,
+        rest: false,
+        exercises: [{
+          rawName: '长暂停硬拉2s',
+          setCount: 4,
+          reps: '3',
+          mode: 'kg',
+          values: ['170', '170', '170', '170'],
+          note: '',
+        }],
+      }],
+    }], index, '2026-06-01')
+
+    expect(weeks[0].days[0].rows[0]).toMatchObject({
+      exerciseId: 'sumo-pause',
+      name: '相扑暂停硬拉',
+      note: '2s',
+    })
+  })
+
+  it('maps pause deadlift duration suffix to the student deadlift style', () => {
+    const index = new ExerciseIndex([
+      exercise('conv-pause', '传统暂停硬拉', { main_lift_family: 'deadlift' }),
+      exercise('sumo-pause', '相扑暂停硬拉', { main_lift_family: 'deadlift' }),
+    ], { deadliftStyle: 'sumo' })
+    const { weeks } = buildWeeks([{
+      blockIndex: 0,
+      dateSerials: [],
+      days: [{
+        dayOfWeek: 0,
+        rest: false,
+        exercises: [{
+          rawName: '暂停硬拉1s',
+          setCount: 4,
+          reps: '3',
+          mode: 'kg',
+          values: ['115', '105', '105', '105'],
+          note: '',
+        }],
+      }],
+    }], index, '2026-06-01')
+
+    expect(weeks[0].days[0].rows[0]).toMatchObject({
+      exerciseId: 'sumo-pause',
+      name: '相扑暂停硬拉',
+      note: '1s',
     })
   })
 })

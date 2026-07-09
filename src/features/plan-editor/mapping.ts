@@ -17,10 +17,30 @@ export function addDays(iso: string, days: number): Date {
   const [y, m, d] = iso.split('-').map(Number)
   return new Date(y, m - 1, d + days)
 }
+export function isoDate(dt: Date): string {
+  const y = dt.getFullYear()
+  const m = String(dt.getMonth() + 1).padStart(2, '0')
+  const d = String(dt.getDate()).padStart(2, '0')
+  return `${y}-${m}-${d}`
+}
+export function shiftISODate(iso: string, days: number): string { return isoDate(addDays(iso, days)) }
 export function mdLabel(dt: Date): string { return `${dt.getMonth() + 1}/${dt.getDate()}` }
 
+export function dowLabel(dt: Date): string {
+  const mondayFirstIndex = (dt.getDay() + 6) % 7
+  return DOW_LABELS[mondayFirstIndex]
+}
+
+export function planDayDate(startDate: string, weekNumber: number, dow: number): Date {
+  return addDays(startDate, (weekNumber - 1) * 7 + dow)
+}
+
 export function planDayDateLabel(startDate: string, weekNumber: number, dow: number): string {
-  return mdLabel(addDays(startDate, (weekNumber - 1) * 7 + dow))
+  return mdLabel(planDayDate(startDate, weekNumber, dow))
+}
+
+export function planDayDowLabel(startDate: string, weekNumber: number, dow: number): string {
+  return dowLabel(planDayDate(startDate, weekNumber, dow))
 }
 
 export function planWeekRangeLabel(startDate: string, weekNumber: number): string {
@@ -32,6 +52,20 @@ export function currentPlanWeek(startDate: string): number {
   const today = new Date()
   const dayDiff = Math.floor((today.getTime() - start.getTime()) / 86_400_000)
   return dayDiff >= 0 ? Math.floor(dayDiff / 7) + 1 : -1
+}
+
+export function relabelWeeksForStartDate(weeks: Week[], startDate: string): Week[] {
+  const curWeek = currentPlanWeek(startDate)
+  return weeks.map((week) => ({
+    ...week,
+    range: planWeekRangeLabel(startDate, week.num),
+    isCurrent: week.num === curWeek,
+    days: week.days.map((day) => ({
+      ...day,
+      dowLabel: planDayDowLabel(startDate, week.num, day.dow),
+      dateLabel: planDayDateLabel(startDate, week.num, day.dow),
+    })),
+  }))
 }
 
 function mapExercise(ex: PlanExerciseResponse, catalog: Catalog): ExerciseRow {
@@ -79,9 +113,9 @@ export function mapPlanToWeeks(plan: PlanWithChildren, catalog: Catalog): Week[]
       const dateLabel = planDayDateLabel(plan.start_date, w, dow)
       const exs = dayMap?.get(dow + 1)
       if (!exs || exs.length === 0) {
-        days.push({ dow, dowLabel: DOW_LABELS[dow], dateLabel, rest: true, rows: [] })
+        days.push({ dow, dowLabel: planDayDowLabel(plan.start_date, w, dow), dateLabel, rest: true, rows: [] })
       } else {
-        days.push({ dow, dowLabel: DOW_LABELS[dow], dateLabel, rest: false, rows: exs.map((e) => mapExercise(e, catalog)) })
+        days.push({ dow, dowLabel: planDayDowLabel(plan.start_date, w, dow), dateLabel, rest: false, rows: exs.map((e) => mapExercise(e, catalog)) })
       }
     }
     weeks.push({

@@ -1,7 +1,7 @@
 {
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
-  "regions": ["sin1"],
+  "regions": ["lhr1"],
   "functions": {
     "api/proxy.js": {
       "maxDuration": 30

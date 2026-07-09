@@ -121,6 +121,60 @@ body {
 @keyframes loadbar { 0% { left: -32% } 100% { left: 100% } }
 
 /* per-row delete: hidden until the row is hovered */
+.exrow {
+  position: relative;
+  transition: background .12s, box-shadow .12s, opacity .12s;
+}
+.exrow::before,
+.exrow::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: transparent;
+  pointer-events: none;
+  z-index: 4;
+}
+.exrow::before { top: -1px; }
+.exrow::after { bottom: -1px; }
+.exrow.row-drop-before::before,
+.exrow.row-drop-after::after {
+  background: var(--brand-red);
+  box-shadow: 0 0 0 1px var(--brand-red-soft);
+}
+.exrow.row-dragging {
+  opacity: .48;
+}
+.exrow.row-sel {
+  outline: 1px solid rgba(255, 69, 69, .36);
+  outline-offset: -1px;
+}
+.rowdrag {
+  align-self: stretch;
+  width: 12px;
+  margin: -4px 2px -4px -4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  border-right: 1px solid var(--border);
+  color: var(--fg-tertiary);
+  cursor: grab;
+  user-select: none;
+  touch-action: none;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 1;
+}
+.rowdrag:hover,
+.exrow.row-sel .rowdrag {
+  color: var(--brand-red);
+  background: var(--brand-red-soft);
+}
+.rowdrag:active {
+  cursor: grabbing;
+}
 .exrow .rowdel { opacity: 0; transition: opacity .1s, background .1s, color .1s; }
 .exrow:hover .rowdel { opacity: 1; }
 .rowdel:hover { background: var(--brand-red-soft); color: var(--brand-red); }

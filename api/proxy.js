@@ -1,7 +1,7 @@
 import http from 'node:http'
 import https from 'node:https'
 
-const TARGET = process.env.BACKEND_TARGET ?? 'http://121.40.160.241:3000'
+const CONFIGURED_TARGET = process.env.BACKEND_TARGET?.trim()
 const UPSTREAM_TIMEOUT_MS = 12000
 const UPSTREAM_ATTEMPTS = 2
 
@@ -18,6 +18,17 @@ const HOP_BY_HOP_HEADERS = new Set([
   'transfer-encoding',
   'upgrade',
 ])
+// Do not forward browser cookies, Origin/Referer, or arbitrary X-* headers to
+// the API. This proxy uses Bearer authentication; a small allowlist prevents a
+// future same-origin cookie from being unintentionally disclosed upstream.
+const FORWARDED_REQUEST_HEADERS = new Set([
+  'authorization',
+  'accept',
+  'content-type',
+  'if-none-match',
+  'if-modified-since',
+  'x-request-id',
+])
 
 function asArray(value) {
   if (Array.isArray(value)) return value
@@ -25,9 +36,23 @@ function asArray(value) {
   return [value]
 }
 
-function targetUrl(req) {
+function backendTarget() {
+  if (!CONFIGURED_TARGET) return null
+  try {
+    const target = new URL(CONFIGURED_TARGET)
+    // Browser traffic remains HTTPS to this same-origin proxy. The current
+    // Alibaba Cloud upstream is still an HTTP service, so the server-to-server
+    // hop must temporarily accept both HTTP and HTTPS until its TLS hostname is live.
+    if (target.protocol !== 'https:' && target.protocol !== 'http:') return null
+    return target.toString().replace(/\/$/, '')
+  } catch {
+    return null
+  }
+}
+
+function targetUrl(req, target) {
   const path = asArray(req.query.path).join('/')
-  const url = new URL(`${TARGET}/${String(path).split('/').filter(Boolean).map(encodeURIComponent).join('/')}`)
+  const url = new URL(`${target}/${String(path).split('/').filter(Boolean).map(encodeURIComponent).join('/')}`)
   for (const [key, value] of Object.entries(req.query)) {
     if (key === 'path') continue
     for (const item of asArray(value)) url.searchParams.append(key, String(item))
@@ -49,9 +74,9 @@ function headerObject(headers) {
   return out
 }
 
-function requestUpstream(req, headers, body) {
+function requestUpstream(req, headers, body, target) {
   return new Promise((resolve, reject) => {
-    const url = targetUrl(req)
+    const url = targetUrl(req, target)
     const client = url.protocol === 'https:' ? https : http
     let settled = false
     let timeout
@@ -98,10 +123,15 @@ function requestUpstream(req, headers, body) {
 }
 
 export default async function handler(req, res) {
+  const target = backendTarget()
+  if (!target) {
+    res.status(503).json({ error: 'BACKEND_PROXY_NOT_CONFIGURED' })
+    return
+  }
   const headers = new Headers()
   for (const [key, value] of Object.entries(req.headers)) {
     const lower = key.toLowerCase()
-    if (HOP_BY_HOP_HEADERS.has(lower)) continue
+    if (HOP_BY_HOP_HEADERS.has(lower) || !FORWARDED_REQUEST_HEADERS.has(lower)) continue
     for (const item of asArray(value)) headers.append(key, item)
   }
   if (req.body != null && !headers.has('content-type')) headers.set('content-type', 'application/json')
@@ -114,7 +144,7 @@ export default async function handler(req, res) {
     const body = bodyFor(req)
     for (let attempt = 1; attempt <= attempts; attempt++) {
       try {
-        upstream = await requestUpstream(req, headers, body)
+        upstream = await requestUpstream(req, headers, body, target)
         break
       } catch (error) {
         lastError = error
@@ -132,7 +162,6 @@ export default async function handler(req, res) {
     const name = error instanceof Error ? error.name : 'UnknownError'
     const message = error instanceof Error ? error.message : String(error)
     console.error('backend_proxy_unreachable', {
-      target: TARGET,
       path: asArray(req.query.path).join('/'),
       error: name,
       message,

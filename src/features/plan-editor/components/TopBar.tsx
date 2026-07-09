@@ -11,17 +11,18 @@ interface Props {
   // optional switchers (connected mode)
   students?: Option[]
   currentStudentId?: string
-  onSwitchStudent?: (id: string) => void
+  onSwitchStudent?: (id: string) => void | Promise<void>
   plans?: Option[]
   currentPlanId?: string
-  onSwitchPlan?: (id: string) => void
-  onNewPlan?: () => void
+  onSwitchPlan?: (id: string) => void | Promise<void>
+  onNewPlan?: () => void | Promise<void>
   /** Rename the current plan (plan dropdown's ✎ row). */
   onRenamePlan?: () => void
-  onLogout?: () => void
+  onLogout?: () => void | Promise<void>
   onSave?: () => void
   saving?: boolean
   onImport?: (file: File) => void | Promise<void>
+  onShiftPlanOneDay?: () => void
   onNewExercise?: () => void
   /** Rows needing attention (unbound / no sets); click cycles to the next one. */
   issueCount?: number
@@ -38,7 +39,7 @@ const caret: React.CSSProperties = { color: 'var(--fg-tertiary)', fontSize: 9 }
 const label: React.CSSProperties = { fontSize: 11, color: 'var(--fg-tertiary)' }
 
 function Dropdown({ open, options, currentId, onPick, onNew, newLabel, onRenameCurrent }: {
-  open: boolean; options: Option[]; currentId?: string; onPick: (id: string) => void; onNew?: () => void; newLabel?: string
+  open: boolean; options: Option[]; currentId?: string; onPick: (id: string) => void | Promise<void>; onNew?: () => void | Promise<void>; newLabel?: string
   onRenameCurrent?: () => void
 }) {
   if (!open) return null
@@ -49,7 +50,7 @@ function Dropdown({ open, options, currentId, onPick, onNew, newLabel, onRenameC
       overflow: 'hidden', boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
     }}>
       {options.map((o) => (
-        <div key={o.id} className="popitem" onClick={(e) => { e.stopPropagation(); onPick(o.id) }}
+        <div key={o.id} className="popitem" onClick={(e) => { e.stopPropagation(); void onPick(o.id) }}
           style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', color: o.id === currentId ? '#fff' : 'var(--fg-secondary)', fontWeight: o.id === currentId ? 600 : 400 }}>
           {o.id === currentId && <span style={{ color: 'var(--brand-red)', fontSize: 10 }}>●</span>}
           <span style={{ flex: 1, minWidth: 0 }}>
@@ -100,7 +101,7 @@ export function TopBar(p: Props) {
         {p.studentName} <span style={caret}>▼</span>
         {connected && (
           <Dropdown open={menu === 'student'} options={p.students!} currentId={p.currentStudentId}
-            onPick={(id) => { close(); p.onSwitchStudent?.(id) }} />
+            onPick={(id) => { close(); void p.onSwitchStudent?.(id) }} />
         )}
       </span>
 
@@ -109,14 +110,14 @@ export function TopBar(p: Props) {
         {p.planName} <span style={caret}>▼</span>
         {connected && (
           <Dropdown open={menu === 'plan'} options={p.plans ?? []} currentId={p.currentPlanId}
-            onPick={(id) => { close(); p.onSwitchPlan?.(id) }} onNew={p.onNewPlan ? () => { close(); p.onNewPlan!() } : undefined} newLabel="新建计划"
+            onPick={(id) => { close(); void p.onSwitchPlan?.(id) }} onNew={p.onNewPlan ? () => { close(); void p.onNewPlan!() } : undefined} newLabel="新建计划"
             onRenameCurrent={p.onRenamePlan ? () => { close(); p.onRenamePlan!() } : undefined} />
         )}
       </span>
 
       <span style={{ flex: 1 }} />
 
-      {p.onLogout && <span onClick={p.onLogout} style={{ cursor: 'pointer', color: 'var(--fg-tertiary)', fontSize: 12, padding: '4px 8px' }}>退出</span>}
+      {p.onLogout && <span onClick={() => { void p.onLogout?.() }} style={{ cursor: 'pointer', color: 'var(--fg-tertiary)', fontSize: 12, padding: '4px 8px' }}>退出</span>}
       {(p.issueCount ?? 0) > 0 && (
         <button onClick={p.onJumpIssue} title={p.issueHint} style={{
           display: 'inline-flex', alignItems: 'center', gap: 6, padding: '5px 10px',
@@ -164,6 +165,15 @@ export function TopBar(p: Props) {
           </button>
         </>
       )}
+      {p.onShiftPlanOneDay && (
+        <button onClick={p.onShiftPlanOneDay} disabled={p.saving} title="将整份计划的日期顺延一天" style={{
+          background: 'transparent', color: 'var(--fg-secondary)', border: '1px solid var(--border-strong)',
+          borderRadius: 10, padding: '8px 12px', fontFamily: 'var(--font-sans)', fontWeight: 600, fontSize: 13,
+          cursor: p.saving ? 'default' : 'pointer', lineHeight: 1, opacity: p.saving ? 0.6 : 1,
+        }}>
+          后移 1 天
+        </button>
+      )}
       {p.onSave && (
         <button onClick={p.onSave} disabled={p.saving} style={{
           background: 'transparent', color: 'var(--fg-secondary)', border: '1px solid var(--border-strong)',
@@ -176,7 +186,7 @@ export function TopBar(p: Props) {
       <button
         onClick={p.onPublish}
         disabled={p.published || p.saving}
-        title={p.published ? '已发布给学员,不可撤回;编辑后点「更新计划」推送修改' : undefined}
+        title={p.published ? '已发布给学员；为保护训练历史，请新建草稿后调整' : undefined}
         style={{
           background: p.published ? 'transparent' : '#fff', color: p.published ? 'var(--green)' : '#000',
           border: p.published ? '1px solid var(--green)' : '1px solid #fff', borderRadius: 10, padding: '9px 18px',

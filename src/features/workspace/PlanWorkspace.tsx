@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { CoachStudent, ExerciseResponse, PlanResponse } from '../../api/types'
 import {
   getCoachStudents, getStudentPlans, getPlan, publishPlan, createPlan, patchPlan, getStudentOnboarding,
+  markImportedHistory,
 } from '../../api/plans'
 import { listExercises, createCustomExercise } from '../../api/exercises'
 import { ApiException } from '../../api/client'
@@ -13,7 +14,7 @@ import { buildWeeks as buildSampleWeeks } from '../plan-editor/sampleData'
 import { SamplePreviewBanner } from './SamplePreviewBanner'
 import type { Week } from '../plan-editor/types'
 
-interface Props { onLogout: () => void }
+interface Props { onLogout: () => void | Promise<void> }
 type Loaded = { plan: PlanResponse; weeks: Week[]; weeksCount: number }
 const LAST_PLAN_PREFIX = 'mpw.lastPlan.'
 
@@ -32,33 +33,54 @@ export function PlanWorkspace({ onLogout }: Props) {
   const [loaded, setLoaded] = useState<Loaded | null>(null)
   const [error, setError] = useState('')
   const [booting, setBooting] = useState(true)
+  // Student and plan requests can resolve out of order when a coach switches
+  // quickly. A single generation covers both levels so an old response can
+  // never pair one student's label with another student's editable plan.
+  const loadGeneration = useRef(0)
 
   const errText = (e: unknown, fb: string) => (e instanceof ApiException ? `${fb}（${e.code}）` : fb)
   const sortedPlans = (list: PlanResponse[]) => [...list].sort((a, b) => (
     new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
   ))
 
-  const loadPlan = useCallback(async (id: string, cat: Catalog) => {
-    const full = await getPlan(id)
-    // Set loaded + planId together (after the fetch) so the keyed PlanEditor
-    // remounts once with the real weeks — not an empty mount on an early key change.
-    setLoaded({ plan: full, weeks: mapPlanToWeeks(full, cat), weeksCount: full.plan_weeks })
-    setPlanId(id)
-    localStorage.setItem(`${LAST_PLAN_PREFIX}${full.trainee_id}`, id)
+  const loadPlan = useCallback(async (id: string, cat: Catalog, generation = ++loadGeneration.current) => {
+    try {
+      const full = await getPlan(id)
+      if (generation !== loadGeneration.current) return false
+      // Set loaded + planId together (after the fetch) so the keyed PlanEditor
+      // remounts once with the real weeks — not an empty mount on an early key change.
+      setLoaded({ plan: full, weeks: mapPlanToWeeks(full, cat), weeksCount: full.plan_weeks })
+      setPlanId(id)
+      localStorage.setItem(`${LAST_PLAN_PREFIX}${full.trainee_id}`, id)
+      return true
+    } catch (e) {
+      // A rejected request from a student/plan that is no longer selected is
+      // just stale work, not an error for the current workspace.
+      if (generation !== loadGeneration.current) return false
+      throw e
+    }
   }, [])
 
   const loadStudent = useCallback(async (id: string, cat: Catalog, exercises: ExerciseResponse[] = exerciseList) => {
+    const generation = ++loadGeneration.current
     setStudentId(id); setLoaded(null); setPlanId('')
-    const [list, onboarding] = await Promise.all([
-      getStudentPlans(id),
-      getStudentOnboarding(id).catch(() => null),
-    ])
-    setIndex(new ExerciseIndex(exercises, { deadliftStyle: onboarding?.deadlift_style }))
-    const sorted = sortedPlans(list)
-    setPlans(sorted)
-    const remembered = localStorage.getItem(`${LAST_PLAN_PREFIX}${id}`)
-    const initial = sorted.find((plan) => plan.id === remembered) ?? sorted[0]
-    if (initial) await loadPlan(initial.id, cat)
+    try {
+      const [list, onboarding] = await Promise.all([
+        getStudentPlans(id),
+        getStudentOnboarding(id).catch(() => null),
+      ])
+      if (generation !== loadGeneration.current) return false
+      setIndex(new ExerciseIndex(exercises, { deadliftStyle: onboarding?.deadlift_style }))
+      const sorted = sortedPlans(list)
+      setPlans(sorted)
+      const remembered = localStorage.getItem(`${LAST_PLAN_PREFIX}${id}`)
+      const initial = sorted.find((plan) => plan.id === remembered) ?? sorted[0]
+      if (initial) return await loadPlan(initial.id, cat, generation)
+      return true
+    } catch (e) {
+      if (generation !== loadGeneration.current) return false
+      throw e
+    }
   }, [exerciseList, loadPlan])
 
   // boot: catalog + roster + first student + first plan
@@ -76,26 +98,39 @@ export function PlanWorkspace({ onLogout }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  const switchStudent = (id: string) => {
+  const switchStudent = async (id: string) => {
     if (!catalog || id === studentId) return
-    loadStudent(id, catalog).catch((e) => setError(errText(e, '切换学员失败')))
+    try {
+      await loadStudent(id, catalog)
+    } catch (e) {
+      setError(errText(e, '切换学员失败'))
+    }
   }
-  const switchPlan = (id: string) => {
+  const switchPlan = async (id: string) => {
     if (!catalog || id === planId) return
-    loadPlan(id, catalog).catch((e) => setError(errText(e, '打开计划失败')))
+    try {
+      await loadPlan(id, catalog)
+    } catch (e) {
+      setError(errText(e, '打开计划失败'))
+    }
   }
   const newPlan = async () => {
     if (!catalog || !studentId) return
+    const generation = ++loadGeneration.current
+    const targetStudentId = studentId
     try {
       const weeks = 12
       const start = new Date(); const end = new Date(); end.setDate(end.getDate() + weeks * 7 - 1)
       const created = await createPlan({
-        trainee_id: studentId, name: '新计划', start_date: fmtDate(start), end_date: fmtDate(end),
+        trainee_id: targetStudentId, name: '新计划', start_date: fmtDate(start), end_date: fmtDate(end),
         plan_weeks: weeks, source: 'coach', kind: 'regular',
       })
+      if (generation !== loadGeneration.current) return
       setPlans((prev) => [created, ...prev])
-      await loadPlan(created.id, catalog)
-    } catch (e) { setError(errText(e, '新建失败')) }
+      await loadPlan(created.id, catalog, generation)
+    } catch (e) {
+      if (generation === loadGeneration.current) setError(errText(e, '新建失败'))
+    }
   }
 
   if (error) {
@@ -159,11 +194,31 @@ export function PlanWorkspace({ onLogout }: Props) {
           setPlans((prev) => prev.map((p) => (p.id === updated.id ? updated : p)))
           setLoaded((prev) => (prev && prev.plan.id === updated.id ? { ...prev, plan: updated } : prev))
         } : undefined}
-        onSave={loaded ? (weeks, importStart, onProgress) => (
-          importStart
-            ? reconcileImportedPlan(loaded.plan.id, weeks, importStart, onProgress)
-            : reconcilePlan(loaded.plan.id, weeks, onProgress)
-        ) : undefined}
+        onSave={loaded ? async (weeks, importStart, markPastAsAssumedComplete, onProgress) => {
+          const result = importStart
+            ? await reconcileImportedPlan(loaded.plan.id, weeks, importStart, onProgress)
+            : await reconcilePlan(loaded.plan.id, weeks, onProgress)
+          if (importStart && markPastAsAssumedComplete) await markImportedHistory(loaded.plan.id)
+          if (result.planStartDate && result.planEndDate && result.planWeeks != null) {
+            const calendar = {
+              start_date: result.planStartDate,
+              end_date: result.planEndDate,
+              plan_weeks: result.planWeeks,
+            }
+            // The editor remains mounted after an import/date shift. Update the
+            // parent-owned plan too, otherwise the next shift/undo would derive
+            // from stale metadata even though the backend already accepted it.
+            setPlans((prev) => prev.map((plan) => (
+              plan.id === loaded.plan.id ? { ...plan, ...calendar } : plan
+            )))
+            setLoaded((prev) => (
+              prev && prev.plan.id === loaded.plan.id
+                ? { ...prev, plan: { ...prev.plan, ...calendar }, weeksCount: calendar.plan_weeks }
+                : prev
+            ))
+          }
+          return result
+        } : undefined}
         onRename={loaded ? async (name) => {
           const updated = await patchPlan(loaded.plan.id, { name })
           // Keep the switcher list + the loaded plan in sync so the new name shows everywhere.
