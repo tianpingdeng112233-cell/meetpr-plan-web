@@ -47,7 +47,13 @@ export function createSaveController(opts: { delay: number; persist: () => Promi
     timer = setTimeout(() => { timer = null; void kick() }, opts.delay)
   }
   const saveNow = (): Promise<boolean> => { dirty = true; clearTimer(); return kick() }
-  const flush = (): Promise<boolean> => { clearTimer(); return dirty ? kick() : Promise.resolve(true) }
+  // A write can already be in flight after the debounce fired. Waiting for that
+  // shared drain is essential before a route switch or logout; otherwise the
+  // parent can tear down credentials while the final draft write is unresolved.
+  const flush = (): Promise<boolean> => {
+    clearTimer()
+    return dirty ? kick() : (draining ?? Promise.resolve(true))
+  }
   const cancelAutosave = () => { clearTimer() }
 
   return { scheduleAutosave, saveNow, flush, cancelAutosave }
