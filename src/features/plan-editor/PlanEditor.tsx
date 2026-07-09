@@ -11,6 +11,7 @@ import { CustomExerciseDialog } from './components/CustomExerciseDialog'
 import type { ExerciseIndex, ExerciseHit } from './exerciseIndex'
 import type { CreateCustomExerciseInput } from '../../api/exercises'
 import type { ParsedWeek } from './import'
+import { ReconciliationError } from './reconcile'
 import type { SaveResult } from './reconcile'
 import { createSaveController } from './autosave'
 import { parseClipboardRows, serializeDayForClipboard, serializeRowsForClipboard } from './clipboard'
@@ -777,6 +778,20 @@ export function PlanEditor(props: PlanEditorProps) {
         if (!auto) {
           window.alert('这份计划已有训练历史，不能再直接修改。请新建计划，在新的草稿中调整后再发布。')
         }
+      } else if (error instanceof ReconciliationError) {
+        // Client-side refusals are permanent for this plan state — a generic
+        // "重试" both misleads and hides the way out.
+        const explain: Record<ReconciliationError['code'], [string, string]> = {
+          PLAN_NOT_DRAFT: ['计划已发布 · 请新建草稿后调整',
+            '这份计划已发布，网页端不再直接覆盖它。请新建计划，在新的草稿中调整后再发布。'],
+          PLAN_REQUIRES_NATIVE_EDITOR: ['此计划含逐组差异设置 · 网页端暂不支持保存',
+            '这份计划包含逐组不同的次数/备注/组间休息，网页编辑器还无法无损保存，为避免丢失这些设置已拒绝写入。'],
+          PLAN_SET_SPEC_INCOMPLETE: ['有已绑定动作缺组次或强度 · 点「待核对」补全',
+            '有已绑定的动作还没填完整组次/强度，保存会产生空处方。点顶栏「待核对」逐个补全后再保存。'],
+        }
+        const [status, detail] = explain[error.code]
+        setStatusText(status)
+        if (!auto) window.alert(detail)
       } else {
         setStatusText(auto ? '自动保存失败 · 改动已保留' : '保存失败 · 重试')
       }

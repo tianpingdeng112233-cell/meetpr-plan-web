@@ -198,7 +198,17 @@ export function PlanWorkspace({ onLogout }: Props) {
           const result = importStart
             ? await reconcileImportedPlan(loaded.plan.id, weeks, importStart, onProgress)
             : await reconcilePlan(loaded.plan.id, weeks, onProgress)
-          if (importStart && markPastAsAssumedComplete) await markImportedHistory(loaded.plan.id)
+          if (importStart && markPastAsAssumedComplete) {
+            // The plan itself is already reconciled at this point. History
+            // marking rides a backend endpoint that may not be deployed yet
+            // (feat/043-plan-import-backend); failing the whole save here would
+            // put the editor in a permanent retry loop over an optional extra.
+            try {
+              await markImportedHistory(loaded.plan.id)
+            } catch {
+              window.alert('计划已导入并保存，但过去训练的「推定完成」补记未成功（后端暂不支持）。补记功能上线后重新导入即可补上。')
+            }
+          }
           if (result.planStartDate && result.planEndDate && result.planWeeks != null) {
             const calendar = {
               start_date: result.planStartDate,
