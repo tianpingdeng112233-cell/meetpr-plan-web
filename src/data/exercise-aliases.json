@@ -45,6 +45,13 @@
     { "alias": "PIN 深蹲", "canonical": "架上(PIN)深蹲" },
     { "alias": "宽距罗马尼亚硬拉", "canonical": "宽握距罗马尼亚硬拉" },
     { "alias": "哑铃推肩", "canonical": "哑铃坐姿推肩" },
-    { "alias": "颈后下拉", "canonical": "颈后高位下拉" }
+    { "alias": "颈后下拉", "canonical": "颈后高位下拉" },
+    { "alias": "侧平板", "canonical": "侧平板支撑" },
+    { "alias": "两头起", "canonical": "静力两头起" },
+    { "alias": "二头动作自选", "canonical": "哑铃二头弯举" },
+    { "alias": "spoto 暂停", "canonical": "spoto 暂停卧推" },
+    { "alias": "spoto暂停", "canonical": "spoto 暂停卧推" },
+    { "alias": "安全杆节奏蹲", "canonical": "安全杠节奏深蹲" },
+    { "alias": "安全杠节奏蹲", "canonical": "安全杠节奏深蹲" }
   ]
 }

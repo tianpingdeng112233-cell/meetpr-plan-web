@@ -18,8 +18,8 @@ export function displayExerciseName(name: string): string {
 function normalizeLookupName(name: string): string {
   return name
     .trim()
-    .replace(/[·・]/g, '')
-    .replace(/\s+/g, '')
+    .toLowerCase()
+    .replace(/[·・\s_\-‐‑–—]/g, '')
 }
 
 export interface ExerciseHit { id: string; name: string; via?: string }

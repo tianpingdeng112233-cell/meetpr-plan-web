@@ -33,7 +33,10 @@ const baseInput: React.CSSProperties = {
 
 function setBoxesLen(boxes: ExerciseRow['boxes'], n: number) {
   if (n <= boxes.length) return boxes.slice(0, n)
-  return [...boxes, ...Array.from({ length: n - boxes.length }, () => ({ val: '', empty: true }))]
+  // Adding a set should preserve the prescription the coach can already see;
+  // an empty invisible set used to make the displayed count differ from save.
+  const last = boxes[boxes.length - 1] ?? { val: '', empty: true }
+  return [...boxes, ...Array.from({ length: n - boxes.length }, () => ({ ...last }))]
 }
 
 function EditableStrength({ row, width, edit }: { row: ExerciseRow; width: number; edit: (u: (r: ExerciseRow) => ExerciseRow) => void }) {
