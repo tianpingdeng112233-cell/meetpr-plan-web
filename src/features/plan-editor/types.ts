@@ -9,6 +9,14 @@ export interface SetBox {
 /** One exercise line inside a day. */
 export interface ExerciseRow {
   id: string
+  /** Persisted plan_exercise identity. UI-only/new/imported rows have no server identity yet. */
+  serverRowId: string | null
+  /** Original backend slot, retained so a failed delete+recreate can converge on retry. */
+  serverSortOrder: number | null
+  /** Server-authoritative exercise history lock. Missing wire fields map to false. */
+  hasLogs: boolean
+  /** Scoped 409 feedback shown on the affected row. */
+  conflictMessage: string | null
   exerciseId: string | null   // bound catalog exercise id; null = unbound (not yet saveable)
   name: string
   ku: boolean        // matched the exercise catalog
@@ -27,6 +35,8 @@ export interface DayCol {
   dateLabel: string
   rest: boolean
   rows: ExerciseRow[]
+  /** Unsaved mixed-day deletions whose sort slots may be reused immediately by new rows. */
+  releasedSortOrders?: number[]
 }
 
 export interface Week {

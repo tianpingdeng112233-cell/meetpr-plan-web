@@ -175,7 +175,7 @@ export function TopBar(p: Props) {
           opacity: p.published ? 0.75 : (p.saving ? 0.6 : 1),
         }}
       >
-        {p.published ? '已发布' : '发布给学员'}
+        {p.published ? '已发布 · 不可撤回' : '发布给学员'}
       </button>
       {backdrop}
     </div>

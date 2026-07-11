@@ -9,7 +9,7 @@ import { DayColumn } from './components/DayColumn'
 import { ExercisePopover } from './components/ExercisePopover'
 import type { ExerciseIndex, ExerciseHit } from './exerciseIndex'
 import type { ParsedWeek } from './import'
-import type { SaveResult } from './reconcile'
+import { LockedRowMutationError, ReconcileConflict, type SaveResult } from './reconcile'
 import { createSaveController } from './autosave'
 
 interface Sel { wnum: number; dow: number }
@@ -58,6 +58,22 @@ function hasGridContent(weeks: Week[]): boolean {
 
 function hasParsedWeekContent(week: ParsedWeek): boolean {
   return week.days.some((day) => day.exercises.length > 0)
+}
+
+export interface IssueRow { rowId: string; kind: 'unbound' | 'noSets' }
+
+/** Grid-order issue list used by both the chip count and its cycling cursor. */
+export function findIssueRows(wks: Week[]): IssueRow[] {
+  const issues: IssueRow[] = []
+  for (const wk of wks) for (const d of wk.days) {
+    if (d.rest) continue
+    for (const r of d.rows) {
+      if (r.hasLogs) continue
+      if (isContentfulUnbound(r)) issues.push({ rowId: r.id, kind: 'unbound' })
+      else if (isBoundNoSets(r)) issues.push({ rowId: r.id, kind: 'noSets' })
+    }
+  }
+  return issues
 }
 
 export function PlanEditor(props: PlanEditorProps) {
@@ -254,20 +270,31 @@ export function PlanEditor(props: PlanEditorProps) {
     setWeeks((prev) => prev.map((wk) => wk.num !== target.wnum ? wk : {
       ...wk,
       days: wk.days.map((d) => d.dow !== target.dow ? d : {
-        ...d, rows: d.rows.map((r) => r.id === target.rowId ? { ...r, exerciseId, name, ku: !custom, custom } : r),
+        ...d, rows: d.rows.map((r) => r.id === target.rowId && !r.hasLogs ? { ...r, exerciseId, name, ku: !custom, custom } : r),
       }),
     }))
   }
   const editRow = (wnum: number, dow: number, rowId: string, updater: (r: ExerciseRow) => ExerciseRow) => {
     setWeeks((prev) => prev.map((wk) => wk.num !== wnum ? wk : {
       ...wk,
-      days: wk.days.map((d) => d.dow !== dow ? d : { ...d, rows: d.rows.map((r) => r.id === rowId ? updater(r) : r) }),
+      days: wk.days.map((d) => d.dow !== dow ? d : { ...d, rows: d.rows.map((r) => r.id === rowId && !r.hasLogs ? updater(r) : r) }),
     }))
   }
   const deleteRow = (wnum: number, dow: number, rowId: string) => {
     setWeeks((prev) => prev.map((wk) => wk.num !== wnum ? wk : {
       ...wk,
-      days: wk.days.map((d) => d.dow !== dow ? d : { ...d, rows: d.rows.filter((r) => r.id !== rowId) }),
+      days: wk.days.map((d) => {
+        if (d.dow !== dow) return d
+        const removed = d.rows.find((r) => r.id === rowId && !r.hasLogs)
+        if (!removed) return d
+        const released = new Set(d.releasedSortOrders ?? [])
+        if (removed.serverSortOrder != null) released.add(removed.serverSortOrder)
+        return {
+          ...d,
+          releasedSortOrders: [...released].sort((a, b) => a - b),
+          rows: d.rows.filter((r) => r.id !== rowId),
+        }
+      }),
     }))
     setPop((p) => (p.rowId === rowId ? { ...p, visible: false } : p))
   }
@@ -295,27 +322,62 @@ export function PlanEditor(props: PlanEditorProps) {
     setWeeks((prev) => {
       const srcWeek = prev.find((w) => w.num === sel.wnum - 1)
       const srcDay = srcWeek?.days.find((d) => d.dow === sel.dow)
-      if (!srcDay || srcDay.rest) return prev
+      const targetDay = prev.find((w) => w.num === sel.wnum)?.days.find((d) => d.dow === sel.dow)
+      if (!srcDay || srcDay.rest || targetDay?.rows.some((row) => row.hasLogs)) return prev
       let n = Date.now()
-      const cloned = srcDay.rows.map((r) => ({ ...r, id: `c${n++}`, boxes: r.boxes.map((b) => ({ ...b })) }))
+      const cloned = srcDay.rows.map((r) => ({
+        ...r,
+        id: `c${n++}`,
+        serverRowId: null,
+        serverSortOrder: null,
+        hasLogs: false,
+        conflictMessage: null,
+        boxes: r.boxes.map((b) => ({ ...b })),
+      }))
       return prev.map((wk) => wk.num !== sel.wnum ? wk : {
         ...wk,
-        days: wk.days.map((d) => d.dow !== sel.dow ? d : { ...d, rest: false, rows: cloned }),
+        days: wk.days.map((d) => d.dow !== sel.dow ? d : { ...d, rest: false, rows: cloned, releasedSortOrders: [] }),
       })
     })
     setCopyDone(true)
     window.setTimeout(() => setCopyDone(false), 1300)
   }
 
-  const blankRow = (): ExerciseRow => ({ id: `n${Date.now()}-${Math.round(performance.now())}`, exerciseId: null, name: '', ku: false, custom: false, isMain: false, aux: false, reps: '—', mode: 'kg', boxes: [], note: '' })
+  const blankRow = (): ExerciseRow => ({
+    id: `n${Date.now()}-${Math.round(performance.now())}`,
+    serverRowId: null, serverSortOrder: null, hasLogs: false, conflictMessage: null,
+    exerciseId: null, name: '', ku: false, custom: false, isMain: false,
+    aux: false, reps: '—', mode: 'kg', boxes: [], note: '',
+  })
   const addRowToDay = (wnum: number, dow: number) => {
     setWeeks((prev) => prev.map((wk) => wk.num !== wnum ? wk : {
-      ...wk, days: wk.days.map((d) => d.dow !== dow ? d : { ...d, rest: false, rows: [...d.rows, blankRow()] }),
+      ...wk, days: wk.days.map((d) => {
+        if (d.dow !== dow) return d
+        const released = [...(d.releasedSortOrders ?? [])].sort((a, b) => a - b)
+        const reusable = released.shift() ?? null
+        const fresh = blankRow()
+        fresh.serverSortOrder = reusable
+        if (reusable == null) return { ...d, rest: false, rows: [...d.rows, fresh], releasedSortOrders: released }
+        const insertAt = d.rows.findIndex((row) => (row.serverSortOrder ?? Number.MAX_SAFE_INTEGER) > reusable)
+        const rows = [...d.rows]
+        rows.splice(insertAt < 0 ? rows.length : insertAt, 0, fresh)
+        return { ...d, rest: false, rows, releasedSortOrders: released }
+      }),
     }))
   }
   const handleAddRow = () => { if (sel) addRowToDay(sel.wnum, sel.dow) }
-  const handleClearDay = () => patchSelDay((d) => ({ ...d, rows: [] }))
-  const handleSetRest = () => patchSelDay((d) => ({ ...d, rest: true, rows: [] }))
+  const handleClearDay = () => patchSelDay((d) => {
+    const released = new Set(d.releasedSortOrders ?? [])
+    for (const row of d.rows) if (!row.hasLogs && row.serverSortOrder != null) released.add(row.serverSortOrder)
+    return {
+      ...d,
+      rows: d.rows.filter((row) => row.hasLogs),
+      releasedSortOrders: [...released].sort((a, b) => a - b),
+    }
+  })
+  const handleSetRest = () => patchSelDay((d) => d.rows.some((row) => row.hasLogs)
+    ? d
+    : { ...d, rest: true, rows: [], releasedSortOrders: [] })
   const handleUnsetRest = () => patchSelDay((d) => ({ ...d, rest: false }))
 
   const [saving, setSaving] = useState(false)
@@ -343,20 +405,10 @@ export function PlanEditor(props: PlanEditorProps) {
   //  - noSets: bound but without a single filled set — persists as a zero-set exercise, which
   //    the backend's publish completeness gate rejects (PLAN_PUBLISH_INCOMPLETE).
   // The ⚠ chip in the top bar counts both and jumps the coach to the next one.
-  interface IssueRow { rowId: string; kind: 'unbound' | 'noSets' }
-  const findIssueRows = (wks: Week[]): IssueRow[] => {
-    const issues: IssueRow[] = []
-    for (const wk of wks) for (const d of wk.days) {
-      if (d.rest) continue
-      for (const r of d.rows) {
-        if (isContentfulUnbound(r)) issues.push({ rowId: r.id, kind: 'unbound' })
-        else if (isBoundNoSets(r)) issues.push({ rowId: r.id, kind: 'noSets' })
-      }
-    }
-    return issues
-  }
   const countUnbound = (wks: Week[]) => wks.reduce(
-    (n, wk) => n + wk.days.reduce((m, d) => (d.rest ? m : m + d.rows.filter(isContentfulUnbound).length), 0),
+    (n, wk) => n + wk.days.reduce((m, d) => (
+      d.rest ? m : m + d.rows.filter((row) => !row.hasLogs && isContentfulUnbound(row)).length
+    ), 0),
     0,
   )
 
@@ -365,6 +417,29 @@ export function PlanEditor(props: PlanEditorProps) {
   // handleSave's explicit confirmed path, so no queued/latched/flushed write can ever silently
   // overwrite a plan the student is watching.
   const persistRef = useRef<() => Promise<boolean>>(async () => true)
+  const applyingSavedWeeks = useRef(false)
+  const applySuccessfulSave = (res: SaveResult, savedWeeks: Week[]) => {
+    if (res.weeks && latestWeeks.current === savedWeeks) {
+      applyingSavedWeeks.current = true
+      setWeeks(res.weeks)
+      unsavedRef.current = false
+    }
+  }
+  const applySaveFailure = (error: unknown): string | null => {
+    if (error instanceof ReconcileConflict) {
+      setWeeks(error.weeks)
+      unsavedRef.current = true
+      return error.topMessage ?? (error.code === 'DAY_HISTORY_IMMUTABLE'
+        ? '学员刚完成了训练；新打卡动作已锁定，其余修改仍保留，请再次保存'
+        : '学员刚打了卡；相关动作已锁定并还原，其余修改仍保留')
+    }
+    if (error instanceof LockedRowMutationError) {
+      setWeeks(error.weeks)
+      unsavedRef.current = true
+      return '锁定行不能修改；请刷新后重试'
+    }
+    return null
+  }
   persistRef.current = async () => {
     if (!props.onSave || published) return true
     const auto = saveMode.current === 'auto'
@@ -385,12 +460,16 @@ export function PlanEditor(props: PlanEditorProps) {
       if (importedStart.current === importStart) importedStart.current = null
       // Same generation rule for the unsaved flag: edits typed while this save was in flight
       // are NOT in what we just persisted, so they must keep the leave guards armed.
-      if (latestWeeks.current === savedWeeks) unsavedRef.current = false
+      applySuccessfulSave(res, savedWeeks)
       const base = auto ? '草稿 · 已自动保存' : '草稿 · 已保存'
       setStatusText(res.skippedRows > 0 ? `${base} · ${res.skippedRows} 行未绑定被跳过` : base)
       return true
     }
-    catch { setStatusText(auto ? '自动保存失败 · 改动已保留' : '保存失败 · 重试'); return false }
+    catch (error) {
+      const scoped = applySaveFailure(error)
+      setStatusText(scoped ?? (auto ? '自动保存失败 · 改动已保留' : '保存失败 · 重试'))
+      return false
+    }
     finally { setSaving(false) }
   }
   const saver = useRef(createSaveController({ delay: 1500, persist: () => persistRef.current() }))
@@ -403,6 +482,7 @@ export function PlanEditor(props: PlanEditorProps) {
     const weeksChanged = prevWeeksRef.current !== weeks
     prevWeeksRef.current = weeks
     if (skipFirstAutosave.current) { skipFirstAutosave.current = false; return } // ignore the initial load
+    if (applyingSavedWeeks.current) { applyingSavedWeeks.current = false; return }
     // Only a real edit marks content unsaved — this effect also fires when `published`
     // flips (same weeks identity), which must not re-arm the guard.
     if (weeksChanged && props.onSave) unsavedRef.current = true
@@ -505,10 +585,13 @@ export function PlanEditor(props: PlanEditorProps) {
         const res = await props.onSave(savedWeeks, null,
           (done, total) => { if (total > 3) setStatusText(`更新中… ${done}/${total} 天`) })
         // Edits typed during the round-trip aren't in what was pushed — keep the guards armed.
-        if (latestWeeks.current === savedWeeks) unsavedRef.current = false
+        applySuccessfulSave(res, savedWeeks)
         setStatusText(res.skippedRows > 0 ? `已更新 ${studentName} 的计划 · ${res.skippedRows} 行未绑定被跳过` : `已更新 ${studentName} 的计划`)
       }
-      catch { setStatusText('更新失败 · 重试') }
+      catch (error) {
+        const scoped = applySaveFailure(error)
+        setStatusText(scoped ?? '更新失败 · 重试')
+      }
       finally { setSaving(false) }
       return
     }
@@ -664,6 +747,11 @@ export function PlanEditor(props: PlanEditorProps) {
     const wk = weeks.find((w) => w.num === sel.wnum)
     return wk?.days.find((x) => x.dow === sel.dow)?.rest ?? false
   })()
+  const selHasLockedRows = (() => {
+    if (!sel) return false
+    const wk = weeks.find((w) => w.num === sel.wnum)
+    return wk?.days.find((x) => x.dow === sel.dow)?.rows.some((row) => row.hasLogs) ?? false
+  })()
 
   return (
     <div ref={rootRef} style={{
@@ -690,7 +778,9 @@ export function PlanEditor(props: PlanEditorProps) {
         visible={!!sel}
         dayLabel={selDayLabel}
         isRest={selIsRest}
-        canCopyPrev={!!sel && sel.wnum > 1}
+        canCopyPrev={!!sel && sel.wnum > 1 && !selHasLockedRows}
+        copyDisabledHint={selHasLockedRows ? '目标日含学员已打卡动作,不能用上周覆盖' : undefined}
+        hasLockedRows={selHasLockedRows}
         copyLabel={copyDone ? '✓ 已复制上周' : COPY_LABEL}
         copyDone={copyDone}
         onCopyPrev={handleCopyPrev}

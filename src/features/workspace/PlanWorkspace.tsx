@@ -146,8 +146,12 @@ export function PlanWorkspace({ onLogout }: Props) {
         } : undefined}
         onSave={loaded ? (weeks, importStart, onProgress) => (
           importStart
-            ? reconcileImportedPlan(loaded.plan.id, weeks, importStart, onProgress)
-            : reconcilePlan(loaded.plan.id, weeks, onProgress)
+            ? reconcileImportedPlan(loaded.plan.id, weeks, importStart, onProgress, {
+                published: loaded.plan.status === 'published', catalog: catalog ?? undefined,
+              })
+            : reconcilePlan(loaded.plan.id, weeks, onProgress, {
+                published: loaded.plan.status === 'published', catalog: catalog ?? undefined,
+              })
         ) : undefined}
         onRename={loaded ? async (name) => {
           const updated = await patchPlan(loaded.plan.id, { name })

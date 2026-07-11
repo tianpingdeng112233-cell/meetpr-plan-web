@@ -396,6 +396,10 @@ function rowFromParsed(exercise: ParsedExercise, resolved: ExerciseResponse | nu
   const boxes: SetBox[] = exercise.values.map((value) => ({ val: value, empty: value.trim() === '' }))
   return {
     id,
+    serverRowId: null,
+    serverSortOrder: null,
+    hasLogs: false,
+    conflictMessage: null,
     exerciseId: resolved?.id ?? null,
     name: resolved?.name ?? exercise.rawName,
     ku: resolved ? !custom : false,
