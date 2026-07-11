@@ -76,7 +76,12 @@ function mapExercise(ex: PlanExerciseResponse, catalog: Catalog): ExerciseRow {
 
   if (sets.length === 0) {
     // notes-only accessory
-    return { id: ex.id, exerciseId: ex.exercise_id, name, ku: !custom, custom, isMain: ex.is_main_lift, aux: true, reps: '—', mode: 'kg', boxes: [], note: ex.notes ?? '' }
+    return {
+      id: ex.id, serverRowId: ex.id, serverSortOrder: ex.sort_order,
+      hasLogs: ex.has_logs ?? false, conflictMessage: null,
+      exerciseId: ex.exercise_id, name, ku: !custom, custom, isMain: ex.is_main_lift,
+      aux: true, reps: '—', mode: 'kg', boxes: [], note: ex.notes ?? '',
+    }
   }
 
   const bodyweight = sets.every((s) => /自重|bodyweight/i.test(s.coach_note ?? ''))
@@ -90,7 +95,12 @@ function mapExercise(ex: PlanExerciseResponse, catalog: Catalog): ExerciseRow {
   const reps = repsMax != null && repsMax > baseReps
     ? `${baseReps}-${repsMax}`
     : hasAmrap ? `${baseReps}+` : String(baseReps)
-  return { id: ex.id, exerciseId: ex.exercise_id, name, ku: !custom, custom, isMain: ex.is_main_lift, aux: false, reps, mode, boxes, note: ex.notes ?? '' }
+  return {
+    id: ex.id, serverRowId: ex.id, serverSortOrder: ex.sort_order,
+    hasLogs: ex.has_logs ?? false, conflictMessage: null,
+    exerciseId: ex.exercise_id, name, ku: !custom, custom, isMain: ex.is_main_lift,
+    aux: false, reps, mode, boxes, note: ex.notes ?? '',
+  }
 }
 
 export function mapPlanToWeeks(plan: PlanWithChildren, catalog: Catalog): Week[] {

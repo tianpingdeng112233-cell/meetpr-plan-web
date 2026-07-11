@@ -62,6 +62,10 @@ describe('import dates — keep the source plan dates (spec 002 option A)', () =
         rest: dow !== 3,
         rows: dow === 3 ? [{
           id: 'r1',
+          serverRowId: null,
+          serverSortOrder: null,
+          hasLogs: false,
+          conflictMessage: null,
           exerciseId: 'squat',
           name: '低杠位深蹲',
           ku: true,

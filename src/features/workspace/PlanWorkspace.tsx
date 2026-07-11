@@ -195,9 +195,13 @@ export function PlanWorkspace({ onLogout }: Props) {
           setLoaded((prev) => (prev && prev.plan.id === updated.id ? { ...prev, plan: updated } : prev))
         } : undefined}
         onSave={loaded ? async (weeks, importStart, markPastAsAssumedComplete, onProgress) => {
+          const reconcileOptions = {
+            published: loaded.plan.status === 'published',
+            catalog: catalog ?? undefined,
+          }
           const result = importStart
-            ? await reconcileImportedPlan(loaded.plan.id, weeks, importStart, onProgress)
-            : await reconcilePlan(loaded.plan.id, weeks, onProgress)
+            ? await reconcileImportedPlan(loaded.plan.id, weeks, importStart, onProgress, reconcileOptions)
+            : await reconcilePlan(loaded.plan.id, weeks, onProgress, reconcileOptions)
           if (importStart && markPastAsAssumedComplete) {
             // The plan itself is already reconciled at this point. History
             // marking rides a backend endpoint that may not be deployed yet

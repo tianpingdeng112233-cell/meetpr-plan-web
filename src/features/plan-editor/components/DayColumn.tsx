@@ -6,16 +6,16 @@ interface Props {
   day: DayCol
   colW: ColWidths
   selected: boolean
-  selectedRowId: string | null
+  selectedRowId?: string | null
   onSelect: () => void
-  onSelectRow: (rowId: string) => void
+  onSelectRow?: (rowId: string) => void
   onResizeStart: (col: ColKey, e: React.MouseEvent) => void
   onNameFocus: (rowId: string, name: string, el: HTMLElement) => void
   onNameChange: (rowId: string, value: string, el: HTMLElement) => void
   onNameBlur: () => void
   onAddRow: () => void
   onEditRow: (rowId: string, updater: (r: ExerciseRow) => ExerciseRow) => void
-  onReorderRow: (dragRowId: string, targetRowId: string, position: 'before' | 'after') => void
+  onReorderRow?: (dragRowId: string, targetRowId: string, position: 'before' | 'after') => void
   onDeleteRow: (rowId: string) => void
 }
 
@@ -57,11 +57,13 @@ function EditableStrength({ row, width, edit }: { row: ExerciseRow; width: numbe
       flexWrap: 'wrap', alignItems: 'center', alignContent: 'center',
     }}>
       <span
-        title="切换 KG / RPE / 自重" onClick={(e) => { stop(e); edit((r) => ({ ...r, mode: nextMode })) }}
+        title={row.hasLogs ? '学员已打卡,此行及其组不可修改' : '切换 KG / RPE / 自重'}
+        onClick={(e) => { stop(e); if (!row.hasLogs) edit((r) => ({ ...r, mode: nextMode })) }}
         style={{
           display: 'inline-flex', alignItems: 'center', fontFamily: 'var(--font-mono)', fontSize: 9,
           letterSpacing: '.04em', border: '1px solid var(--border-strong)', borderRadius: 3,
-          padding: '1px 4px', margin: '0 5px 3px 0', cursor: 'pointer', userSelect: 'none', ...chip,
+          padding: '1px 4px', margin: '0 5px 3px 0', cursor: row.hasLogs ? 'default' : 'pointer',
+          userSelect: 'none', opacity: row.hasLogs ? 0.55 : 1, ...chip,
         }}
       >
         {row.mode === 'rpe' ? 'RPE' : row.mode === 'bodyweight' ? '自重' : 'KG'}
@@ -72,10 +74,12 @@ function EditableStrength({ row, width, edit }: { row: ExerciseRow; width: numbe
       {row.mode !== 'bodyweight' && row.boxes.map((b, i) => (
         <input
           key={i} value={b.empty ? '' : b.val} inputMode="decimal" onClick={stop}
+          disabled={row.hasLogs}
           onChange={(e) => edit((r) => ({ ...r, boxes: r.boxes.map((x, j) => j === i ? { val: e.target.value, empty: e.target.value.trim() === '' } : x) }))}
           style={{
             ...baseInput, width: 36, height: 19, textAlign: 'center', margin: '0 4px 3px 0',
             border: '1px solid var(--border-strong)', background: b.empty ? 'transparent' : 'var(--surface-2)',
+            opacity: row.hasLogs ? 0.55 : 1,
           }}
         />
       ))}
@@ -87,12 +91,13 @@ function EditableStrength({ row, width, edit }: { row: ExerciseRow; width: numbe
 export function DayColumn({ day, colW, selected, selectedRowId, onSelect, onSelectRow, onResizeStart, onNameFocus, onNameChange, onNameBlur, onAddRow, onEditRow, onReorderRow, onDeleteRow }: Props) {
   const [dragRowId, setDragRowId] = useState<string | null>(null)
   const [dropTarget, setDropTarget] = useState<{ rowId: string; position: 'before' | 'after' } | null>(null)
+  const dragDisabled = day.rows.some((row) => row.hasLogs)
 
   const startRowDrag = (e: React.MouseEvent, rowId: string) => {
-    if (e.button !== 0) return
+    if (e.button !== 0 || dragDisabled) return
     e.preventDefault()
     e.stopPropagation()
-    onSelectRow(rowId)
+    onSelectRow?.(rowId)
     setDragRowId(rowId)
 
     let currentDrop: { rowId: string; position: 'before' | 'after' } | null = null
@@ -133,7 +138,7 @@ export function DayColumn({ day, colW, selected, selectedRowId, onSelect, onSele
 
     const onUp = (ev: MouseEvent) => {
       updateDropTarget(ev.clientX, ev.clientY)
-      if (currentDrop) onReorderRow(rowId, currentDrop.rowId, currentDrop.position)
+      if (currentDrop) onReorderRow?.(rowId, currentDrop.rowId, currentDrop.position)
       cleanup()
     }
 
@@ -186,26 +191,31 @@ export function DayColumn({ day, colW, selected, selectedRowId, onSelect, onSele
             <div
               key={row.id}
               data-rowid={row.id}
-              className={`exrow${row.aux ? ' aux' : ''}${isSelectedRow ? ' row-sel' : ''}${dragRowId === row.id ? ' row-dragging' : ''}${dropPosition ? ` row-drop-${dropPosition}` : ''}`}
-              onMouseDownCapture={(e) => { if (e.button === 0) onSelectRow(row.id) }}
+              data-locked={row.hasLogs ? 'true' : 'false'}
+              data-drag-disabled={dragDisabled ? 'true' : 'false'}
+              className={`exrow${row.aux ? ' aux' : ''}${row.hasLogs ? ' locked' : ''}${isSelectedRow ? ' row-sel' : ''}${dragRowId === row.id ? ' row-dragging' : ''}${dropPosition ? ` row-drop-${dropPosition}` : ''}`}
+              onMouseDownCapture={(e) => { if (e.button === 0) onSelectRow?.(row.id) }}
               onClick={(e) => e.stopPropagation()}
               style={{
                 display: 'flex', alignItems: 'stretch', borderTop: '1px solid var(--border)',
                 background: isSelectedRow ? 'rgba(255, 69, 69, 0.08)' : undefined,
                 boxShadow: isSelectedRow ? 'inset 3px 0 0 var(--brand-red)' : undefined,
+                opacity: row.hasLogs ? 0.78 : 1,
               }}
             >
               <div className="gcell" data-c="name" style={{ width: colW.name, padding: '4px 4px', display: 'flex', alignItems: 'center', gap: 2, overflow: 'hidden' }}>
                 <span
                   className="rowdrag"
-                  title="拖动调整顺序 / 点击选中动作"
+                  title={dragDisabled ? '该日含学员已打卡动作，整天不可拖排' : '拖动调整顺序 / 点击选中动作'}
                   onMouseDown={(e) => startRowDrag(e, row.id)}
-                  onClick={(e) => { e.stopPropagation(); onSelectRow(row.id) }}
+                  onClick={(e) => { e.stopPropagation(); onSelectRow?.(row.id) }}
+                  style={{ cursor: dragDisabled ? 'not-allowed' : undefined, opacity: dragDisabled ? 0.45 : undefined }}
                 >
                   ⋮
                 </span>
                 <input
                   value={row.name} placeholder="输入动作…"
+                  disabled={row.hasLogs}
                   onMouseDown={stop} onClick={stop}
                   onFocus={(e) => onNameFocus(row.id, row.name, e.currentTarget)}
                   onChange={(e) => onNameChange(row.id, e.target.value, e.currentTarget)}
@@ -214,12 +224,18 @@ export function DayColumn({ day, colW, selected, selectedRowId, onSelect, onSele
                 />
                 {row.ku && <span style={{ color: 'var(--green)', fontSize: 9, flex: 'none' }}>✓</span>}
                 {row.custom && <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--fg-tertiary)', fontSize: 8, flex: 'none', border: '1px solid var(--border-strong)', borderRadius: 3, padding: '0 3px' }}>定</span>}
+                {row.hasLogs && (
+                  <span title={row.conflictMessage ?? '学员已打卡,此行及其组不可修改'}
+                    style={{ fontSize: 9, flex: 'none', cursor: 'help' }}>🔒</span>
+                )}
+                {row.conflictMessage && <span title={row.conflictMessage} style={{ color: 'var(--amber)', fontSize: 9, cursor: 'help' }}>⚠</span>}
               </div>
 
               {/* 组 — editable on aux rows too: a zero-set (note-driven) row can't publish, so
                   typing a count here is how the coach turns it into a real tracked exercise. */}
               <div className="gcell" data-c="sets" style={{ width: colW.sets, padding: '4px 2px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 <input value={row.boxes.length || ''} inputMode="numeric" onClick={stop} placeholder={row.aux ? '—' : ''}
+                  disabled={row.hasLogs}
                   onChange={(e) => {
                     const raw = e.target.value.trim()
                     // Do not interpret the transient empty value while editing
@@ -234,6 +250,7 @@ export function DayColumn({ day, colW, selected, selectedRowId, onSelect, onSele
               {/* 次 */}
               <div className="gcell" data-c="reps" style={{ width: colW.reps, padding: '4px 2px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 <input value={row.reps === '—' ? '' : row.reps} inputMode="text" onClick={stop} placeholder="—"
+                  disabled={row.hasLogs}
                   onChange={(e) => edit((r) => ({ ...r, reps: e.target.value.trim() === '' ? '—' : e.target.value }))}
                   style={{ ...baseInput, width: '100%', textAlign: 'center', color: 'var(--fg-secondary)' }} />
               </div>
@@ -242,15 +259,18 @@ export function DayColumn({ day, colW, selected, selectedRowId, onSelect, onSele
 
               <div className="gcell" data-c="note" style={{ width: colW.note, padding: '4px 2px', display: 'flex', alignItems: 'center', position: 'relative' }}>
                 <input value={row.note} inputMode="text" onClick={stop} placeholder=""
+                  disabled={row.hasLogs}
                   onChange={(e) => edit((r) => ({ ...r, note: e.target.value }))}
                   style={{ ...baseInput, width: '100%', fontSize: 10, color: 'var(--fg-tertiary)', paddingRight: 14 }} />
-                <span className="rowdel" title="删除这一行"
-                  onClick={(e) => { e.stopPropagation(); onDeleteRow(row.id) }}
-                  style={{
-                    position: 'absolute', right: 2, top: '50%', transform: 'translateY(-50%)',
-                    width: 14, height: 14, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    borderRadius: 4, fontSize: 10, color: 'var(--fg-tertiary)', cursor: 'pointer',
-                  }}>✕</span>
+                {!row.hasLogs && (
+                  <span className="rowdel" title="删除这一行"
+                    onClick={(e) => { e.stopPropagation(); onDeleteRow(row.id) }}
+                    style={{
+                      position: 'absolute', right: 2, top: '50%', transform: 'translateY(-50%)',
+                      width: 14, height: 14, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      borderRadius: 4, fontSize: 10, color: 'var(--fg-tertiary)', cursor: 'pointer',
+                    }}>✕</span>
+                )}
               </div>
             </div>
           )

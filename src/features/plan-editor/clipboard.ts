@@ -52,6 +52,10 @@ export function parseClipboardRows(text: string, exerciseIndex?: ExerciseResolve
     const custom = resolved?.created_by_coach_id != null
     rows.push({
       id: `paste-${lineIndex}-${Date.now()}-${Math.round(performance.now())}`,
+      serverRowId: null,
+      serverSortOrder: null,
+      hasLogs: false,
+      conflictMessage: null,
       exerciseId: resolved?.id ?? null,
       name: resolved?.name ?? name,
       ku: resolved ? !custom : false,

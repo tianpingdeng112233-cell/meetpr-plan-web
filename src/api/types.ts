@@ -68,6 +68,8 @@ export interface PlanExerciseResponse {
   exercise_id: string
   is_main_lift: boolean
   sort_order: number
+  /** backend spec 016; optional while production rolls out the new contract */
+  has_logs?: boolean
   notes: string | null
   sets: PlanSetResponse[]
 }

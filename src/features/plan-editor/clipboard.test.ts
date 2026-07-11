@@ -21,6 +21,10 @@ describe('plan editor clipboard rows', () => {
   it('round-trips a single exercise row through the clipboard format', () => {
     const row: ExerciseRow = {
       id: 'row-1',
+      serverRowId: null,
+      serverSortOrder: null,
+      hasLogs: false,
+      conflictMessage: null,
       exerciseId: 'bench',
       name: '卧推',
       ku: true,

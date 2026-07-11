@@ -25,6 +25,8 @@ interface Props {
   saving?: boolean
   onImport?: (file: File) => void | Promise<void>
   onShiftPlanOneDay?: () => void
+  shiftPlanDisabled?: boolean
+  shiftPlanDisabledHint?: string
   onNewExercise?: () => void
   /** Rows needing attention (unbound / no sets); click cycles to the next one. */
   issueCount?: number
@@ -171,10 +173,12 @@ export function TopBar(p: Props) {
         </>
       )}
       {p.onShiftPlanOneDay && (
-        <button onClick={p.onShiftPlanOneDay} disabled={p.saving} title="将整份计划的日期顺延一天" style={{
+        <button onClick={p.onShiftPlanOneDay} disabled={p.saving || p.shiftPlanDisabled}
+          title={p.shiftPlanDisabled ? p.shiftPlanDisabledHint : '将整份计划的日期顺延一天'} style={{
           background: 'transparent', color: 'var(--fg-secondary)', border: '1px solid var(--border-strong)',
           borderRadius: 10, padding: '8px 12px', fontFamily: 'var(--font-sans)', fontWeight: 600, fontSize: 13,
-          cursor: p.saving ? 'default' : 'pointer', lineHeight: 1, opacity: p.saving ? 0.6 : 1,
+          cursor: (p.saving || p.shiftPlanDisabled) ? 'not-allowed' : 'pointer', lineHeight: 1,
+          opacity: (p.saving || p.shiftPlanDisabled) ? 0.55 : 1,
         }}>
           后移 1 天
         </button>
@@ -191,7 +195,7 @@ export function TopBar(p: Props) {
       <button
         onClick={p.onPublish}
         disabled={p.published || p.saving}
-        title={p.published ? '已发布给学员；为保护训练历史，请新建草稿后调整' : undefined}
+        title={p.published ? '已发布给学员；未打卡动作可通过「更新计划」调整' : undefined}
         style={{
           background: p.published ? 'transparent' : '#fff', color: p.published ? 'var(--green)' : '#000',
           border: p.published ? '1px solid var(--green)' : '1px solid #fff', borderRadius: 10, padding: '9px 18px',
@@ -200,7 +204,7 @@ export function TopBar(p: Props) {
           opacity: p.published ? 0.75 : (p.saving ? 0.6 : 1),
         }}
       >
-        {p.published ? '已发布' : '发布给学员'}
+        {p.published ? '已发布 · 不可撤回' : '发布给学员'}
       </button>
       {backdrop}
     </div>

@@ -35,6 +35,10 @@ function mkRow(name: string, opt: RowOpt = {}): ExerciseRow {
   const hasInt = boxes.length > 0 && !aux
   return {
     id: `r${rid++}`,
+    serverRowId: null,
+    serverSortOrder: null,
+    hasLogs: false,
+    conflictMessage: null,
     exerciseId: null,
     name,
     ku: opt.ku !== false && !aux && !opt.custom,
