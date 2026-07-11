@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { ColKey, ColWidths, Week, DayCol, ExerciseRow } from './types'
-import { COL_DEFAULTS, COL_MIN, isContentfulUnbound, isBoundNoSets } from './types'
+import { COL_DEFAULTS, COL_MIN, isContentfulUnbound } from './types'
+import { getBoundRowInputIssue, type BoundRowInputIssue } from './inputGuard'
 import { ApiException } from '../../api/client'
 import { TopBar } from './components/TopBar'
 import { Toolbar } from './components/Toolbar'
@@ -73,20 +74,34 @@ function hasParsedWeekContent(week: ParsedWeek): boolean {
   return week.days.some((day) => day.exercises.length > 0)
 }
 
-export interface IssueRow { rowId: string; kind: 'unbound' | 'noSets' }
+export interface IssueRow {
+  rowId: string
+  kind: 'unbound' | 'noSets'
+}
 
-/** Grid-order issue list used by both the chip count and its cycling cursor. */
-export function findIssueRows(wks: Week[]): IssueRow[] {
-  const issues: IssueRow[] = []
+interface DetailedIssueRow extends IssueRow {
+  inputIssue?: BoundRowInputIssue
+}
+
+function findDetailedIssueRows(wks: Week[]): DetailedIssueRow[] {
+  const issues: DetailedIssueRow[] = []
   for (const wk of wks) for (const d of wk.days) {
     if (d.rest) continue
     for (const r of d.rows) {
       if (r.hasLogs) continue
       if (isContentfulUnbound(r)) issues.push({ rowId: r.id, kind: 'unbound' })
-      else if (isBoundNoSets(r)) issues.push({ rowId: r.id, kind: 'noSets' })
+      else {
+        const inputIssue = getBoundRowInputIssue(r)
+        if (inputIssue) issues.push({ rowId: r.id, kind: 'noSets', inputIssue })
+      }
     }
   }
   return issues
+}
+
+/** Grid-order issue list used by both the chip count and its cycling cursor. */
+export function findIssueRows(wks: Week[]): IssueRow[] {
+  return findDetailedIssueRows(wks).map(({ rowId, kind }) => ({ rowId, kind }))
 }
 
 function weekLabel(num: number): string {
@@ -889,8 +904,8 @@ export function PlanEditor(props: PlanEditorProps) {
         const explain: Record<ReconciliationError['code'], [string, string]> = {
           PLAN_REQUIRES_NATIVE_EDITOR: ['此计划含逐组差异设置 · 网页端暂不支持保存',
             '这份计划包含逐组不同的次数/备注/组间休息，网页编辑器还无法无损保存，为避免丢失这些设置已拒绝写入。'],
-          PLAN_SET_SPEC_INCOMPLETE: ['有已绑定动作缺组次或强度 · 点「待核对」补全',
-            '有已绑定的动作还没填完整组次/强度，保存会产生空处方。点顶栏「待核对」逐个补全后再保存。'],
+          PLAN_SET_SPEC_INCOMPLETE: ['有已绑定动作组次/强度不完整或无效 · 点「待核对」修正',
+            '有已绑定动作的组次/强度没填全或值无效。点顶栏「待核对」查看原因并逐个修正后再保存。'],
         }
         const [status, detail] = explain[error.code]
         setStatusText(status)
@@ -974,15 +989,19 @@ export function PlanEditor(props: PlanEditorProps) {
     if (await confirmLeave()) await fn(id)
   } : undefined
 
-  // ---- ⚠ 待核对 chip: cycle through problem rows (unbound / zero-set) -----------------------
+  // ---- ⚠ 待核对 chip: cycle through problem rows --------------------------------------------
   const issueCursor = useRef(0)
-  const issues = findIssueRows(weeks)
+  const issues = findDetailedIssueRows(weeks)
   const issueHint = (() => {
     const unbound = issues.filter((i) => i.kind === 'unbound').length
-    const noSets = issues.length - unbound
+    const inputIssues = issues.filter((i) => i.inputIssue != null)
+    const incomplete = inputIssues.filter((i) => i.inputIssue?.hasIncomplete).length
+    const invalid = inputIssues.filter((i) => (i.inputIssue?.reasons.length ?? 0) > 0).length
+    const reasons = [...new Set(inputIssues.flatMap((i) => i.inputIssue?.reasons ?? []))]
     const parts = []
     if (unbound) parts.push(`${unbound} 行未绑定动作库（保存会被跳过）`)
-    if (noSets) parts.push(`${noSets} 个动作组数/强度没填全（无法发布）`)
+    if (incomplete) parts.push(`${incomplete} 个动作组次/强度没填全（无法保存）`)
+    if (invalid) parts.push(`${invalid} 个动作值无效：${reasons.join(' / ')}`)
     return `点击逐个定位：${parts.join('；')}`
   })()
   const jumpToNextIssue = () => {
@@ -993,12 +1012,12 @@ export function PlanEditor(props: PlanEditorProps) {
     const rowEl = rootRef.current?.querySelector<HTMLElement>(`[data-rowid="${issue.rowId}"]`)
     if (!rowEl) return
     rowEl.scrollIntoView({ block: 'center', inline: 'center' })
-    // Unbound → the name cell (opens the binding search). Zero-set → the first empty
-    // strength box if the count is already set, else 组数 — a set only counts once its
-    // strength value is filled, so point the coach at the actual missing field.
+    // For prescriptions, filled-but-invalid cells win over empty cells; the set-count
+    // box is only the fallback when no editable prescription cell exists yet.
     const input = issue.kind === 'unbound'
       ? rowEl.querySelector<HTMLInputElement>('input:not([inputmode])')
-      : [...rowEl.querySelectorAll<HTMLInputElement>('input[inputmode="decimal"]')].find((b) => b.value === '')
+      : rowEl.querySelector<HTMLInputElement>('[data-input-invalid="true"]')
+        ?? [...rowEl.querySelectorAll<HTMLInputElement>('[data-guard-field]')].find((field) => field.value === '')
         ?? rowEl.querySelector<HTMLInputElement>('input[inputmode="numeric"]')
     window.setTimeout(() => input?.focus(), 60) // after the scroll settles
   }
@@ -1041,8 +1060,8 @@ export function PlanEditor(props: PlanEditorProps) {
           const explain: Record<ReconciliationError['code'], [string, string]> = {
             PLAN_REQUIRES_NATIVE_EDITOR: ['此计划含逐组差异设置 · 网页端暂不支持更新',
               '这份计划包含逐组不同的次数/备注/组间休息，网页编辑器还无法无损保存，为避免丢失这些设置已拒绝写入。'],
-            PLAN_SET_SPEC_INCOMPLETE: ['有已绑定动作缺组次或强度 · 点「待核对」补全',
-              '有已绑定的动作还没填完整组次/强度，更新会产生空处方。点顶栏「待核对」逐个补全后再更新。'],
+            PLAN_SET_SPEC_INCOMPLETE: ['有已绑定动作组次/强度不完整或无效 · 点「待核对」修正',
+              '有已绑定动作的组次/强度没填全或值无效。点顶栏「待核对」查看原因并逐个修正后再更新。'],
           }
           const [status, detail] = explain[error.code]
           setStatusText(status)
@@ -1162,7 +1181,7 @@ export function PlanEditor(props: PlanEditorProps) {
     // to the ⚠ chip instead of letting the coach discover it as an opaque failure.
     const noSets = findIssueRows(latestWeeks.current).filter((i) => i.kind === 'noSets').length
     if (noSets > 0) {
-      window.alert(`还不能发布：有 ${noSets} 个动作的组数/强度没填全，学员端无法显示，后端会拒绝发布。\n点顶栏「⚠ 待核对」逐个定位，补全组数和强度、或删掉这些行（行尾 ✕）。`)
+      window.alert(`还不能发布：有 ${noSets} 个动作的组次/强度没填全或值无效，后端会拒绝发布。\n点顶栏「⚠ 待核对」查看原因并逐个修正，或删掉这些行（行尾 ✕）。`)
       return
     }
     // Publishing flushes the draft via saveNow below, which skips unbound rows just like a manual

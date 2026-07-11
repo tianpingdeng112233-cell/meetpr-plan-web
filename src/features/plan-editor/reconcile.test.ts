@@ -179,6 +179,25 @@ describe('reconcilePlan — skippedRows counts only contentful unbound rows', ()
     expect(plans.createDay).not.toHaveBeenCalled()
   })
 
+  it.each([
+    ['out-of-range KG', { boxes: [{ val: '600', empty: false }] }],
+    ['off-step RPE', { mode: 'rpe' as const, boxes: [{ val: '7.3', empty: false }] }],
+    ['out-of-range reps', { reps: '99', boxes: [{ val: '100', empty: false }] }],
+  ])('rejects %s through the shared guard before replacing any server day', async (_label, partial) => {
+    vi.mocked(plans.getPlan).mockResolvedValue({
+      id: 'p',
+      plan_weeks: 1,
+      start_date: '2026-01-01',
+      days: [{ id: 'old-day', week_number: 1, day_of_week: 1, exercises: [] }],
+    } as never)
+
+    await expect(reconcilePlan('p', [weekWithMondayRows([
+      row({ exerciseId: 'ex1', name: '深蹲', ...partial }),
+    ])])).rejects.toMatchObject({ code: 'PLAN_SET_SPEC_INCOMPLETE' })
+    expect(plans.deleteDay).not.toHaveBeenCalled()
+    expect(plans.createDay).not.toHaveBeenCalled()
+  })
+
   it('refuses backend plans with richer per-set fields rather than flattening them', async () => {
     vi.mocked(plans.getPlan).mockResolvedValue({
       id: 'p',

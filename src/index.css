@@ -178,3 +178,10 @@ body {
 .exrow .rowdel { opacity: 0; transition: opacity .1s, background .1s, color .1s; }
 .exrow:hover .rowdel { opacity: 1; }
 .rowdel:hover { background: var(--brand-red-soft); color: var(--brand-red); }
+
+/* Filled prescription cells that fail the shared plan-editor input guard. */
+.guard-invalid {
+  border-color: var(--brand-red) !important;
+  background: var(--brand-red-soft) !important;
+  box-shadow: inset 0 0 0 1px var(--brand-red);
+}

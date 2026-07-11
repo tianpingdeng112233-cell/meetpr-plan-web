@@ -1,6 +1,12 @@
-import { useState } from 'react'
+import { useLayoutEffect, useRef, useState } from 'react'
 import type { DayCol, ColWidths, ColKey, ExerciseRow } from '../types'
 import { COLS } from '../types'
+import {
+  filterRepsInput,
+  filterStrengthInput,
+  getBoundRowInputIssue,
+  INPUT_GUARD_REASONS,
+} from '../inputGuard'
 
 interface Props {
   day: DayCol
@@ -39,6 +45,50 @@ function setBoxesLen(boxes: ExerciseRow['boxes'], n: number) {
   return [...boxes, ...Array.from({ length: n - boxes.length }, () => ({ ...last }))]
 }
 
+/** Controlled input whose value passes through a character filter without breaking
+ *  typing ergonomics: IME composition is committed (and filtered) only on
+ *  compositionend so the candidate window keeps working, and when filtering drops
+ *  characters mid-value the caret is restored to the end of the kept prefix instead
+ *  of jumping to the end of the input. */
+function GuardedInput({ value, filter, onValue, ...rest }: {
+  value: string
+  filter: (raw: string) => string
+  onValue: (filtered: string) => void
+} & Omit<React.InputHTMLAttributes<HTMLInputElement>, 'value' | 'onChange' | 'filter'>) {
+  const ref = useRef<HTMLInputElement>(null)
+  const composing = useRef(false)
+  const pendingCaret = useRef<number | null>(null)
+  useLayoutEffect(() => {
+    if (pendingCaret.current != null) {
+      ref.current?.setSelectionRange(pendingCaret.current, pendingCaret.current)
+      pendingCaret.current = null
+    }
+  })
+  const commit = (el: HTMLInputElement) => {
+    const raw = el.value
+    const filtered = filter(raw)
+    if (filtered !== raw) {
+      const caret = el.selectionStart ?? raw.length
+      pendingCaret.current = filter(raw.slice(0, caret)).length
+    }
+    onValue(filtered)
+  }
+  return (
+    <input
+      {...rest} ref={ref} value={value}
+      onCompositionStart={() => { composing.current = true }}
+      onCompositionEnd={(e) => { composing.current = false; commit(e.currentTarget) }}
+      onChange={(e) => {
+        // Mid-composition the controlled value must track the IME text verbatim,
+        // otherwise React snaps the DOM back and kills the candidate window.
+        // The guard predicate flags the transient text; compositionend filters it.
+        if (composing.current) { onValue(e.currentTarget.value); return }
+        commit(e.currentTarget)
+      }}
+    />
+  )
+}
+
 function EditableStrength({ row, width, edit }: { row: ExerciseRow; width: number; edit: (u: (r: ExerciseRow) => ExerciseRow) => void }) {
   if (row.aux) {
     return (
@@ -51,6 +101,7 @@ function EditableStrength({ row, width, edit }: { row: ExerciseRow; width: numbe
   const chip = row.mode === 'rpe' || row.mode === 'bodyweight'
     ? { color: '#fff', background: 'var(--surface-3)' }
     : { color: 'var(--fg-tertiary)', background: 'transparent' }
+  const issue = getBoundRowInputIssue(row)
   return (
     <div className="gcell intcell" data-c="int" style={{
       width, padding: '4px 5px', lineHeight: 1.3, display: 'flex',
@@ -71,18 +122,28 @@ function EditableStrength({ row, width, edit }: { row: ExerciseRow; width: numbe
       {row.mode === 'bodyweight' && row.boxes.length > 0 && (
         <span style={{ color: 'var(--fg-secondary)', fontSize: 11, margin: '0 4px 3px 0' }}>每组自重</span>
       )}
-      {row.mode !== 'bodyweight' && row.boxes.map((b, i) => (
-        <input
-          key={i} value={b.empty ? '' : b.val} inputMode="decimal" onClick={stop}
-          disabled={row.hasLogs}
-          onChange={(e) => edit((r) => ({ ...r, boxes: r.boxes.map((x, j) => j === i ? { val: e.target.value, empty: e.target.value.trim() === '' } : x) }))}
-          style={{
-            ...baseInput, width: 36, height: 19, textAlign: 'center', margin: '0 4px 3px 0',
-            border: '1px solid var(--border-strong)', background: b.empty ? 'transparent' : 'var(--surface-2)',
-            opacity: row.hasLogs ? 0.55 : 1,
-          }}
-        />
-      ))}
+      {row.mode !== 'bodyweight' && row.boxes.map((b, i) => {
+        const invalid = issue?.invalidStrengthIndexes.includes(i) ?? false
+        return (
+          <GuardedInput
+            key={i} value={b.empty ? '' : b.val} inputMode="decimal" onClick={stop}
+            className={invalid ? 'guard-invalid' : undefined}
+            data-guard-field="strength" data-input-invalid={invalid ? 'true' : undefined}
+            aria-invalid={invalid || undefined}
+            title={invalid ? (row.mode === 'rpe' ? INPUT_GUARD_REASONS.rpe : INPUT_GUARD_REASONS.kg) : undefined}
+            disabled={row.hasLogs}
+            filter={filterStrengthInput}
+            onValue={(value) => {
+              edit((r) => ({ ...r, boxes: r.boxes.map((x, j) => j === i ? { val: value, empty: value === '' } : x) }))
+            }}
+            style={{
+              ...baseInput, width: 36, height: 19, textAlign: 'center', margin: '0 4px 3px 0',
+              border: '1px solid var(--border-strong)', background: b.empty ? 'transparent' : 'var(--surface-2)',
+              opacity: row.hasLogs ? 0.55 : 1,
+            }}
+          />
+        )
+      })}
       {row.boxes.length === 0 && <span style={{ color: 'var(--fg-tertiary)', fontSize: 10 }}>填组数→</span>}
     </div>
   )
@@ -185,6 +246,7 @@ export function DayColumn({ day, colW, selected, selectedRowId, onSelect, onSele
 
         {day.rows.map((row) => {
           const edit = (u: (r: ExerciseRow) => ExerciseRow) => onEditRow(row.id, u)
+          const inputIssue = getBoundRowInputIssue(row)
           const isSelectedRow = selectedRowId === row.id
           const dropPosition = dropTarget?.rowId === row.id ? dropTarget.position : null
           return (
@@ -249,9 +311,16 @@ export function DayColumn({ day, colW, selected, selectedRowId, onSelect, onSele
 
               {/* 次 */}
               <div className="gcell" data-c="reps" style={{ width: colW.reps, padding: '4px 2px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <input value={row.reps === '—' ? '' : row.reps} inputMode="text" onClick={stop} placeholder="—"
+                <GuardedInput value={row.reps === '—' ? '' : row.reps} inputMode="text" onClick={stop} placeholder="—"
+                  className={inputIssue?.invalidReps ? 'guard-invalid' : undefined}
+                  data-guard-field="reps" data-input-invalid={inputIssue?.invalidReps ? 'true' : undefined}
+                  aria-invalid={inputIssue?.invalidReps || undefined}
+                  title={inputIssue?.invalidReps ? INPUT_GUARD_REASONS.reps : undefined}
                   disabled={row.hasLogs}
-                  onChange={(e) => edit((r) => ({ ...r, reps: e.target.value.trim() === '' ? '—' : e.target.value }))}
+                  filter={filterRepsInput}
+                  onValue={(value) => {
+                    edit((r) => ({ ...r, reps: value === '' ? '—' : value }))
+                  }}
                   style={{ ...baseInput, width: '100%', textAlign: 'center', color: 'var(--fg-secondary)' }} />
               </div>
 
