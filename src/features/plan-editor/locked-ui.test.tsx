@@ -1,4 +1,4 @@
-import { act } from 'react'
+import { act, useState } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { DayColumn } from './components/DayColumn'
@@ -116,6 +116,46 @@ describe('exercise history lock UI', () => {
       { rowId: 'first', kind: 'unbound' },
       { rowId: 'second', kind: 'noSets' },
     ])
+  })
+
+  it('marks filled invalid cells with their reason and leaves missing cells unmarked', () => {
+    act(() => root?.render(
+      <DayColumn
+        day={{
+          dow: 0, dowLabel: '周一', dateLabel: '1/1', rest: false,
+          rows: [row('invalid', {
+            reps: '99', mode: 'rpe', boxes: [{ val: '7.3', empty: false }, { val: '', empty: true }],
+          })],
+        }}
+        colW={{ name: 92, sets: 26, reps: 26, int: 110, note: 36 }} selected
+        onSelect={vi.fn()} onResizeStart={vi.fn()} onNameFocus={vi.fn()}
+        onNameChange={vi.fn()} onNameBlur={vi.fn()} onAddRow={vi.fn()}
+        onEditRow={vi.fn()} onDeleteRow={vi.fn()}
+      />,
+    ))
+
+    const invalid = host.querySelectorAll<HTMLInputElement>('[data-input-invalid="true"]')
+    expect(invalid).toHaveLength(2)
+    expect(invalid[0].title).toContain('次数需 1–50')
+    expect(invalid[1].title).toContain('RPE 需 1–10 半分档')
+    const missingStrength = host.querySelectorAll<HTMLInputElement>('[data-guard-field="strength"]')[1]
+    expect(missingStrength.className).not.toContain('guard-invalid')
+  })
+
+  it('focuses a filled invalid cell before an empty prescription cell', async () => {
+    vi.useFakeTimers()
+    act(() => root?.render(
+      <PlanEditor initialWeeks={[week(1, [
+        row('invalid', { reps: '99', boxes: [{ val: '', empty: true }] }),
+      ])]} weeksCount={1} studentName="学员" planName="计划" />,
+    ))
+
+    const issueButton = buttonByText(host, '待核对')
+    expect(issueButton.title).toContain('值无效')
+    expect(issueButton.title).toContain('次数需 1–50')
+    act(() => issueButton.dispatchEvent(new MouseEvent('click', { bubbles: true })))
+    await act(async () => { await vi.advanceTimersByTimeAsync(60) })
+    expect(document.activeElement).toBe(host.querySelector('[data-guard-field="reps"]'))
   })
 
   it('disables copy/rest conversion on a mixed day and clear-day removes only unlocked rows', () => {
@@ -274,5 +314,84 @@ describe('exercise history lock UI', () => {
     const leave = new Event('beforeunload', { cancelable: true })
     window.dispatchEvent(leave)
     expect(leave.defaultPrevented).toBe(true)
+  })
+})
+
+describe('guarded input filtering ergonomics', () => {
+  let host: HTMLDivElement
+  let root: Root | null
+
+  beforeEach(() => {
+    host = document.createElement('div')
+    document.body.appendChild(host)
+    root = createRoot(host)
+  })
+
+  afterEach(() => {
+    if (root) act(() => root?.unmount())
+    host.remove()
+    vi.restoreAllMocks()
+  })
+
+  // Stateful wrapper: the guarded inputs are controlled, so filtering behavior
+  // only shows once edits round-trip through row state like in the real editor.
+  function GuardHarness({ initial }: { initial: ExerciseRow }) {
+    const [current, setCurrent] = useState(initial)
+    return (
+      <DayColumn
+        day={{ dow: 0, dowLabel: '周一', dateLabel: '1/1', rest: false, rows: [current] }}
+        colW={{ name: 92, sets: 26, reps: 26, int: 110, note: 36 }} selected
+        onSelect={vi.fn()} onResizeStart={vi.fn()} onNameFocus={vi.fn()}
+        onNameChange={vi.fn()} onNameBlur={vi.fn()} onAddRow={vi.fn()}
+        onEditRow={(_, updater) => setCurrent((prev) => updater(prev))} onDeleteRow={vi.fn()}
+      />
+    )
+  }
+
+  function strengthInput(): HTMLInputElement {
+    return host.querySelector<HTMLInputElement>('[data-guard-field="strength"]')!
+  }
+
+  function setValueWithCaret(input: HTMLInputElement, value: string, caret: number): void {
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(input, value)
+    input.setSelectionRange(caret, caret)
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+  }
+
+  it('keeps the caret at the kept prefix when filtering drops pasted characters mid-value', () => {
+    act(() => root?.render(<GuardHarness initial={row('r1')} />))
+    const input = strengthInput()
+    expect(input.value).toBe('100')
+
+    // Paste "你" at 1|00 → DOM briefly "1你00" with caret after the paste (index 2).
+    act(() => setValueWithCaret(input, '1你00', 2))
+
+    expect(input.value).toBe('100')
+    expect(input.selectionStart).toBe(1) // right after the kept "1", not at the end
+  })
+
+  it('lets IME composition text through untouched and filters once on compositionend', () => {
+    act(() => root?.render(<GuardHarness initial={row('r1', { boxes: [{ val: '8', empty: false }] })} />))
+    const input = strengthInput()
+
+    act(() => { input.dispatchEvent(new Event('compositionstart', { bubbles: true })) })
+    // Mid-composition keystrokes must stay verbatim so the candidate window survives.
+    act(() => setValueWithCaret(input, '8ni', 3))
+    expect(input.value).toBe('8ni')
+
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(input, '8你')
+    act(() => { input.dispatchEvent(new Event('compositionend', { bubbles: true })) })
+    expect(input.value).toBe('8')
+  })
+
+  it('filters the reps field while preserving range and amrap notation', () => {
+    act(() => root?.render(<GuardHarness initial={row('r1', { reps: '8' })} />))
+    const reps = host.querySelector<HTMLInputElement>('[data-guard-field="reps"]')!
+
+    act(() => setValueWithCaret(reps, '8-10', 4))
+    expect(reps.value).toBe('8-10')
+
+    act(() => setValueWithCaret(reps, '8-10次', 5))
+    expect(reps.value).toBe('8-10')
   })
 })
