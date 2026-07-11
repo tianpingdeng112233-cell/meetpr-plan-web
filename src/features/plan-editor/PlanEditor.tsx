@@ -7,13 +7,22 @@ import { Toolbar } from './components/Toolbar'
 import { ContextBar } from './components/ContextBar'
 import { DayColumn } from './components/DayColumn'
 import { ExercisePopover } from './components/ExercisePopover'
+import { CustomExerciseDialog } from './components/CustomExerciseDialog'
 import type { ExerciseIndex, ExerciseHit } from './exerciseIndex'
+import type { CreateCustomExerciseInput } from '../../api/exercises'
 import type { ParsedWeek } from './import'
-import { LockedRowMutationError, ReconcileConflict, type SaveResult } from './reconcile'
+import {
+  LockedRowMutationError, ReconcileConflict, ReconciliationError, type SaveResult,
+} from './reconcile'
 import { createSaveController } from './autosave'
+import { parseClipboardRows, serializeDayForClipboard, serializeRowsForClipboard } from './clipboard'
+import { relabelWeeksForStartDate, shiftISODate } from './mapping'
 
 interface Sel { wnum: number; dow: number }
 interface PopState { visible: boolean; x: number; y: number; wnum: number; dow: number; rowId: string; query: string }
+interface RowTarget { wnum: number; dow: number; rowId: string }
+interface CreateExerciseState { open: boolean; initialName: string; bindTarget: RowTarget | null }
+type ClipboardKind = 'day' | 'row'
 
 const COPY_LABEL = '⎘ 复制上周计划到本周'
 
@@ -31,23 +40,27 @@ export interface PlanEditorProps {
   onSave?: (
     weeks: Week[],
     importStart?: string | null,
+    /** Coach explicitly chose to mark past imported sessions as assumed completion. */
+    markPastAsAssumedComplete?: boolean,
     onProgress?: (done: number, total: number) => void,
   ) => Promise<SaveResult>
   /** Rename the current plan (backend PATCH); parent also refreshes its plan list. */
   onRename?: (name: string) => Promise<void> | void
+  /** Rename the selected student (backend PATCH); parent refreshes the roster label. */
+  onRenameStudent?: (name: string) => Promise<void> | void
   /** Exercise catalog + alias index for name-cell binding. */
   exerciseIndex?: ExerciseIndex | null
   /** Create a custom exercise and return its id+name (adds to the index). */
-  onCreateExercise?: (name: string) => Promise<{ id: string; name: string }>
+  onCreateExercise?: (input: CreateCustomExerciseInput) => Promise<{ id: string; name: string }>
   // top-bar switchers (connected mode)
   students?: Switcher[]
   currentStudentId?: string
-  onSwitchStudent?: (id: string) => void
+  onSwitchStudent?: (id: string) => void | Promise<void>
   plans?: Switcher[]
   currentPlanId?: string
-  onSwitchPlan?: (id: string) => void
-  onNewPlan?: () => void
-  onLogout?: () => void
+  onSwitchPlan?: (id: string) => void | Promise<void>
+  onNewPlan?: () => void | Promise<void>
+  onLogout?: () => void | Promise<void>
   /** Current plan start date; enables xlsx import date remapping. */
   planStartDate?: string
 }
@@ -76,25 +89,123 @@ export function findIssueRows(wks: Week[]): IssueRow[] {
   return issues
 }
 
+function weekLabel(num: number): string {
+  return `W${String(num).padStart(2, '0')} · 第 ${num} 周`
+}
+
+function importRangeLabel(weeks: Week[]): string {
+  const first = weeks[0]
+  const last = weeks[weeks.length - 1]
+  const start = first?.days[0]?.dateLabel
+  const end = last?.days[6]?.dateLabel
+  return start && end ? `${start}–${end}` : ''
+}
+
+function isPastISODate(iso: string): boolean {
+  const [year, month, day] = iso.split('-').map(Number)
+  const candidate = new Date(year, month - 1, day)
+  if (
+    !Number.isInteger(year) || !Number.isInteger(month) || !Number.isInteger(day)
+    || candidate.getFullYear() !== year || candidate.getMonth() !== month - 1 || candidate.getDate() !== day
+  ) return false
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  return candidate < today
+}
+
+type WeeksUpdate = Week[] | ((prev: Week[]) => Week[])
+interface DayClipboard { rest: boolean; rows: ExerciseRow[] }
+
+function isEditableTarget(target: EventTarget | null): boolean {
+  const el = target as HTMLElement | null
+  if (!el) return false
+  return el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement || el.isContentEditable
+}
+
+function cloneRow(row: ExerciseRow, prefix: string, index: number): ExerciseRow {
+  return {
+    ...row,
+    id: `${prefix}-${index}-${Date.now()}-${Math.round(performance.now())}`,
+    serverRowId: null,
+    serverSortOrder: null,
+    hasLogs: false,
+    conflictMessage: null,
+    boxes: row.boxes.map((box) => ({ ...box })),
+  }
+}
+
+function cloneRows(rows: ExerciseRow[], prefix: string): ExerciseRow[] {
+  return rows.map((row, index) => cloneRow(row, prefix, index))
+}
+
+function cloneDayClipboard(day: DayCol): DayClipboard {
+  return { rest: day.rest, rows: cloneRows(day.rows, 'clip') }
+}
+
+function dayDisplay(day: DayCol): string {
+  return `${day.dowLabel} ${day.dateLabel}`
+}
+
+/** Whole-day paste keeps immutable rows in place, replaces only editable slots,
+ * and appends overflow at the visible tail. */
+export function replaceUnlockedRows(day: DayCol, sourceRows: ExerciseRow[], prefix = 'paste'): DayCol {
+  const replacements = cloneRows(sourceRows, prefix)
+  const unlocked = day.rows.filter((row) => !row.hasLogs)
+  const replacementCount = Math.min(replacements.length, unlocked.length)
+  for (let index = 0; index < replacementCount; index++) {
+    replacements[index].serverSortOrder = unlocked[index].serverSortOrder
+  }
+
+  let nextReplacement = 0
+  const rows = day.rows.flatMap((row) => {
+    if (row.hasLogs) return [row]
+    if (nextReplacement >= replacementCount) return []
+    return [replacements[nextReplacement++]]
+  })
+  rows.push(...replacements.slice(replacementCount))
+
+  const released = new Set(day.releasedSortOrders ?? [])
+  for (const row of unlocked.slice(replacementCount)) {
+    if (row.serverSortOrder != null) released.add(row.serverSortOrder)
+  }
+  return {
+    ...day,
+    rest: rows.length === 0,
+    rows,
+    releasedSortOrders: [...released].sort((a, b) => a - b),
+  }
+}
+
 export function PlanEditor(props: PlanEditorProps) {
   const { initialWeeks, weeksCount, studentName, planName, initialPublished = false, onPublish } = props
   const [weeks, setWeeks] = useState<Week[]>(initialWeeks)
-  // Plan start date derived from an import, threaded to the next save so the backend plan's
-  // start_date/plan_weeks are aligned (imported dates + week count survive reload). A ref, not
-  // state: the save queue's drain loop reads it between renders, and nothing renders from it.
-  const importedStart = useRef<string | null>(null)
+  // Keep the displayed start date separate from the metadata change waiting to
+  // be persisted. Clearing a pending save must never make a second date shift
+  // calculate from the old parent prop, and undo/redo needs the real date too.
+  const currentPlanStart = useRef<string | null>(props.planStartDate ?? null)
+  const persistedPlanStart = useRef<string | null>(props.planStartDate ?? null)
+  const pendingPlanStart = useRef<string | null>(null)
+  // Kept with the import token so an autosave retry reuses the coach's explicit
+  // answer rather than prompting again or silently changing historical data.
+  const importedPastHistory = useRef(false)
   const [colW, setColW] = useState<ColWidths[]>(() => Array.from({ length: 7 }, () => ({ ...COL_DEFAULTS })))
   const [sel, setSel] = useState<Sel | null>(null)
+  const [selectedRow, setSelectedRow] = useState<RowTarget | null>(null)
   const [zoom, setZoom] = useState(100)
   // Authoritative published state, initialized from the backend plan status. Monotonic:
   // set true on a real publish and never cleared — there is no backend unpublish, so 发布后不可撤回.
-  // Once the student can see the plan, editing updates it in place (handleSave, the「更新计划」path)
-  // instead of pretending to retract it — a fake local retract only misleads the coach.
+  // Published plans remain editable, but only through explicit confirmed updates;
+  // rows with server-authoritative history are locked individually.
   const [published, setPublished] = useState(initialPublished)
   const [statusText, setStatusText] = useState(initialPublished ? `已发布给 ${studentName}` : '草稿 · 已存')
   const [copyDone, setCopyDone] = useState(false)
-  const [curWeekLabel, setCurWeekLabel] = useState('W03 · 第 3 周')
+  const [rowCopyDone, setRowCopyDone] = useState(false)
+  const [hasRowClipboard, setHasRowClipboard] = useState(false)
+  const [curWeekLabel, setCurWeekLabel] = useState('—')
   const [pop, setPop] = useState<PopState>({ visible: false, x: 0, y: 0, wnum: 0, dow: 0, rowId: '', query: '' })
+  const [createExercise, setCreateExercise] = useState<CreateExerciseState>({ open: false, initialName: '', bindTarget: null })
+  const [creatingExercise, setCreatingExercise] = useState(false)
+  const [createExerciseError, setCreateExerciseError] = useState('')
 
   const rootRef = useRef<HTMLDivElement>(null)
   const scrollerRef = useRef<HTMLDivElement>(null)
@@ -106,6 +217,36 @@ export function PlanEditor(props: PlanEditorProps) {
   const dragRef = useRef<{ dow: number; col: ColKey; startX: number; startW: number; el: HTMLElement } | null>(null)
   const panRef = useRef<{ x: number; y: number; sl: number; st: number } | null>(null)
   const gzRef = useRef(100)
+  const historyRef = useRef<Week[][]>([])
+  const redoRef = useRef<Week[][]>([])
+  const historyStartRef = useRef<(string | null)[]>([])
+  const redoStartRef = useRef<(string | null)[]>([])
+  const dayClipboardRef = useRef<DayClipboard | null>(null)
+  const rowClipboardRef = useRef<ExerciseRow | null>(null)
+  const clipboardKindRef = useRef<ClipboardKind | null>(null)
+  const clipboardTextRef = useRef('')
+
+  useEffect(() => {
+    // Parent metadata is authoritative after loading/saving. Do not overwrite a
+    // local date while it is still waiting to be reconciled.
+    if (pendingPlanStart.current === null) {
+      currentPlanStart.current = props.planStartDate ?? null
+      persistedPlanStart.current = props.planStartDate ?? null
+    }
+  }, [props.planStartDate])
+
+  const setWeeksWithHistory = useCallback((update: WeeksUpdate) => {
+    const startSnapshot = currentPlanStart.current
+    setWeeks((prev) => {
+      const next = typeof update === 'function' ? update(prev) : update
+      if (next === prev) return prev
+      historyRef.current = [...historyRef.current.slice(-49), prev]
+      historyStartRef.current = [...historyStartRef.current.slice(-49), startSnapshot]
+      redoRef.current = []
+      redoStartRef.current = []
+      return next
+    })
+  }, [])
 
   useEffect(() => { zoomRef.current = zoom }, [zoom])
 
@@ -144,7 +285,7 @@ export function PlanEditor(props: PlanEditorProps) {
     sc.querySelectorAll<HTMLElement>('.weekband').forEach((b) => {
       if (b.getBoundingClientRect().top - top <= 12) cur = b.dataset.wnum ?? null
     })
-    if (cur) setCurWeekLabel(`W${String(cur).padStart(2, '0')} · 第 ${cur} 周`)
+    if (cur) setCurWeekLabel(weekLabel(Number(cur)))
   }, [])
 
   // ---- initial fit + scroll to current week ----
@@ -245,6 +386,12 @@ export function PlanEditor(props: PlanEditorProps) {
 
   const handleSelect = (wnum: number, dow: number) => {
     setSel({ wnum, dow })
+    setSelectedRow(null)
+    setPop((p) => ({ ...p, visible: false }))
+  }
+  const handleSelectRow = (wnum: number, dow: number, rowId: string) => {
+    setSel({ wnum, dow })
+    setSelectedRow({ wnum, dow, rowId })
     setPop((p) => ({ ...p, visible: false }))
   }
 
@@ -267,7 +414,7 @@ export function PlanEditor(props: PlanEditorProps) {
   const handleNameBlur = () => { window.setTimeout(() => setPop((p) => ({ ...p, visible: false })), 160) }
 
   const bindRowAt = (target: { wnum: number; dow: number; rowId: string }, exerciseId: string, name: string, custom: boolean) => {
-    setWeeks((prev) => prev.map((wk) => wk.num !== target.wnum ? wk : {
+    setWeeksWithHistory((prev) => prev.map((wk) => wk.num !== target.wnum ? wk : {
       ...wk,
       days: wk.days.map((d) => d.dow !== target.dow ? d : {
         ...d, rows: d.rows.map((r) => r.id === target.rowId && !r.hasLogs ? { ...r, exerciseId, name, ku: !custom, custom } : r),
@@ -275,13 +422,13 @@ export function PlanEditor(props: PlanEditorProps) {
     }))
   }
   const editRow = (wnum: number, dow: number, rowId: string, updater: (r: ExerciseRow) => ExerciseRow) => {
-    setWeeks((prev) => prev.map((wk) => wk.num !== wnum ? wk : {
+    setWeeksWithHistory((prev) => prev.map((wk) => wk.num !== wnum ? wk : {
       ...wk,
       days: wk.days.map((d) => d.dow !== dow ? d : { ...d, rows: d.rows.map((r) => r.id === rowId && !r.hasLogs ? updater(r) : r) }),
     }))
   }
   const deleteRow = (wnum: number, dow: number, rowId: string) => {
-    setWeeks((prev) => prev.map((wk) => wk.num !== wnum ? wk : {
+    setWeeksWithHistory((prev) => prev.map((wk) => wk.num !== wnum ? wk : {
       ...wk,
       days: wk.days.map((d) => {
         if (d.dow !== dow) return d
@@ -297,51 +444,276 @@ export function PlanEditor(props: PlanEditorProps) {
       }),
     }))
     setPop((p) => (p.rowId === rowId ? { ...p, visible: false } : p))
+    setSelectedRow((row) => (row?.wnum === wnum && row.dow === dow && row.rowId === rowId ? null : row))
+  }
+  const reorderRow = (
+    wnum: number,
+    dow: number,
+    dragRowId: string,
+    targetRowId: string,
+    position: 'before' | 'after',
+  ) => {
+    if (dragRowId === targetRowId) return
+    setWeeksWithHistory((prev) => prev.map((wk) => wk.num !== wnum ? wk : {
+      ...wk,
+      days: wk.days.map((d) => {
+        if (d.dow !== dow) return d
+        if (d.rows.some((row) => row.hasLogs)) return d
+        const sourceIndex = d.rows.findIndex((r) => r.id === dragRowId)
+        if (sourceIndex < 0) return d
+        const moving = d.rows[sourceIndex]
+        const rows = d.rows.filter((r) => r.id !== dragRowId)
+        const targetIndex = rows.findIndex((r) => r.id === targetRowId)
+        if (targetIndex < 0) return d
+        const insertAt = position === 'after' ? targetIndex + 1 : targetIndex
+        rows.splice(insertAt, 0, moving)
+        return { ...d, rows }
+      }),
+    }))
+    setSel({ wnum, dow })
+    setSelectedRow({ wnum, dow, rowId: dragRowId })
+    setPop((p) => ({ ...p, visible: false }))
   }
 
   const onPickHit = (hit: ExerciseHit) => {
     bindRowAt({ wnum: pop.wnum, dow: pop.dow, rowId: pop.rowId }, hit.id, hit.name, false)
     setPop((p) => ({ ...p, visible: false }))
   }
+  const openCreateExercise = (initialName = '', bindTarget: RowTarget | null = null) => {
+    if (!props.onCreateExercise) return
+    setCreateExerciseError('')
+    setCreateExercise({ open: true, initialName, bindTarget })
+  }
+  const closeCreateExercise = () => {
+    if (creatingExercise) return
+    setCreateExercise((s) => ({ ...s, open: false }))
+    setCreateExerciseError('')
+  }
   const onCreateCustom = async (name: string) => {
     const target = { wnum: pop.wnum, dow: pop.dow, rowId: pop.rowId }
     setPop((p) => ({ ...p, visible: false }))
-    if (!props.onCreateExercise) return
-    try { const e = await props.onCreateExercise(name); bindRowAt(target, e.id, e.name, true) } catch { /* ignore */ }
+    openCreateExercise(name, target)
+  }
+  const submitCreateExercise = async (input: CreateCustomExerciseInput) => {
+    if (!props.onCreateExercise || creatingExercise) return
+    setCreatingExercise(true)
+    setCreateExerciseError('')
+    try {
+      const e = await props.onCreateExercise(input)
+      if (createExercise.bindTarget) bindRowAt(createExercise.bindTarget, e.id, e.name, true)
+      setStatusText(`已创建动作「${e.name}」`)
+      setCreateExercise({ open: false, initialName: '', bindTarget: null })
+    } catch (e) {
+      const code = e instanceof ApiException ? e.code : ''
+      setCreateExerciseError(code ? `创建失败（${code}）` : '创建失败，请重试')
+    } finally {
+      setCreatingExercise(false)
+    }
   }
 
   const patchSelDay = (updater: (d: DayCol) => DayCol) => {
     if (!sel) return
-    setWeeks((prev) => prev.map((wk) => wk.num !== sel.wnum ? wk : {
+    setWeeksWithHistory((prev) => prev.map((wk) => wk.num !== sel.wnum ? wk : {
       ...wk, days: wk.days.map((d) => d.dow !== sel.dow ? d : updater(d)),
     }))
   }
 
   const handleCopyPrev = () => {
     if (!sel || sel.wnum <= 1) return
-    setWeeks((prev) => {
+    const targetWeek = weeks.find((week) => week.num === sel.wnum)
+    if (targetWeek?.days.some((day) => day.rows.some((row) => row.hasLogs))) return
+    const occupiedDays = targetWeek?.days.filter((day) => !day.rest && day.rows.length > 0).length ?? 0
+    if (
+      occupiedDays > 0
+      && !window.confirm(`本周已有 ${occupiedDays} 天训练内容，复制上周会覆盖整周计划。是否继续？`)
+    ) return
+
+    setWeeksWithHistory((prev) => {
       const srcWeek = prev.find((w) => w.num === sel.wnum - 1)
-      const srcDay = srcWeek?.days.find((d) => d.dow === sel.dow)
-      const targetDay = prev.find((w) => w.num === sel.wnum)?.days.find((d) => d.dow === sel.dow)
-      if (!srcDay || srcDay.rest || targetDay?.rows.some((row) => row.hasLogs)) return prev
-      let n = Date.now()
-      const cloned = srcDay.rows.map((r) => ({
-        ...r,
-        id: `c${n++}`,
-        serverRowId: null,
-        serverSortOrder: null,
-        hasLogs: false,
-        conflictMessage: null,
-        boxes: r.boxes.map((b) => ({ ...b })),
-      }))
+      if (!srcWeek) return prev
+      const sourceDays = new Map(srcWeek.days.map((day) => [day.dow, day]))
       return prev.map((wk) => wk.num !== sel.wnum ? wk : {
         ...wk,
-        days: wk.days.map((d) => d.dow !== sel.dow ? d : { ...d, rest: false, rows: cloned, releasedSortOrders: [] }),
+        days: wk.days.map((day) => {
+          const source = sourceDays.get(day.dow)
+          if (!source) return day
+          return {
+            ...day,
+            rest: source.rest,
+            rows: source.rest ? [] : cloneRows(source.rows, 'copy-week'),
+            releasedSortOrders: [],
+          }
+        }),
       })
     })
+    setSelectedRow(null)
     setCopyDone(true)
     window.setTimeout(() => setCopyDone(false), 1300)
   }
+
+  const selectedDay = useCallback((): DayCol | null => {
+    if (!sel) return null
+    return weeks.find((week) => week.num === sel.wnum)?.days.find((day) => day.dow === sel.dow) ?? null
+  }, [sel, weeks])
+
+  const selectedRowValue = useCallback((): ExerciseRow | null => {
+    if (!selectedRow) return null
+    const day = weeks.find((week) => week.num === selectedRow.wnum)?.days.find((d) => d.dow === selectedRow.dow)
+    return day?.rows.find((row) => row.id === selectedRow.rowId) ?? null
+  }, [selectedRow, weeks])
+
+  const copySelectedDay = useCallback(async () => {
+    const day = selectedDay()
+    if (!day) return
+    const text = serializeDayForClipboard(day)
+    dayClipboardRef.current = cloneDayClipboard(day)
+    rowClipboardRef.current = null
+    clipboardKindRef.current = 'day'
+    clipboardTextRef.current = text
+    setHasRowClipboard(false)
+    try { await navigator.clipboard?.writeText(text) } catch { /* internal clipboard still works */ }
+    setStatusText(`已复制 ${dayDisplay(day)}`)
+  }, [selectedDay])
+
+  const copySelectedRow = useCallback(async () => {
+    const row = selectedRowValue()
+    if (!row) {
+      setStatusText('先选中一个动作')
+      return
+    }
+    const text = serializeRowsForClipboard([row])
+    rowClipboardRef.current = cloneRow(row, 'clip-row', 0)
+    clipboardKindRef.current = 'row'
+    clipboardTextRef.current = text
+    setHasRowClipboard(true)
+    try { await navigator.clipboard?.writeText(text) } catch { /* internal clipboard still works */ }
+    setRowCopyDone(true)
+    window.setTimeout(() => setRowCopyDone(false), 1300)
+    setStatusText(`已复制动作「${row.name.trim() || '未命名'}」`)
+  }, [selectedRowValue])
+
+  const pasteRowsIntoSelection = useCallback((rows: ExerciseRow[]) => {
+    if (!sel || rows.length === 0) return
+    const inserted = cloneRows(rows, 'paste-row')
+    setWeeksWithHistory((prev) => prev.map((wk) => wk.num !== sel.wnum ? wk : {
+      ...wk,
+      days: wk.days.map((day) => {
+        if (day.dow !== sel.dow) return day
+        return { ...day, rest: false, rows: [...day.rows, ...inserted] }
+      }),
+    }))
+    setSelectedRow({ wnum: sel.wnum, dow: sel.dow, rowId: inserted[0].id })
+    const target = weeks.find((week) => week.num === sel.wnum)?.days.find((day) => day.dow === sel.dow)
+    setStatusText(target ? `已粘贴动作到 ${dayDisplay(target)}` : '已粘贴动作')
+  }, [sel, setWeeksWithHistory, weeks])
+
+  const pasteSelectedRows = useCallback(async () => {
+    if (!sel) return
+    let externalRows: ExerciseRow[] | null = null
+    try {
+      const text = await navigator.clipboard?.readText()
+      if (text && text !== clipboardTextRef.current) externalRows = parseClipboardRows(text, props.exerciseIndex)
+    } catch { /* use internal clipboard below */ }
+
+    const rows = externalRows ?? (clipboardKindRef.current === 'row' && rowClipboardRef.current ? [rowClipboardRef.current] : null)
+    if (!rows) {
+      setStatusText('没有可粘贴的动作')
+      return
+    }
+    pasteRowsIntoSelection(rows)
+  }, [pasteRowsIntoSelection, props.exerciseIndex, sel])
+
+  const pasteSelectedDay = useCallback(async () => {
+    if (!sel) return
+    let externalRows: ExerciseRow[] | null = null
+    try {
+      const text = await navigator.clipboard?.readText()
+      if (text && text !== clipboardTextRef.current) externalRows = parseClipboardRows(text, props.exerciseIndex)
+    } catch { /* use internal clipboard below */ }
+
+    if (externalRows) {
+      pasteRowsIntoSelection(externalRows)
+      return
+    }
+
+    const clip = dayClipboardRef.current
+    if (!clip) {
+      setStatusText('没有可粘贴的内容')
+      return
+    }
+
+    setWeeksWithHistory((prev) => prev.map((wk) => wk.num !== sel.wnum ? wk : {
+      ...wk,
+      days: wk.days.map((day) => day.dow !== sel.dow ? day : replaceUnlockedRows(
+        day,
+        clip.rest ? [] : clip.rows,
+      )),
+    }))
+    setSelectedRow(null)
+    const target = weeks.find((week) => week.num === sel.wnum)?.days.find((day) => day.dow === sel.dow)
+    setStatusText(target ? `已粘贴到 ${dayDisplay(target)}` : '已粘贴')
+  }, [pasteRowsIntoSelection, props.exerciseIndex, sel, setWeeksWithHistory, weeks])
+
+  const undoWeeks = useCallback(() => {
+    const prev = historyRef.current.pop()
+    if (!prev) {
+      setStatusText('没有可撤回的操作')
+      return
+    }
+    const prevStart = historyStartRef.current.pop() ?? null
+    const currentStart = currentPlanStart.current
+    currentPlanStart.current = prevStart
+    pendingPlanStart.current = prevStart === persistedPlanStart.current ? null : prevStart
+    setWeeks((current) => {
+      redoRef.current = [...redoRef.current.slice(-49), current]
+      redoStartRef.current = [...redoStartRef.current.slice(-49), currentStart]
+      return prev
+    })
+    setStatusText('已撤回')
+  }, [])
+
+  const redoWeeks = useCallback(() => {
+    const next = redoRef.current.pop()
+    if (!next) return
+    const nextStart = redoStartRef.current.pop() ?? null
+    const currentStart = currentPlanStart.current
+    currentPlanStart.current = nextStart
+    pendingPlanStart.current = nextStart === persistedPlanStart.current ? null : nextStart
+    setWeeks((current) => {
+      historyRef.current = [...historyRef.current.slice(-49), current]
+      historyStartRef.current = [...historyStartRef.current.slice(-49), currentStart]
+      return next
+    })
+    setStatusText('已重做')
+  }, [])
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      const mod = e.metaKey || e.ctrlKey
+      if (!mod || isEditableTarget(e.target)) return
+      const key = e.key.toLowerCase()
+      if (key === 'c') {
+        e.preventDefault()
+        if (selectedRow) void copySelectedRow()
+        else void copySelectedDay()
+      } else if (key === 'v') {
+        e.preventDefault()
+        if (selectedRow || clipboardKindRef.current === 'row') void pasteSelectedRows()
+        else void pasteSelectedDay()
+      } else if (key === 'z' && e.shiftKey) {
+        e.preventDefault()
+        redoWeeks()
+      } else if (key === 'z') {
+        e.preventDefault()
+        undoWeeks()
+      } else if (key === 'y') {
+        e.preventDefault()
+        redoWeeks()
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [copySelectedDay, copySelectedRow, pasteSelectedDay, pasteSelectedRows, redoWeeks, selectedRow, undoWeeks])
 
   const blankRow = (): ExerciseRow => ({
     id: `n${Date.now()}-${Math.round(performance.now())}`,
@@ -350,23 +722,26 @@ export function PlanEditor(props: PlanEditorProps) {
     aux: false, reps: '—', mode: 'kg', boxes: [], note: '',
   })
   const addRowToDay = (wnum: number, dow: number) => {
-    setWeeks((prev) => prev.map((wk) => wk.num !== wnum ? wk : {
+    const row = blankRow()
+    setWeeksWithHistory((prev) => prev.map((wk) => wk.num !== wnum ? wk : {
       ...wk, days: wk.days.map((d) => {
         if (d.dow !== dow) return d
         const released = [...(d.releasedSortOrders ?? [])].sort((a, b) => a - b)
         const reusable = released.shift() ?? null
-        const fresh = blankRow()
-        fresh.serverSortOrder = reusable
-        if (reusable == null) return { ...d, rest: false, rows: [...d.rows, fresh], releasedSortOrders: released }
-        const insertAt = d.rows.findIndex((row) => (row.serverSortOrder ?? Number.MAX_SAFE_INTEGER) > reusable)
+        row.serverSortOrder = reusable
+        if (reusable == null) return { ...d, rest: false, rows: [...d.rows, row], releasedSortOrders: released }
+        const insertAt = d.rows.findIndex((item) => (item.serverSortOrder ?? Number.MAX_SAFE_INTEGER) > reusable)
         const rows = [...d.rows]
-        rows.splice(insertAt < 0 ? rows.length : insertAt, 0, fresh)
+        rows.splice(insertAt < 0 ? rows.length : insertAt, 0, row)
         return { ...d, rest: false, rows, releasedSortOrders: released }
       }),
     }))
+    setSel({ wnum, dow })
+    setSelectedRow({ wnum, dow, rowId: row.id })
   }
   const handleAddRow = () => { if (sel) addRowToDay(sel.wnum, sel.dow) }
-  const handleClearDay = () => patchSelDay((d) => {
+  const handleClearDay = () => {
+    patchSelDay((d) => {
     const released = new Set(d.releasedSortOrders ?? [])
     for (const row of d.rows) if (!row.hasLogs && row.serverSortOrder != null) released.add(row.serverSortOrder)
     return {
@@ -374,10 +749,15 @@ export function PlanEditor(props: PlanEditorProps) {
       rows: d.rows.filter((row) => row.hasLogs),
       releasedSortOrders: [...released].sort((a, b) => a - b),
     }
-  })
-  const handleSetRest = () => patchSelDay((d) => d.rows.some((row) => row.hasLogs)
-    ? d
-    : { ...d, rest: true, rows: [], releasedSortOrders: [] })
+    })
+    setSelectedRow(null)
+  }
+  const handleSetRest = () => {
+    patchSelDay((d) => d.rows.some((row) => row.hasLogs)
+      ? d
+      : { ...d, rest: true, rows: [], releasedSortOrders: [] })
+    setSelectedRow(null)
+  }
   const handleUnsetRest = () => patchSelDay((d) => ({ ...d, rest: false }))
 
   const [saving, setSaving] = useState(false)
@@ -396,6 +776,34 @@ export function PlanEditor(props: PlanEditorProps) {
   const publishing = useRef(false) // latched across a publish round-trip so nothing autosaves mid-publish
   const publishedRef = useRef(published) // fresh published for the unmount cleanup (which closes over [] deps)
   publishedRef.current = published
+  const planHasLockedRows = weeks.some((week) => (
+    week.days.some((day) => day.rows.some((row) => row.hasLogs))
+  ))
+
+  const handleShiftPlanOneDay = useCallback(() => {
+    if (saving || publishing.current) {
+      setStatusText('正在保存或发布 · 请稍候再后移')
+      return
+    }
+    if (published) {
+      setStatusText('已发布计划不支持修改日历')
+      return
+    }
+    if (weeks.some((week) => week.days.some((day) => day.rows.some((row) => row.hasLogs)))) {
+      setStatusText('计划已有打卡记录，不能整体后移')
+      return
+    }
+    const currentStart = currentPlanStart.current
+    if (!currentStart) {
+      setStatusText('计划日期未就绪，无法后移')
+      return
+    }
+    const nextStart = shiftISODate(currentStart, 1)
+    setWeeksWithHistory((prev) => relabelWeeksForStartDate(prev, nextStart))
+    currentPlanStart.current = nextStart
+    pendingPlanStart.current = nextStart
+    setStatusText(`已整体后移 1 天 · 起始 ${nextStart}`)
+  }, [published, saving, setWeeksWithHistory, weeks])
 
   // Rows the coach still has to deal with, in grid order:
   //  - unbound: has a name or filled sets but no catalog binding — save reconciliation drops
@@ -413,9 +821,8 @@ export function PlanEditor(props: PlanEditorProps) {
   )
 
   // The save queue is DRAFT-ONLY. Reassigned every render so it always persists the latest weeks.
-  // A published plan is refused here (resolves "done" without writing) — it is persisted solely by
-  // handleSave's explicit confirmed path, so no queued/latched/flushed write can ever silently
-  // overwrite a plan the student is watching.
+  // A published plan is refused here so no queued, latched, or flushed write
+  // can ever rewrite a plan the student is watching.
   const persistRef = useRef<() => Promise<boolean>>(async () => true)
   const applyingSavedWeeks = useRef(false)
   const applySuccessfulSave = (res: SaveResult, savedWeeks: Week[]) => {
@@ -443,7 +850,8 @@ export function PlanEditor(props: PlanEditorProps) {
   persistRef.current = async () => {
     if (!props.onSave || published) return true
     const auto = saveMode.current === 'auto'
-    const importStart = importedStart.current
+    const importStart = pendingPlanStart.current
+    const markPastAsAssumedComplete = importedPastHistory.current
     const verb = auto ? '自动保存中…' : '保存中…'
     setSaving(true); setStatusText(verb)
     try {
@@ -453,21 +861,43 @@ export function PlanEditor(props: PlanEditorProps) {
         if (total > 3) setStatusText(`${verb} ${done}/${total} 天`)
       }
       const savedWeeks = latestWeeks.current
-      const res = await props.onSave(savedWeeks, importStart, onProgress)
+      const res = await props.onSave(savedWeeks, importStart, markPastAsAssumedComplete, onProgress)
       // Clear only the token this save consumed: an import landing mid-flight writes a fresh
       // token, and the drain loop's next pass must still deliver it via reconcileImportedPlan —
       // clearing unconditionally would strand the imported start_date/plan_weeks client-side.
-      if (importedStart.current === importStart) importedStart.current = null
+      if (pendingPlanStart.current === importStart) {
+        pendingPlanStart.current = null
+        if (importStart !== null) persistedPlanStart.current = importStart
+        importedPastHistory.current = false
+      }
       // Same generation rule for the unsaved flag: edits typed while this save was in flight
       // are NOT in what we just persisted, so they must keep the leave guards armed.
       applySuccessfulSave(res, savedWeeks)
-      const base = auto ? '草稿 · 已自动保存' : '草稿 · 已保存'
+      const base = importStart && markPastAsAssumedComplete
+        ? '历史已推定完成并锁定'
+        : (auto ? '草稿 · 已自动保存' : '草稿 · 已保存')
       setStatusText(res.skippedRows > 0 ? `${base} · ${res.skippedRows} 行未绑定被跳过` : base)
       return true
     }
     catch (error) {
       const scoped = applySaveFailure(error)
-      setStatusText(scoped ?? (auto ? '自动保存失败 · 改动已保留' : '保存失败 · 重试'))
+      if (scoped) {
+        setStatusText(scoped)
+      } else if (error instanceof ReconciliationError) {
+        // Client-side refusals are permanent for this plan state — a generic
+        // "重试" both misleads and hides the way out.
+        const explain: Record<ReconciliationError['code'], [string, string]> = {
+          PLAN_REQUIRES_NATIVE_EDITOR: ['此计划含逐组差异设置 · 网页端暂不支持保存',
+            '这份计划包含逐组不同的次数/备注/组间休息，网页编辑器还无法无损保存，为避免丢失这些设置已拒绝写入。'],
+          PLAN_SET_SPEC_INCOMPLETE: ['有已绑定动作缺组次或强度 · 点「待核对」补全',
+            '有已绑定的动作还没填完整组次/强度，保存会产生空处方。点顶栏「待核对」逐个补全后再保存。'],
+        }
+        const [status, detail] = explain[error.code]
+        setStatusText(status)
+        if (!auto) window.alert(detail)
+      } else {
+        setStatusText(auto ? '自动保存失败 · 改动已保留' : '保存失败 · 重试')
+      }
       return false
     }
     finally { setSaving(false) }
@@ -523,14 +953,26 @@ export function PlanEditor(props: PlanEditorProps) {
     if (!canPersist.current) return true
     const unbound = countUnbound(latestWeeks.current)
     if (unbound > 0 && !window.confirm(`有 ${unbound} 行填了动作名或重量、但没绑定到动作库（名字后没有 ✓），它们无法保存，离开这个计划后会丢失。仍要离开吗？`)) return false
-    // A published plan never autosaves and its unmount flush is skipped — edits not yet
-    // pushed via「更新计划」die with the tab/switch, so warn about those too.
+    // Published changes require an explicit confirmed update and are never flushed on leave.
     if (publishedRef.current && unsavedRef.current
-      && !window.confirm('这份已发布计划有修改还没点「更新计划」推送，离开后这些修改会丢失。仍要离开吗？')) return false
+      && !window.confirm('这份已发布计划还有未更新的修改，离开后会丢失。仍要离开吗？')) return false
     return true
   }
-  const guardLeave = (fn?: () => void) => fn ? () => { if (confirmLeaveUnbound()) fn() } : undefined
-  const guardLeaveId = (fn?: (id: string) => void) => fn ? (id: string) => { if (confirmLeaveUnbound()) fn(id) } : undefined
+  const confirmLeave = async () => {
+    if (!confirmLeaveUnbound()) return false
+    if (!canPersist.current || publishedRef.current) return true
+    if (!unsavedRef.current && !savingRef.current) return true
+    setStatusText('离开前保存中…')
+    if (await saver.current.flush()) return true
+    window.alert('保存失败，已留在当前计划。请检查网络后重试。')
+    return false
+  }
+  const guardLeave = (fn?: () => void | Promise<void>) => fn ? async () => {
+    if (await confirmLeave()) await fn()
+  } : undefined
+  const guardLeaveId = (fn?: (id: string) => void | Promise<void>) => fn ? async (id: string) => {
+    if (await confirmLeave()) await fn(id)
+  } : undefined
 
   // ---- ⚠ 待核对 chip: cycle through problem rows (unbound / zero-set) -----------------------
   const issueCursor = useRef(0)
@@ -572,17 +1014,20 @@ export function PlanEditor(props: PlanEditorProps) {
 
   const handleSave = async () => {
     if (!props.onSave || saving || publishing.current) return
-    const unbound = countUnbound(latestWeeks.current)
-    if (unbound > 0 && !window.confirm(`有 ${unbound} 行填了动作名或重量、但没绑定到动作库（名字后没有 ✓），保存时会被跳过、不会写入。建议先在名称下拉里选中动作再保存。仍要保存吗？`)) return
     if (published) {
       // 更新计划: reconciles in place, changing what the student sees right now — confirm first.
       // This is the ONLY way a published plan is persisted: an explicit, confirmed, one-shot write
       // that never enters the autosave queue, so nothing can later replay it (e.g. an unmount flush).
-      if (!window.confirm(`「${planName}」正在发布给 ${studentName}，保存会立即改变 ta 正在看的计划。确认保存？`)) return
+      // Unbound rows are silently skipped by reconcile, so that risk is folded into the same confirm.
+      const unboundRows = countUnbound(latestWeeks.current)
+      const unboundLine = unboundRows > 0
+        ? `\n注意：有 ${unboundRows} 行未绑定动作库（名字后没有 ✓），本次更新会跳过它们、不写入。`
+        : ''
+      if (!window.confirm(`「${planName}」正在发布给 ${studentName}，保存会立即改变 ta 正在看的计划。${unboundLine}\n确认保存？`)) return
       setSaving(true); setStatusText('更新中…')
       try {
         const savedWeeks = latestWeeks.current
-        const res = await props.onSave(savedWeeks, null,
+        const res = await props.onSave(savedWeeks, null, false,
           (done, total) => { if (total > 3) setStatusText(`更新中… ${done}/${total} 天`) })
         // Edits typed during the round-trip aren't in what was pushed — keep the guards armed.
         applySuccessfulSave(res, savedWeeks)
@@ -590,11 +1035,27 @@ export function PlanEditor(props: PlanEditorProps) {
       }
       catch (error) {
         const scoped = applySaveFailure(error)
-        setStatusText(scoped ?? '更新失败 · 重试')
+        if (scoped) {
+          setStatusText(scoped)
+        } else if (error instanceof ReconciliationError) {
+          const explain: Record<ReconciliationError['code'], [string, string]> = {
+            PLAN_REQUIRES_NATIVE_EDITOR: ['此计划含逐组差异设置 · 网页端暂不支持更新',
+              '这份计划包含逐组不同的次数/备注/组间休息，网页编辑器还无法无损保存，为避免丢失这些设置已拒绝写入。'],
+            PLAN_SET_SPEC_INCOMPLETE: ['有已绑定动作缺组次或强度 · 点「待核对」补全',
+              '有已绑定的动作还没填完整组次/强度，更新会产生空处方。点顶栏「待核对」逐个补全后再更新。'],
+          }
+          const [status, detail] = explain[error.code]
+          setStatusText(status)
+          window.alert(detail)
+        } else {
+          setStatusText('更新失败 · 重试')
+        }
       }
       finally { setSaving(false) }
       return
     }
+    const unbound = countUnbound(latestWeeks.current)
+    if (unbound > 0 && !window.confirm(`有 ${unbound} 行填了动作名或重量、但没绑定到动作库（名字后没有 ✓），保存时会被跳过、不会写入。建议先在名称下拉里选中动作再保存。仍要保存吗？`)) return
     saveMode.current = 'manual'
     await saver.current.saveNow() // draft: goes through the shared queue
   }
@@ -645,9 +1106,23 @@ export function PlanEditor(props: PlanEditorProps) {
         return
       }
 
-      setWeeks(nextWeeks)
-      importedStart.current = importStart
-      setSel(null)
+      const markPastAsAssumedComplete = isPastISODate(importStart)
+        ? window.confirm(
+          '导入包含过去的训练日期。是否按计划内容将这些过去训练标记为“推定完成”？\n\n'
+          + '推定完成会显示在训练历史中，但不会计入真实 e1RM 或 PR。选择“取消”将只导入计划，不补记历史。',
+        )
+        : false
+      setWeeksWithHistory(nextWeeks)
+      currentPlanStart.current = importStart
+      pendingPlanStart.current = importStart
+      importedPastHistory.current = markPastAsAssumedComplete
+      const targetWeek = nextWeeks.find((week) => week.isCurrent) ?? nextWeeks[0]
+      const firstTrain = targetWeek?.days.find((day) => !day.rest)
+      setSel(targetWeek && firstTrain ? { wnum: targetWeek.num, dow: firstTrain.dow } : null)
+      if (targetWeek) {
+        setCurWeekLabel(weekLabel(targetWeek.num))
+        window.setTimeout(() => jumpToWeek(targetWeek.num), 80)
+      }
       setPop((p) => ({ ...p, visible: false }))
       // Name the plan after the file (usually the student), so the plan switcher stops
       // filling up with indistinguishable「新计划」s. The coach can rename via the dropdown.
@@ -662,17 +1137,24 @@ export function PlanEditor(props: PlanEditorProps) {
       } else {
         truncation = `已导入 ${imported} 周 · 未保存`
       }
+      const range = importRangeLabel(nextWeeks)
+      if (range) truncation += `（${range}）`
       setStatusText(truncation)
       if (dropped > 0) window.alert(truncation)
-    } catch {
-      window.alert('导入失败，请确认文件是 .xlsx 计划表')
-      setStatusText('导入失败 · 重试')
+    } catch (e) {
+      const code = e instanceof Error ? e.message : ''
+      if (code === 'WORKBOOK_TOO_LARGE' || code === 'SHEET_TOO_LARGE') {
+        window.alert('导入失败：文件或工作表过大。请删除无关格式/工作表后重试（最大文件 10 MB）。')
+        setStatusText('导入失败 · 文件过大')
+      } else {
+        window.alert('导入失败，请确认文件是 .xlsx 计划表')
+        setStatusText('导入失败 · 重试')
+      }
     }
   }
 
   const handlePublish = async () => {
-    // 发布后不可撤回:后端没有 unpublish 接口,发布后不再本地假撤回(那只会让教练以为学员看不到了)。
-    // 想改计划走「更新计划」(handleSave)。按钮在已发布后已禁用,这里再兜底一次。
+    // 发布后不可撤回，且当前编辑器不就地覆盖已发布树，避免破坏历史 set log。
     // saving 时也不发布:避免在后台 reconcile 半途翻页发布,发布按钮已 disabled,这里再兜底。
     if (published || publishing.current || saving) return
     // Pre-flight: rows the publish would lose or that the backend will refuse. Zero-set bound
@@ -708,8 +1190,8 @@ export function PlanEditor(props: PlanEditorProps) {
       setPublished(true); becamePublished = true
       // Edits typed during the round-trip aren't in the published plan — surface them, never drop silently.
       setStatusText(latestWeeks.current !== snapshot
-        ? `已发布给 ${studentName} · 有改动未保存,点「更新计划」推送`
-        : `已发布给 ${studentName} · 刚刚`)
+        ? `已发布给 ${studentName} · 有未更新修改`
+        : `已发布给 ${studentName}`)
     } catch (e) {
       // The status line gets repainted by later saves — a publish failure must explain itself
       // in a dialog the coach actually reads, in coach language, not a machine code.
@@ -752,6 +1234,13 @@ export function PlanEditor(props: PlanEditorProps) {
     const wk = weeks.find((w) => w.num === sel.wnum)
     return wk?.days.find((x) => x.dow === sel.dow)?.rows.some((row) => row.hasLogs) ?? false
   })()
+  const copyTargetHasLockedRows = (() => {
+    if (!sel) return false
+    return weeks.find((week) => week.num === sel.wnum)?.days
+      .some((day) => day.rows.some((row) => row.hasLogs)) ?? false
+  })()
+  const selectedRowForBar = selectedRowValue()
+  const selectedRowLabel = selectedRowForBar ? `当前行 · ${selectedRowForBar.name.trim() || '未命名动作'}` : ''
 
   return (
     <div ref={rootRef} style={{
@@ -768,8 +1257,22 @@ export function PlanEditor(props: PlanEditorProps) {
           const name = window.prompt('计划名称', planName)?.trim()
           if (name && name !== planName) void props.onRename!(name)
         } : undefined}
+        onRenameStudent={props.onRenameStudent ? () => {
+          const name = window.prompt('学员姓名', studentName)?.trim()
+          if (name && name !== studentName) {
+            void Promise.resolve(props.onRenameStudent!(name)).catch(() => {
+              window.alert('修改学员姓名失败，请稍后重试')
+            })
+          }
+        } : undefined}
         onSave={props.onSave ? handleSave : undefined} saving={saving}
         onImport={props.exerciseIndex && props.planStartDate ? handleImport : undefined}
+        onShiftPlanOneDay={props.planStartDate ? handleShiftPlanOneDay : undefined}
+        shiftPlanDisabled={published || planHasLockedRows}
+        shiftPlanDisabledHint={planHasLockedRows
+          ? '计划内已有学员打卡动作，不能整体后移'
+          : '已发布计划不支持修改日历，请在发布前调整日期'}
+        onNewExercise={props.onCreateExercise ? () => openCreateExercise() : undefined}
         issueCount={issues.length} issueHint={issueHint} onJumpIssue={jumpToNextIssue}
       />
       <Toolbar weeksCount={weeksCount} curWeekLabel={curWeekLabel} zoomLabel={`${Math.round(zoom)}%`}
@@ -778,17 +1281,22 @@ export function PlanEditor(props: PlanEditorProps) {
         visible={!!sel}
         dayLabel={selDayLabel}
         isRest={selIsRest}
-        canCopyPrev={!!sel && sel.wnum > 1 && !selHasLockedRows}
-        copyDisabledHint={selHasLockedRows ? '目标日含学员已打卡动作,不能用上周覆盖' : undefined}
+        canCopyPrev={!!sel && sel.wnum > 1 && !copyTargetHasLockedRows}
+        copyDisabledHint={copyTargetHasLockedRows ? '目标周含学员已打卡动作,不能用上周覆盖' : undefined}
         hasLockedRows={selHasLockedRows}
         copyLabel={copyDone ? '✓ 已复制上周' : COPY_LABEL}
         copyDone={copyDone}
+        selectedRowLabel={selectedRowLabel}
+        rowCopyDone={rowCopyDone}
+        hasRowClipboard={hasRowClipboard}
         onCopyPrev={handleCopyPrev}
+        onCopyRow={copySelectedRow}
+        onPasteRow={pasteSelectedRows}
         onAddRow={handleAddRow}
         onSetRest={handleSetRest}
         onUnsetRest={handleUnsetRest}
         onClearDay={handleClearDay}
-        onClose={() => { setSel(null); setPop((p) => ({ ...p, visible: false })) }}
+        onClose={() => { setSel(null); setSelectedRow(null); setPop((p) => ({ ...p, visible: false })) }}
       />
 
       <div className="scroller" ref={scrollerRef} style={{ flex: 1, overflow: 'auto', position: 'relative', background: 'var(--bg)' }}>
@@ -817,13 +1325,16 @@ export function PlanEditor(props: PlanEditorProps) {
                         day={day}
                         colW={colW[day.dow]}
                         selected={sel?.wnum === wk.num && sel?.dow === day.dow}
+                        selectedRowId={selectedRow?.wnum === wk.num && selectedRow.dow === day.dow ? selectedRow.rowId : null}
                         onSelect={() => handleSelect(wk.num, day.dow)}
+                        onSelectRow={(rowId) => handleSelectRow(wk.num, day.dow, rowId)}
                         onResizeStart={(col, e) => handleResizeStart(day.dow, col, e)}
                         onNameFocus={(rowId, name, el) => handleNameFocus(wk.num, day.dow, rowId, name, el)}
                         onNameChange={(rowId, value, el) => handleNameChange(wk.num, day.dow, rowId, value, el)}
                         onNameBlur={handleNameBlur}
                         onAddRow={() => addRowToDay(wk.num, day.dow)}
                         onEditRow={(rowId, updater) => editRow(wk.num, day.dow, rowId, updater)}
+                        onReorderRow={(dragRowId, targetRowId, position) => reorderRow(wk.num, day.dow, dragRowId, targetRowId, position)}
                         onDeleteRow={(rowId) => deleteRow(wk.num, day.dow, rowId)}
                       />
                     ))}
@@ -839,7 +1350,15 @@ export function PlanEditor(props: PlanEditorProps) {
       <ExercisePopover
         visible={pop.visible} x={pop.x} y={pop.y}
         index={props.exerciseIndex ?? null} query={pop.query}
-        onPick={onPickHit} onCreateCustom={onCreateCustom}
+        onPick={onPickHit} onCreateCustom={props.onCreateExercise ? onCreateCustom : undefined}
+      />
+      <CustomExerciseDialog
+        open={createExercise.open}
+        initialName={createExercise.initialName}
+        saving={creatingExercise}
+        error={createExerciseError}
+        onClose={closeCreateExercise}
+        onSubmit={submitCreateExercise}
       />
     </div>
   )

@@ -9,8 +9,15 @@ import type { AuthUser } from './api/types'
 type View = 'login' | 'workspace' | 'sample'
 
 export default function App() {
-  const [user, setUser] = useState<AuthUser | null>(() => currentUser())
-  const [view, setView] = useState<View>(() => (currentUser() ? 'workspace' : 'login'))
+  const [user, setUser] = useState<AuthUser | null>(() => {
+    const cached = currentUser()
+    if (!cached || cached.role === 'coach') return cached
+    // Clear a stale student session written by an older client version rather
+    // than entering the coach workspace with an unusable token.
+    logout()
+    return null
+  })
+  const [view, setView] = useState<View>(() => (currentUser()?.role === 'coach' ? 'workspace' : 'login'))
 
   if (view === 'sample') {
     return (

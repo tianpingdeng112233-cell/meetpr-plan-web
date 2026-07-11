@@ -99,6 +99,121 @@ describe('reconcilePlan — skippedRows counts only contentful unbound rows', ()
     const res = await reconcilePlan('p', [weekWithMondayRows(rows)])
     expect(res.skippedRows).toBe(0)
   })
+
+  it('writes rep ranges as target_reps_max and includes the max in diffing', async () => {
+    const rows = [
+      row({
+        id: 'a',
+        exerciseId: 'ex1',
+        name: '帕洛夫推+旋转',
+        reps: '10-12',
+        boxes: [{ val: '9', empty: false }],
+        mode: 'rpe',
+      }),
+    ]
+
+    await reconcilePlan('p', [weekWithMondayRows(rows)])
+
+    expect(plans.createSet).toHaveBeenCalledWith('new-ex1-0', expect.objectContaining({
+      target_reps: 10,
+      target_reps_max: 12,
+      intensity_mode: 'rpe',
+      target_value: '9',
+    }))
+  })
+
+  it('persists bodyweight rows as publishable sets with a bodyweight coach note', async () => {
+    const rows = [
+      row({
+        id: 'a',
+        exerciseId: 'ex1',
+        name: '双杠臂屈伸',
+        reps: '10-15',
+        mode: 'bodyweight',
+        boxes: Array.from({ length: 4 }, () => ({ val: '', empty: true })),
+        note: '先自重',
+      }),
+    ]
+
+    await reconcilePlan('p', [weekWithMondayRows(rows)])
+
+    expect(plans.createSet).toHaveBeenCalledTimes(4)
+    expect(plans.createSet).toHaveBeenCalledWith('new-ex1-0', expect.objectContaining({
+      target_reps: 10,
+      target_reps_max: 15,
+      intensity_mode: 'rpe',
+      target_value: '10',
+      coach_note: '自重',
+    }))
+  })
+
+  it('does not impose a client-side status gate on published plans', async () => {
+    vi.mocked(plans.getPlan).mockResolvedValue({
+      id: 'p', plan_weeks: 1, start_date: '2026-01-01', status: 'published', days: [],
+    } as never)
+
+    await expect(reconcilePlan('p', [weekWithMondayRows([
+      row({ exerciseId: 'ex1', name: '深蹲', boxes: [{ val: '100', empty: false }] }),
+    ])])).resolves.toMatchObject({ changedDays: 1 })
+    expect(plans.createDay).toHaveBeenCalled()
+  })
+
+  it('rejects incomplete bound prescriptions before replacing any server day', async () => {
+    vi.mocked(plans.getPlan).mockResolvedValue({
+      id: 'p',
+      plan_weeks: 1,
+      start_date: '2026-01-01',
+      days: [{ id: 'old-day', week_number: 1, day_of_week: 1, exercises: [] }],
+    } as never)
+    const incomplete = row({
+      exerciseId: 'ex1',
+      name: '深蹲',
+      reps: '5',
+      boxes: [{ val: '', empty: true }],
+    })
+
+    await expect(reconcilePlan('p', [weekWithMondayRows([incomplete])])).rejects.toMatchObject({
+      code: 'PLAN_SET_SPEC_INCOMPLETE',
+    })
+    expect(plans.deleteDay).not.toHaveBeenCalled()
+    expect(plans.createDay).not.toHaveBeenCalled()
+  })
+
+  it('refuses backend plans with richer per-set fields rather than flattening them', async () => {
+    vi.mocked(plans.getPlan).mockResolvedValue({
+      id: 'p',
+      plan_weeks: 1,
+      start_date: '2026-01-01',
+      days: [{
+        id: 'old-day',
+        week_number: 1,
+        day_of_week: 1,
+        exercises: [{
+          id: 'pe1',
+          exercise_id: 'ex1',
+          is_main_lift: false,
+          sort_order: 0,
+          notes: null,
+          sets: [{
+            id: 'set1',
+            set_number: 1,
+            target_reps: 5,
+            target_reps_max: null,
+            intensity_mode: 'weight',
+            target_value: '100',
+            set_type: 'working',
+            coach_note: null,
+            rest_seconds: 120,
+          }],
+        }],
+      }],
+    } as never)
+
+    await expect(reconcilePlan('p', [weekWithMondayRows([])])).rejects.toMatchObject({
+      code: 'PLAN_REQUIRES_NATIVE_EDITOR',
+    })
+    expect(plans.deleteDay).not.toHaveBeenCalled()
+  })
 })
 
 describe('reconcilePlan — exercise-granularity history locks', () => {
@@ -123,7 +238,7 @@ describe('reconcilePlan — exercise-granularity history locks', () => {
     const result = await reconcilePlan('p', [weekWithMondayRows([
       boundRow('l', 'locked', 'lock-ex', '90', { hasLogs: true, serverSortOrder: 0 }),
       boundRow('c', 'changed', 'change-ex', '105', { serverSortOrder: 1 }),
-      boundRow('n', null, 'new-ex', '50'),
+      boundRow('n', null, 'new-ex', '50', { serverSortOrder: 2 }),
     ])])
 
     expect(plans.deleteDay).not.toHaveBeenCalled()
@@ -272,7 +387,7 @@ describe('reconcilePlan — mixed-day sort_order invariants', () => {
       boundRow('a-row', 'a', 'a', '101', { serverSortOrder: 0 }),
       boundRow('b-row', 'b', 'b', '102', { serverSortOrder: 1 }),
       boundRow('lock-row', 'lock', 'lock', '90', { hasLogs: true, serverSortOrder: 2 }),
-      boundRow('new-1', null, 'new-1', '50'),
+      boundRow('new-1', null, 'new-1', '50', { serverSortOrder: 3 }),
       boundRow('new-2', null, 'new-2', '60'),
     ])])
     const calls = vi.mocked(plans.createExercise).mock.calls.map(([, body]) => [body.exercise_id, body.sort_order])
@@ -289,6 +404,21 @@ describe('reconcilePlan — mixed-day sort_order invariants', () => {
       boundRow('new', null, 'new', '50'),
     ])])
     expect(plans.createExercise).toHaveBeenCalledWith('day1', expect.objectContaining({ exercise_id: 'new', sort_order: 6 }))
+  })
+
+  it('keeps a pure append at the tail instead of consuming an unrelated removed slot', async () => {
+    const baseline = [
+      serverExercise('lock', 'lock', 0, '90', true),
+      serverExercise('remove', 'remove', 1),
+      serverExercise('keep', 'keep', 2),
+    ]
+    vi.mocked(plans.getPlan).mockResolvedValue(serverPlan([serverDay(baseline)]))
+    await reconcilePlan('p', [weekWithMondayRows([
+      boundRow('lock-row', 'lock', 'lock', '90', { hasLogs: true, serverSortOrder: 0 }),
+      boundRow('keep-row', 'keep', 'keep', '100', { serverSortOrder: 2 }),
+      boundRow('new', null, 'new', '50'),
+    ])])
+    expect(plans.createExercise).toHaveBeenCalledWith('day1', expect.objectContaining({ exercise_id: 'new', sort_order: 3 }))
   })
 })
 

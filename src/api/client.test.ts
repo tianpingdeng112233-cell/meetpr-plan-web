@@ -50,6 +50,27 @@ describe('request 429 retry', () => {
     expect(localStorage.getItem('mpw.accessToken')).toBe('fresh')
   })
 
+  it('shares one refresh across concurrent 401 responses', async () => {
+    localStorage.setItem('mpw.accessToken', 'stale')
+    localStorage.setItem('mpw.refreshToken', 'refresh-1')
+    const fetchMock = vi.fn((url: string, init?: RequestInit) => {
+      if (url.endsWith('/auth/refresh')) {
+        return Promise.resolve(res(200, { accessToken: 'fresh', refreshToken: 'refresh-2' }))
+      }
+      const headers = init?.headers as Record<string, string> | undefined
+      return Promise.resolve(headers?.Authorization === 'Bearer stale'
+        ? res(401, { error: 'AUTH_INVALID_TOKEN' })
+        : res(200, { ok: true }))
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    await expect(Promise.all([api.get('/coach/students'), api.get('/exercises')]))
+      .resolves.toEqual([{ ok: true }, { ok: true }])
+
+    expect(fetchMock.mock.calls.filter(([url]) => String(url).endsWith('/auth/refresh'))).toHaveLength(1)
+    expect(localStorage.getItem('mpw.refreshToken')).toBe('refresh-2')
+  })
+
   it('backs off when the refresh itself is rate-limited, then completes', async () => {
     localStorage.setItem('mpw.accessToken', 'stale')
     localStorage.setItem('mpw.refreshToken', 'refresh-1')

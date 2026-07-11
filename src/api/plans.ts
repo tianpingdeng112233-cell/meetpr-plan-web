@@ -1,12 +1,18 @@
 import { api } from './client'
 import type {
-  CoachStudent, PlanResponse, PlanWithChildren, PlanStatus,
+  CoachStudent, StudentOnboardingProfile, PlanResponse, PlanWithChildren, PlanStatus,
   CreatePlanBody, CreatePlanDayBody, CreatePlanExerciseBody, CreatePlanSetBody,
   PlanDayResponse, PlanExerciseResponse, PlanSetResponse,
 } from './types'
 
 export const getCoachStudents = () =>
   api.get<{ students: CoachStudent[] }>('/coach/students').then((r) => r.students)
+
+export const renameCoachStudent = (studentId: string, displayName: string) =>
+  api.patch<CoachStudent>(`/coach/students/${studentId}`, { display_name: displayName })
+
+export const getStudentOnboarding = (studentId: string) =>
+  api.get<StudentOnboardingProfile>(`/students/${studentId}/onboarding`)
 
 export const getStudentPlans = (studentId: string, status?: PlanStatus[]) => {
   const q = status?.length ? `?status=${status.join(',')}` : ''
@@ -21,6 +27,18 @@ export const patchPlan = (
   body: { name?: string; start_date?: string; end_date?: string; plan_weeks?: number },
 ) => api.patch<PlanResponse>(`/plans/${planId}`, body)
 export const publishPlan = (planId: string) => api.post<PlanResponse>(`/plans/${planId}/publish`)
+/**
+ * Persist coach-confirmed, past plan sessions as *assumed* completions. These
+ * records remain distinct from a student's real training logs and do not feed
+ * e1RM/PR calculations.
+ */
+export const markImportedHistory = (planId: string) =>
+  api.post<{
+    plan_id: string
+    created_set_logs: number
+    existing_set_logs: number
+    assumed: true
+  }>(`/plans/${planId}/imported-history`, { confirm: true })
 
 // nested tree mutations
 export const createDay = (planId: string, body: CreatePlanDayBody) =>

@@ -8,7 +8,7 @@ interface Props {
   index: ExerciseIndex | null
   query: string
   onPick: (hit: ExerciseHit) => void
-  onCreateCustom: (name: string) => void
+  onCreateCustom?: (name: string) => void
 }
 
 // Results-only dropdown: the query is typed directly in the name cell (no own
@@ -33,10 +33,12 @@ export function ExercisePopover({ visible, x, y, index, query, onPick, onCreateC
         ))}
         {hits.length === 0 && <div style={{ padding: '8px 11px', color: 'var(--fg-tertiary)' }}>无匹配动作</div>}
       </div>
-      <div className="popitem" onMouseDown={(e) => { e.preventDefault(); onCreateCustom(query.trim()) }}
-        style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '8px 11px', color: 'var(--fg-secondary)', borderTop: '1px solid var(--border)' }}>
-        <span style={{ color: '#fff' }}>＋</span> 创建自定义「{query.trim()}」
-      </div>
+      {onCreateCustom && (
+        <div className="popitem" onMouseDown={(e) => { e.preventDefault(); onCreateCustom(query.trim()) }}
+          style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '8px 11px', color: 'var(--fg-secondary)', borderTop: '1px solid var(--border)' }}>
+          <span style={{ color: '#fff' }}>＋</span> 创建自定义「{query.trim()}」
+        </div>
+      )}
     </div>
   )
 }

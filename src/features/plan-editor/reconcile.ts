@@ -5,7 +5,7 @@
 // and their set/history links are never touched.
 
 import type { Week, DayCol, ExerciseRow, SetBox } from './types'
-import { isContentfulUnbound } from './types'
+import { isBoundNoSets, isContentfulUnbound } from './types'
 import type {
   PlanWithChildren, PlanDayResponse, PlanExerciseResponse, CreatePlanSetBody,
   IntensityModeWire, SetType,
@@ -33,6 +33,10 @@ export interface SaveResult {
   skippedRows: number
   /** Id/lock/order metadata after the live-baseline reconciliation. */
   weeks: Week[]
+  /** Present when reconciliation also changed the plan calendar metadata. */
+  planStartDate?: string
+  planEndDate?: string
+  planWeeks?: number
 }
 
 export interface ReconcileOptions {
@@ -64,9 +68,42 @@ export class ReconcileConflict extends Error {
   }
 }
 
+/** The grid only models uniform working-set prescriptions. Refuse lossy
+ * flattening, but deliberately do not gate on plan status: published
+ * mutability is server-authoritative (backend spec 016). */
+export class ReconciliationError extends Error {
+  constructor(public readonly code: 'PLAN_REQUIRES_NATIVE_EDITOR' | 'PLAN_SET_SPEC_INCOMPLETE') {
+    super(code)
+  }
+}
+
+function assertSupportedServerTree(server: PlanWithChildren): void {
+  for (const day of server.days) for (const exercise of day.exercises) {
+    const sets = [...exercise.sets].sort((a, b) => a.set_number - b.set_number)
+    if (sets.length === 0) continue
+    const first = sets[0]
+    const bodyweight = sets.every((set) => /自重|bodyweight/i.test(set.coach_note ?? ''))
+    const supported = sets.every((set, index) => (
+      set.set_number === index + 1
+      && set.target_reps === first.target_reps
+      && set.target_reps_max === first.target_reps_max
+      && set.intensity_mode === first.intensity_mode
+      && set.rest_seconds == null
+      && (bodyweight || set.coach_note == null)
+      && (set.set_type === 'working' || (index === sets.length - 1 && set.set_type === 'amrap'))
+    ))
+    if (!supported) throw new ReconciliationError('PLAN_REQUIRES_NATIVE_EDITOR')
+  }
+}
+
 function numStr(v: string): string {
   const n = Number(v)
   return Number.isNaN(n) ? v : String(n)
+}
+
+function canonCoachNote(note: string | null | undefined): string | null {
+  if (note == null) return null
+  return /自重|bodyweight/i.test(note) ? 'bodyweight' : note
 }
 
 function fmtNum(v: string): string {
@@ -74,24 +111,34 @@ function fmtNum(v: string): string {
   return Number.isNaN(n) ? v : String(Number(n.toFixed(2)))
 }
 
-function parseReps(reps: string): { reps: number; amrap: boolean } {
+function parseReps(reps: string): { reps: number; repsMax: number | null; amrap: boolean } {
+  const range = reps.match(/(\d{1,2})\s*(?:-|–|—|~|到|至)\s*(\d{1,2})/)
+  if (range) {
+    const lo = Math.min(Math.max(Number(range[1]), 1), 50)
+    const hi = Math.min(Math.max(Number(range[2]), lo), 50)
+    return { reps: lo, repsMax: hi, amrap: false }
+  }
   const amrap = reps.includes('+')
   const n = parseInt(reps, 10)
-  return { reps: Number.isFinite(n) ? Math.min(Math.max(n, 1), 50) : 1, amrap }
+  return { reps: Number.isFinite(n) ? Math.min(Math.max(n, 1), 50) : 1, repsMax: null, amrap }
 }
 
 /** A bound row -> desired backend exercise. Unbound rows (no exerciseId) -> null. */
 function rowToDesired(row: ExerciseRow): DesiredExercise | null {
   if (!row.exerciseId) return null
-  const mode: IntensityModeWire = row.mode === 'rpe' ? 'rpe' : 'weight'
-  const filled = row.boxes.filter((b) => !b.empty && b.val !== '')
-  const { reps, amrap } = parseReps(row.reps)
+  const mode: IntensityModeWire = row.mode === 'rpe' || row.mode === 'bodyweight' ? 'rpe' : 'weight'
+  const filled = row.mode === 'bodyweight'
+    ? row.boxes.map(() => ({ val: '10', empty: false }))
+    : row.boxes.filter((b) => !b.empty && b.val !== '')
+  const { reps, repsMax, amrap } = parseReps(row.reps)
   const sets: CreatePlanSetBody[] = filled.map((b, i) => ({
     set_number: i + 1,
     target_reps: reps,
+    target_reps_max: repsMax,
     intensity_mode: mode,
     target_value: numStr(b.val),
     set_type: (amrap && i === filled.length - 1 ? 'amrap' : 'working') as SetType,
+    coach_note: row.mode === 'bodyweight' ? '自重' : undefined,
   }))
   return { exercise_id: row.exerciseId, is_main_lift: row.isMain, notes: row.note || null, sets }
 }
@@ -99,7 +146,9 @@ function rowToDesired(row: ExerciseRow): DesiredExercise | null {
 function canonDesiredOne(e: DesiredExercise): string {
   return JSON.stringify({
     x: e.exercise_id, m: e.is_main_lift, n: e.notes ?? '',
-    s: e.sets.map((s) => [s.set_number, s.target_reps, s.intensity_mode, numStr(s.target_value), s.set_type]),
+    s: e.sets.map((s) => [
+      s.set_number, s.target_reps, s.target_reps_max ?? null, s.intensity_mode, numStr(s.target_value), s.set_type, canonCoachNote(s.coach_note),
+    ]),
   })
 }
 
@@ -107,7 +156,9 @@ function canonServerOne(e: PlanExerciseResponse): string {
   return JSON.stringify({
     x: e.exercise_id, m: e.is_main_lift, n: e.notes ?? '',
     s: [...e.sets].sort((a, b) => a.set_number - b.set_number)
-      .map((s) => [s.set_number, s.target_reps, s.intensity_mode, numStr(s.target_value), s.set_type]),
+      .map((s) => [
+        s.set_number, s.target_reps, s.target_reps_max ?? null, s.intensity_mode, numStr(s.target_value), s.set_type, canonCoachNote(s.coach_note),
+      ]),
   })
 }
 
@@ -145,6 +196,9 @@ function desiredEntries(day: DayCol | undefined, countSkipped: () => void): Desi
   if (!day || day.rest) return []
   const entries: DesiredEntry[] = []
   for (const row of day.rows) {
+    if (!row.hasLogs && row.exerciseId && isBoundNoSets(row)) {
+      throw new ReconciliationError('PLAN_SET_SPEC_INCOMPLETE')
+    }
     const desired = rowToDesired(row)
     if (desired) entries.push({ row, desired })
     else if (!row.hasLogs && isContentfulUnbound(row)) countSkipped()
@@ -192,8 +246,13 @@ function serverToRow(exercise: PlanExerciseResponse, local: ExerciseRow | undefi
   const catalogEntry = catalog?.get(exercise.exercise_id)
   const custom = catalogEntry?.custom ?? (local?.exerciseId === exercise.exercise_id ? local.custom : false)
   const sets = [...exercise.sets].sort((a, b) => a.set_number - b.set_number)
-  const boxes: SetBox[] = sets.map((set) => ({ val: fmtNum(set.target_value), empty: false }))
-  const amrap = sets.some((set) => set.set_type === 'amrap' || set.target_reps_max != null)
+  const bodyweight = sets.length > 0 && sets.every((set) => /自重|bodyweight/i.test(set.coach_note ?? ''))
+  const boxes: SetBox[] = sets.map((set) => (
+    bodyweight ? { val: '', empty: true } : { val: fmtNum(set.target_value), empty: false }
+  ))
+  const baseReps = sets[0]?.target_reps
+  const repsMax = sets[0]?.target_reps_max
+  const amrap = sets.some((set) => set.set_type === 'amrap')
   return {
     id: local?.id ?? exercise.id,
     serverRowId: exercise.id,
@@ -206,8 +265,10 @@ function serverToRow(exercise: PlanExerciseResponse, local: ExerciseRow | undefi
     custom,
     isMain: exercise.is_main_lift,
     aux: sets.length === 0,
-    reps: sets.length === 0 ? '—' : `${sets[0].target_reps}${amrap ? '+' : ''}`,
-    mode: sets[0]?.intensity_mode === 'rpe' ? 'rpe' : 'kg',
+    reps: sets.length === 0 ? '—' : repsMax != null && repsMax > baseReps
+      ? `${baseReps}-${repsMax}`
+      : `${baseReps}${amrap ? '+' : ''}`,
+    mode: bodyweight ? 'bodyweight' : sets[0]?.intensity_mode === 'rpe' ? 'rpe' : 'kg',
     boxes,
     note: exercise.notes ?? '',
   }
@@ -328,14 +389,21 @@ export async function reconcileImportedPlan(
   planId: string, weeks: Week[], startDate: string, onProgress?: SaveProgress,
   options: ReconcileOptions = {},
 ): Promise<SaveResult> {
-  const server = await getPlan(planId)
+  const server: PlanWithChildren = await getPlan(planId)
   if (options.published || server.status === 'published') throw new ApiException(409, 'PUBLISHED_IMPORT_FORBIDDEN')
+  assertSupportedServerTree(server)
   for (const day of server.days) {
     if (day.week_number > weeks.length) await deleteDay(day.id)
   }
   const endDate = fmtISO(addDays(startDate, weeks.length * 7 - 1))
   await patchPlan(planId, { plan_weeks: weeks.length, start_date: startDate, end_date: endDate })
-  return reconcilePlan(planId, weeks, onProgress, options)
+  const result = await reconcilePlan(planId, weeks, onProgress, options)
+  return {
+    ...result,
+    planStartDate: startDate,
+    planEndDate: endDate,
+    planWeeks: weeks.length,
+  }
 }
 
 interface DayWork {
@@ -362,6 +430,7 @@ export async function reconcilePlan(
   options: ReconcileOptions = {},
 ): Promise<SaveResult> {
   const server: PlanWithChildren = await getPlan(planId)
+  assertSupportedServerTree(server)
   const resultWeeks = cloneWeeks(weeks)
   const origByKey = new Map<string, PlanDayResponse>()
   for (const day of server.days) origByKey.set(`${day.week_number}:${day.day_of_week}`, day)
@@ -438,7 +507,6 @@ export async function reconcilePlan(
       const oldSlot = entry.row.serverSortOrder
       if (oldSlot != null && !occupied.has(oldSlot)) released.add(oldSlot)
     }
-    const freeSlots = [...released].sort((a, b) => a - b)
     const maxSort = baseline.reduce((max, exercise) => Math.max(max, exercise.sort_order), -1)
     let tail = maxSort + 1
     const assigned = new Map<string, number>()
@@ -446,7 +514,19 @@ export async function reconcilePlan(
       const claim = claims.get(entry.row.id)
       if (claim) assigned.set(entry.row.id, claim.sort_order)
     }
-    for (const entry of additions) assigned.set(entry.row.id, freeSlots.shift() ?? tail++)
+    const used = new Set(assigned.values())
+    for (const entry of additions) {
+      const requested = entry.row.serverSortOrder
+      if (requested != null && released.has(requested) && !occupied.has(requested) && !used.has(requested)) {
+        assigned.set(entry.row.id, requested)
+        used.add(requested)
+        tail = Math.max(tail, requested + 1)
+      } else {
+        while (used.has(tail)) tail++
+        assigned.set(entry.row.id, tail)
+        used.add(tail++)
+      }
+    }
     return { work, claims, changed, additions, removals, assigned, hasWrites: changed.length + additions.length + removals.length > 0 }
   })
 

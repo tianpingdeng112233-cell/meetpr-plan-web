@@ -7,7 +7,12 @@ interface Props {
   hasLockedRows: boolean
   copyLabel: string
   copyDone: boolean
+  selectedRowLabel: string
+  rowCopyDone: boolean
+  hasRowClipboard: boolean
   onCopyPrev: () => void
+  onCopyRow: () => void
+  onPasteRow: () => void
   onAddRow: () => void
   onSetRest: () => void
   onUnsetRest: () => void
@@ -38,6 +43,21 @@ export function ContextBar(p: Props) {
       >
         {p.copyLabel}
       </span>
+      {p.selectedRowLabel && (
+        <>
+          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--fg-tertiary)' }}>{p.selectedRowLabel}</span>
+          <span
+            className="ctxbtn"
+            onClick={p.onCopyRow}
+            style={{ ...btn, color: p.rowCopyDone ? 'var(--green)' : '#fff', borderColor: p.rowCopyDone ? 'var(--green)' : 'var(--border-strong)' }}
+          >
+            {p.rowCopyDone ? '✓ 已复制动作' : '⎘ 复制动作'}
+          </span>
+        </>
+      )}
+      {p.hasRowClipboard && (
+        <span className="ctxbtn" onClick={p.onPasteRow} style={{ ...btn, color: '#fff' }}>粘贴动作</span>
+      )}
       <span className="ctxbtn" onClick={p.onAddRow} style={{ ...btn, color: '#fff' }}>＋ 加动作</span>
       {p.isRest ? (
         <span className="ctxbtn" onClick={p.onUnsetRest} style={{ ...btn, color: 'var(--green)', borderColor: 'var(--green)' }}>改为训练日</span>

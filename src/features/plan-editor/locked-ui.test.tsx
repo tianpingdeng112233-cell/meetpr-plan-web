@@ -2,7 +2,7 @@ import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { DayColumn } from './components/DayColumn'
-import { PlanEditor, findIssueRows } from './PlanEditor'
+import { PlanEditor, findIssueRows, replaceUnlockedRows } from './PlanEditor'
 import { ExerciseIndex } from './exerciseIndex'
 import { ReconcileConflict } from './reconcile'
 import type { DayCol, ExerciseRow, Week } from './types'
@@ -84,6 +84,27 @@ describe('exercise history lock UI', () => {
     expect(lockedRow.querySelector('[title="学员已打卡,此行及其组不可修改"]')).not.toBeNull()
   })
 
+  it('disables row dragging for the entire mixed day', () => {
+    const reorder = vi.fn()
+    act(() => root?.render(
+      <DayColumn
+        day={{
+          dow: 0, dowLabel: '周一', dateLabel: '1/1', rest: false,
+          rows: [row('editable'), row('locked', { hasLogs: true })],
+        }}
+        colW={{ name: 92, sets: 26, reps: 26, int: 110, note: 36 }} selected
+        onSelect={vi.fn()} onSelectRow={vi.fn()} onResizeStart={vi.fn()} onNameFocus={vi.fn()}
+        onNameChange={vi.fn()} onNameBlur={vi.fn()} onAddRow={vi.fn()}
+        onEditRow={vi.fn()} onReorderRow={reorder} onDeleteRow={vi.fn()}
+      />,
+    ))
+
+    const handle = host.querySelector<HTMLElement>('[data-rowid="editable"] .rowdrag')!
+    expect(handle.title).toContain('整天不可拖排')
+    act(() => handle.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, button: 0 })))
+    expect(reorder).not.toHaveBeenCalled()
+  })
+
   it('excludes locked rows from pending issues while preserving grid-order cursor numbering', () => {
     const issues = findIssueRows([week(1, [
       row('locked-unbound', { hasLogs: true, exerciseId: null, name: '未知动作', ku: false }),
@@ -123,6 +144,33 @@ describe('exercise history lock UI', () => {
     expect(remaining).toHaveLength(1)
     expect((remaining[0] as HTMLElement).dataset.rowid).toBe('locked')
     expect(host.querySelector('.weekband[data-wnum="2"] .restday[data-dow="0"]')).toBeNull()
+  })
+
+  it('disables shift-all with a plan-level history tooltip when any row has logs', () => {
+    act(() => root?.render(
+      <PlanEditor initialWeeks={[week(1, [row('locked', { hasLogs: true })])]} weeksCount={1}
+        studentName="学员" planName="计划" planStartDate="2026-01-01" />,
+    ))
+
+    const shift = buttonByText(host, '后移 1 天')
+    expect(shift.disabled).toBe(true)
+    expect(shift.title).toContain('已有学员打卡动作')
+  })
+
+  it('whole-day paste replaces only unlocked rows and appends overflow after locked rows', () => {
+    const day: DayCol = {
+      dow: 0, dowLabel: '周一', dateLabel: '1/1', rest: false,
+      rows: [
+        row('editable', { serverRowId: 'pe-edit', serverSortOrder: 0 }),
+        row('locked', { serverRowId: 'pe-lock', serverSortOrder: 1, hasLogs: true }),
+      ],
+    }
+    const pasted = replaceUnlockedRows(day, [row('first', { name: '卧推' }), row('overflow', { name: '硬拉' })])
+
+    expect(pasted.rows.map((item) => item.name)).toEqual(['卧推', '深蹲', '硬拉'])
+    expect(pasted.rows[0]).toMatchObject({ serverRowId: null, serverSortOrder: 0, hasLogs: false })
+    expect(pasted.rows[1]).toBe(day.rows[1])
+    expect(pasted.rows[2]).toMatchObject({ serverRowId: null, serverSortOrder: null, hasLogs: false })
   })
 
   it('renders a new row in a just-released mixed-day slot before save, avoiding order jumps', () => {
@@ -170,6 +218,24 @@ describe('exercise history lock UI', () => {
     expect(confirm).toHaveBeenCalledWith(expect.stringContaining('保存会立即改变 ta 正在看的计划'))
     expect(onSave).toHaveBeenCalledTimes(1)
     expect(buttonByText(host, '已发布 · 不可撤回').disabled).toBe(true)
+  })
+
+  it('published update confirm folds in the unbound-row skip warning', async () => {
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false) // cancel: only the message matters
+    const onSave = vi.fn(async (weeks: Week[]) => ({ changedDays: 0, skippedRows: 0, weeks }))
+    act(() => root?.render(
+      <PlanEditor initialWeeks={[week(1, [
+        row('bound'),
+        row('loose', { exerciseId: null, name: '手写动作', ku: false }),
+      ])]} weeksCount={1}
+        studentName="学员" planName="已发布计划" initialPublished onSave={onSave} />,
+    ))
+    await act(async () => {
+      buttonByText(host, '更新计划').dispatchEvent(new MouseEvent('click', { bubbles: true }))
+      await Promise.resolve()
+    })
+    expect(confirm).toHaveBeenCalledWith(expect.stringContaining('1 行未绑定动作库'))
+    expect(onSave).not.toHaveBeenCalled()
   })
 
   it('keeps xlsx import forbidden for a published plan', async () => {

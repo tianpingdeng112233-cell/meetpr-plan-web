@@ -36,7 +36,7 @@ describe('reconcileImportedPlan — align backend plan to the import', () => {
       ],
     } as never)
 
-    await reconcileImportedPlan('p', Array.from({ length: 12 }, (_, i) => emptyWeek(i + 1)), '2025-12-29')
+    const result = await reconcileImportedPlan('p', Array.from({ length: 12 }, (_, i) => emptyWeek(i + 1)), '2025-12-29')
 
     expect(plans.deleteDay).toHaveBeenCalledWith('d13')
     expect(plans.deleteDay).toHaveBeenCalledWith('d14')
@@ -45,5 +45,10 @@ describe('reconcileImportedPlan — align backend plan to the import', () => {
       'p',
       expect.objectContaining({ plan_weeks: 12, start_date: '2025-12-29' }),
     )
+    expect(result).toMatchObject({
+      planStartDate: '2025-12-29',
+      planEndDate: '2026-03-22',
+      planWeeks: 12,
+    })
   })
 })
