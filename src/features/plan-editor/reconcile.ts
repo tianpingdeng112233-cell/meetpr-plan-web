@@ -4,7 +4,7 @@
 // plan_set ids (and any student references) survive.
 
 import type { Week, ExerciseRow } from './types'
-import { isContentfulUnbound } from './types'
+import { isBoundNoSets, isContentfulUnbound } from './types'
 import type {
   PlanWithChildren, PlanExerciseResponse, CreatePlanSetBody, IntensityModeWire, SetType,
 } from '../../api/types'
@@ -18,31 +18,79 @@ interface DesiredExercise {
   sets: CreatePlanSetBody[]
 }
 
-export interface SaveResult { changedDays: number; skippedRows: number }
+export interface SaveResult {
+  changedDays: number
+  skippedRows: number
+  /** Present when reconciliation also changed the plan calendar metadata. */
+  planStartDate?: string
+  planEndDate?: string
+  planWeeks?: number
+}
+
+/** The grid only models uniform, working-set prescriptions. Refuse to flatten
+ * richer backend data into a lossy representation; the coach can preserve it
+ * in the native editor until this UI gains per-set editing. */
+export class ReconciliationError extends Error {
+  constructor(public readonly code: 'PLAN_NOT_DRAFT' | 'PLAN_REQUIRES_NATIVE_EDITOR' | 'PLAN_SET_SPEC_INCOMPLETE') {
+    super(code)
+  }
+}
+
+function assertEditableServerTree(server: PlanWithChildren): void {
+  // The nullish guard keeps this pure helper usable with intentionally minimal
+  // fixtures; a real API response always carries a status.
+  if (server.status != null && server.status !== 'draft') throw new ReconciliationError('PLAN_NOT_DRAFT')
+  for (const day of server.days) for (const exercise of day.exercises) {
+    const sets = [...exercise.sets].sort((a, b) => a.set_number - b.set_number)
+    if (sets.length === 0) continue
+    const first = sets[0]
+    const bodyweight = sets.every((set) => /自重|bodyweight/i.test(set.coach_note ?? ''))
+    const supported = sets.every((set, index) => (
+      set.set_number === index + 1
+      && set.target_reps === first.target_reps
+      && set.target_reps_max === first.target_reps_max
+      && set.intensity_mode === first.intensity_mode
+      && set.rest_seconds == null
+      && (bodyweight || set.coach_note == null)
+      && (set.set_type === 'working' || (index === sets.length - 1 && set.set_type === 'amrap'))
+    ))
+    if (!supported) throw new ReconciliationError('PLAN_REQUIRES_NATIVE_EDITOR')
+  }
+}
 
 function numStr(v: string): string {
   const n = Number(v)
   return Number.isNaN(n) ? v : String(n)
 }
 
-function parseReps(reps: string): { reps: number; amrap: boolean } {
+function parseReps(reps: string): { reps: number; repsMax: number | null; amrap: boolean } {
+  const range = reps.match(/(\d{1,2})\s*(?:-|–|—|~|到|至)\s*(\d{1,2})/)
+  if (range) {
+    const lo = Math.min(Math.max(Number(range[1]), 1), 50)
+    const hi = Math.min(Math.max(Number(range[2]), lo), 50)
+    return { reps: lo, repsMax: hi, amrap: false }
+  }
   const amrap = reps.includes('+')
   const n = parseInt(reps, 10)
-  return { reps: Number.isFinite(n) ? Math.min(Math.max(n, 1), 50) : 1, amrap }
+  return { reps: Number.isFinite(n) ? Math.min(Math.max(n, 1), 50) : 1, repsMax: null, amrap }
 }
 
 /** A bound row -> desired backend exercise. Unbound rows (no exerciseId) -> null. */
 function rowToDesired(row: ExerciseRow): DesiredExercise | null {
   if (!row.exerciseId) return null
-  const mode: IntensityModeWire = row.mode === 'rpe' ? 'rpe' : 'weight'
-  const filled = row.boxes.filter((b) => !b.empty && b.val !== '')
-  const { reps, amrap } = parseReps(row.reps)
+  const mode: IntensityModeWire = row.mode === 'rpe' || row.mode === 'bodyweight' ? 'rpe' : 'weight'
+  const filled = row.mode === 'bodyweight'
+    ? row.boxes.map(() => ({ val: '10', empty: false }))
+    : row.boxes.filter((b) => !b.empty && b.val !== '')
+  const { reps, repsMax, amrap } = parseReps(row.reps)
   const sets: CreatePlanSetBody[] = filled.map((b, i) => ({
     set_number: i + 1,
     target_reps: reps,
+    target_reps_max: repsMax,
     intensity_mode: mode,
     target_value: numStr(b.val),
     set_type: (amrap && i === filled.length - 1 ? 'amrap' : 'working') as SetType,
+    coach_note: row.mode === 'bodyweight' ? '自重' : undefined,
   }))
   return { exercise_id: row.exerciseId, is_main_lift: row.isMain, notes: row.note || null, sets }
 }
@@ -50,7 +98,9 @@ function rowToDesired(row: ExerciseRow): DesiredExercise | null {
 function canonDesired(exs: DesiredExercise[]): string {
   return JSON.stringify(exs.map((e) => ({
     x: e.exercise_id, m: e.is_main_lift, n: e.notes ?? '',
-    s: e.sets.map((s) => [s.set_number, s.target_reps, s.intensity_mode, numStr(s.target_value), s.set_type]),
+    s: e.sets.map((s) => [
+      s.set_number, s.target_reps, s.target_reps_max ?? null, s.intensity_mode, numStr(s.target_value), s.set_type, s.coach_note ?? null,
+    ]),
   })))
 }
 
@@ -59,7 +109,9 @@ function canonServer(exs: PlanExerciseResponse[]): string {
   return JSON.stringify(sorted.map((e) => ({
     x: e.exercise_id, m: e.is_main_lift, n: e.notes ?? '',
     s: [...e.sets].sort((a, b) => a.set_number - b.set_number)
-      .map((s) => [s.set_number, s.target_reps, s.intensity_mode, numStr(s.target_value), s.set_type]),
+      .map((s) => [
+        s.set_number, s.target_reps, s.target_reps_max ?? null, s.intensity_mode, numStr(s.target_value), s.set_type, s.coach_note ?? null,
+      ]),
   })))
 }
 
@@ -82,12 +134,19 @@ export async function reconcileImportedPlan(
   planId: string, weeks: Week[], startDate: string, onProgress?: SaveProgress,
 ): Promise<SaveResult> {
   const server: PlanWithChildren = await getPlan(planId)
+  assertEditableServerTree(server)
   for (const day of server.days) {
     if (day.week_number > weeks.length) await deleteDay(day.id)
   }
   const endDate = fmtISO(addDays(startDate, weeks.length * 7 - 1))
   await patchPlan(planId, { plan_weeks: weeks.length, start_date: startDate, end_date: endDate })
-  return reconcilePlan(planId, weeks, onProgress)
+  const result = await reconcilePlan(planId, weeks, onProgress)
+  return {
+    ...result,
+    planStartDate: startDate,
+    planEndDate: endDate,
+    planWeeks: weeks.length,
+  }
 }
 
 export async function reconcilePlan(
@@ -95,6 +154,7 @@ export async function reconcilePlan(
 ): Promise<SaveResult> {
   // live server tree as the diff baseline (never trust a stale snapshot)
   const server: PlanWithChildren = await getPlan(planId)
+  assertEditableServerTree(server)
   const origByKey = new Map<string, PlanWithChildren['days'][number]>()
   for (const day of server.days) origByKey.set(`${day.week_number}:${day.day_of_week}`, day)
 
@@ -108,6 +168,9 @@ export async function reconcilePlan(
       const dayCol = wk.days.find((d) => d.dow === dow)
       const desired: DesiredExercise[] = (dayCol && !dayCol.rest)
         ? dayCol.rows.map((r) => {
+            if (r.exerciseId && isBoundNoSets(r)) {
+              throw new ReconciliationError('PLAN_SET_SPEC_INCOMPLETE')
+            }
             const d = rowToDesired(r)
             // Only count rows that would actually lose content — empty placeholder rows
             // also produce null but skipping them loses nothing, so they must not inflate the warning.

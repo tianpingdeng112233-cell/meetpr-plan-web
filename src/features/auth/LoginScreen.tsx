@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { login } from '../../api/auth'
+import { AuthRoleError, login } from '../../api/auth'
 import { ApiException } from '../../api/client'
 import type { AuthUser } from '../../api/types'
 
@@ -32,10 +32,14 @@ export function LoginScreen({ onLogin, onSampleMode }: Props) {
     e.preventDefault()
     setErr(''); setBusy(true)
     try {
-      const user = await login(toE164(phone), password)
-      if (user.role !== 'coach') { setErr('该账号不是教练，无法编写计划'); setBusy(false); return }
+      const user = await login(toE164(phone), password, 'coach')
       onLogin(user)
     } catch (e2) {
+      if (e2 instanceof AuthRoleError) {
+        setErr('该账号不是教练，无法编写计划')
+        setBusy(false)
+        return
+      }
       const code = e2 instanceof ApiException ? e2.code : 'NETWORK'
       setErr(errMsg[code] ?? (code === 'NETWORK' ? '无法连接后端，请稍后再试' : `登录失败（${code}）`))
       setBusy(false)

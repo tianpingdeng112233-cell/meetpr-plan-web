@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import type { DayCol, ColWidths, ColKey, ExerciseRow } from '../types'
 import { COLS } from '../types'
 
@@ -5,13 +6,16 @@ interface Props {
   day: DayCol
   colW: ColWidths
   selected: boolean
+  selectedRowId: string | null
   onSelect: () => void
+  onSelectRow: (rowId: string) => void
   onResizeStart: (col: ColKey, e: React.MouseEvent) => void
   onNameFocus: (rowId: string, name: string, el: HTMLElement) => void
   onNameChange: (rowId: string, value: string, el: HTMLElement) => void
   onNameBlur: () => void
   onAddRow: () => void
   onEditRow: (rowId: string, updater: (r: ExerciseRow) => ExerciseRow) => void
+  onReorderRow: (dragRowId: string, targetRowId: string, position: 'before' | 'after') => void
   onDeleteRow: (rowId: string) => void
 }
 
@@ -29,7 +33,10 @@ const baseInput: React.CSSProperties = {
 
 function setBoxesLen(boxes: ExerciseRow['boxes'], n: number) {
   if (n <= boxes.length) return boxes.slice(0, n)
-  return [...boxes, ...Array.from({ length: n - boxes.length }, () => ({ val: '', empty: true }))]
+  // Adding a set should preserve the prescription the coach can already see;
+  // an empty invisible set used to make the displayed count differ from save.
+  const last = boxes[boxes.length - 1] ?? { val: '', empty: true }
+  return [...boxes, ...Array.from({ length: n - boxes.length }, () => ({ ...last }))]
 }
 
 function EditableStrength({ row, width, edit }: { row: ExerciseRow; width: number; edit: (u: (r: ExerciseRow) => ExerciseRow) => void }) {
@@ -40,7 +47,8 @@ function EditableStrength({ row, width, edit }: { row: ExerciseRow; width: numbe
       </div>
     )
   }
-  const chip = row.mode === 'rpe'
+  const nextMode = row.mode === 'kg' ? 'rpe' : row.mode === 'rpe' ? 'bodyweight' : 'kg'
+  const chip = row.mode === 'rpe' || row.mode === 'bodyweight'
     ? { color: '#fff', background: 'var(--surface-3)' }
     : { color: 'var(--fg-tertiary)', background: 'transparent' }
   return (
@@ -49,16 +57,19 @@ function EditableStrength({ row, width, edit }: { row: ExerciseRow; width: numbe
       flexWrap: 'wrap', alignItems: 'center', alignContent: 'center',
     }}>
       <span
-        title="切换 kg / RPE" onClick={(e) => { stop(e); edit((r) => ({ ...r, mode: r.mode === 'kg' ? 'rpe' : 'kg' })) }}
+        title="切换 KG / RPE / 自重" onClick={(e) => { stop(e); edit((r) => ({ ...r, mode: nextMode })) }}
         style={{
           display: 'inline-flex', alignItems: 'center', fontFamily: 'var(--font-mono)', fontSize: 9,
           letterSpacing: '.04em', border: '1px solid var(--border-strong)', borderRadius: 3,
           padding: '1px 4px', margin: '0 5px 3px 0', cursor: 'pointer', userSelect: 'none', ...chip,
         }}
       >
-        {row.mode === 'rpe' ? 'RPE' : 'KG'}
+        {row.mode === 'rpe' ? 'RPE' : row.mode === 'bodyweight' ? '自重' : 'KG'}
       </span>
-      {row.boxes.map((b, i) => (
+      {row.mode === 'bodyweight' && row.boxes.length > 0 && (
+        <span style={{ color: 'var(--fg-secondary)', fontSize: 11, margin: '0 4px 3px 0' }}>每组自重</span>
+      )}
+      {row.mode !== 'bodyweight' && row.boxes.map((b, i) => (
         <input
           key={i} value={b.empty ? '' : b.val} inputMode="decimal" onClick={stop}
           onChange={(e) => edit((r) => ({ ...r, boxes: r.boxes.map((x, j) => j === i ? { val: e.target.value, empty: e.target.value.trim() === '' } : x) }))}
@@ -73,7 +84,63 @@ function EditableStrength({ row, width, edit }: { row: ExerciseRow; width: numbe
   )
 }
 
-export function DayColumn({ day, colW, selected, onSelect, onResizeStart, onNameFocus, onNameChange, onNameBlur, onAddRow, onEditRow, onDeleteRow }: Props) {
+export function DayColumn({ day, colW, selected, selectedRowId, onSelect, onSelectRow, onResizeStart, onNameFocus, onNameChange, onNameBlur, onAddRow, onEditRow, onReorderRow, onDeleteRow }: Props) {
+  const [dragRowId, setDragRowId] = useState<string | null>(null)
+  const [dropTarget, setDropTarget] = useState<{ rowId: string; position: 'before' | 'after' } | null>(null)
+
+  const startRowDrag = (e: React.MouseEvent, rowId: string) => {
+    if (e.button !== 0) return
+    e.preventDefault()
+    e.stopPropagation()
+    onSelectRow(rowId)
+    setDragRowId(rowId)
+
+    let currentDrop: { rowId: string; position: 'before' | 'after' } | null = null
+    const previousUserSelect = document.body.style.userSelect
+    const previousCursor = document.body.style.cursor
+    document.body.style.userSelect = 'none'
+    document.body.style.cursor = 'grabbing'
+
+    const updateDropTarget = (clientX: number, clientY: number) => {
+      const target = document.elementsFromPoint(clientX, clientY)
+        .map((el) => el.closest<HTMLElement>('[data-rowid]'))
+        .find((el): el is HTMLElement => el != null)
+      const targetRowId = target?.dataset.rowid
+      if (!target || !targetRowId || targetRowId === rowId || !day.rows.some((r) => r.id === targetRowId)) {
+        currentDrop = null
+        setDropTarget(null)
+        return
+      }
+      const rect = target.getBoundingClientRect()
+      const position = clientY < rect.top + rect.height / 2 ? 'before' : 'after'
+      currentDrop = { rowId: targetRowId, position }
+      setDropTarget(currentDrop)
+    }
+
+    const onMove = (ev: MouseEvent) => {
+      ev.preventDefault()
+      updateDropTarget(ev.clientX, ev.clientY)
+    }
+
+    const cleanup = () => {
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup', onUp)
+      document.body.style.userSelect = previousUserSelect
+      document.body.style.cursor = previousCursor
+      setDragRowId(null)
+      setDropTarget(null)
+    }
+
+    const onUp = (ev: MouseEvent) => {
+      updateDropTarget(ev.clientX, ev.clientY)
+      if (currentDrop) onReorderRow(rowId, currentDrop.rowId, currentDrop.position)
+      cleanup()
+    }
+
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+  }
+
   if (day.rest) {
     return (
       <div className={`day restday${selected ? ' sel' : ''}`} data-dow={day.dow} onClick={onSelect} style={{
@@ -113,9 +180,30 @@ export function DayColumn({ day, colW, selected, onSelect, onResizeStart, onName
 
         {day.rows.map((row) => {
           const edit = (u: (r: ExerciseRow) => ExerciseRow) => onEditRow(row.id, u)
+          const isSelectedRow = selectedRowId === row.id
+          const dropPosition = dropTarget?.rowId === row.id ? dropTarget.position : null
           return (
-            <div key={row.id} data-rowid={row.id} className={`exrow${row.aux ? ' aux' : ''}`} style={{ display: 'flex', alignItems: 'stretch', borderTop: '1px solid var(--border)' }}>
+            <div
+              key={row.id}
+              data-rowid={row.id}
+              className={`exrow${row.aux ? ' aux' : ''}${isSelectedRow ? ' row-sel' : ''}${dragRowId === row.id ? ' row-dragging' : ''}${dropPosition ? ` row-drop-${dropPosition}` : ''}`}
+              onMouseDownCapture={(e) => { if (e.button === 0) onSelectRow(row.id) }}
+              onClick={(e) => e.stopPropagation()}
+              style={{
+                display: 'flex', alignItems: 'stretch', borderTop: '1px solid var(--border)',
+                background: isSelectedRow ? 'rgba(255, 69, 69, 0.08)' : undefined,
+                boxShadow: isSelectedRow ? 'inset 3px 0 0 var(--brand-red)' : undefined,
+              }}
+            >
               <div className="gcell" data-c="name" style={{ width: colW.name, padding: '4px 4px', display: 'flex', alignItems: 'center', gap: 2, overflow: 'hidden' }}>
+                <span
+                  className="rowdrag"
+                  title="拖动调整顺序 / 点击选中动作"
+                  onMouseDown={(e) => startRowDrag(e, row.id)}
+                  onClick={(e) => { e.stopPropagation(); onSelectRow(row.id) }}
+                >
+                  ⋮
+                </span>
                 <input
                   value={row.name} placeholder="输入动作…"
                   onMouseDown={stop} onClick={stop}
@@ -132,7 +220,14 @@ export function DayColumn({ day, colW, selected, onSelect, onResizeStart, onName
                   typing a count here is how the coach turns it into a real tracked exercise. */}
               <div className="gcell" data-c="sets" style={{ width: colW.sets, padding: '4px 2px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 <input value={row.boxes.length || ''} inputMode="numeric" onClick={stop} placeholder={row.aux ? '—' : ''}
-                  onChange={(e) => { const n = Math.max(0, Math.min(12, parseInt(e.target.value, 10) || 0)); edit((r) => ({ ...r, boxes: setBoxesLen(r.boxes, n), aux: n > 0 ? false : r.aux })) }}
+                  onChange={(e) => {
+                    const raw = e.target.value.trim()
+                    // Do not interpret the transient empty value while editing
+                    // a number as “delete every set”.
+                    if (raw === '') return
+                    const n = Math.max(0, Math.min(12, parseInt(raw, 10) || 0))
+                    edit((r) => ({ ...r, boxes: setBoxesLen(r.boxes, n), aux: n > 0 ? false : r.aux }))
+                  }}
                   style={{ ...baseInput, width: '100%', textAlign: 'center', color: 'var(--fg-secondary)' }} />
               </div>
 

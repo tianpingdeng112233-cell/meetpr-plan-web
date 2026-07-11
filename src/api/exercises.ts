@@ -1,9 +1,35 @@
 import { api } from './client'
-import type { ExerciseResponse } from './types'
+import type { CreateCustomExerciseBody, Equipment, ExerciseResponse, MovementPattern, MuscleGroup } from './types'
+
+export interface CreateCustomExerciseInput {
+  name: string
+  muscleGroup?: MuscleGroup
+  equipment?: Equipment
+  movementPattern?: MovementPattern
+}
+
+export const DEFAULT_CUSTOM_EXERCISE: Omit<CreateCustomExerciseBody, 'name'> = {
+  exercise_type: 'accessory',
+  main_lift_family: null,
+  is_competition_lift: false,
+  muscle_groups: ['core'],
+  equipment: ['bodyweight'],
+  movement_pattern: ['other'],
+}
+
+export function customExerciseBody(input: CreateCustomExerciseInput): CreateCustomExerciseBody {
+  return {
+    ...DEFAULT_CUSTOM_EXERCISE,
+    name: input.name.trim(),
+    muscle_groups: [input.muscleGroup ?? DEFAULT_CUSTOM_EXERCISE.muscle_groups[0]],
+    equipment: [input.equipment ?? DEFAULT_CUSTOM_EXERCISE.equipment[0]],
+    movement_pattern: [input.movementPattern ?? DEFAULT_CUSTOM_EXERCISE.movement_pattern[0]],
+  }
+}
 
 // The catalog is small enough to fetch once and filter client-side for typeahead.
 export const listExercises = () =>
   api.get<{ exercises: ExerciseResponse[] }>('/exercises').then((r) => r.exercises)
 
-export const createCustomExercise = (name: string, exerciseType = 'accessory') =>
-  api.post<ExerciseResponse>('/exercises', { name, exercise_type: exerciseType })
+export const createCustomExercise = (input: CreateCustomExerciseInput) =>
+  api.post<ExerciseResponse>('/exercises', customExerciseBody(input))

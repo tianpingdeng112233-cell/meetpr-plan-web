@@ -46,8 +46,8 @@ npm run build      # tsc --noEmit && vite build，产物进 dist/
 **后端同源 serve**（2026-07-04 起）：站点由 MeetPR 后端直接 serve（`express.static('web')` + 内容协商 SPA fallback），教练**免 VPN** 访问 **http://121.40.160.241:3000/**。
 
 - 构建产物 `VITE_API_BASE='' npm run build` 放进后端镜像的 `web/`（同源，无需 `/api` 代理）；随后端 `staging` 分支 build-push CI 出镜像，David 在阿里云 SAE（华东1·杭州）手动部署。
-- ⚠️ **Vercel 方案（`meetpr-plan-web.vercel.app`）已弃用**：其 `/api/*` 代理明文 HTTP 后端已坏（502），别再让教练用。
-- 本地开发：`npm run dev` @ 5180（Vite 代理直连后端，免 VPN）。
+- ⚠️ **Vercel 方案（`meetpr-plan-web.vercel.app`）已弃用**：其 `/api/*` 代理明文 HTTP 后端已坏（502）。2026-07-09 起该域名已改为纯 307 跳转到正式入口（redirect-only 部署，不在本仓）；仓内 `api/proxy.js`、`vercel.json`、`deploy` 脚本已删，**别再对本仓跑 `vercel --prod`**（会把跳转覆盖回死代理）。
+- 本地开发：`npm run dev` @ 5180。dev 代理默认指向 `http://127.0.0.1:3000`（本地后端）；要直连线上后端，设 `MEETPR_DEV_BACKEND_TARGET=http://121.40.160.241:3000`（`.env.local` 或环境变量，明文 HTTP 会有警告）。
 
 > 分支已归一到 `main`（2026-07-04，`origin/HEAD → main`，默认分支即生产血脉）；仅剩 `feat/002-xlsx-import` 死血脉退休中。细节见 [`CLAUDE.md`](CLAUDE.md) §①「分支现状：双血脉已解」。
 
@@ -83,6 +83,5 @@ src/
 docs/
   教练使用指南.md        给教练的终端用户说明
 specs/                  001 / 002 / 003 功能规格
-vercel.json             生产代理配置
 vite.config.ts          dev server + 代理 + vitest 配置
 ```

@@ -3,10 +3,21 @@
 
 import type { TokenPair } from './types'
 
-// Dev + Vercel: '/api' (Vite proxy / Vercel rewrite handles it).
+// Dev: '/api' (Vite dev-server proxy handles it).
 // Self-hosted-from-backend build: set VITE_API_BASE='' so calls hit the backend
 // routes at the same origin (/auth, /plans, …) — no proxy, no CORS, no mixed content.
-const BASE = import.meta.env.VITE_API_BASE ?? '/api'
+function configuredApiBase(): string {
+  const base = import.meta.env.VITE_API_BASE ?? '/api'
+  // A production browser must never be configured to send credentials directly
+  // over HTTP. Relative paths are safe (they inherit the page's HTTPS origin),
+  // as is an explicit HTTPS endpoint for a self-hosted deployment.
+  if (import.meta.env.PROD && /^http:\/\//i.test(base)) {
+    throw new Error('VITE_API_BASE must use HTTPS in production')
+  }
+  return base
+}
+
+const BASE = configuredApiBase()
 const ACCESS_KEY = 'mpw.accessToken'
 const REFRESH_KEY = 'mpw.refreshToken'
 
@@ -79,15 +90,39 @@ async function rawRetrying(path: string, opts: ReqOpts): Promise<Response> {
   return res
 }
 
+let refreshPromise: Promise<boolean> | null = null
+
 async function refreshTokens(): Promise<boolean> {
+  // Refresh tokens are rotated by the backend. A page often has several
+  // authenticated requests in flight on boot, so every 401 must join the same
+  // refresh rather than replay the old token and revoke the new session.
+  if (refreshPromise) return refreshPromise
   const refreshToken = getRefreshToken()
   if (!refreshToken) return false
-  const res = await rawRetrying('/auth/refresh', { method: 'POST', body: { refreshToken }, auth: false })
-  if (res.status === 429) return false // still rate-limited after backoff: keep tokens, surface upstream
-  if (!res.ok) { clearTokens(); return false } // genuinely invalid refresh token
-  const tokens = (await res.json()) as TokenPair
-  setTokens(tokens)
-  return true
+
+  const task = (async () => {
+    const res = await rawRetrying('/auth/refresh', { method: 'POST', body: { refreshToken }, auth: false })
+    if (res.status === 429) return false // keep a valid session on a temporary limiter failure
+    if (!res.ok) {
+      // A logout or another login may have replaced the token while this
+      // request was in flight. Never clear that newer session.
+      if (getRefreshToken() === refreshToken) clearTokens()
+      return false
+    }
+    const tokens = (await res.json()) as TokenPair
+    if (getRefreshToken() !== refreshToken) {
+      // The caller will retry using the session which superseded this one.
+      return getAccessToken() != null
+    }
+    setTokens(tokens)
+    return true
+  })()
+  refreshPromise = task
+  try {
+    return await task
+  } finally {
+    if (refreshPromise === task) refreshPromise = null
+  }
 }
 
 export async function request<T>(path: string, opts: ReqOpts = {}): Promise<T> {

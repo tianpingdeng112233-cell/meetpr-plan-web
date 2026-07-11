@@ -9,8 +9,7 @@
     "preview": "vite preview",
     "lint": "tsc --noEmit",
     "test": "vitest run",
-    "test:watch": "vitest",
-    "deploy": "vercel --prod"
+    "test:watch": "vitest"
   },
   "dependencies": {
     "react": "^18.3.1",
