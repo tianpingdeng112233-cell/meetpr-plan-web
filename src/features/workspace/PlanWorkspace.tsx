@@ -289,7 +289,7 @@ export function PlanWorkspace({ onLogout }: Props) {
             try {
               await markImportedHistory(loaded.plan.id)
             } catch {
-              window.alert('计划已导入并保存，但过去训练的「推定完成」补记未成功（后端暂不支持）。补记功能上线后重新导入即可补上。')
+              window.alert('计划已导入并保存，但过去训练的「推定完成」补记未成功。稍后重新导入同一份表格即可补上（已有真实打卡的天不会重复）。')
             }
           }
           if (result.planStartDate && result.planEndDate && result.planWeeks != null) {

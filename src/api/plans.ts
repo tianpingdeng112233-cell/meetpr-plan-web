@@ -29,9 +29,10 @@ export const patchPlan = (
 export const deletePlan = (planId: string) => api.del<void>(`/plans/${planId}`)
 export const publishPlan = (planId: string) => api.post<PlanResponse>(`/plans/${planId}/publish`)
 /**
- * Persist coach-confirmed, past plan sessions as *assumed* completions. These
- * records remain distinct from a student's real training logs and do not feed
- * e1RM/PR calculations.
+ * Persist an imported plan's past sessions as *assumed* completions. Assumed
+ * records stay distinguishable from live logs (`assumed`/「导」tag) and DO count
+ * toward rep-PR and e1RM baselines — only completion-rate stats exclude them
+ * (spec 053 semantics).
  */
 export const markImportedHistory = (planId: string) =>
   api.post<{
