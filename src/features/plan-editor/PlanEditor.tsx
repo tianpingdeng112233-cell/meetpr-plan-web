@@ -1162,12 +1162,10 @@ export function PlanEditor(props: PlanEditorProps) {
         return
       }
 
+      // Past sessions in an imported plan default to assumed-complete (2026-07-09
+      // decision): they enter rep-PR / e1RM baselines tagged「导」so a returning
+      // lifter's history anchors PR detection, while completion stats ignore them.
       const markPastAsAssumedComplete = isPastISODate(importStart)
-        ? window.confirm(
-          '导入包含过去的训练日期。是否按计划内容将这些过去训练标记为“推定完成”？\n\n'
-          + '推定完成会显示在训练历史中，但不会计入真实 e1RM 或 PR。选择“取消”将只导入计划，不补记历史。',
-        )
-        : false
       setWeeksWithHistory(nextWeeks)
       currentPlanStart.current = importStart
       pendingPlanStart.current = importStart
