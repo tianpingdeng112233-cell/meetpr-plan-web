@@ -68,6 +68,33 @@ export function relabelWeeksForStartDate(weeks: Week[], startDate: string): Week
   }))
 }
 
+function emptyWeek(startDate: string, num: number): Week {
+  return {
+    num,
+    num2: String(num).padStart(2, '0'),
+    range: planWeekRangeLabel(startDate, num),
+    isCurrent: num === currentPlanWeek(startDate),
+    vol: '',
+    days: Array.from({ length: 7 }, (_, dow) => ({
+      dow,
+      dowLabel: planDayDowLabel(startDate, num, dow),
+      dateLabel: planDayDateLabel(startDate, num, dow),
+      rest: true,
+      rows: [],
+    })),
+  }
+}
+
+/** Resize only the grid's week shell. Existing day/row objects are preserved;
+ * newly added weeks are empty and calendar-labelled from Day 1. */
+export function resizeWeeksForCount(weeks: Week[], count: number, startDate: string): Week[] {
+  const bounded = Math.max(1, Math.min(52, count))
+  if (bounded <= weeks.length) return weeks.slice(0, bounded)
+  const next = [...weeks]
+  for (let num = weeks.length + 1; num <= bounded; num++) next.push(emptyWeek(startDate, num))
+  return next
+}
+
 function mapExercise(ex: PlanExerciseResponse, catalog: Catalog): ExerciseRow {
   const entry = catalog.get(ex.exercise_id)
   const name = entry?.name ?? '未知动作'
