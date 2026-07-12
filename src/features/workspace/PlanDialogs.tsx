@@ -199,3 +199,37 @@ export function CompletePlanDialog({ open, name, weeks, completing, error, onClo
     </div>
   )
 }
+
+export function BackfillHistoryDialog({ open, name, weeks, busy, error, onClose, onConfirm }: {
+  open: boolean
+  name: string
+  weeks: number
+  busy: boolean
+  error: string
+  onClose: () => void
+  onConfirm: () => void
+}) {
+  if (!open) return null
+  return (
+    <div onMouseDown={() => { if (!busy) onClose() }} style={overlay}>
+      <div role="dialog" aria-modal="true" aria-labelledby="backfill-history-title" onMouseDown={(event) => event.stopPropagation()} style={{ ...panel, width: 400 }}>
+        <div>
+          <h3 id="backfill-history-title" style={{ margin: 0, fontSize: 18 }}>补记过去训练为已完成？</h3>
+          <div style={{ marginTop: 8, color: 'var(--fg-secondary)', fontFamily: 'var(--font-mono)', fontSize: 12 }}>
+            {name} · {weeks} 周
+          </div>
+        </div>
+        <p style={{ margin: 0, color: 'var(--fg-secondary)', lineHeight: 1.6 }}>
+          过去日期中尚无打卡的训练日，将按计划内容标记为「推定完成」（带「导」标，计入 PR 与 e1RM 基线，不计入完成率）。已有真实打卡的天不受影响。此操作不可撤销。
+        </p>
+        {error && <div role="alert" style={{ color: 'var(--brand-red)', fontSize: 12 }}>{error}</div>}
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 'var(--sp-sm)' }}>
+          <button type="button" disabled={busy} onClick={onClose} style={secondaryButton}>取消</button>
+          <button type="button" disabled={busy} onClick={onConfirm} style={{ ...primaryButton, opacity: busy ? 0.55 : 1 }}>
+            {busy ? '补记中…' : '补记历史'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}

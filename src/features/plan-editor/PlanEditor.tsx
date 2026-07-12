@@ -68,6 +68,8 @@ export interface PlanEditorProps {
   onNewPlan?: () => void | Promise<void>
   onDeleteCurrentDraft?: () => void | Promise<void>
   onMarkComplete?: () => void | Promise<void>
+  /** Backfill the current plan's past, unlogged sessions as assumed-complete（补记历史）. */
+  onBackfillHistory?: () => void | Promise<void>
   onLogout?: () => void | Promise<void>
   /** Current plan start date; enables xlsx import date remapping. */
   planStartDate?: string
@@ -1313,6 +1315,7 @@ export function PlanEditor(props: PlanEditorProps) {
         currentPlanStatus={published ? 'published' : props.planStatus ?? 'draft'}
         onDeleteCurrentDraft={guardLeave(props.onDeleteCurrentDraft)}
         onMarkComplete={props.onMarkComplete}
+        onBackfillHistory={props.onBackfillHistory}
         onRenamePlan={props.onRename ? () => {
           const name = window.prompt('计划名称', planName)?.trim()
           if (name && name !== planName) void props.onRename!(name)

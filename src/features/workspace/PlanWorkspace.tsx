@@ -13,8 +13,8 @@ import { PlanEditor } from '../plan-editor/PlanEditor'
 import { buildWeeks as buildSampleWeeks } from '../plan-editor/sampleData'
 import { SamplePreviewBanner } from './SamplePreviewBanner'
 import type { Week } from '../plan-editor/types'
-import { planEndISO } from '../plan-editor/components/PlanCalendarControls'
-import { CompletePlanDialog, DeletePlanDialog, NewPlanDialog } from './PlanDialogs'
+import { planEndISO, todayISO } from '../plan-editor/components/PlanCalendarControls'
+import { BackfillHistoryDialog, CompletePlanDialog, DeletePlanDialog, NewPlanDialog } from './PlanDialogs'
 import { getBindRequests, refreshCoachStudents } from '../../api/coach'
 import { CoachRail, type CoachView } from './CoachRail'
 import { StudentBoard } from './StatsViews'
@@ -44,6 +44,9 @@ export function PlanWorkspace({ onLogout }: Props) {
   const [deleting, setDeleting] = useState(false)
   const [deleteError, setDeleteError] = useState('')
   const [completeOpen, setCompleteOpen] = useState(false)
+  const [backfillOpen, setBackfillOpen] = useState(false)
+  const [backfilling, setBackfilling] = useState(false)
+  const [backfillError, setBackfillError] = useState('')
   const [completing, setCompleting] = useState(false)
   const [completeError, setCompleteError] = useState('')
   // Student and plan requests can resolve out of order when a coach switches
@@ -183,6 +186,23 @@ export function PlanWorkspace({ onLogout }: Props) {
       if (generation === loadGeneration.current) setDeleteError(errText(e, '删除失败，请稍后重试'))
     } finally {
       if (generation === loadGeneration.current) setDeleting(false)
+    }
+  }
+
+  const backfillHistory = async () => {
+    if (!loaded || backfilling) return
+    setBackfilling(true)
+    setBackfillError('')
+    try {
+      const result = await markImportedHistory(loaded.plan.id)
+      setBackfillOpen(false)
+      window.alert(result.created_set_logs > 0
+        ? `已补记 ${result.created_set_logs} 组历史记录（标「导」），学员数据面板即刻可见。`
+        : '过去的训练日均已有记录，无需补记。')
+    } catch (e) {
+      setBackfillError(errText(e, '补记失败，请稍后重试'))
+    } finally {
+      setBackfilling(false)
     }
   }
 
@@ -370,6 +390,9 @@ export function PlanWorkspace({ onLogout }: Props) {
         onNewPlan={newPlan}
         onDeleteCurrentDraft={loaded?.plan.status === 'draft' ? () => { setDeleteError(''); setDeleteOpen(true) } : undefined}
         onMarkComplete={loaded?.plan.status === 'published' ? () => { setCompleteError(''); setCompleteOpen(true) } : undefined}
+        onBackfillHistory={loaded && loaded.plan.status !== 'draft' && loaded.plan.start_date < todayISO()
+          ? () => { setBackfillError(''); setBackfillOpen(true) }
+          : undefined}
         onLogout={onLogout}
       />
       {!loaded && (
@@ -378,6 +401,15 @@ export function PlanWorkspace({ onLogout }: Props) {
           <button onClick={newPlan} style={{ ...btn, pointerEvents: 'auto' }}>＋ 新建计划</button>
         </div>
       )}
+      <BackfillHistoryDialog
+        open={backfillOpen && !!loaded}
+        name={loaded?.plan.name ?? ''}
+        weeks={loaded?.plan.plan_weeks ?? 0}
+        busy={backfilling}
+        error={backfillError}
+        onClose={() => { if (!backfilling) setBackfillOpen(false) }}
+        onConfirm={() => { void backfillHistory() }}
+      />
       <NewPlanDialog open={newPlanOpen} studentName={studentName} onClose={() => setNewPlanOpen(false)} onCreate={createNewPlan} />
       <DeletePlanDialog
         open={deleteOpen && loaded?.plan.status === 'draft'}

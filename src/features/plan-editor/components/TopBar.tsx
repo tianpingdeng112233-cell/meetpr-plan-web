@@ -22,6 +22,8 @@ interface Props {
   currentPlanStatus?: PlanStatus
   onDeleteCurrentDraft?: () => void | Promise<void>
   onMarkComplete?: () => void | Promise<void>
+  /** Backfill past, unlogged sessions of the current plan as assumed-complete. */
+  onBackfillHistory?: () => void | Promise<void>
   /** Rename the current plan (plan dropdown's ✎ row). */
   onRenamePlan?: () => void
   /** Rename the selected student (student dropdown's ✎ row). */
@@ -49,10 +51,12 @@ const pill: React.CSSProperties = {
 const caret: React.CSSProperties = { color: 'var(--fg-tertiary)', fontSize: 9 }
 const label: React.CSSProperties = { fontSize: 11, color: 'var(--fg-tertiary)' }
 
-function Dropdown({ open, options, currentId, onPick, onNew, newLabel, onRenameCurrent, renameLabel, action }: {
+export interface DropdownAction { label: string; tone: 'danger' | 'success' | 'neutral'; icon: string; onClick: () => void | Promise<void> }
+
+function Dropdown({ open, options, currentId, onPick, onNew, newLabel, onRenameCurrent, renameLabel, actions }: {
   open: boolean; options: Option[]; currentId?: string; onPick: (id: string) => void | Promise<void>; onNew?: () => void | Promise<void>; newLabel?: string
   onRenameCurrent?: () => void; renameLabel?: string
-  action?: { label: string; tone: 'danger' | 'success'; onClick: () => void | Promise<void> }
+  actions?: DropdownAction[]
 }) {
   if (!open) return null
   return (
@@ -84,12 +88,12 @@ function Dropdown({ open, options, currentId, onPick, onNew, newLabel, onRenameC
           <span style={{ color: '#fff' }}>＋</span> {newLabel ?? '新建'}
         </div>
       )}
-      {action && (
-        <div className="popitem" onClick={(e) => { e.stopPropagation(); void action.onClick() }}
-          style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '9px 12px', color: action.tone === 'danger' ? 'var(--brand-red)' : 'var(--green)', borderTop: '1px solid var(--border)', fontWeight: 600 }}>
-          {action.tone === 'danger' ? '🗑' : '✓'} {action.label}
+      {actions?.map((action) => (
+        <div key={action.label} className="popitem" onClick={(e) => { e.stopPropagation(); void action.onClick() }}
+          style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '9px 12px', color: action.tone === 'danger' ? 'var(--brand-red)' : action.tone === 'success' ? 'var(--green)' : 'var(--fg-secondary)', borderTop: '1px solid var(--border)', fontWeight: 600 }}>
+          {action.icon} {action.label}
         </div>
-      )}
+      ))}
     </div>
   )
 }
@@ -194,11 +198,17 @@ export function TopBar(p: Props) {
             onPick={(id) => { close(); void p.onSwitchPlan?.(id) }} onNew={p.onNewPlan ? () => { close(); void p.onNewPlan!() } : undefined} newLabel="新建计划"
             onRenameCurrent={p.onRenamePlan ? () => { close(); p.onRenamePlan!() } : undefined}
             renameLabel="重命名当前计划"
-            action={p.currentPlanStatus === 'draft' && p.onDeleteCurrentDraft
-              ? { label: '删除当前草稿', tone: 'danger', onClick: () => { close(); return p.onDeleteCurrentDraft!() } }
-              : p.currentPlanStatus === 'published' && p.onMarkComplete
-                ? { label: '标记完成', tone: 'success', onClick: () => { close(); return p.onMarkComplete!() } }
-                : undefined} />
+            actions={[
+              ...(p.currentPlanStatus === 'published' && p.onMarkComplete
+                ? [{ label: '标记完成', tone: 'success' as const, icon: '✓', onClick: () => { close(); return p.onMarkComplete!() } }]
+                : []),
+              ...(p.onBackfillHistory
+                ? [{ label: '补记过去训练', tone: 'neutral' as const, icon: '↺', onClick: () => { close(); return p.onBackfillHistory!() } }]
+                : []),
+              ...(p.currentPlanStatus === 'draft' && p.onDeleteCurrentDraft
+                ? [{ label: '删除当前草稿', tone: 'danger' as const, icon: '🗑', onClick: () => { close(); return p.onDeleteCurrentDraft!() } }]
+                : []),
+            ]} />
         )}
       </span>
 
