@@ -5,9 +5,12 @@ import type { CoachStudent, ExerciseStatsDetail, ExerciseStatsOverview, StudentO
 import { PageTop, daysSince, kg, profileLine, relativeDays, shortDate } from './WorkspaceCommon'
 
 export function RmStrip({ detail, weight }: { detail: ExerciseStatsDetail; weight?: number | null }) {
-  if (!detail.e1rm) return null
-  const percent = weight != null ? Math.round(weight / Number(detail.e1rm.value) * 100) : null
-  return <div className="rm-strip"><span><b>{kg(detail.e1rm.value)}</b><small>e1RM · 后端滚动值</small></span><span><b>{kg(detail.one_rm_reference)}</b><small>登记 1RM</small></span>{percent != null && <span><b className="red">{percent}%</b><small>{weight} ÷ e1RM</small></span>}</div>
+  // Main lift = backend supplies a 登记 1RM reference (null for non-main lifts). Show the
+  // strip whenever it's a main lift — even with no logged data yet, the 登记 1RM still
+  // matters. e1RM reads「—」until the student has eligible sets; the % needs e1RM.
+  if (!detail.e1rm && detail.one_rm_reference == null) return null
+  const percent = detail.e1rm && weight != null ? Math.round(weight / Number(detail.e1rm.value) * 100) : null
+  return <div className="rm-strip"><span><b>{detail.e1rm ? kg(detail.e1rm.value) : '—'}</b><small>e1RM · 后端滚动值</small></span><span><b>{kg(detail.one_rm_reference)}</b><small>登记 1RM</small></span>{percent != null && <span><b className="red">{percent}%</b><small>{weight} ÷ e1RM</small></span>}</div>
 }
 export function SessionDetail({ detail, limit = 6 }: { detail: ExerciseStatsDetail; limit?: number }) {
   return <div className="sessions">{detail.recent_sessions.slice(0, limit).map((s) => <section className="session" key={s.date}><header><b>{shortDate(s.date)}</b><span>{s.sets.length} 组</span></header>{s.sets.map((set) => <div className="set-line" key={set.set_index}><span>{set.set_index}</span><b>{kg(set.weight_kg)}kg × {set.reps}</b><span>{set.rpe ? `@${Number(set.rpe)}` : '—'}</span>{set.assumed && <i>导</i>}{set.has_video && <button title="播放该组视频">▶</button>}<em className={set.failed ? 'failed' : ''}>{set.failed ? '力竭' : set.completed ? '✓' : '—'}</em></div>)}</section>)}</div>
