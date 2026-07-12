@@ -431,7 +431,7 @@ export function PlanWorkspace({ onLogout }: Props) {
         onComplete={() => { void markCurrentComplete() }}
       />
     </div>}
-    {view === 'board' && <StudentBoard students={students} studentId={studentId} onStudent={(id) => { void switchStudent(id) }} />}
+    {view === 'board' && <StudentBoard students={students} />}
     {view === 'videos' && <VideosPage students={students} studentId={studentId} onStudent={(id) => { void switchStudent(id) }} />}
     {view === 'requests' && <RequestsPage requests={bindRequests} onRequestsChanged={setBindRequests} onAccepted={refreshStudentsAfterAccept} />}
     </div></div>
