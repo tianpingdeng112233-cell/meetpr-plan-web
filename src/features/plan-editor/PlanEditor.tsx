@@ -11,7 +11,8 @@ import { ExercisePopover } from './components/ExercisePopover'
 import { CustomExerciseDialog } from './components/CustomExerciseDialog'
 import type { ExerciseIndex, ExerciseHit } from './exerciseIndex'
 import type { CreateCustomExerciseInput } from '../../api/exercises'
-import type { PlanStatus } from '../../api/types'
+import type { PlanStatus, StudentOnboardingProfile } from '../../api/types'
+import { WritingContextPanel } from './components/WritingContextPanel'
 import type { ParsedWeek } from './import'
 import {
   LockedRowMutationError, ReconcileConflict, ReconciliationError, type SaveResult,
@@ -34,6 +35,8 @@ export interface PlanEditorProps {
   initialWeeks: Week[]
   weeksCount: number
   studentName: string
+  studentId?: string
+  onboardingProfile?: StudentOnboardingProfile | null
   planName: string
   initialPublished?: boolean
   planStatus?: PlanStatus
@@ -212,6 +215,7 @@ export function PlanEditor(props: PlanEditorProps) {
   const [colW, setColW] = useState<ColWidths[]>(() => Array.from({ length: 7 }, () => ({ ...COL_DEFAULTS })))
   const [sel, setSel] = useState<Sel | null>(null)
   const [selectedRow, setSelectedRow] = useState<RowTarget | null>(null)
+  const [dismissedContextDays, setDismissedContextDays] = useState<Set<string>>(() => new Set())
   const [zoom, setZoom] = useState(100)
   // Authoritative published state, initialized from the backend plan status. Monotonic:
   // set true on a real publish and never cleared — there is no backend unpublish, so 发布后不可撤回.
@@ -1293,6 +1297,9 @@ export function PlanEditor(props: PlanEditorProps) {
   })()
   const selectedRowForBar = selectedRowValue()
   const selectedRowLabel = selectedRowForBar ? `当前行 · ${selectedRowForBar.name.trim() || '未命名动作'}` : ''
+  const selectedDayValue = sel ? weeks.find((week) => week.num === sel.wnum)?.days.find((day) => day.dow === sel.dow) ?? null : null
+  const selectedDayKey = sel ? `${sel.wnum}:${sel.dow}` : ''
+  const recallContext = () => setDismissedContextDays((prev) => { const next = new Set(prev); next.delete(selectedDayKey); return next })
 
   return (
     <div ref={rootRef} style={{
@@ -1391,6 +1398,7 @@ export function PlanEditor(props: PlanEditorProps) {
                         selected={sel?.wnum === wk.num && sel?.dow === day.dow}
                         selectedRowId={selectedRow?.wnum === wk.num && selectedRow.dow === day.dow ? selectedRow.rowId : null}
                         onSelect={() => handleSelect(wk.num, day.dow)}
+                        onRecallContext={recallContext}
                         onSelectRow={(rowId) => handleSelectRow(wk.num, day.dow, rowId)}
                         onResizeStart={(col, e) => handleResizeStart(day.dow, col, e)}
                         onNameFocus={(rowId, name, el) => handleNameFocus(wk.num, day.dow, rowId, name, el)}
@@ -1410,6 +1418,12 @@ export function PlanEditor(props: PlanEditorProps) {
         </div>
         <div style={{ textAlign: 'center', color: 'var(--fg-tertiary)', fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '.1em', padding: '10px 7px 20px', textTransform: 'uppercase' }}>▼ 共 {weeks.length} 周</div>
       </div>
+
+      {selectedDayValue && props.studentId && !dismissedContextDays.has(selectedDayKey) && (
+        <WritingContextPanel studentId={props.studentId} studentName={studentName} profile={props.onboardingProfile}
+          day={selectedDayValue} row={selectedRowForBar}
+          onClose={() => setDismissedContextDays((prev) => new Set(prev).add(selectedDayKey))} />
+      )}
 
       <ExercisePopover
         visible={pop.visible} x={pop.x} y={pop.y}

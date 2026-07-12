@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { CoachStudent, ExerciseResponse, PlanResponse, PlanWithChildren } from '../../api/types'
+import type { CoachBindRequest, CoachStudent, ExerciseResponse, PlanResponse, PlanWithChildren, StudentOnboardingProfile } from '../../api/types'
 import {
   getCoachStudents, getStudentPlans, getPlan, publishPlan, createPlan, patchPlan, getStudentOnboarding,
   markImportedHistory, renameCoachStudent, deletePlan,
@@ -15,6 +15,11 @@ import { SamplePreviewBanner } from './SamplePreviewBanner'
 import type { Week } from '../plan-editor/types'
 import { planEndISO } from '../plan-editor/components/PlanCalendarControls'
 import { CompletePlanDialog, DeletePlanDialog, NewPlanDialog } from './PlanDialogs'
+import { getBindRequests, refreshCoachStudents } from '../../api/coach'
+import { CoachRail, type CoachView } from './CoachRail'
+import { StudentBoard } from './StatsViews'
+import { VideosPage } from './VideosPage'
+import { RequestsPage } from './RequestsPage'
 
 interface Props { onLogout: () => void | Promise<void> }
 type Loaded = { plan: PlanWithChildren; weeks: Week[]; weeksCount: number }
@@ -26,6 +31,9 @@ export function PlanWorkspace({ onLogout }: Props) {
   const [index, setIndex] = useState<ExerciseIndex | null>(null)
   const [students, setStudents] = useState<CoachStudent[]>([])
   const [studentId, setStudentId] = useState<string>('')
+  const [onboarding, setOnboarding] = useState<StudentOnboardingProfile | null | undefined>(undefined)
+  const [view, setView] = useState<CoachView>('editor')
+  const [bindRequests, setBindRequests] = useState<CoachBindRequest[]>([])
   const [plans, setPlans] = useState<PlanResponse[]>([])
   const [planId, setPlanId] = useState<string>('')
   const [loaded, setLoaded] = useState<Loaded | null>(null)
@@ -68,13 +76,14 @@ export function PlanWorkspace({ onLogout }: Props) {
 
   const loadStudent = useCallback(async (id: string, cat: Catalog, exercises: ExerciseResponse[] = exerciseList) => {
     const generation = ++loadGeneration.current
-    setStudentId(id); setLoaded(null); setPlanId('')
+    setStudentId(id); setOnboarding(undefined); setLoaded(null); setPlanId('')
     try {
       const [list, onboarding] = await Promise.all([
         getStudentPlans(id),
         getStudentOnboarding(id).catch(() => null),
       ])
       if (generation !== loadGeneration.current) return false
+      setOnboarding(onboarding)
       setIndex(new ExerciseIndex(exercises, { deadliftStyle: onboarding?.deadlift_style }))
       const sorted = sortedPlans(list)
       setPlans(sorted)
@@ -92,15 +101,20 @@ export function PlanWorkspace({ onLogout }: Props) {
   useEffect(() => {
     (async () => {
       try {
-        const [ex, st] = await Promise.all([listExercises(), getCoachStudents()])
+        const [ex, st, requests] = await Promise.all([listExercises(), getCoachStudents(), getBindRequests().catch(() => [])])
         const cat: Catalog = new Map(ex.map((e) => [e.id, { name: displayExerciseName(e.name), custom: e.created_by_coach_id != null }]))
-        setExerciseList(ex); setCatalog(cat); setIndex(new ExerciseIndex(ex)); setStudents(st)
+        setExerciseList(ex); setCatalog(cat); setIndex(new ExerciseIndex(ex)); setStudents(st); setBindRequests(requests)
         if (st.length > 0) await loadStudent(st[0].id, cat, ex)
       } catch (e) {
         setError(errText(e, '无法连接后端'))
       } finally { setBooting(false) }
     })()
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  useEffect(() => {
+    const id = window.setInterval(() => { void getBindRequests().then(setBindRequests).catch(() => undefined) }, 60_000)
+    return () => window.clearInterval(id)
   }, [])
 
   const switchStudent = async (id: string) => {
@@ -110,6 +124,11 @@ export function PlanWorkspace({ onLogout }: Props) {
     } catch (e) {
       setError(errText(e, '切换学员失败'))
     }
+  }
+  const refreshStudentsAfterAccept = async () => {
+    const next = await refreshCoachStudents()
+    setStudents(next)
+    if (!studentId && next[0] && catalog) await loadStudent(next[0].id, catalog)
   }
   const switchPlan = async (id: string) => {
     if (!catalog || id === planId) return
@@ -202,8 +221,8 @@ export function PlanWorkspace({ onLogout }: Props) {
     // switchers are static, save/import buttons hide, publish only toggles locally.
     const sampleWeeks = buildSampleWeeks()
     return (
-      <div style={{ position: 'relative', height: '100vh' }}>
-        <PlanEditor
+      <div className="coach-shell"><CoachRail view={view} pending={bindRequests.length} onChange={setView} /><div className="coach-main">
+        {view === 'editor' && <div style={{ position: 'relative', height: '100vh' }}><PlanEditor
           key="sample-preview"
           initialWeeks={sampleWeeks}
           weeksCount={sampleWeeks.length}
@@ -213,7 +232,10 @@ export function PlanWorkspace({ onLogout }: Props) {
           onLogout={onLogout}
         />
         <SamplePreviewBanner onRefresh={() => window.location.reload()} />
-      </div>
+        </div>}
+        {view === 'requests' && <RequestsPage requests={bindRequests} onRequestsChanged={setBindRequests} onAccepted={refreshStudentsAfterAccept} />}
+        {(view === 'board' || view === 'videos') && <div className="empty-page">接受学员申请后即可查看{view === 'board' ? '学员看板' : '训练视频'}</div>}
+      </div></div>
     )
   }
 
@@ -230,12 +252,15 @@ export function PlanWorkspace({ onLogout }: Props) {
   }))
 
   return (
-    <div style={{ position: 'relative', height: '100vh' }}>
+    <div className="coach-shell"><CoachRail view={view} pending={bindRequests.length} onChange={setView} /><div className="coach-main">
+    {view === 'editor' && <div style={{ position: 'relative', height: '100vh' }}>
       <PlanEditor
         key={planId || `empty-${studentId}`}
         initialWeeks={loaded?.weeks ?? []}
         weeksCount={loaded?.weeksCount ?? 0}
         studentName={studentName}
+        studentId={studentId}
+        onboardingProfile={onboarding}
         planName={loaded?.plan.name ?? '（暂无计划）'}
         planStartDate={loaded?.plan.start_date}
         planStatus={loaded?.plan.status}
@@ -373,7 +398,11 @@ export function PlanWorkspace({ onLogout }: Props) {
         onClose={() => { if (!completing) setCompleteOpen(false) }}
         onComplete={() => { void markCurrentComplete() }}
       />
-    </div>
+    </div>}
+    {view === 'board' && <StudentBoard students={students} studentId={studentId} onStudent={(id) => { void switchStudent(id) }} />}
+    {view === 'videos' && <VideosPage students={students} studentId={studentId} onStudent={(id) => { void switchStudent(id) }} />}
+    {view === 'requests' && <RequestsPage requests={bindRequests} onRequestsChanged={setBindRequests} onAccepted={refreshStudentsAfterAccept} />}
+    </div></div>
   )
 }
 
