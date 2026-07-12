@@ -31,6 +31,76 @@ export interface CoachStudent {
 
 export interface StudentOnboardingProfile {
   deadlift_style: 'conventional' | 'sumo' | null
+  gender?: string | null
+  birth_date?: string | null
+  height_cm?: string | null
+  weight_kg?: string | null
+  training_years?: number | null
+  squat_1rm_kg?: string | null
+  bench_1rm_kg?: string | null
+  deadlift_1rm_kg?: string | null
+  squat_stance?: string | null
+  bench_grip?: string | null
+  training_days?: string[] | null
+  injury_notes?: string | null
+  injury_areas?: string[] | null
+  is_competing?: boolean | null
+  competition_date?: string | null
+  target_weight_class?: string | null
+  note_to_coach?: string | null
+}
+
+export interface ExerciseStatsOverview {
+  exercises: { exercise_id: string; name: string; session_count: number; last_logged_at: string }[]
+  one_rm: { squat: string | null; bench: string | null; deadlift: string | null }
+  last_trained_at: string | null
+  recent_4w: { trained_days: number; total_planned_days: number; completion_rate: number }
+}
+export interface ExerciseStatsDetail {
+  rep_prs: { reps: number; weight_kg: string; logged_at: string; source: 'imported' | 'logged' }[]
+  recent_sessions: { date: string; sets: { set_index: number; weight_kg: string; reps: number; rpe: string | null; completed: boolean; failed: boolean; assumed: boolean; has_video: boolean }[] }[]
+  by_set_count: Record<string, { date: string; set_count: number; best_weight_kg: string; total_reps: number; completed_sets: number }[]>
+  e1rm: { value: string; computed_at: string } | null
+  one_rm_reference: string | null
+}
+
+export interface BindRequestOnboarding extends StudentOnboardingProfile {
+  completed: boolean
+  upload_count: number
+}
+export interface CoachBindRequest {
+  id: string
+  student_id: string
+  display_name: string
+  submitted_at: string
+  expired_at: string
+  masked_phone?: string | null
+  invite_code?: string | null
+  onboarding: BindRequestOnboarding
+}
+export interface StudentVideo {
+  id: string
+  set_log_id: string | null
+  plan_exercise_id: string | null
+  content_type: string
+  size_bytes: number
+  filename: string
+  created_at: string
+  logged_at: string | null
+  exercise_name?: string | null
+  set_index?: number | null
+  weight_kg?: string | null
+  reps?: number | null
+  viewed_at?: string | null
+}
+export interface InviteCode {
+  id: string
+  code: string
+  type: string
+  revoked_at: string | null
+  expires_at: string | null
+  max_uses: number | null
+  used_count: number
 }
 
 export interface PlanResponse {

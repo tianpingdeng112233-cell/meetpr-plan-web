@@ -1,26 +1,29 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { CoachStudent, ExerciseResponse, PlanResponse } from '../../api/types'
+import type { CoachBindRequest, CoachStudent, ExerciseResponse, PlanResponse, PlanWithChildren, StudentOnboardingProfile } from '../../api/types'
 import {
   getCoachStudents, getStudentPlans, getPlan, publishPlan, createPlan, patchPlan, getStudentOnboarding,
-  markImportedHistory, renameCoachStudent,
+  markImportedHistory, renameCoachStudent, deletePlan,
 } from '../../api/plans'
 import { listExercises, createCustomExercise } from '../../api/exercises'
 import { ApiException } from '../../api/client'
 import { mapPlanToWeeks, type Catalog } from '../plan-editor/mapping'
 import { displayExerciseName, ExerciseIndex } from '../plan-editor/exerciseIndex'
-import { reconcilePlan, reconcileImportedPlan } from '../plan-editor/reconcile'
+import { reconcilePlan, reconcileImportedPlan, resizeServerPlanWeeks } from '../plan-editor/reconcile'
 import { PlanEditor } from '../plan-editor/PlanEditor'
 import { buildWeeks as buildSampleWeeks } from '../plan-editor/sampleData'
 import { SamplePreviewBanner } from './SamplePreviewBanner'
 import type { Week } from '../plan-editor/types'
+import { planEndISO } from '../plan-editor/components/PlanCalendarControls'
+import { CompletePlanDialog, DeletePlanDialog, NewPlanDialog } from './PlanDialogs'
+import { getBindRequests, refreshCoachStudents } from '../../api/coach'
+import { CoachRail, type CoachView } from './CoachRail'
+import { StudentBoard } from './StatsViews'
+import { VideosPage } from './VideosPage'
+import { RequestsPage } from './RequestsPage'
 
 interface Props { onLogout: () => void | Promise<void> }
-type Loaded = { plan: PlanResponse; weeks: Week[]; weeksCount: number }
+type Loaded = { plan: PlanWithChildren; weeks: Week[]; weeksCount: number }
 const LAST_PLAN_PREFIX = 'mpw.lastPlan.'
-
-function fmtDate(d: Date): string {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-}
 
 export function PlanWorkspace({ onLogout }: Props) {
   const [catalog, setCatalog] = useState<Catalog | null>(null)
@@ -28,11 +31,21 @@ export function PlanWorkspace({ onLogout }: Props) {
   const [index, setIndex] = useState<ExerciseIndex | null>(null)
   const [students, setStudents] = useState<CoachStudent[]>([])
   const [studentId, setStudentId] = useState<string>('')
+  const [onboarding, setOnboarding] = useState<StudentOnboardingProfile | null | undefined>(undefined)
+  const [view, setView] = useState<CoachView>('editor')
+  const [bindRequests, setBindRequests] = useState<CoachBindRequest[]>([])
   const [plans, setPlans] = useState<PlanResponse[]>([])
   const [planId, setPlanId] = useState<string>('')
   const [loaded, setLoaded] = useState<Loaded | null>(null)
   const [error, setError] = useState('')
   const [booting, setBooting] = useState(true)
+  const [newPlanOpen, setNewPlanOpen] = useState(false)
+  const [deleteOpen, setDeleteOpen] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+  const [deleteError, setDeleteError] = useState('')
+  const [completeOpen, setCompleteOpen] = useState(false)
+  const [completing, setCompleting] = useState(false)
+  const [completeError, setCompleteError] = useState('')
   // Student and plan requests can resolve out of order when a coach switches
   // quickly. A single generation covers both levels so an old response can
   // never pair one student's label with another student's editable plan.
@@ -63,13 +76,14 @@ export function PlanWorkspace({ onLogout }: Props) {
 
   const loadStudent = useCallback(async (id: string, cat: Catalog, exercises: ExerciseResponse[] = exerciseList) => {
     const generation = ++loadGeneration.current
-    setStudentId(id); setLoaded(null); setPlanId('')
+    setStudentId(id); setOnboarding(undefined); setLoaded(null); setPlanId('')
     try {
       const [list, onboarding] = await Promise.all([
         getStudentPlans(id),
         getStudentOnboarding(id).catch(() => null),
       ])
       if (generation !== loadGeneration.current) return false
+      setOnboarding(onboarding)
       setIndex(new ExerciseIndex(exercises, { deadliftStyle: onboarding?.deadlift_style }))
       const sorted = sortedPlans(list)
       setPlans(sorted)
@@ -87,15 +101,20 @@ export function PlanWorkspace({ onLogout }: Props) {
   useEffect(() => {
     (async () => {
       try {
-        const [ex, st] = await Promise.all([listExercises(), getCoachStudents()])
+        const [ex, st, requests] = await Promise.all([listExercises(), getCoachStudents(), getBindRequests().catch(() => [])])
         const cat: Catalog = new Map(ex.map((e) => [e.id, { name: displayExerciseName(e.name), custom: e.created_by_coach_id != null }]))
-        setExerciseList(ex); setCatalog(cat); setIndex(new ExerciseIndex(ex)); setStudents(st)
+        setExerciseList(ex); setCatalog(cat); setIndex(new ExerciseIndex(ex)); setStudents(st); setBindRequests(requests)
         if (st.length > 0) await loadStudent(st[0].id, cat, ex)
       } catch (e) {
         setError(errText(e, '无法连接后端'))
       } finally { setBooting(false) }
     })()
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  useEffect(() => {
+    const id = window.setInterval(() => { void getBindRequests().then(setBindRequests).catch(() => undefined) }, 60_000)
+    return () => window.clearInterval(id)
   }, [])
 
   const switchStudent = async (id: string) => {
@@ -106,6 +125,11 @@ export function PlanWorkspace({ onLogout }: Props) {
       setError(errText(e, '切换学员失败'))
     }
   }
+  const refreshStudentsAfterAccept = async () => {
+    const next = await refreshCoachStudents()
+    setStudents(next)
+    if (!studentId && next[0] && catalog) await loadStudent(next[0].id, catalog)
+  }
   const switchPlan = async (id: string) => {
     if (!catalog || id === planId) return
     try {
@@ -114,22 +138,69 @@ export function PlanWorkspace({ onLogout }: Props) {
       setError(errText(e, '打开计划失败'))
     }
   }
-  const newPlan = async () => {
+  const newPlan = () => {
     if (!catalog || !studentId) return
+    setNewPlanOpen(true)
+  }
+  const createNewPlan = async (name: string, weeks: number, startDate: string) => {
+    if (!catalog || !studentId) throw new Error('PLAN_CONTEXT_MISSING')
     const generation = ++loadGeneration.current
     const targetStudentId = studentId
     try {
-      const weeks = 12
-      const start = new Date(); const end = new Date(); end.setDate(end.getDate() + weeks * 7 - 1)
       const created = await createPlan({
-        trainee_id: targetStudentId, name: '新计划', start_date: fmtDate(start), end_date: fmtDate(end),
+        trainee_id: targetStudentId, name, start_date: startDate, end_date: planEndISO(startDate, weeks),
         plan_weeks: weeks, source: 'coach', kind: 'regular',
       })
       if (generation !== loadGeneration.current) return
       setPlans((prev) => [created, ...prev])
       await loadPlan(created.id, catalog, generation)
+      setNewPlanOpen(false)
     } catch (e) {
-      if (generation === loadGeneration.current) setError(errText(e, '新建失败'))
+      if (generation === loadGeneration.current) throw e
+    }
+  }
+
+  const deleteCurrentPlan = async () => {
+    if (!loaded || loaded.plan.status !== 'draft' || !catalog || deleting) return
+    setDeleting(true)
+    setDeleteError('')
+    const deletedId = loaded.plan.id
+    const generation = ++loadGeneration.current
+    try {
+      await deletePlan(deletedId)
+      if (generation !== loadGeneration.current) return
+      const remaining = sortedPlans(plans.filter((plan) => plan.id !== deletedId))
+      setPlans(remaining)
+      setDeleteOpen(false)
+      if (remaining[0]) {
+        await loadPlan(remaining[0].id, catalog, generation)
+      } else {
+        setLoaded(null)
+        setPlanId('')
+        localStorage.removeItem(`${LAST_PLAN_PREFIX}${studentId}`)
+      }
+    } catch (e) {
+      if (generation === loadGeneration.current) setDeleteError(errText(e, '删除失败，请稍后重试'))
+    } finally {
+      if (generation === loadGeneration.current) setDeleting(false)
+    }
+  }
+
+  const markCurrentComplete = async () => {
+    if (!loaded || loaded.plan.status !== 'published' || completing) return
+    setCompleting(true)
+    setCompleteError('')
+    try {
+      const updated = await patchPlan(loaded.plan.id, { status: 'completed' })
+      setPlans((prev) => prev.map((plan) => plan.id === updated.id ? updated : plan))
+      setLoaded((prev) => prev && prev.plan.id === updated.id
+        ? { ...prev, plan: { ...prev.plan, ...updated } }
+        : prev)
+      setCompleteOpen(false)
+    } catch (e) {
+      setCompleteError(errText(e, '标记完成失败，请稍后重试'))
+    } finally {
+      setCompleting(false)
     }
   }
 
@@ -150,8 +221,8 @@ export function PlanWorkspace({ onLogout }: Props) {
     // switchers are static, save/import buttons hide, publish only toggles locally.
     const sampleWeeks = buildSampleWeeks()
     return (
-      <div style={{ position: 'relative', height: '100vh' }}>
-        <PlanEditor
+      <div className="coach-shell"><CoachRail view={view} pending={bindRequests.length} onChange={setView} /><div className="coach-main">
+        {view === 'editor' && <div style={{ position: 'relative', height: '100vh' }}><PlanEditor
           key="sample-preview"
           initialWeeks={sampleWeeks}
           weeksCount={sampleWeeks.length}
@@ -161,7 +232,10 @@ export function PlanWorkspace({ onLogout }: Props) {
           onLogout={onLogout}
         />
         <SamplePreviewBanner onRefresh={() => window.location.reload()} />
-      </div>
+        </div>}
+        {view === 'requests' && <RequestsPage requests={bindRequests} onRequestsChanged={setBindRequests} onAccepted={refreshStudentsAfterAccept} />}
+        {(view === 'board' || view === 'videos') && <div className="empty-page">接受学员申请后即可查看{view === 'board' ? '学员看板' : '训练视频'}</div>}
+      </div></div>
     )
   }
 
@@ -169,22 +243,27 @@ export function PlanWorkspace({ onLogout }: Props) {
   const studentOpts = students.map((s) => ({ id: s.id, label: s.display_name, tag: s.status === 'in_evaluation' ? '评估期' : undefined }))
   // "M/D 起 · N 周" so same-named plans stay tellable-apart in the switcher.
   const fmtStart = (iso: string) => { const [, m, d] = iso.split('-'); return `${Number(m)}/${Number(d)}` }
+  const statusTag = (status: PlanResponse['status']) => ({ draft: '草稿', published: '已发布', completed: '已完成', paused: '已暂停' })[status]
   const planOpts = plans.map((p) => ({
     id: p.id,
     label: p.name,
     sub: `${fmtStart(p.start_date)} 起 · ${p.plan_weeks} 周`,
-    tag: p.status === 'published' ? '已发布' : '草稿',
+    tag: statusTag(p.status),
   }))
 
   return (
-    <div style={{ position: 'relative', height: '100vh' }}>
+    <div className="coach-shell"><CoachRail view={view} pending={bindRequests.length} onChange={setView} /><div className="coach-main">
+    {view === 'editor' && <div style={{ position: 'relative', height: '100vh' }}>
       <PlanEditor
         key={planId || `empty-${studentId}`}
         initialWeeks={loaded?.weeks ?? []}
         weeksCount={loaded?.weeksCount ?? 0}
         studentName={studentName}
+        studentId={studentId}
+        onboardingProfile={onboarding}
         planName={loaded?.plan.name ?? '（暂无计划）'}
         planStartDate={loaded?.plan.start_date}
+        planStatus={loaded?.plan.status}
         initialPublished={loaded?.plan.status === 'published'}
         onPublish={loaded ? async () => {
           const updated = await publishPlan(loaded.plan.id)
@@ -192,7 +271,7 @@ export function PlanWorkspace({ onLogout }: Props) {
           // switcher's「草稿/已发布」tag can't contradict the editor — no UI shows「草稿」for a
           // plan the student is already seeing. (publishPlan returns the updated plan.)
           setPlans((prev) => prev.map((p) => (p.id === updated.id ? updated : p)))
-          setLoaded((prev) => (prev && prev.plan.id === updated.id ? { ...prev, plan: updated } : prev))
+          setLoaded((prev) => (prev && prev.plan.id === updated.id ? { ...prev, plan: { ...prev.plan, ...updated } } : prev))
         } : undefined}
         onSave={loaded ? async (weeks, importStart, markPastAsAssumedComplete, onProgress) => {
           const reconcileOptions = {
@@ -237,7 +316,31 @@ export function PlanWorkspace({ onLogout }: Props) {
           const updated = await patchPlan(loaded.plan.id, { name })
           // Keep the switcher list + the loaded plan in sync so the new name shows everywhere.
           setPlans((prev) => prev.map((p) => (p.id === updated.id ? updated : p)))
-          setLoaded((prev) => (prev && prev.plan.id === updated.id ? { ...prev, plan: updated } : prev))
+          setLoaded((prev) => (prev && prev.plan.id === updated.id ? { ...prev, plan: { ...prev.plan, ...updated } } : prev))
+        } : undefined}
+        onChangeStartDate={loaded ? async (startDate) => {
+          if (loaded.plan.status !== 'draft') throw new Error('PLAN_NOT_DRAFT')
+          const updated = await patchPlan(loaded.plan.id, { start_date: startDate })
+          setPlans((prev) => prev.map((plan) => plan.id === updated.id ? updated : plan))
+          setLoaded((prev) => prev && prev.plan.id === updated.id
+            ? { ...prev, plan: { ...prev.plan, ...updated } }
+            : prev)
+        } : undefined}
+        onChangePlanWeeks={loaded ? async (planWeeks) => {
+          if (loaded.plan.status !== 'draft') throw new Error('PLAN_NOT_DRAFT')
+          await resizeServerPlanWeeks(loaded.plan.id, planWeeks)
+          setPlans((prev) => prev.map((plan) => plan.id === loaded.plan.id ? { ...plan, plan_weeks: planWeeks } : plan))
+          setLoaded((prev) => prev && prev.plan.id === loaded.plan.id
+            ? {
+                ...prev,
+                plan: {
+                  ...prev.plan,
+                  plan_weeks: planWeeks,
+                  days: prev.plan.days.filter((day) => day.week_number <= planWeeks),
+                },
+                weeksCount: planWeeks,
+              }
+            : prev)
         } : undefined}
         onRenameStudent={studentId ? async (name) => {
           const updated = await renameCoachStudent(studentId, name)
@@ -265,6 +368,8 @@ export function PlanWorkspace({ onLogout }: Props) {
         currentPlanId={planId}
         onSwitchPlan={switchPlan}
         onNewPlan={newPlan}
+        onDeleteCurrentDraft={loaded?.plan.status === 'draft' ? () => { setDeleteError(''); setDeleteOpen(true) } : undefined}
+        onMarkComplete={loaded?.plan.status === 'published' ? () => { setCompleteError(''); setCompleteOpen(true) } : undefined}
         onLogout={onLogout}
       />
       {!loaded && (
@@ -273,7 +378,31 @@ export function PlanWorkspace({ onLogout }: Props) {
           <button onClick={newPlan} style={{ ...btn, pointerEvents: 'auto' }}>＋ 新建计划</button>
         </div>
       )}
-    </div>
+      <NewPlanDialog open={newPlanOpen} studentName={studentName} onClose={() => setNewPlanOpen(false)} onCreate={createNewPlan} />
+      <DeletePlanDialog
+        open={deleteOpen && loaded?.plan.status === 'draft'}
+        name={loaded?.plan.name ?? ''}
+        weeks={loaded?.plan.plan_weeks ?? 0}
+        trainingDays={loaded?.plan.days.length ?? 0}
+        deleting={deleting}
+        error={deleteError}
+        onClose={() => { if (!deleting) setDeleteOpen(false) }}
+        onDelete={() => { void deleteCurrentPlan() }}
+      />
+      <CompletePlanDialog
+        open={completeOpen && loaded?.plan.status === 'published'}
+        name={loaded?.plan.name ?? ''}
+        weeks={loaded?.plan.plan_weeks ?? 0}
+        completing={completing}
+        error={completeError}
+        onClose={() => { if (!completing) setCompleteOpen(false) }}
+        onComplete={() => { void markCurrentComplete() }}
+      />
+    </div>}
+    {view === 'board' && <StudentBoard students={students} studentId={studentId} onStudent={(id) => { void switchStudent(id) }} />}
+    {view === 'videos' && <VideosPage students={students} studentId={studentId} onStudent={(id) => { void switchStudent(id) }} />}
+    {view === 'requests' && <RequestsPage requests={bindRequests} onRequestsChanged={setBindRequests} onAccepted={refreshStudentsAfterAccept} />}
+    </div></div>
   )
 }
 

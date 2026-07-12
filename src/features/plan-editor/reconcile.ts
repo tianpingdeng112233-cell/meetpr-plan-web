@@ -39,6 +39,11 @@ export interface SaveResult {
   planWeeks?: number
 }
 
+export interface ResizePlanResult {
+  deletedDays: number
+  deletedExercises: number
+}
+
 export interface ReconcileOptions {
   /** Used only for defensive published-import/calendar assertions. */
   published?: boolean
@@ -383,6 +388,21 @@ function merge409(
 
 /** Per-day save progress. */
 export type SaveProgress = (done: number, total: number) => void
+
+/** Change a draft's duration. When shrinking, server days outside the new
+ * range are deleted before plan_weeks is patched, matching import reconcile's
+ * check-safe ordering. Published/paused/completed plans never enter this flow. */
+export async function resizeServerPlanWeeks(planId: string, planWeeks: number): Promise<ResizePlanResult> {
+  const server: PlanWithChildren = await getPlan(planId)
+  if (server.status !== 'draft') throw new ApiException(409, 'PLAN_NOT_DRAFT')
+  const removed = server.days.filter((day) => day.week_number > planWeeks)
+  for (const day of removed) await deleteDay(day.id)
+  await patchPlan(planId, { plan_weeks: planWeeks })
+  return {
+    deletedDays: removed.length,
+    deletedExercises: removed.reduce((sum, day) => sum + day.exercises.length, 0),
+  }
+}
 
 /** Imported dates/calendar fields are draft-only. Published plans never send plan_patch. */
 export async function reconcileImportedPlan(

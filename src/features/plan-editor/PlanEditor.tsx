@@ -11,13 +11,15 @@ import { ExercisePopover } from './components/ExercisePopover'
 import { CustomExerciseDialog } from './components/CustomExerciseDialog'
 import type { ExerciseIndex, ExerciseHit } from './exerciseIndex'
 import type { CreateCustomExerciseInput } from '../../api/exercises'
+import type { PlanStatus, StudentOnboardingProfile } from '../../api/types'
+import { WritingContextPanel } from './components/WritingContextPanel'
 import type { ParsedWeek } from './import'
 import {
   LockedRowMutationError, ReconcileConflict, ReconciliationError, type SaveResult,
 } from './reconcile'
 import { createSaveController } from './autosave'
 import { parseClipboardRows, serializeDayForClipboard, serializeRowsForClipboard } from './clipboard'
-import { relabelWeeksForStartDate, shiftISODate } from './mapping'
+import { relabelWeeksForStartDate, resizeWeeksForCount } from './mapping'
 
 interface Sel { wnum: number; dow: number }
 interface PopState { visible: boolean; x: number; y: number; wnum: number; dow: number; rowId: string; query: string }
@@ -33,8 +35,11 @@ export interface PlanEditorProps {
   initialWeeks: Week[]
   weeksCount: number
   studentName: string
+  studentId?: string
+  onboardingProfile?: StudentOnboardingProfile | null
   planName: string
   initialPublished?: boolean
+  planStatus?: PlanStatus
   /** Real publish call; when omitted the button just toggles locally (sample mode). */
   onPublish?: () => Promise<void>
   /** Save current edits back to the backend; resolves with how many contentful rows were skipped. */
@@ -61,9 +66,13 @@ export interface PlanEditorProps {
   currentPlanId?: string
   onSwitchPlan?: (id: string) => void | Promise<void>
   onNewPlan?: () => void | Promise<void>
+  onDeleteCurrentDraft?: () => void | Promise<void>
+  onMarkComplete?: () => void | Promise<void>
   onLogout?: () => void | Promise<void>
   /** Current plan start date; enables xlsx import date remapping. */
   planStartDate?: string
+  onChangeStartDate?: (startDate: string) => Promise<void>
+  onChangePlanWeeks?: (planWeeks: number) => Promise<void>
 }
 
 function hasGridContent(weeks: Week[]): boolean {
@@ -206,6 +215,7 @@ export function PlanEditor(props: PlanEditorProps) {
   const [colW, setColW] = useState<ColWidths[]>(() => Array.from({ length: 7 }, () => ({ ...COL_DEFAULTS })))
   const [sel, setSel] = useState<Sel | null>(null)
   const [selectedRow, setSelectedRow] = useState<RowTarget | null>(null)
+  const [dismissedContextDays, setDismissedContextDays] = useState<Set<string>>(() => new Set())
   const [zoom, setZoom] = useState(100)
   // Authoritative published state, initialized from the backend plan status. Monotonic:
   // set true on a real publish and never cleared — there is no backend unpublish, so 发布后不可撤回.
@@ -213,6 +223,9 @@ export function PlanEditor(props: PlanEditorProps) {
   // rows with server-authoritative history are locked individually.
   const [published, setPublished] = useState(initialPublished)
   const [statusText, setStatusText] = useState(initialPublished ? `已发布给 ${studentName}` : '草稿 · 已存')
+  // W1 calendar/delete controls are draft-only. Keep this separate from main's
+  // `published` flag, which drives explicit in-place updates for spec 004.
+  const statusCalendarLocked = props.planStatus != null ? props.planStatus !== 'draft' : published
   const [copyDone, setCopyDone] = useState(false)
   const [rowCopyDone, setRowCopyDone] = useState(false)
   const [hasRowClipboard, setHasRowClipboard] = useState(false)
@@ -794,31 +807,53 @@ export function PlanEditor(props: PlanEditorProps) {
   const planHasLockedRows = weeks.some((week) => (
     week.days.some((day) => day.rows.some((row) => row.hasLogs))
   ))
+  const calendarLocked = statusCalendarLocked || planHasLockedRows
+  const calendarLockedHint = statusCalendarLocked
+    ? '已发布计划的周期与日期不可修改'
+    : '计划内已有学员打卡动作，不能修改周期与日期'
 
-  const handleShiftPlanOneDay = useCallback(() => {
-    if (saving || publishing.current) {
-      setStatusText('正在保存或发布 · 请稍候再后移')
-      return
+  const handleChangeStartDate = useCallback(async (nextStart: string) => {
+    if (!props.onChangeStartDate || calendarLocked || saving || publishing.current) throw new Error('CALENDAR_LOCKED')
+    if (!(await saver.current.flush())) throw new Error('SAVE_FAILED')
+    setSaving(true)
+    setStatusText('正在更新起始日期…')
+    try {
+      await props.onChangeStartDate(nextStart)
+      skipNextAutosave.current = true
+      setWeeks((prev) => relabelWeeksForStartDate(prev, nextStart))
+      currentPlanStart.current = nextStart
+      persistedPlanStart.current = nextStart
+      pendingPlanStart.current = null
+      setStatusText(`草稿 · 起始日期已更新为 ${nextStart}`)
+    } catch (error) {
+      setStatusText('起始日期更新失败 · 请重试')
+      throw error
+    } finally {
+      setSaving(false)
     }
-    if (published) {
-      setStatusText('已发布计划不支持修改日历')
-      return
+  }, [calendarLocked, props.onChangeStartDate, saving])
+
+  const handleChangePlanWeeks = useCallback(async (nextCount: number) => {
+    if (!props.onChangePlanWeeks || calendarLocked || saving || publishing.current) throw new Error('CALENDAR_LOCKED')
+    if (!(await saver.current.flush())) throw new Error('SAVE_FAILED')
+    const startDate = currentPlanStart.current
+    if (!startDate) throw new Error('PLAN_DATE_MISSING')
+    setSaving(true)
+    setStatusText('正在更新计划周期…')
+    try {
+      await props.onChangePlanWeeks(nextCount)
+      skipNextAutosave.current = true
+      setWeeks((prev) => resizeWeeksForCount(prev, nextCount, startDate))
+      setSel((current) => current && current.wnum > nextCount ? null : current)
+      setSelectedRow((current) => current && current.wnum > nextCount ? null : current)
+      setStatusText(`草稿 · 已调整为 ${nextCount} 周`)
+    } catch (error) {
+      setStatusText('计划周期更新失败 · 请重试')
+      throw error
+    } finally {
+      setSaving(false)
     }
-    if (weeks.some((week) => week.days.some((day) => day.rows.some((row) => row.hasLogs)))) {
-      setStatusText('计划已有打卡记录，不能整体后移')
-      return
-    }
-    const currentStart = currentPlanStart.current
-    if (!currentStart) {
-      setStatusText('计划日期未就绪，无法后移')
-      return
-    }
-    const nextStart = shiftISODate(currentStart, 1)
-    setWeeksWithHistory((prev) => relabelWeeksForStartDate(prev, nextStart))
-    currentPlanStart.current = nextStart
-    pendingPlanStart.current = nextStart
-    setStatusText(`已整体后移 1 天 · 起始 ${nextStart}`)
-  }, [published, saving, setWeeksWithHistory, weeks])
+  }, [calendarLocked, props.onChangePlanWeeks, saving])
 
   // Rows the coach still has to deal with, in grid order:
   //  - unbound: has a name or filled sets but no catalog binding — save reconciliation drops
@@ -923,11 +958,13 @@ export function PlanEditor(props: PlanEditorProps) {
   const unsavedRef = useRef(false)
   const prevWeeksRef = useRef(weeks)
   const skipFirstAutosave = useRef(true)
+  const skipNextAutosave = useRef(false)
   useEffect(() => {
     const weeksChanged = prevWeeksRef.current !== weeks
     prevWeeksRef.current = weeks
     if (skipFirstAutosave.current) { skipFirstAutosave.current = false; return } // ignore the initial load
     if (applyingSavedWeeks.current) { applyingSavedWeeks.current = false; return }
+    if (skipNextAutosave.current) { skipNextAutosave.current = false; return }
     // Only a real edit marks content unsaved — this effect also fires when `published`
     // flips (same weeks identity), which must not re-arm the guard.
     if (weeksChanged && props.onSave) unsavedRef.current = true
@@ -1260,6 +1297,9 @@ export function PlanEditor(props: PlanEditorProps) {
   })()
   const selectedRowForBar = selectedRowValue()
   const selectedRowLabel = selectedRowForBar ? `当前行 · ${selectedRowForBar.name.trim() || '未命名动作'}` : ''
+  const selectedDayValue = sel ? weeks.find((week) => week.num === sel.wnum)?.days.find((day) => day.dow === sel.dow) ?? null : null
+  const selectedDayKey = sel ? `${sel.wnum}:${sel.dow}` : ''
+  const recallContext = () => setDismissedContextDays((prev) => { const next = new Set(prev); next.delete(selectedDayKey); return next })
 
   return (
     <div ref={rootRef} style={{
@@ -1272,6 +1312,9 @@ export function PlanEditor(props: PlanEditorProps) {
         students={props.students} currentStudentId={props.currentStudentId} onSwitchStudent={guardLeaveId(props.onSwitchStudent)}
         plans={props.plans} currentPlanId={props.currentPlanId} onSwitchPlan={guardLeaveId(props.onSwitchPlan)}
         onNewPlan={guardLeave(props.onNewPlan)} onLogout={guardLeave(props.onLogout)}
+        currentPlanStatus={published ? 'published' : props.planStatus ?? 'draft'}
+        onDeleteCurrentDraft={guardLeave(props.onDeleteCurrentDraft)}
+        onMarkComplete={props.onMarkComplete}
         onRenamePlan={props.onRename ? () => {
           const name = window.prompt('计划名称', planName)?.trim()
           if (name && name !== planName) void props.onRename!(name)
@@ -1286,15 +1329,24 @@ export function PlanEditor(props: PlanEditorProps) {
         } : undefined}
         onSave={props.onSave ? handleSave : undefined} saving={saving}
         onImport={props.exerciseIndex && props.planStartDate ? handleImport : undefined}
-        onShiftPlanOneDay={props.planStartDate ? handleShiftPlanOneDay : undefined}
-        shiftPlanDisabled={published || planHasLockedRows}
-        shiftPlanDisabledHint={planHasLockedRows
-          ? '计划内已有学员打卡动作，不能整体后移'
-          : '已发布计划不支持修改日历，请在发布前调整日期'}
+        planStartDate={props.planStartDate}
+        calendarLocked={calendarLocked || !props.onChangeStartDate}
+        calendarLockedHint={calendarLocked ? calendarLockedHint : '当前模式不可修改计划日期'}
+        onChangeStartDate={props.planStartDate ? (props.onChangeStartDate ? handleChangeStartDate : async () => {}) : undefined}
         onNewExercise={props.onCreateExercise ? () => openCreateExercise() : undefined}
         issueCount={issues.length} issueHint={issueHint} onJumpIssue={jumpToNextIssue}
       />
-      <Toolbar weeksCount={weeksCount} curWeekLabel={curWeekLabel} zoomLabel={`${Math.round(zoom)}%`}
+      <Toolbar weeksCount={weeks.length || weeksCount} calendarLocked={calendarLocked} calendarLockedHint={calendarLockedHint}
+        onChangeWeeks={props.onChangePlanWeeks ? handleChangePlanWeeks : undefined}
+        removalSummary={(nextCount) => weeks.filter((week) => week.num > nextCount).reduce((summary, week) => {
+          for (const day of week.days) {
+            if (day.rest || day.rows.length === 0) continue
+            summary.days++
+            summary.exercises += day.rows.length
+          }
+          return summary
+        }, { days: 0, exercises: 0 })}
+        curWeekLabel={curWeekLabel} zoomLabel={`${Math.round(zoom)}%`}
         weekNums={weeks.map((w) => w.num)} onJumpWeek={jumpToWeek} />
       <ContextBar
         visible={!!sel}
@@ -1346,6 +1398,7 @@ export function PlanEditor(props: PlanEditorProps) {
                         selected={sel?.wnum === wk.num && sel?.dow === day.dow}
                         selectedRowId={selectedRow?.wnum === wk.num && selectedRow.dow === day.dow ? selectedRow.rowId : null}
                         onSelect={() => handleSelect(wk.num, day.dow)}
+                        onRecallContext={recallContext}
                         onSelectRow={(rowId) => handleSelectRow(wk.num, day.dow, rowId)}
                         onResizeStart={(col, e) => handleResizeStart(day.dow, col, e)}
                         onNameFocus={(rowId, name, el) => handleNameFocus(wk.num, day.dow, rowId, name, el)}
@@ -1365,6 +1418,12 @@ export function PlanEditor(props: PlanEditorProps) {
         </div>
         <div style={{ textAlign: 'center', color: 'var(--fg-tertiary)', fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '.1em', padding: '10px 7px 20px', textTransform: 'uppercase' }}>▼ 共 {weeks.length} 周</div>
       </div>
+
+      {selectedDayValue && props.studentId && !dismissedContextDays.has(selectedDayKey) && (
+        <WritingContextPanel studentId={props.studentId} studentName={studentName} profile={props.onboardingProfile}
+          day={selectedDayValue} row={selectedRowForBar}
+          onClose={() => setDismissedContextDays((prev) => new Set(prev).add(selectedDayKey))} />
+      )}
 
       <ExercisePopover
         visible={pop.visible} x={pop.x} y={pop.y}

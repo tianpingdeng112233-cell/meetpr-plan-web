@@ -192,7 +192,8 @@ describe('exercise history lock UI', () => {
         studentName="学员" planName="计划" planStartDate="2026-01-01" />,
     ))
 
-    const shift = buttonByText(host, '后移 1 天')
+    const shift = [...host.querySelectorAll('button')].find((button) => button.textContent?.includes('起始'))
+    if (!shift) throw new Error('start-date button not found')
     expect(shift.disabled).toBe(true)
     expect(shift.title).toContain('已有学员打卡动作')
   })

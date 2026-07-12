@@ -14,6 +14,7 @@ interface Props {
   selected: boolean
   selectedRowId?: string | null
   onSelect: () => void
+  onRecallContext?: () => void
   onSelectRow?: (rowId: string) => void
   onResizeStart: (col: ColKey, e: React.MouseEvent) => void
   onNameFocus: (rowId: string, name: string, el: HTMLElement) => void
@@ -149,7 +150,7 @@ function EditableStrength({ row, width, edit }: { row: ExerciseRow; width: numbe
   )
 }
 
-export function DayColumn({ day, colW, selected, selectedRowId, onSelect, onSelectRow, onResizeStart, onNameFocus, onNameChange, onNameBlur, onAddRow, onEditRow, onReorderRow, onDeleteRow }: Props) {
+export function DayColumn({ day, colW, selected, selectedRowId, onSelect, onRecallContext, onSelectRow, onResizeStart, onNameFocus, onNameChange, onNameBlur, onAddRow, onEditRow, onReorderRow, onDeleteRow }: Props) {
   const [dragRowId, setDragRowId] = useState<string | null>(null)
   const [dropTarget, setDropTarget] = useState<{ rowId: string; position: 'before' | 'after' } | null>(null)
   const dragDisabled = day.rows.some((row) => row.hasLogs)
@@ -213,8 +214,8 @@ export function DayColumn({ day, colW, selected, selectedRowId, onSelect, onSele
         flex: '0 0 auto', width: 48, borderRight: '1px solid var(--border)',
         background: 'var(--surface-1)', display: 'flex', flexDirection: 'column', cursor: 'pointer',
       }}>
-        <div style={{ padding: '5px 0', textAlign: 'center', fontSize: 10, color: 'var(--fg-tertiary)', borderBottom: '1px solid var(--border)', fontWeight: 600 }}>
-          {day.dowLabel}
+        <div style={{ padding: '5px 2px', textAlign: 'center', fontSize: 10, color: 'var(--fg-tertiary)', borderBottom: '1px solid var(--border)', fontWeight: 600 }}>
+          {day.dowLabel}{selected && <button className="context-recall" onClick={(e) => { e.stopPropagation(); onRecallContext?.() }} title="显示撰写上下文">▤</button>}
         </div>
         <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '18px 0' }}>
           <span style={{ writingMode: 'vertical-rl', letterSpacing: 5, color: 'var(--fg-tertiary)', fontSize: 12 }}>休息</span>
@@ -233,6 +234,7 @@ export function DayColumn({ day, colW, selected, selectedRowId, onSelect, onSele
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 7, padding: '5px 8px', background: 'var(--surface-1)', borderBottom: '1px solid var(--border)', whiteSpace: 'nowrap', overflow: 'hidden' }}>
         <span style={{ fontWeight: 700, fontSize: 12, color: '#fff' }}>{day.dowLabel}</span>
         <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--fg-tertiary)' }}>{day.dateLabel}</span>
+        {selected && <button className="context-recall" onClick={(e) => { e.stopPropagation(); onRecallContext?.() }} title="显示撰写上下文">▤</button>}
       </div>
 
       <div className="daygrid" style={{ width: total, fontVariantNumeric: 'tabular-nums' }}>
