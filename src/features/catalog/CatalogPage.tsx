@@ -51,6 +51,7 @@ export function CatalogPage({ exerciseList, catalog, index, onCreateExercise, on
   const [drawer, setDrawer] = useState<DrawerMode>(null)
   const [createPrefill, setCreatePrefill] = useState('')
   const [toast, setToast] = useState('')
+  const [creating, setCreating] = useState(false)
 
   const isCustom = (exercise: ExerciseResponse) => (
     catalog?.get(exercise.id)?.custom ?? exercise.created_by_coach_id != null
@@ -87,11 +88,11 @@ export function CatalogPage({ exerciseList, catalog, index, onCreateExercise, on
   useEffect(() => {
     if (!drawer) return
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setDrawer(null)
+      if (event.key === 'Escape' && !creating) setDrawer(null)
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [drawer])
+  }, [drawer, creating])
 
   const baseCount = (nextCategory: CatalogCategory, nextRefine: CatalogRefine = 'all') => filterExercises(exerciseList, {
     category: nextCategory,
@@ -114,7 +115,7 @@ export function CatalogPage({ exerciseList, catalog, index, onCreateExercise, on
     setCreatePrefill(prefill.trim())
     setDrawer('create')
   }
-  const closeDrawer = () => setDrawer(null)
+  const closeDrawer = () => { if (creating) return; setDrawer(null) }
 
   const familyRefine = isFamilyCategory(category)
   const showRefine = !trimmedQuery && (category === 'all' || familyRefine)
@@ -257,13 +258,18 @@ export function CatalogPage({ exerciseList, catalog, index, onCreateExercise, on
       initialName={createPrefill}
       onClose={closeDrawer}
       onCreate={async (input) => {
-        const created = await onCreateExercise(input)
-        setCategory('mine')
-        setRefine('all')
-        setQuery('')
-        setSelectedId(created.id)
-        setDrawer('detail')
-        setToast(`已创建「${created.name}」，现在就能写进计划`)
+        setCreating(true)
+        try {
+          const created = await onCreateExercise(input)
+          setCategory('mine')
+          setRefine('all')
+          setQuery('')
+          setSelectedId(created.id)
+          setDrawer('detail')
+          setToast(`已创建「${created.name}」，现在就能写进计划`)
+        } finally {
+          setCreating(false)
+        }
       }}
     />}
     {toast && <div className="catalog-toast"><span>✓</span>{toast}</div>}
@@ -303,7 +309,7 @@ function ExerciseDetailDrawer({ exercise, displayName, custom, onClose, onUse }:
   const aliases = aliasesForExercise(exercise)
   const primaryMuscle = exercise.muscle_groups[0]
   const synergists = exercise.muscle_groups.slice(1)
-  return <aside className="writing-panel catalog-drawer" role="dialog" aria-modal="true" aria-label={`${displayName}详情`}>
+  return <aside className="writing-panel catalog-drawer" role="dialog" aria-label={`${displayName}详情`}>
     <header className="catalog-drawer-header">
       <div><h2>{displayName}</h2>{exercise.name_en && <small>{exercise.name_en}</small>}</div>
       <button type="button" aria-label="关闭详情" onClick={onClose}>✕</button>
@@ -401,7 +407,7 @@ function CreateExerciseDrawer({ initialName, onClose, onCreate }: {
   }
   const canSubmit = draft.name.trim().length > 0 && draft.primaryMuscle != null && !saving
 
-  return <aside className="writing-panel catalog-drawer" role="dialog" aria-modal="true" aria-label="新建动作">
+  return <aside className="writing-panel catalog-drawer" role="dialog" aria-label="新建动作">
     <header className="catalog-drawer-header">
       <div><h2>新建动作</h2><small>CUSTOM · 归为辅助动作 · 建完即可用</small></div>
       <button type="button" aria-label="关闭新建动作" disabled={saving} onClick={onClose}>✕</button>
