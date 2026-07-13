@@ -4,7 +4,10 @@ import type { CreateCustomExerciseBody, Equipment, ExerciseResponse, MovementPat
 export interface CreateCustomExerciseInput {
   name: string
   muscleGroup?: MuscleGroup
+  /** Ordered as primary muscle first, followed by synergists. */
+  muscleGroups?: MuscleGroup[]
   equipment?: Equipment
+  equipmentList?: Equipment[]
   movementPattern?: MovementPattern
 }
 
@@ -18,11 +21,15 @@ export const DEFAULT_CUSTOM_EXERCISE: Omit<CreateCustomExerciseBody, 'name'> = {
 }
 
 export function customExerciseBody(input: CreateCustomExerciseInput): CreateCustomExerciseBody {
+  const muscleGroups = input.muscleGroups?.length
+    ? input.muscleGroups
+    : [input.muscleGroup ?? DEFAULT_CUSTOM_EXERCISE.muscle_groups[0]]
+  const equipment = input.equipmentList ?? [input.equipment ?? DEFAULT_CUSTOM_EXERCISE.equipment[0]]
   return {
     ...DEFAULT_CUSTOM_EXERCISE,
     name: input.name.trim(),
-    muscle_groups: [input.muscleGroup ?? DEFAULT_CUSTOM_EXERCISE.muscle_groups[0]],
-    equipment: [input.equipment ?? DEFAULT_CUSTOM_EXERCISE.equipment[0]],
+    muscle_groups: [...new Set(muscleGroups)],
+    equipment: [...new Set(equipment.length ? equipment : DEFAULT_CUSTOM_EXERCISE.equipment)],
     movement_pattern: [input.movementPattern ?? DEFAULT_CUSTOM_EXERCISE.movement_pattern[0]],
   }
 }

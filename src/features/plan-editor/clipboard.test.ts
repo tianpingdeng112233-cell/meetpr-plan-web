@@ -12,6 +12,10 @@ function exercise(id: string, name: string): ExerciseResponse {
     exercise_type: 'accessory',
     main_lift_family: null,
     is_competition_lift: false,
+    muscle_groups: ['core'],
+    equipment: ['bodyweight'],
+    movement_pattern: ['other'],
+    competition_stance: null,
     created_by_coach_id: null,
     created_at: '2026-01-01T00:00:00Z',
   }

@@ -162,6 +162,10 @@ export interface ExerciseResponse {
   exercise_type: ExerciseType
   main_lift_family: LiftFamily | null
   is_competition_lift: boolean
+  muscle_groups: MuscleGroup[]
+  equipment: Equipment[]
+  movement_pattern: MovementPattern[]
+  competition_stance: string | null
   created_by_coach_id: string | null
   created_at: string
 }
