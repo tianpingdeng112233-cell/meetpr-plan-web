@@ -5,6 +5,7 @@ import {
   markImportedHistory, renameCoachStudent, deletePlan,
 } from '../../api/plans'
 import { listExercises, createCustomExercise } from '../../api/exercises'
+import type { CreateCustomExerciseInput } from '../../api/exercises'
 import { ApiException } from '../../api/client'
 import { mapPlanToWeeks, type Catalog } from '../plan-editor/mapping'
 import { displayExerciseName, ExerciseIndex } from '../plan-editor/exerciseIndex'
@@ -20,6 +21,7 @@ import { CoachRail, type CoachView } from './CoachRail'
 import { StudentBoard } from './StatsViews'
 import { VideosPage } from './VideosPage'
 import { RequestsPage } from './RequestsPage'
+import { CatalogPage } from '../catalog/CatalogPage'
 
 interface Props { onLogout: () => void | Promise<void> }
 type Loaded = { plan: PlanWithChildren; weeks: Week[]; weeksCount: number }
@@ -224,6 +226,19 @@ export function PlanWorkspace({ onLogout }: Props) {
     }
   }
 
+  const handleCreateExercise = async (input: CreateCustomExerciseInput) => {
+    const exercise = await createCustomExercise(input)
+    const custom = exercise.created_by_coach_id != null
+    setExerciseList((prev) => (prev.some((item) => item.id === exercise.id) ? prev : [...prev, exercise]))
+    setCatalog((prev) => {
+      const next = new Map(prev ?? [])
+      next.set(exercise.id, { name: displayExerciseName(exercise.name), custom })
+      return next
+    })
+    setIndex((prev) => (prev ? prev.withAdded(exercise) : new ExerciseIndex([exercise])))
+    return { id: exercise.id, name: exercise.name }
+  }
+
   if (error) {
     return (
       <Centered>
@@ -253,6 +268,13 @@ export function PlanWorkspace({ onLogout }: Props) {
         />
         <SamplePreviewBanner onRefresh={() => window.location.reload()} />
         </div>}
+        {view === 'catalog' && <CatalogPage
+          exerciseList={exerciseList}
+          catalog={catalog}
+          index={index}
+          onCreateExercise={handleCreateExercise}
+          onUseExercise={() => setView('editor')}
+        />}
         {view === 'requests' && <RequestsPage requests={bindRequests} onRequestsChanged={setBindRequests} onAccepted={refreshStudentsAfterAccept} />}
         {(view === 'board' || view === 'videos') && <div className="empty-page">接受学员申请后即可查看{view === 'board' ? '学员看板' : '训练视频'}</div>}
       </div></div>
@@ -369,18 +391,7 @@ export function PlanWorkspace({ onLogout }: Props) {
           )))
         } : undefined}
         exerciseIndex={index}
-        onCreateExercise={async (input) => {
-          const e = await createCustomExercise(input)
-          const custom = e.created_by_coach_id != null
-          setExerciseList((prev) => (prev.some((item) => item.id === e.id) ? prev : [...prev, e]))
-          setCatalog((prev) => {
-            const next = new Map(prev ?? [])
-            next.set(e.id, { name: displayExerciseName(e.name), custom })
-            return next
-          })
-          setIndex((prev) => (prev ? prev.withAdded(e) : new ExerciseIndex([e])))
-          return { id: e.id, name: e.name }
-        }}
+        onCreateExercise={handleCreateExercise}
         students={studentOpts}
         currentStudentId={studentId}
         onSwitchStudent={switchStudent}
@@ -431,6 +442,13 @@ export function PlanWorkspace({ onLogout }: Props) {
         onComplete={() => { void markCurrentComplete() }}
       />
     </div>}
+    {view === 'catalog' && <CatalogPage
+      exerciseList={exerciseList}
+      catalog={catalog}
+      index={index}
+      onCreateExercise={handleCreateExercise}
+      onUseExercise={() => setView('editor')}
+    />}
     {view === 'board' && <StudentBoard students={students} />}
     {view === 'videos' && <VideosPage students={students} studentId={studentId} onStudent={(id) => { void switchStudent(id) }} />}
     {view === 'requests' && <RequestsPage requests={bindRequests} onRequestsChanged={setBindRequests} onAccepted={refreshStudentsAfterAccept} />}

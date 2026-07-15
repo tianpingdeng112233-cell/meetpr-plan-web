@@ -1,7 +1,8 @@
-export type CoachView = 'editor' | 'board' | 'videos' | 'requests'
+export type CoachView = 'editor' | 'catalog' | 'board' | 'videos' | 'requests'
 
 const tabs: { id: CoachView; icon: string; label: string }[] = [
   { id: 'editor', icon: '▤', label: '计划编写' },
+  { id: 'catalog', icon: '▧', label: '动作库' },
   { id: 'board', icon: '▦', label: '学员看板' },
   { id: 'videos', icon: '▶', label: '训练视频' },
   { id: 'requests', icon: '⊕', label: '学员申请' },

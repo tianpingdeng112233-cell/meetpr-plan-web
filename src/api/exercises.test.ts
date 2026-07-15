@@ -37,6 +37,19 @@ describe('createCustomExercise', () => {
     })
   })
 
+  it('keeps the primary muscle first and supports synergists plus multiple equipment', () => {
+    expect(customExerciseBody({
+      name: '史密斯箭步蹲',
+      muscleGroups: ['quad', 'glute', 'quad'],
+      equipmentList: ['machine', 'barbell', 'machine'],
+      movementPattern: 'squat',
+    })).toMatchObject({
+      muscle_groups: ['quad', 'glute'],
+      equipment: ['machine', 'barbell'],
+      movement_pattern: ['squat'],
+    })
+  })
+
   it('posts that payload to /exercises', async () => {
     const fetchMock = vi.fn().mockResolvedValue(res(201, {
       id: 'ex-1',
@@ -45,6 +58,10 @@ describe('createCustomExercise', () => {
       exercise_type: 'accessory',
       main_lift_family: null,
       is_competition_lift: false,
+      muscle_groups: ['back'],
+      equipment: ['dumbbell'],
+      movement_pattern: ['horizontal_pull'],
+      competition_stance: null,
       created_by_coach_id: 'coach-1',
       created_at: '2026-07-08T00:00:00.000Z',
     }))
