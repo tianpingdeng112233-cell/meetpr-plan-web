@@ -23,6 +23,8 @@ interface RowOpt {
   aux?: boolean
   custom?: boolean
   ku?: boolean
+  /** Explicit tier override; default treats structured rows as main lifts. */
+  main?: boolean
 }
 
 let rid = 0
@@ -43,7 +45,7 @@ function mkRow(name: string, opt: RowOpt = {}): ExerciseRow {
     name,
     ku: opt.ku !== false && !aux && !opt.custom,
     custom: !!opt.custom,
-    isMain: !aux,
+    isMain: opt.main ?? !aux,
     aux,
     reps: opt.reps != null ? String(opt.reps) : '—',
     mode: hasInt && opt.mode === 'rpe' ? 'rpe' : 'kg',
@@ -81,7 +83,7 @@ export function buildWeeks(): Week[] {
       ]),
       day(1, [
         mkRow('传统硬拉', { reps: 3, mode: 'kg', vals: ramp(dl, 5, dlCount) }),
-        mkRow('海豹划船', { reps: 12, mode: 'rpe', vals: [6, 7, 8, 8] }),
+        mkRow('海豹划船', { reps: 12, mode: 'rpe', vals: [6, 7, 8, 8], main: false }),
         mkRow('安全杆深蹲', { reps: 8, mode: 'rpe', vals: [6, 7, 8, 9] }),
       ]),
       day(2, [
@@ -97,7 +99,7 @@ export function buildWeeks(): Week[] {
       ]),
       day(5, [
         mkRow('传统硬拉', { reps: 5, mode: 'kg', vals: ramp(dl + 5, 5, 4) }),
-        mkRow('海豹划船', { reps: 12, mode: 'rpe', vals: [6, 7, 8, 8] }),
+        mkRow('海豹划船', { reps: 12, mode: 'rpe', vals: [6, 7, 8, 8], main: false }),
       ]),
       day(6, null),
     ]

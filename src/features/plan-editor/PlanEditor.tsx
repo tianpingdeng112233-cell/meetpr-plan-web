@@ -444,10 +444,15 @@ export function PlanEditor(props: PlanEditorProps) {
   const handleNameBlur = () => { window.setTimeout(() => setPop((p) => ({ ...p, visible: false })), 160) }
 
   const bindRowAt = (target: { wnum: number; dow: number; rowId: string }, exerciseId: string, name: string, custom: boolean) => {
+    // Backfill is_main_lift from the catalog tier so manually picked rows persist
+    // the same flag the xlsx-import path infers (main lift or variation → true).
+    const tier = props.exerciseIndex?.typeById(exerciseId) ?? null
     setWeeksWithHistory((prev) => prev.map((wk) => wk.num !== target.wnum ? wk : {
       ...wk,
       days: wk.days.map((d) => d.dow !== target.dow ? d : {
-        ...d, rows: d.rows.map((r) => r.id === target.rowId && !r.hasLogs ? { ...r, exerciseId, name, ku: !custom, custom } : r),
+        ...d, rows: d.rows.map((r) => r.id === target.rowId && !r.hasLogs
+          ? { ...r, exerciseId, name, ku: !custom, custom, isMain: tier ? tier !== 'accessory' : r.isMain }
+          : r),
       }),
     }))
   }
@@ -476,6 +481,16 @@ export function PlanEditor(props: PlanEditorProps) {
     setPop((p) => (p.rowId === rowId ? { ...p, visible: false } : p))
     setSelectedRow((row) => (row?.wnum === wnum && row.dow === dow && row.rowId === rowId ? null : row))
   }
+  /** Display tier for a row: catalog exercise_type is authoritative (main lift +
+   *  variations vs accessories); unbound/unknown rows fall back to is_main_lift. */
+  const rowTier = useCallback((row: ExerciseRow): 'main' | 'aux' => {
+    if (row.exerciseId && props.exerciseIndex) {
+      const t = props.exerciseIndex.typeById(row.exerciseId)
+      if (t) return t === 'accessory' ? 'aux' : 'main'
+    }
+    return row.isMain ? 'main' : 'aux'
+  }, [props.exerciseIndex])
+
   const reorderRow = (
     wnum: number,
     dow: number,
@@ -1398,6 +1413,7 @@ export function PlanEditor(props: PlanEditorProps) {
                         colW={colW[day.dow]}
                         selected={sel?.wnum === wk.num && sel?.dow === day.dow}
                         selectedRowId={selectedRow?.wnum === wk.num && selectedRow.dow === day.dow ? selectedRow.rowId : null}
+                        rowTier={rowTier}
                         onSelect={() => handleSelect(wk.num, day.dow)}
                         onRecallContext={recallContext}
                         onSelectRow={(rowId) => handleSelectRow(wk.num, day.dow, rowId)}
