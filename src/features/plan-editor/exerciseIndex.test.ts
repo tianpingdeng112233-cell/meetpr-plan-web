@@ -60,6 +60,18 @@ describe('ExerciseIndex', () => {
     expect(index.resolve('坐姿V把划船')).toMatchObject({ id: 'v-row' })
   })
 
+  it('exposes the catalog tier by id, including exercises added after construction', () => {
+    const squat = { ...exercise('sq', '低杠位深蹲'), exercise_type: 'main_lift' as const }
+    const index = new ExerciseIndex([squat, exercise('fly', '蝴蝶机夹胸')])
+
+    expect(index.typeById('sq')).toBe('main_lift')
+    expect(index.typeById('fly')).toBe('accessory')
+    expect(index.typeById('missing')).toBeNull()
+
+    index.add({ ...exercise('spoto', 'spoto 暂停卧推'), exercise_type: 'main_lift_variation' })
+    expect(index.typeById('spoto')).toBe('main_lift_variation')
+  })
+
   it('maps generic paused deadlift by the student deadlift style', () => {
     const catalog = [
       exercise('conv', '传统暂停硬拉'),

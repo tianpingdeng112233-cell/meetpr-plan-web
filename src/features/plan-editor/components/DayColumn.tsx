@@ -21,6 +21,8 @@ interface Props {
   onNameChange: (rowId: string, value: string, el: HTMLElement) => void
   onNameBlur: () => void
   onAddRow: () => void
+  /** Display tier resolver (catalog exercise_type based); absent = flat legacy list. */
+  rowTier?: (row: ExerciseRow) => 'main' | 'aux'
   onEditRow: (rowId: string, updater: (r: ExerciseRow) => ExerciseRow) => void
   onReorderRow?: (dragRowId: string, targetRowId: string, position: 'before' | 'after') => void
   onDeleteRow: (rowId: string) => void
@@ -90,6 +92,22 @@ function GuardedInput({ value, filter, onValue, ...rest }: {
   )
 }
 
+/** Section divider between the main-lift block and the accessory block. */
+function TierHeader({ label, accent, width }: { label: string; accent?: boolean; width: number }) {
+  return (
+    <div className="tierhead" style={{
+      width, boxSizing: 'border-box', display: 'flex', alignItems: 'center', gap: 5,
+      padding: '3px 8px', background: 'var(--surface-1)', borderTop: '1px solid var(--border)',
+    }}>
+      <span style={{ width: 3, height: 8, borderRadius: 1, flex: 'none', background: accent ? 'var(--brand-red)' : 'var(--fg-tertiary)' }} />
+      <span style={{
+        fontFamily: 'var(--font-mono)', fontSize: 9, letterSpacing: '.08em', whiteSpace: 'nowrap',
+        color: accent ? 'var(--fg-secondary)' : 'var(--fg-tertiary)',
+      }}>{label}</span>
+    </div>
+  )
+}
+
 function EditableStrength({ row, width, edit }: { row: ExerciseRow; width: number; edit: (u: (r: ExerciseRow) => ExerciseRow) => void }) {
   if (row.aux) {
     return (
@@ -150,7 +168,7 @@ function EditableStrength({ row, width, edit }: { row: ExerciseRow; width: numbe
   )
 }
 
-export function DayColumn({ day, colW, selected, selectedRowId, onSelect, onRecallContext, onSelectRow, onResizeStart, onNameFocus, onNameChange, onNameBlur, onAddRow, onEditRow, onReorderRow, onDeleteRow }: Props) {
+export function DayColumn({ day, colW, selected, selectedRowId, onSelect, onRecallContext, onSelectRow, onResizeStart, onNameFocus, onNameChange, onNameBlur, onAddRow, rowTier, onEditRow, onReorderRow, onDeleteRow }: Props) {
   const [dragRowId, setDragRowId] = useState<string | null>(null)
   const [dropTarget, setDropTarget] = useState<{ rowId: string; position: 'before' | 'after' } | null>(null)
   const dragDisabled = day.rows.some((row) => row.hasLogs)
@@ -168,12 +186,19 @@ export function DayColumn({ day, colW, selected, selectedRowId, onSelect, onReca
     document.body.style.userSelect = 'none'
     document.body.style.cursor = 'grabbing'
 
+    // Tier sections are derived from the catalog, so a cross-section drop would
+    // snap back on re-render; constrain reordering to the dragged row's section.
+    const dragRow = day.rows.find((r) => r.id === rowId)
+    const dragTier = rowTier && dragRow ? rowTier(dragRow) : null
+
     const updateDropTarget = (clientX: number, clientY: number) => {
       const target = document.elementsFromPoint(clientX, clientY)
         .map((el) => el.closest<HTMLElement>('[data-rowid]'))
         .find((el): el is HTMLElement => el != null)
       const targetRowId = target?.dataset.rowid
-      if (!target || !targetRowId || targetRowId === rowId || !day.rows.some((r) => r.id === targetRowId)) {
+      const targetRow = targetRowId ? day.rows.find((r) => r.id === targetRowId) : undefined
+      if (!target || !targetRowId || targetRowId === rowId || !targetRow
+        || (dragTier != null && rowTier && rowTier(targetRow) !== dragTier)) {
         currentDrop = null
         setDropTarget(null)
         return
@@ -184,9 +209,15 @@ export function DayColumn({ day, colW, selected, selectedRowId, onSelect, onReca
       setDropTarget(currentDrop)
     }
 
+    // Surface invalid targets (cross-section, locked day edges) instead of failing silently.
+    const syncCursor = () => {
+      document.body.style.cursor = currentDrop ? 'grabbing' : 'not-allowed'
+    }
+
     const onMove = (ev: MouseEvent) => {
       ev.preventDefault()
       updateDropTarget(ev.clientX, ev.clientY)
+      syncCursor()
     }
 
     const cleanup = () => {
@@ -246,7 +277,8 @@ export function DayColumn({ day, colW, selected, selectedRowId, onSelect, onReca
           <div className="gcell" data-c="note" style={{ width: colW.note, padding: '4px 6px', ...head }}>备注</div>
         </div>
 
-        {day.rows.map((row) => {
+        {(() => {
+        const renderRow = (row: ExerciseRow) => {
           const edit = (u: (r: ExerciseRow) => ExerciseRow) => onEditRow(row.id, u)
           const inputIssue = getBoundRowInputIssue(row)
           const isSelectedRow = selectedRowId === row.id
@@ -345,7 +377,19 @@ export function DayColumn({ day, colW, selected, selectedRowId, onSelect, onReca
               </div>
             </div>
           )
-        })}
+        }
+        if (!rowTier) return day.rows.map(renderRow)
+        const mainRows = day.rows.filter((r) => rowTier(r) === 'main')
+        const auxRows = day.rows.filter((r) => rowTier(r) === 'aux')
+        return (
+          <>
+            {(mainRows.length > 0 || selected) && <TierHeader label="主项及变式" accent width={total} />}
+            {mainRows.map(renderRow)}
+            {(auxRows.length > 0 || selected) && <TierHeader label="辅助项" width={total} />}
+            {auxRows.map(renderRow)}
+          </>
+        )
+        })()}
         {selected && (
           <div className="popitem" onClick={(e) => { e.stopPropagation(); onAddRow() }}
             style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 8px', borderTop: '1px dashed var(--border-strong)', color: 'var(--fg-tertiary)', cursor: 'pointer', fontSize: 11 }}>

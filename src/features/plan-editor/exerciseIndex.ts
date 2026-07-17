@@ -26,11 +26,13 @@ export interface ExerciseHit { id: string; name: string; via?: string }
 
 export class ExerciseIndex {
   private byName = new Map<string, ExerciseResponse>()
+  private byId = new Map<string, ExerciseResponse>()
   private aliasToCanonical = new Map<string, string>()
 
   constructor(private catalog: ExerciseResponse[], private opts: { deadliftStyle?: DeadliftStylePreference } = {}) {
     for (const e of catalog) {
       const display = { ...e, name: displayExerciseName(e.name) }
+      this.byId.set(e.id, display)
       this.byName.set(e.name, display)
       this.byName.set(display.name, display)
       this.byName.set(normalizeLookupName(e.name), display)
@@ -105,6 +107,12 @@ export class ExerciseIndex {
   add(e: ExerciseResponse) {
     if (!this.catalog.some((item) => item.id === e.id)) this.catalog.push(e)
     this.byName.set(e.name, e)
+    this.byId.set(e.id, e)
+  }
+
+  /** Catalog tier for a bound exercise id; null when unknown (e.g. custom before reload). */
+  typeById(id: string): ExerciseResponse['exercise_type'] | null {
+    return this.byId.get(id)?.exercise_type ?? null
   }
 
   withAdded(e: ExerciseResponse): ExerciseIndex {
