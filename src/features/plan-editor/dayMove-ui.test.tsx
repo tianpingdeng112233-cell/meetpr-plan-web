@@ -120,6 +120,22 @@ describe('whole-day column dragging', () => {
     expect(dayAt(host, 1, 2).querySelector('[data-rowid="logged"]')).not.toBeNull()
   })
 
+  it('starts from a published-plan header: live plans drag too, only logged days stay frozen', () => {
+    act(() => root?.render(
+      <PlanEditor initialWeeks={[week(1, { 0: [row('squat')] })]} weeksCount={1}
+        studentName="学员" planName="计划" planStatus="published" initialPublished />,
+    ))
+    const source = dayAt(host, 1, 0)
+    const header = source.querySelector<HTMLElement>('[data-day-move-handle]')!
+    expect(header.title).toContain('拖动搬到本周其他日期')
+    pointAt(dayAt(host, 1, 2))
+    act(() => header.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, button: 0, clientX: 0, clientY: 0 })))
+    act(() => window.dispatchEvent(new MouseEvent('mousemove', { buttons: 1, clientX: 12, clientY: 0 })))
+    expect(source.className).toContain('day-move-source')
+    act(() => window.dispatchEvent(new MouseEvent('mouseup', { clientX: 12, clientY: 0 })))
+    expect(dayAt(host, 1, 2).querySelector('[data-rowid="squat"]')).not.toBeNull()
+  })
+
   it('does not start from a non-draft header, while the resize edge still owns its drag', () => {
     act(() => root?.render(
       <PlanEditor initialWeeks={[week(1, { 0: [row('squat')] })]} weeksCount={1}
@@ -128,7 +144,7 @@ describe('whole-day column dragging', () => {
 
     const source = dayAt(host, 1, 0)
     const header = source.querySelector<HTMLElement>('[data-day-move-handle]')!
-    expect(header.title).toBe('仅草稿计划可移动训练日')
+    expect(header.title).toBe('已完成/已停用的计划不可移动训练日')
     act(() => header.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, button: 0 })))
     act(() => window.dispatchEvent(new MouseEvent('mousemove', { buttons: 1, clientX: 12, clientY: 0 })))
     expect(source.className).not.toContain('day-move-source')

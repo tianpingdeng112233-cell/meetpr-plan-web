@@ -1,6 +1,6 @@
 import type { DayCol, Week } from './types'
 
-export const DAY_MOVE_STATUS_LOCKED_HINT = '仅草稿计划可移动训练日'
+export const DAY_MOVE_STATUS_LOCKED_HINT = '已完成/已停用的计划不可移动训练日'
 export const DAY_MOVE_LOGGED_HINT = '该日含学员已打卡动作，不可移动或交换'
 
 /** Shared source/target guard for whole-day moves. */
