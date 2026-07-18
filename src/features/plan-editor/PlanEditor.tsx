@@ -20,14 +20,23 @@ import {
 import { createSaveController } from './autosave'
 import { parseClipboardRows, serializeDayForClipboard, serializeRowsForClipboard } from './clipboard'
 import { relabelWeeksForStartDate, resizeWeeksForCount } from './mapping'
+import { dayMoveDisabledReason, moveDayInWeek } from './dayMove'
 
 interface Sel { wnum: number; dow: number }
 interface PopState { visible: boolean; x: number; y: number; wnum: number; dow: number; rowId: string; query: string }
 interface RowTarget { wnum: number; dow: number; rowId: string }
 interface CreateExerciseState { open: boolean; initialName: string; bindTarget: RowTarget | null }
 type ClipboardKind = 'day' | 'row'
+interface DayMoveVisual {
+  fromWnum: number
+  fromDow: number
+  targetWnum: number | null
+  targetDow: number | null
+  targetValid: boolean
+}
 
 const COPY_LABEL = '⎘ 复制上周计划到本周'
+const DAY_MOVE_THRESHOLD = 5
 
 interface Switcher { id: string; label: string; tag?: string }
 
@@ -209,6 +218,8 @@ export function replaceUnlockedRows(day: DayCol, sourceRows: ExerciseRow[], pref
 export function PlanEditor(props: PlanEditorProps) {
   const { initialWeeks, weeksCount, studentName, planName, initialPublished = false, onPublish } = props
   const [weeks, setWeeks] = useState<Week[]>(initialWeeks)
+  const latestWeeks = useRef(weeks)
+  latestWeeks.current = weeks
   const suspendedRef = useRef(false)
   suspendedRef.current = !!props.suspended
   // Keep the displayed start date separate from the metadata change waiting to
@@ -242,6 +253,7 @@ export function PlanEditor(props: PlanEditorProps) {
   const [createExercise, setCreateExercise] = useState<CreateExerciseState>({ open: false, initialName: '', bindTarget: null })
   const [creatingExercise, setCreatingExercise] = useState(false)
   const [createExerciseError, setCreateExerciseError] = useState('')
+  const [dayMoveVisual, setDayMoveVisual] = useState<DayMoveVisual | null>(null)
 
   const rootRef = useRef<HTMLDivElement>(null)
   const scrollerRef = useRef<HTMLDivElement>(null)
@@ -261,6 +273,10 @@ export function PlanEditor(props: PlanEditorProps) {
   const rowClipboardRef = useRef<ExerciseRow | null>(null)
   const clipboardKindRef = useRef<ClipboardKind | null>(null)
   const clipboardTextRef = useRef('')
+  const suppressDayClickRef = useRef(false)
+  const dayMoveCleanupRef = useRef<((updateVisual?: boolean) => void) | null>(null)
+
+  useEffect(() => () => dayMoveCleanupRef.current?.(false), [])
 
   useEffect(() => {
     // Parent metadata is authoritative after loading/saving. Do not overwrite a
@@ -424,6 +440,122 @@ export function PlanEditor(props: PlanEditorProps) {
     setSel({ wnum, dow })
     setSelectedRow(null)
     setPop((p) => ({ ...p, visible: false }))
+  }
+  const handleDayClick = (wnum: number, dow: number) => {
+    if (suppressDayClickRef.current) return
+    handleSelect(wnum, dow)
+  }
+  const handleDayMoveStart = (wnum: number, day: DayCol, e: React.MouseEvent) => {
+    if (e.button !== 0 || dayMoveDisabledReason(day, statusCalendarLocked)) return
+    if ((e.target as HTMLElement).closest('button')) return
+
+    dayMoveCleanupRef.current?.()
+    const startX = e.clientX
+    const startY = e.clientY
+    const previousCursor = document.body.style.cursor
+    const previousUserSelect = document.body.style.userSelect
+    let active = false
+    let currentTarget: { wnum: number; dow: number; valid: boolean } | null = null
+
+    const resolveTarget = (clientX: number, clientY: number) => {
+      const targetEl = document.elementsFromPoint(clientX, clientY)
+        .map((element) => element.closest<HTMLElement>('.day[data-dow]'))
+        .find((element): element is HTMLElement => element != null)
+      const weekEl = targetEl?.closest<HTMLElement>('.weekband[data-wnum]')
+      const targetWnum = Number(weekEl?.dataset.wnum)
+      const targetDow = Number(targetEl?.dataset.dow)
+      if (!targetEl || !Number.isInteger(targetWnum) || !Number.isInteger(targetDow)) return null
+      const targetDay = latestWeeks.current.find((week) => week.num === targetWnum)
+        ?.days.find((candidate) => candidate.dow === targetDow)
+      const sourceRows = latestWeeks.current.find((week) => week.num === wnum)
+        ?.days.find((candidate) => candidate.dow === day.dow)?.rows.length ?? 0
+      const valid = targetWnum === wnum && targetDow !== day.dow
+        && !!targetDay && !dayMoveDisabledReason(targetDay, false)
+        && (sourceRows > 0 || targetDay.rows.length > 0)
+      return { wnum: targetWnum, dow: targetDow, valid }
+    }
+
+    const syncTarget = (clientX: number, clientY: number) => {
+      currentTarget = resolveTarget(clientX, clientY)
+      setDayMoveVisual({
+        fromWnum: wnum,
+        fromDow: day.dow,
+        targetWnum: currentTarget?.wnum ?? null,
+        targetDow: currentTarget?.dow ?? null,
+        targetValid: currentTarget?.valid ?? false,
+      })
+      document.body.style.cursor = currentTarget?.valid ? 'grabbing' : 'not-allowed'
+    }
+
+    const cleanup = (updateVisual = true) => {
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup', onUp)
+      window.removeEventListener('blur', onBlur)
+      if (active) {
+        document.body.style.cursor = previousCursor
+        document.body.style.userSelect = previousUserSelect
+      }
+      if (updateVisual) setDayMoveVisual(null)
+      if (dayMoveCleanupRef.current === cleanup) dayMoveCleanupRef.current = null
+    }
+
+    const onMove = (event: MouseEvent) => {
+      // A mouseup outside the browser window never reaches us; the next move
+      // with no pressed button means the drag is already over — abort cleanly.
+      if (event.buttons === 0) {
+        cleanup()
+        if (active) window.setTimeout(() => { suppressDayClickRef.current = false }, 0)
+        return
+      }
+      if (!active) {
+        if (Math.hypot(event.clientX - startX, event.clientY - startY) < DAY_MOVE_THRESHOLD) return
+        active = true
+        suppressDayClickRef.current = true
+        document.body.style.userSelect = 'none'
+      }
+      event.preventDefault()
+      syncTarget(event.clientX, event.clientY)
+    }
+
+    const onUp = (event: MouseEvent) => {
+      if (active) {
+        event.preventDefault()
+        syncTarget(event.clientX, event.clientY)
+        if (currentTarget?.valid) {
+          const sourceWeek = latestWeeks.current.find((week) => week.num === wnum)
+          const sourceDay = sourceWeek?.days.find((candidate) => candidate.dow === day.dow)
+          const targetDay = sourceWeek?.days.find((candidate) => candidate.dow === currentTarget!.dow)
+          if (sourceWeek && sourceDay && targetDay && !dayMoveDisabledReason(sourceDay, false)) {
+            const swapped = !targetDay.rest && targetDay.rows.length > 0
+            setWeeksWithHistory((previous) => {
+              const index = previous.findIndex((week) => week.num === wnum)
+              if (index < 0) return previous
+              const moved = moveDayInWeek(previous[index], day.dow, currentTarget!.dow)
+              if (moved === previous[index]) return previous
+              const next = [...previous]
+              next[index] = moved
+              return next
+            })
+            handleSelect(wnum, currentTarget.dow)
+            setStatusText(swapped
+              ? `已交换 ${dayDisplay(sourceDay)} 与 ${dayDisplay(targetDay)}`
+              : `已移动 ${dayDisplay(sourceDay)} 至 ${dayDisplay(targetDay)}`)
+          }
+        }
+      }
+      cleanup()
+      if (active) window.setTimeout(() => { suppressDayClickRef.current = false }, 0)
+    }
+
+    const onBlur = () => {
+      cleanup()
+      if (active) window.setTimeout(() => { suppressDayClickRef.current = false }, 0)
+    }
+
+    dayMoveCleanupRef.current = cleanup
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+    window.addEventListener('blur', onBlur)
   }
   const handleSelectRow = (wnum: number, dow: number, rowId: string) => {
     setSel({ wnum, dow })
@@ -822,8 +954,6 @@ export function PlanEditor(props: PlanEditorProps) {
   // A published plan is live to the student, so it NEVER autosaves — that would silently overwrite
   // what the student sees, the exact thing the publish guard prevents. Only drafts autosave; a
   // published plan persists only via the explicit「更新计划」+ confirm path (handleSave).
-  const latestWeeks = useRef(weeks)
-  latestWeeks.current = weeks
   const saveMode = useRef<'auto' | 'manual'>('auto')
   const publishing = useRef(false) // latched across a publish round-trip so nothing autosaves mid-publish
   const publishedRef = useRef(published) // fresh published for the unmount cleanup (which closes over [] deps)
@@ -1329,6 +1459,14 @@ export function PlanEditor(props: PlanEditorProps) {
   const selectedDayValue = sel ? weeks.find((week) => week.num === sel.wnum)?.days.find((day) => day.dow === sel.dow) ?? null : null
   const selectedDayKey = sel ? `${sel.wnum}:${sel.dow}` : ''
   const recallContext = () => setDismissedContextDays((prev) => { const next = new Set(prev); next.delete(selectedDayKey); return next })
+  const moveStateForDay = (wnum: number, dow: number): 'source' | 'target' | 'invalid' | undefined => {
+    if (!dayMoveVisual) return undefined
+    if (dayMoveVisual.fromWnum === wnum && dayMoveVisual.fromDow === dow) return 'source'
+    if (dayMoveVisual.targetWnum === wnum && dayMoveVisual.targetDow === dow) {
+      return dayMoveVisual.targetValid ? 'target' : 'invalid'
+    }
+    return undefined
+  }
 
   return (
     <div ref={rootRef} style={{
@@ -1428,9 +1566,12 @@ export function PlanEditor(props: PlanEditorProps) {
                         selected={sel?.wnum === wk.num && sel?.dow === day.dow}
                         selectedRowId={selectedRow?.wnum === wk.num && selectedRow.dow === day.dow ? selectedRow.rowId : null}
                         rowTier={rowTier}
-                        onSelect={() => handleSelect(wk.num, day.dow)}
+                        onSelect={() => handleDayClick(wk.num, day.dow)}
                         onRecallContext={recallContext}
                         onSelectRow={(rowId) => handleSelectRow(wk.num, day.dow, rowId)}
+                        dayMoveState={moveStateForDay(wk.num, day.dow)}
+                        dayMoveDisabledHint={dayMoveDisabledReason(day, statusCalendarLocked)}
+                        onDayMoveStart={(e) => handleDayMoveStart(wk.num, day, e)}
                         onResizeStart={(col, e) => handleResizeStart(day.dow, col, e)}
                         onNameFocus={(rowId, name, el) => handleNameFocus(wk.num, day.dow, rowId, name, el)}
                         onNameChange={(rowId, value, el) => handleNameChange(wk.num, day.dow, rowId, value, el)}

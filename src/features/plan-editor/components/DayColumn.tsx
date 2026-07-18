@@ -16,6 +16,9 @@ interface Props {
   onSelect: () => void
   onRecallContext?: () => void
   onSelectRow?: (rowId: string) => void
+  dayMoveState?: 'source' | 'target' | 'invalid'
+  dayMoveDisabledHint?: string | null
+  onDayMoveStart?: (e: React.MouseEvent) => void
   onResizeStart: (col: ColKey, e: React.MouseEvent) => void
   onNameFocus: (rowId: string, name: string, el: HTMLElement) => void
   onNameChange: (rowId: string, value: string, el: HTMLElement) => void
@@ -168,10 +171,13 @@ function EditableStrength({ row, width, edit }: { row: ExerciseRow; width: numbe
   )
 }
 
-export function DayColumn({ day, colW, selected, selectedRowId, onSelect, onRecallContext, onSelectRow, onResizeStart, onNameFocus, onNameChange, onNameBlur, onAddRow, rowTier, onEditRow, onReorderRow, onDeleteRow }: Props) {
+export function DayColumn({ day, colW, selected, selectedRowId, onSelect, onRecallContext, onSelectRow, dayMoveState, dayMoveDisabledHint, onDayMoveStart, onResizeStart, onNameFocus, onNameChange, onNameBlur, onAddRow, rowTier, onEditRow, onReorderRow, onDeleteRow }: Props) {
   const [dragRowId, setDragRowId] = useState<string | null>(null)
   const [dropTarget, setDropTarget] = useState<{ rowId: string; position: 'before' | 'after' } | null>(null)
   const dragDisabled = day.rows.some((row) => row.hasLogs)
+  const dayMoveClass = dayMoveState ? ` day-move-${dayMoveState}` : ''
+  const dayMoveTitle = dayMoveDisabledHint ?? '拖动搬到本周其他日期 / 点击选中日'
+  const dayMoveCursor = dayMoveDisabledHint ? 'not-allowed' : 'grab'
 
   const startRowDrag = (e: React.MouseEvent, rowId: string) => {
     if (e.button !== 0 || dragDisabled) return
@@ -241,12 +247,15 @@ export function DayColumn({ day, colW, selected, selectedRowId, onSelect, onReca
 
   if (day.rest) {
     return (
-      <div className={`day restday${selected ? ' sel' : ''}`} data-dow={day.dow} onClick={onSelect} style={{
+      <div className={`day restday${selected ? ' sel' : ''}${dayMoveClass}`} data-dow={day.dow} onClick={onSelect} style={{
         flex: '0 0 auto', width: 48, borderRight: '1px solid var(--border)',
         background: 'var(--surface-1)', display: 'flex', flexDirection: 'column', cursor: 'pointer',
       }}>
-        <div style={{ padding: '5px 2px', textAlign: 'center', fontSize: 10, color: 'var(--fg-tertiary)', borderBottom: '1px solid var(--border)', fontWeight: 600 }}>
-          {day.dowLabel}{selected && <button className="context-recall" onClick={(e) => { e.stopPropagation(); onRecallContext?.() }} title="显示撰写上下文">▤</button>}
+        <div className="dayhead" data-day-move-handle="" title={dayMoveTitle} onMouseDown={onDayMoveStart}
+          style={{ padding: '4px 2px', textAlign: 'center', color: 'var(--fg-tertiary)', borderBottom: '1px solid var(--border)', cursor: dayMoveCursor, userSelect: 'none' }}>
+          <span style={{ display: 'block', fontSize: 10, fontWeight: 600 }}>{day.dowLabel}</span>
+          <span style={{ display: 'block', marginTop: 1, fontFamily: 'var(--font-mono)', fontSize: 8 }}>{day.dateLabel}</span>
+          {selected && <button className="context-recall" onMouseDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); onRecallContext?.() }} title="显示撰写上下文">▤</button>}
         </div>
         <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '18px 0' }}>
           <span style={{ writingMode: 'vertical-rl', letterSpacing: 5, color: 'var(--fg-tertiary)', fontSize: 12 }}>休息</span>
@@ -260,12 +269,13 @@ export function DayColumn({ day, colW, selected, selectedRowId, onSelect, onReca
   const dividers = COLS.map((k) => { acc += colW[k]; return { col: k, left: acc } })
 
   return (
-    <div className={`day${selected ? ' sel' : ''}`} data-dow={day.dow} onClick={onSelect}
+    <div className={`day${selected ? ' sel' : ''}${dayMoveClass}`} data-dow={day.dow} onClick={onSelect}
       style={{ position: 'relative', flex: '0 0 auto', borderRight: '1px solid var(--border)', cursor: 'pointer' }}>
-      <div style={{ display: 'flex', alignItems: 'baseline', gap: 7, padding: '5px 8px', background: 'var(--surface-1)', borderBottom: '1px solid var(--border)', whiteSpace: 'nowrap', overflow: 'hidden' }}>
+      <div className="dayhead" data-day-move-handle="" title={dayMoveTitle} onMouseDown={onDayMoveStart}
+        style={{ display: 'flex', alignItems: 'baseline', gap: 7, padding: '5px 8px', background: 'var(--surface-1)', borderBottom: '1px solid var(--border)', whiteSpace: 'nowrap', overflow: 'hidden', cursor: dayMoveCursor, userSelect: 'none' }}>
         <span style={{ fontWeight: 700, fontSize: 12, color: '#fff' }}>{day.dowLabel}</span>
         <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--fg-tertiary)' }}>{day.dateLabel}</span>
-        {selected && <button className="context-recall" onClick={(e) => { e.stopPropagation(); onRecallContext?.() }} title="显示撰写上下文">▤</button>}
+        {selected && <button className="context-recall" onMouseDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); onRecallContext?.() }} title="显示撰写上下文">▤</button>}
       </div>
 
       <div className="daygrid" style={{ width: total, fontVariantNumeric: 'tabular-nums' }}>

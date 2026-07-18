@@ -196,6 +196,13 @@ body {
 .day { transition: background .12s cubic-bezier(0.32, 0.72, 0, 1); }
 .day:not(.restday):hover { background: rgba(255, 255, 255, 0.018); }
 .day.sel { background: rgba(229, 34, 30, 0.05) !important; box-shadow: inset 0 0 0 2px var(--brand-red); }
+.day.day-move-source { opacity: .48; }
+.day.day-move-target { background: rgba(229, 34, 30, .11) !important; box-shadow: inset 0 0 0 3px var(--brand-red) !important; }
+.day.day-move-invalid { background: rgba(229, 34, 30, .035) !important; box-shadow: inset 0 0 0 2px rgba(229, 34, 30, .42) !important; }
+.dayhead { transition: background .12s, color .12s; }
+.dayhead:hover { background: rgba(255, 255, 255, .035) !important; }
+.day.day-move-target>.dayhead { background: var(--brand-red-soft) !important; }
+.day.day-move-invalid>.dayhead { background: rgba(229, 34, 30, .06) !important; }
 .exrow.aux .gcell { color: var(--fg-tertiary) !important; }
 .exrow.aux .gcell[data-namecell] { color: var(--fg-secondary) !important; font-weight: 400 !important; }
 
