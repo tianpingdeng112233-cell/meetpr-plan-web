@@ -1,6 +1,4 @@
 import { useState } from 'react'
-import type { JtsPhaseSelection } from '../jtsVolumeBands'
-import { JtsPhaseSelector } from './JtsPhaseSelector'
 
 interface Props {
   weeksCount: number
@@ -13,11 +11,9 @@ interface Props {
   /** Week numbers present in the plan; enables the 跳到周 dropdown. */
   weekNums?: number[]
   onJumpWeek?: (num: number) => void
-  volumePhase: JtsPhaseSelection
-  onVolumePhaseChange: (phase: JtsPhaseSelection) => void
 }
 
-export function Toolbar({ weeksCount, calendarLocked = false, calendarLockedHint, onChangeWeeks, removalSummary, curWeekLabel, zoomLabel, weekNums, onJumpWeek, volumePhase, onVolumePhaseChange }: Props) {
+export function Toolbar({ weeksCount, calendarLocked = false, calendarLockedHint, onChangeWeeks, removalSummary, curWeekLabel, zoomLabel, weekNums, onJumpWeek }: Props) {
   const [weeksOpen, setWeeksOpen] = useState(false)
   const [jumpOpen, setJumpOpen] = useState(false)
   const [draftWeeks, setDraftWeeks] = useState(weeksCount)
@@ -86,7 +82,6 @@ export function Toolbar({ weeksCount, calendarLocked = false, calendarLockedHint
           </>
         )}
       </span>
-      <JtsPhaseSelector value={volumePhase} onChange={onVolumePhaseChange} />
       <span style={{ width: 1, height: 16, background: 'var(--border)' }} />
       <span style={{ color: 'var(--fg-tertiary)' }}>可见</span>
       <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--brand-red)', fontWeight: 600, letterSpacing: '.04em' }}>

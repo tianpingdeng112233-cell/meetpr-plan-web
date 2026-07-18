@@ -23,7 +23,6 @@ import { relabelWeeksForStartDate, resizeWeeksForCount } from './mapping'
 import { dayMoveDisabledReason, moveDayInWeek } from './dayMove'
 import { compareWeekMetric, summarizeWeek } from './weeklySummary'
 import { WeekCapacitySummary } from './components/WeekCapacitySummary'
-import { loadJtsPhase, saveJtsPhase, type JtsPhaseSelection } from './jtsVolumeBands'
 import {
   clearDraftMirror, clearDraftMirrorIfHash, createDraftMirrorWriter, draftContentHash,
   loadDraftMirror, saveDraftMirror, type DraftMirror, type DraftMirrorContent,
@@ -261,7 +260,6 @@ export function PlanEditor(props: PlanEditorProps) {
   const [selectedRow, setSelectedRow] = useState<RowTarget | null>(null)
   const [dismissedContextDays, setDismissedContextDays] = useState<Set<string>>(() => new Set())
   const [zoom, setZoom] = useState(100)
-  const [volumePhase, setVolumePhase] = useState<JtsPhaseSelection>(() => loadJtsPhase(props.currentPlanId))
   // Authoritative published state, initialized from the backend plan status. Monotonic:
   // set true on a real publish and never cleared — there is no backend unpublish, so 发布后不可撤回.
   // Published plans remain editable, but only through explicit confirmed updates;
@@ -309,15 +307,6 @@ export function PlanEditor(props: PlanEditorProps) {
   const dayMoveCleanupRef = useRef<((updateVisual?: boolean) => void) | null>(null)
 
   useEffect(() => () => dayMoveCleanupRef.current?.(false), [])
-
-  useEffect(() => {
-    setVolumePhase(loadJtsPhase(props.currentPlanId))
-  }, [props.currentPlanId])
-
-  const changeVolumePhase = useCallback((phase: JtsPhaseSelection) => {
-    setVolumePhase(phase)
-    saveJtsPhase(props.currentPlanId, phase)
-  }, [props.currentPlanId])
 
   useEffect(() => {
     // Parent metadata is authoritative after loading/saving. Do not overwrite a
@@ -1682,7 +1671,6 @@ export function PlanEditor(props: PlanEditorProps) {
           return summary
         }, { days: 0, exercises: 0 })}
         curWeekLabel={curWeekLabel} zoomLabel={`${Math.round(zoom)}%`}
-        volumePhase={volumePhase} onVolumePhaseChange={changeVolumePhase}
         weekNums={weeks.map((w) => w.num)} onJumpWeek={jumpToWeek} />
       <ContextBar
         visible={!!sel}
@@ -1717,13 +1705,12 @@ export function PlanEditor(props: PlanEditorProps) {
                     <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, letterSpacing: '.12em', color: 'var(--brand-red)', fontWeight: 700 }}>W{wk.num2}</span>
                     <span style={{ fontWeight: 700, fontSize: 13, color: '#fff' }}>第 {wk.num} 周</span>
                     <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--fg-tertiary)', letterSpacing: '.02em' }}>{wk.range}</span>
+                    <WeekCapacitySummary weekNumber={wk.num} {...weeklySummaries[weekIndex]} />
                     {wk.isCurrent && (
                       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '.08em', color: 'var(--brand-red)', textTransform: 'uppercase' }}>
                         <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--brand-red)', animation: 'pulse 1.6s infinite' }} />当前周
                       </span>
                     )}
-                    <span style={{ flex: 1 }} />
-                    <WeekCapacitySummary weekNumber={wk.num} phase={volumePhase === 'off' ? null : volumePhase} {...weeklySummaries[weekIndex]} />
                   </div>
                   <div className="weekrow" data-weekrow="" style={{ display: 'flex', alignItems: 'stretch' }}>
                     {wk.days.map((day) => (

@@ -4,7 +4,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ExerciseResponse, PlanSetResponse, PlanWithChildren } from '../../api/types'
 import { ExerciseIndex } from '../plan-editor/exerciseIndex'
 import type { Catalog } from '../plan-editor/mapping'
-import { jtsPhaseStorageKey } from '../plan-editor/jtsVolumeBands'
 
 const api = vi.hoisted(() => ({
   getStudentPlans: vi.fn(),
@@ -67,7 +66,7 @@ function sets(exerciseId: string, count: number): PlanSetResponse[] {
 
 function publishedPlan(): PlanWithChildren {
   return {
-    id: 'plan-jts',
+    id: 'plan-capacity',
     coach_id: 'coach',
     trainee_id: 'student',
     name: '力量周期',
@@ -82,7 +81,7 @@ function publishedPlan(): PlanWithChildren {
     updated_at: '2026-01-02T00:00:00Z',
     days: [{
       id: 'day',
-      plan_id: 'plan-jts',
+      plan_id: 'plan-capacity',
       day_of_week: 1,
       week_number: 1,
       sort_order: 0,
@@ -99,7 +98,7 @@ async function settle(): Promise<void> {
   for (let index = 0; index < 8; index++) await Promise.resolve()
 }
 
-describe('StudentDetail JTS plan capacity card', () => {
+describe('StudentDetail plan capacity card', () => {
   let host: HTMLDivElement
   let root: Root
 
@@ -109,18 +108,6 @@ describe('StudentDetail JTS plan capacity card', () => {
     host = document.createElement('div')
     document.body.appendChild(host)
     root = createRoot(host)
-    const stored = new Map<string, string>()
-    Object.defineProperty(window, 'localStorage', {
-      configurable: true,
-      value: {
-        getItem: (key: string) => stored.get(key) ?? null,
-        setItem: (key: string, value: string) => { stored.set(key, value) },
-        removeItem: (key: string) => { stored.delete(key) },
-        clear: () => stored.clear(),
-        key: (position: number) => [...stored.keys()][position] ?? null,
-        get length() { return stored.size },
-      } satisfies Storage,
-    })
     api.getStudentOnboarding.mockResolvedValue(null)
     api.getExerciseStatsOverview.mockResolvedValue({
       exercises: [],
@@ -160,34 +147,22 @@ describe('StudentDetail JTS plan capacity card', () => {
     expect(api.getPlan).not.toHaveBeenCalled()
   })
 
-  it('restores the shared phase and renders below/normal/above classifications', async () => {
+  it('renders plain S/B/D set tiles for the located current week', async () => {
     const plan = publishedPlan()
     api.getStudentPlans.mockResolvedValue([plan])
     api.getPlan.mockResolvedValue(plan)
-    window.localStorage.setItem(jtsPhaseStorageKey(plan.id), 'strength')
     await renderDetail()
 
-    expect(host.querySelector<HTMLSelectElement>('[aria-label="JTS 容量提示相位"]')?.value).toBe('strength')
+    const card = host.querySelector<HTMLElement>('[data-testid="student-plan-capacity"]')!
+    expect(card.querySelector('h3')?.textContent).toBe('本周计划容量')
+    expect(card.textContent).toContain('力量周期 · 第 1 周')
+    expect(card.querySelectorAll('select')).toHaveLength(0)
     const squat = host.querySelector<HTMLElement>('[data-lift-family="squat"]')!
     const bench = host.querySelector<HTMLElement>('[data-lift-family="bench"]')!
     const deadlift = host.querySelector<HTMLElement>('[data-lift-family="deadlift"]')!
-    expect(squat.dataset.jtsClassification).toBe('below_mev')
-    expect(squat.querySelector('.student-capacity-chip')?.classList.contains('week-capacity-lift-below')).toBe(true)
-    expect(bench.dataset.jtsClassification).toBe('above_mrv')
-    expect(bench.querySelector('.student-capacity-chip')?.classList.contains('week-capacity-lift-above')).toBe(true)
-    expect(deadlift.dataset.jtsClassification).toBe('mrv_band')
-    expect(deadlift.querySelector('.student-capacity-chip')?.classList.contains('week-capacity-lift-normal')).toBe(true)
-    expect(squat.textContent).toContain('低于 MEV 参考带')
-    expect(squat.textContent).toContain('MEV 3-8 / MRV 6-12')
-    expect(bench.textContent).toContain('高于 MRV 参考带上限')
-    expect(host.textContent).toContain('参考区间来自 JTS 手册,MRV 是中循环概念——蓄积末周有意超出属正常安排,仅供参考,不校验不拦截')
-    expect(deadlift.textContent).toContain('硬拉容量个体差异大,约半数人最佳频率为每周 1 次,起点常为深蹲的 1/2-2/3')
-
-    const select = host.querySelector<HTMLSelectElement>('[aria-label="JTS 容量提示相位"]')!
-    act(() => {
-      Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value')?.set?.call(select, 'peaking')
-      select.dispatchEvent(new Event('change', { bubbles: true }))
-    })
-    expect(window.localStorage.getItem(jtsPhaseStorageKey(plan.id))).toBe('peaking')
+    expect(squat.textContent).toBe('S2组')
+    expect(bench.textContent).toBe('B17组')
+    expect(deadlift.textContent).toBe('D4组')
+    expect(card.querySelectorAll('.student-capacity-lift')).toHaveLength(3)
   })
 })
