@@ -23,6 +23,7 @@ import { VideosPage } from './VideosPage'
 import { RequestsPage } from './RequestsPage'
 import { CatalogPage } from '../catalog/CatalogPage'
 import { navigateCoachView } from './coachViewNavigation'
+import { clearDraftMirror } from '../plan-editor/draftMirror'
 
 interface Props { onLogout: () => void | Promise<void> }
 type Loaded = { plan: PlanWithChildren; weeks: Week[]; weeksCount: number }
@@ -188,6 +189,9 @@ export function PlanWorkspace({ onLogout }: Props) {
     const generation = ++loadGeneration.current
     try {
       await deletePlan(deletedId)
+      // The backend deletion is authoritative even if a newer load superseded
+      // this UI request while it was in flight.
+      clearDraftMirror(deletedId)
       if (generation !== loadGeneration.current) return
       const remaining = sortedPlans(plans.filter((plan) => plan.id !== deletedId))
       setPlans(remaining)
