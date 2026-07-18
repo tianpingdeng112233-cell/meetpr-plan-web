@@ -24,6 +24,11 @@ import { dayMoveDisabledReason, moveDayInWeek } from './dayMove'
 import { compareWeekMetric, summarizeWeek } from './weeklySummary'
 import { WeekCapacitySummary } from './components/WeekCapacitySummary'
 import { loadJtsPhase, saveJtsPhase, type JtsPhaseSelection } from './jtsVolumeBands'
+import {
+  clearDraftMirror, clearDraftMirrorIfHash, createDraftMirrorWriter, draftContentHash,
+  loadDraftMirror, saveDraftMirror, type DraftMirror, type DraftMirrorContent,
+} from './draftMirror'
+import { DraftMirrorBanner } from './components/DraftMirrorBanner'
 
 interface Sel { wnum: number; dow: number }
 interface PopState { visible: boolean; x: number; y: number; wnum: number; dow: number; rowId: string; query: string }
@@ -95,6 +100,10 @@ export interface PlanEditorProps {
 
 function hasGridContent(weeks: Week[]): boolean {
   return weeks.some((week) => week.days.some((day) => day.rows.length > 0))
+}
+
+function mirrorContent(weeks: Week[], planStartDate: string | null, weeksCount = weeks.length): DraftMirrorContent {
+  return { weeks, planStartDate, weeksCount }
 }
 
 function hasParsedWeekContent(week: ParsedWeek): boolean {
@@ -223,6 +232,19 @@ export function PlanEditor(props: PlanEditorProps) {
   const [weeks, setWeeks] = useState<Week[]>(initialWeeks)
   const latestWeeks = useRef(weeks)
   latestWeeks.current = weeks
+  const mirrorPlanId = props.currentPlanId
+  const initialServerMirrorContent = useRef(mirrorContent(
+    initialWeeks,
+    props.planStartDate ?? null,
+    initialWeeks.length || weeksCount,
+  ))
+  const serverMirrorHash = useRef(draftContentHash(initialServerMirrorContent.current))
+  const mountedMirror = useRef<DraftMirror | null>(loadDraftMirror(mirrorPlanId))
+  const [recoveryMirror, setRecoveryMirror] = useState<DraftMirror | null>(() => {
+    const mirror = mountedMirror.current
+    return mirror && mirror.contentHash !== serverMirrorHash.current ? mirror : null
+  })
+  const mirrorWriter = useRef(createDraftMirrorWriter({ planId: mirrorPlanId }))
   const suspendedRef = useRef(false)
   suspendedRef.current = !!props.suspended
   // Keep the displayed start date separate from the metadata change waiting to
@@ -312,6 +334,82 @@ export function PlanEditor(props: PlanEditorProps) {
       return next
     })
   }, [])
+
+  const markMirrorCovered = useCallback((content: DraftMirrorContent) => {
+    const hash = draftContentHash(content)
+    serverMirrorHash.current = hash
+    mirrorWriter.current.dropPendingIfHash(hash)
+    clearDraftMirrorIfHash(mirrorPlanId, hash)
+  }, [mirrorPlanId])
+
+  useEffect(() => {
+    // The writer keeps running while the recovery banner is open: the banner's
+    // candidate lives in React state, so edits typed before the coach decides
+    // still reach storage instead of going unprotected.
+    if (!mirrorPlanId) return
+    const content = mirrorContent(
+      weeks,
+      currentPlanStart.current,
+      weeks.length || props.weeksCount,
+    )
+    const hash = draftContentHash(content)
+    if (hash === serverMirrorHash.current) {
+      // Content is back at the server baseline (e.g. undo): there is no draft
+      // left to protect, so drop ANY pending write and wipe the stored mirror
+      // outright — a hash-conditional clean would leave the undone draft to
+      // resurrect on reload. An open banner still owns its stored candidate.
+      mirrorWriter.current.cancel()
+      if (!recoveryMirror) clearDraftMirror(mirrorPlanId)
+      return
+    }
+    mirrorWriter.current.schedule(content)
+  }, [mirrorPlanId, props.weeksCount, recoveryMirror, weeks])
+
+  useEffect(() => {
+    const writer = mirrorWriter.current
+    return () => writer.cancel()
+  }, [])
+
+  const restoreDraftMirror = useCallback(() => {
+    if (!recoveryMirror) return
+    const { content } = recoveryMirror
+    // Restoring means the coach chose this candidate as THE current draft, so
+    // it synchronously takes over the single storage slot — replacing even a
+    // newer mirror written while the banner was open. An immediate save then
+    // cleans exactly this content; a crash right after restore recovers it.
+    if (published) {
+      // A published update never writes calendar metadata (importStart is
+      // always null), so restoring it would strand local-only date/weeks that
+      // could later be mistaken for covered. Merge row content week-by-week
+      // instead: the week list keeps the server's exact shape, so a shorter
+      // draft-era mirror can never turn into server-week deletions on save.
+      const merged = latestWeeks.current.map((wk) => (
+        content.weeks.find((mirrored) => mirrored.num === wk.num) ?? wk
+      ))
+      setWeeksWithHistory(merged)
+      saveDraftMirror(mirrorPlanId, mirrorContent(
+        merged, currentPlanStart.current, merged.length || props.weeksCount,
+      ))
+      setRecoveryMirror(null)
+      return
+    }
+    // History first: setWeeksWithHistory snapshots currentPlanStart at call
+    // time, so undo must capture the pre-restore date, not the mirror's.
+    setWeeksWithHistory(content.weeks)
+    const metadataChanged = content.planStartDate !== persistedPlanStart.current
+      || content.weeksCount !== initialServerMirrorContent.current.weeksCount
+    currentPlanStart.current = content.planStartDate
+    pendingPlanStart.current = metadataChanged ? content.planStartDate : null
+    saveDraftMirror(mirrorPlanId, content)
+    setRecoveryMirror(null)
+  }, [mirrorPlanId, props.weeksCount, published, recoveryMirror, setWeeksWithHistory])
+
+  const discardDraftMirror = useCallback(() => {
+    // Only the discarded candidate is removed; a newer mirror written while
+    // the banner was open (edits keep mirroring) must survive the discard.
+    clearDraftMirrorIfHash(mirrorPlanId, recoveryMirror?.contentHash ?? '')
+    setRecoveryMirror(null)
+  }, [mirrorPlanId, recoveryMirror])
 
   useEffect(() => { zoomRef.current = zoom }, [zoom])
 
@@ -1008,10 +1106,12 @@ export function PlanEditor(props: PlanEditorProps) {
     try {
       await props.onChangeStartDate(nextStart)
       skipNextAutosave.current = true
-      setWeeks((prev) => relabelWeeksForStartDate(prev, nextStart))
+      const nextWeeks = relabelWeeksForStartDate(latestWeeks.current, nextStart)
+      setWeeks(nextWeeks)
       currentPlanStart.current = nextStart
       persistedPlanStart.current = nextStart
       pendingPlanStart.current = null
+      markMirrorCovered(mirrorContent(nextWeeks, nextStart, nextWeeks.length || props.weeksCount))
       setStatusText(`草稿 · 起始日期已更新为 ${nextStart}`)
     } catch (error) {
       setStatusText('起始日期更新失败 · 请重试')
@@ -1019,7 +1119,7 @@ export function PlanEditor(props: PlanEditorProps) {
     } finally {
       setSaving(false)
     }
-  }, [calendarLocked, props.onChangeStartDate, saving])
+  }, [calendarLocked, markMirrorCovered, props.onChangeStartDate, props.weeksCount, saving])
 
   const handleChangePlanWeeks = useCallback(async (nextCount: number) => {
     if (!props.onChangePlanWeeks || calendarLocked || saving || publishing.current) throw new Error('CALENDAR_LOCKED')
@@ -1031,9 +1131,11 @@ export function PlanEditor(props: PlanEditorProps) {
     try {
       await props.onChangePlanWeeks(nextCount)
       skipNextAutosave.current = true
-      setWeeks((prev) => resizeWeeksForCount(prev, nextCount, startDate))
+      const nextWeeks = resizeWeeksForCount(latestWeeks.current, nextCount, startDate)
+      setWeeks(nextWeeks)
       setSel((current) => current && current.wnum > nextCount ? null : current)
       setSelectedRow((current) => current && current.wnum > nextCount ? null : current)
+      markMirrorCovered(mirrorContent(nextWeeks, startDate, nextCount))
       setStatusText(`草稿 · 已调整为 ${nextCount} 周`)
     } catch (error) {
       setStatusText('计划周期更新失败 · 请重试')
@@ -1041,7 +1143,7 @@ export function PlanEditor(props: PlanEditorProps) {
     } finally {
       setSaving(false)
     }
-  }, [calendarLocked, props.onChangePlanWeeks, saving])
+  }, [calendarLocked, markMirrorCovered, props.onChangePlanWeeks, saving])
 
   // Rows the coach still has to deal with, in grid order:
   //  - unbound: has a name or filled sets but no catalog binding — save reconciliation drops
@@ -1099,6 +1201,7 @@ export function PlanEditor(props: PlanEditorProps) {
         if (total > 3) setStatusText(`${verb} ${done}/${total} 天`)
       }
       const savedWeeks = latestWeeks.current
+      const savedPlanStart = importStart ?? currentPlanStart.current
       const res = await props.onSave(savedWeeks, importStart, markPastAsAssumedComplete, onProgress)
       // Clear only the token this save consumed: an import landing mid-flight writes a fresh
       // token, and the drain loop's next pass must still deliver it via reconcileImportedPlan —
@@ -1110,6 +1213,13 @@ export function PlanEditor(props: PlanEditorProps) {
       }
       // Same generation rule for the unsaved flag: edits typed while this save was in flight
       // are NOT in what we just persisted, so they must keep the leave guards armed.
+      if (res.skippedRows === 0) {
+        markMirrorCovered(mirrorContent(
+          res.weeks,
+          res.planStartDate ?? savedPlanStart,
+          res.planWeeks ?? savedWeeks.length,
+        ))
+      }
       applySuccessfulSave(res, savedWeeks)
       const base = importStart && markPastAsAssumedComplete
         ? '历史已推定完成并锁定'
@@ -1180,6 +1290,7 @@ export function PlanEditor(props: PlanEditorProps) {
   useEffect(() => {
     const onBeforeUnload = (e: BeforeUnloadEvent) => {
       if (!canPersist.current) return
+      mirrorWriter.current.flush()
       const atRisk = savingRef.current || unsavedRef.current || countUnbound(latestWeeks.current) > 0
       if (!atRisk) return
       e.preventDefault()
@@ -1199,6 +1310,7 @@ export function PlanEditor(props: PlanEditorProps) {
     return true
   }
   const confirmLeave = async () => {
+    mirrorWriter.current.flush()
     if (!confirmLeaveUnbound()) return false
     if (!canPersist.current || publishedRef.current) return true
     if (!unsavedRef.current && !savingRef.current) return true
@@ -1281,6 +1393,11 @@ export function PlanEditor(props: PlanEditorProps) {
         const res = await props.onSave(savedWeeks, null, false,
           (done, total) => { if (total > 3) setStatusText(`更新中… ${done}/${total} 天`) })
         // Edits typed during the round-trip aren't in what was pushed — keep the guards armed.
+        // A published update never writes calendar metadata, so the covered
+        // hash must use the server-persisted date/weeks, not local values.
+        if (res.skippedRows === 0) {
+          markMirrorCovered(mirrorContent(res.weeks, persistedPlanStart.current, props.weeksCount))
+        }
         applySuccessfulSave(res, savedWeeks)
         setStatusText(res.skippedRows > 0 ? `已更新 ${studentName} 的计划 · ${res.skippedRows} 行未绑定被跳过` : `已更新 ${studentName} 的计划`)
       }
@@ -1538,6 +1655,13 @@ export function PlanEditor(props: PlanEditorProps) {
         onNewExercise={props.onCreateExercise ? () => openCreateExercise() : undefined}
         issueCount={issues.length} issueHint={issueHint} onJumpIssue={jumpToNextIssue}
       />
+      {recoveryMirror && (
+        <DraftMirrorBanner
+          savedAt={recoveryMirror.savedAt}
+          onRestore={restoreDraftMirror}
+          onDiscard={discardDraftMirror}
+        />
+      )}
       <Toolbar weeksCount={weeks.length || weeksCount} calendarLocked={calendarLocked} calendarLockedHint={calendarLockedHint}
         onChangeWeeks={props.onChangePlanWeeks ? handleChangePlanWeeks : undefined}
         removalSummary={(nextCount) => weeks.filter((week) => week.num > nextCount).reduce((summary, week) => {

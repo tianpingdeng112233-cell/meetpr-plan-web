@@ -1,5 +1,6 @@
 import { request, setTokens, clearTokens, getAccessToken } from './client'
 import type { LoginResponse, AuthUser } from './types'
+import { clearAllDraftMirrors } from '../features/plan-editor/draftMirror'
 
 const USER_KEY = 'mpw.user'
 
@@ -28,8 +29,11 @@ export async function login(
 }
 
 export function logout(): void {
-  clearTokens()
-  localStorage.removeItem(USER_KEY)
+  // Each cleanup step is independent: a throwing localStorage (privacy mode)
+  // must not stop the token clear, the user clear, or the mirror sweep.
+  try { clearTokens() } catch { /* storage-backed token clear may throw */ }
+  try { localStorage.removeItem(USER_KEY) } catch { /* ditto */ }
+  try { clearAllDraftMirrors() } catch { /* ditto */ }
 }
 
 export function currentUser(): AuthUser | null {
