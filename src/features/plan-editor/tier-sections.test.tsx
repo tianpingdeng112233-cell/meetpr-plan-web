@@ -90,7 +90,7 @@ describe('day tier sections', () => {
     ))
 
     const summaries = [...host.querySelectorAll<HTMLElement>('.tierhead-summary')]
-    expect(summaries.map((el) => el.textContent)).toEqual(['2 组 · 总重 1t', '1 组'])
+    expect(summaries.map((el) => el.textContent)).toEqual(['2 组 · 总重 1,000kg', '1 组'])
     expect(summaries[0].querySelector('.tierhead-tonnage')).not.toBeNull()
     expect(summaries[1].querySelector('.tierhead-tonnage')).toBeNull()
   })

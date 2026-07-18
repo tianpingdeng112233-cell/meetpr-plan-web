@@ -65,8 +65,8 @@ describe('week-band capacity UI', () => {
 
     const summaries = host.querySelectorAll<HTMLElement>('[data-week-summary]')
     expect(summaries).toHaveLength(2)
-    expect(summaries[0].querySelector('.week-capacity-plain')?.textContent).toBe('主项 2 组 · 辅项 0 组 · 总重 1t')
-    expect(summaries[1].querySelector('.week-capacity-plain')?.textContent).toBe('主项 3 组 · 辅项 0 组 · 总重 1.5t')
+    expect(summaries[0].querySelector('.week-capacity-plain')?.textContent).toBe('主项 2 组 · 辅项 0 组 · 总重 1,000kg')
+    expect(summaries[1].querySelector('.week-capacity-plain')?.textContent).toBe('主项 3 组 · 辅项 0 组 · 总重 1,500kg')
     expect(summaries[1].querySelector('.week-capacity-plain')?.textContent).not.toContain('↑')
     expect(summaries[1].querySelector('[role="tooltip"]')?.textContent).toContain('总组数：3组 （较上周 ↑50.0%）')
     expect(summaries[1].querySelector('[role="tooltip"]')?.textContent).toContain('吨位：1,500 kg （较上周 ↑50.0%）')
