@@ -22,6 +22,7 @@ import { StudentBoard } from './StatsViews'
 import { VideosPage } from './VideosPage'
 import { RequestsPage } from './RequestsPage'
 import { CatalogPage } from '../catalog/CatalogPage'
+import { navigateCoachView } from './coachViewNavigation'
 
 interface Props { onLogout: () => void | Promise<void> }
 type Loaded = { plan: PlanWithChildren; weeks: Week[]; weeksCount: number }
@@ -55,6 +56,20 @@ export function PlanWorkspace({ onLogout }: Props) {
   // quickly. A single generation covers both levels so an old response can
   // never pair one student's label with another student's editable plan.
   const loadGeneration = useRef(0)
+  const leaveGuardRef = useRef<(() => Promise<boolean>) | null>(null)
+  const viewTransitioning = useRef(false)
+  // Mirrors viewTransitioning for rendering: while a guarded view switch is in
+  // flight the editor stays mounted but must not accept further edits.
+  const [viewSwitching, setViewSwitching] = useState(false)
+  // `inert` (set via effect — not in React 18's JSX types) freezes the whole
+  // editor subtree: no Tab focus, no clicks on menus/dialogs above the shield.
+  const editorShellRef = useRef<HTMLDivElement | null>(null)
+  useEffect(() => {
+    const el = editorShellRef.current
+    if (!el) return
+    if (viewSwitching) el.setAttribute('inert', '')
+    else el.removeAttribute('inert')
+  }, [viewSwitching])
 
   const errText = (e: unknown, fb: string) => (e instanceof ApiException ? `${fb}（${e.code}）` : fb)
   const sortedPlans = (list: PlanResponse[]) => [...list].sort((a, b) => (
@@ -239,6 +254,42 @@ export function PlanWorkspace({ onLogout }: Props) {
     return { id: exercise.id, name: exercise.name }
   }
 
+  const setLeaveGuard = useCallback((guard: (() => Promise<boolean>) | null) => {
+    leaveGuardRef.current = guard
+  }, [])
+
+  const changeView = async (nextView: CoachView) => {
+    if (viewTransitioning.current || nextView === view) return
+    viewTransitioning.current = true
+    // The guard's flush can take a while on big plans; blur + overlay (below)
+    // close the window where the still-mounted editor could accept edits that
+    // would only get the fire-and-forget unmount flush.
+    if (document.activeElement instanceof HTMLElement) document.activeElement.blur()
+    setViewSwitching(true)
+    try {
+      await navigateCoachView({
+        currentView: view,
+        nextView,
+        guardLeave: leaveGuardRef.current ?? undefined,
+        refreshEditor: async () => {
+          if (!catalog || !planId) return true
+          // false = superseded by a newer load (e.g. concurrent student switch),
+          // which owns `loaded` and has already reset it — committing the view
+          // then shows that fresh state, never a stale snapshot. Only a thrown
+          // error should keep the user where they are.
+          await loadPlan(planId, catalog)
+          return true
+        },
+        commitView: setView,
+      })
+    } catch (e) {
+      window.alert(errText(e, '重新加载计划失败，请检查网络后重试'))
+    } finally {
+      viewTransitioning.current = false
+      setViewSwitching(false)
+    }
+  }
+
   if (error) {
     return (
       <Centered>
@@ -256,7 +307,7 @@ export function PlanWorkspace({ onLogout }: Props) {
     // switchers are static, save/import buttons hide, publish only toggles locally.
     const sampleWeeks = buildSampleWeeks()
     return (
-      <div className="coach-shell"><CoachRail view={view} pending={bindRequests.length} onChange={setView} /><div className="coach-main">
+      <div className="coach-shell"><CoachRail view={view} pending={bindRequests.length} onChange={(next) => { void changeView(next) }} /><div className="coach-main">
         {view === 'editor' && <div style={{ position: 'relative', height: '100vh' }}><PlanEditor
           key="sample-preview"
           initialWeeks={sampleWeeks}
@@ -273,7 +324,7 @@ export function PlanWorkspace({ onLogout }: Props) {
           catalog={catalog}
           index={index}
           onCreateExercise={handleCreateExercise}
-          onUseExercise={() => setView('editor')}
+          onUseExercise={() => { void changeView('editor') }}
         />}
         {view === 'requests' && <RequestsPage requests={bindRequests} onRequestsChanged={setBindRequests} onAccepted={refreshStudentsAfterAccept} />}
         {(view === 'board' || view === 'videos') && <div className="empty-page">接受学员申请后即可查看{view === 'board' ? '学员看板' : '训练视频'}</div>}
@@ -294,8 +345,8 @@ export function PlanWorkspace({ onLogout }: Props) {
   }))
 
   return (
-    <div className="coach-shell"><CoachRail view={view} pending={bindRequests.length} onChange={setView} /><div className="coach-main">
-    {view === 'editor' && <div style={{ position: 'relative', height: '100vh' }}>
+    <div className="coach-shell"><CoachRail view={view} pending={bindRequests.length} onChange={(next) => { void changeView(next) }} /><div className="coach-main">
+    {view === 'editor' && <div ref={editorShellRef} style={{ position: 'relative', height: '100vh' }}>
       <PlanEditor
         key={planId || `empty-${studentId}`}
         initialWeeks={loaded?.weeks ?? []}
@@ -405,7 +456,16 @@ export function PlanWorkspace({ onLogout }: Props) {
           ? () => { setBackfillError(''); setBackfillOpen(true) }
           : undefined}
         onLogout={onLogout}
+        onLeaveGuardChange={setLeaveGuard}
+        suspended={viewSwitching}
       />
+      {viewSwitching && (
+        <div
+          data-testid="view-switch-shield"
+          style={{ position: 'absolute', inset: 0, zIndex: 200, cursor: 'wait' }}
+          onMouseDown={(e) => e.preventDefault()}
+        />
+      )}
       {!loaded && (
         <div style={{ position: 'absolute', inset: '120px 0 0', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-start', paddingTop: 80, pointerEvents: 'none' }}>
           <div style={{ color: 'var(--fg-secondary)', marginBottom: 14 }}>{studentName} 暂无计划</div>
@@ -447,7 +507,7 @@ export function PlanWorkspace({ onLogout }: Props) {
       catalog={catalog}
       index={index}
       onCreateExercise={handleCreateExercise}
-      onUseExercise={() => setView('editor')}
+      onUseExercise={() => { void changeView('editor') }}
     />}
     {view === 'board' && <StudentBoard students={students} />}
     {view === 'videos' && <VideosPage students={students} studentId={studentId} onStudent={(id) => { void switchStudent(id) }} />}
