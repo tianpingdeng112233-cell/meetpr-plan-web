@@ -224,6 +224,9 @@ body {
 .day.day-move-target { background: rgba(229, 34, 30, .11) !important; box-shadow: inset 0 0 0 3px var(--brand-red) !important; }
 .day.day-move-invalid { background: rgba(229, 34, 30, .035) !important; box-shadow: inset 0 0 0 2px rgba(229, 34, 30, .42) !important; }
 .dayhead { transition: background .12s, color .12s; }
+/* Day-move affordance: same grip language as row dragging, brighter on hover. */
+.day-move-grip { color: var(--fg-tertiary); font-size: 9px; letter-spacing: 1px; transition: color .12s; }
+.dayhead:hover .day-move-grip { color: var(--fg-primary); }
 .dayhead:hover { background: rgba(255, 255, 255, .035) !important; }
 .day.day-move-target>.dayhead { background: var(--brand-red-soft) !important; }
 .day.day-move-invalid>.dayhead { background: rgba(229, 34, 30, .06) !important; }
