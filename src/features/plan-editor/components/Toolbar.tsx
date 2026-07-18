@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { JTS_PHASE_LABELS, type JtsPhaseSelection } from '../jtsVolumeBands'
 
 interface Props {
   weeksCount: number
@@ -11,9 +12,11 @@ interface Props {
   /** Week numbers present in the plan; enables the 跳到周 dropdown. */
   weekNums?: number[]
   onJumpWeek?: (num: number) => void
+  volumePhase: JtsPhaseSelection
+  onVolumePhaseChange: (phase: JtsPhaseSelection) => void
 }
 
-export function Toolbar({ weeksCount, calendarLocked = false, calendarLockedHint, onChangeWeeks, removalSummary, curWeekLabel, zoomLabel, weekNums, onJumpWeek }: Props) {
+export function Toolbar({ weeksCount, calendarLocked = false, calendarLockedHint, onChangeWeeks, removalSummary, curWeekLabel, zoomLabel, weekNums, onJumpWeek, volumePhase, onVolumePhaseChange }: Props) {
   const [weeksOpen, setWeeksOpen] = useState(false)
   const [jumpOpen, setJumpOpen] = useState(false)
   const [draftWeeks, setDraftWeeks] = useState(weeksCount)
@@ -23,8 +26,8 @@ export function Toolbar({ weeksCount, calendarLocked = false, calendarLockedHint
   const lockedHint = calendarLocked ? calendarLockedHint ?? '已发布计划的周期与日期不可修改' : undefined
   const removal = draftWeeks < weeksCount ? removalSummary?.(draftWeeks) : undefined
   return (
-    <div style={{
-      display: 'flex', alignItems: 'center', gap: 14, height: 38, padding: '0 16px',
+    <div className="plan-toolbar" style={{
+      display: 'flex', flexWrap: 'nowrap', whiteSpace: 'nowrap', alignItems: 'center', gap: 14, height: 38, padding: '0 16px',
       background: 'var(--surface-1)', borderBottom: '1px solid var(--border)',
       flex: '0 0 auto', zIndex: 19, fontSize: 12,
     }}>
@@ -82,6 +85,24 @@ export function Toolbar({ weeksCount, calendarLocked = false, calendarLockedHint
           </>
         )}
       </span>
+      <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: 'var(--fg-tertiary)', whiteSpace: 'nowrap' }}>
+        <span>相位</span>
+        <select
+          aria-label="JTS 容量提示相位"
+          value={volumePhase}
+          onChange={(event) => onVolumePhaseChange(event.target.value as JtsPhaseSelection)}
+          title="仅控制 JTS MEV-MRV 周容量软提示，不参与保存或发布校验"
+          style={{
+            height: 26, padding: '0 22px 0 8px', border: '1px solid var(--border)', borderRadius: 'var(--r-md)',
+            color: volumePhase === 'off' ? 'var(--fg-tertiary)' : 'var(--fg-secondary)', background: 'var(--surface-1)',
+            font: '600 11px var(--font-sans)', cursor: 'pointer', outline: 'none',
+          }}
+        >
+          {(Object.keys(JTS_PHASE_LABELS) as JtsPhaseSelection[]).map((phase) => (
+            <option key={phase} value={phase}>{JTS_PHASE_LABELS[phase]}</option>
+          ))}
+        </select>
+      </label>
       <span style={{ width: 1, height: 16, background: 'var(--border)' }} />
       <span style={{ color: 'var(--fg-tertiary)' }}>可见</span>
       <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--brand-red)', fontWeight: 600, letterSpacing: '.04em' }}>
@@ -92,7 +113,7 @@ export function Toolbar({ weeksCount, calendarLocked = false, calendarLockedHint
         <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '.08em', textTransform: 'uppercase' }}>缩放</span>
         <b style={{ color: 'var(--fg-secondary)', fontFamily: 'var(--font-mono)', minWidth: 34, display: 'inline-block' }}>{zoomLabel}</b>
       </span>
-      <span style={{ color: 'var(--fg-tertiary)', fontSize: 11 }}>Ctrl+滚轮缩放 · 中键拖动平移</span>
+      <span className="t-hint" style={{ color: 'var(--fg-tertiary)', fontSize: 11 }}>Ctrl+滚轮缩放 · 中键拖动平移</span>
       {canJump && (
         <>
           <span style={{ width: 1, height: 16, background: 'var(--border)' }} />

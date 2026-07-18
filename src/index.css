@@ -129,10 +129,16 @@ body {
 .week-capacity { position: relative; display: inline-flex; align-items: center; gap: 7px; color: var(--fg-tertiary); outline: none; white-space: nowrap; font: 10px var(--font-mono); letter-spacing: .01em; cursor: help; }
 .week-capacity>span:not(.week-capacity-tooltip)+span:not(.week-capacity-tooltip) { padding-left: 7px; border-left: 1px solid var(--border-strong); }
 .week-capacity-main { color: var(--fg-secondary); }.week-capacity em { margin-left: 3px; color: var(--fg-secondary); font-style: normal; }
+.week-capacity-lift-below { color: var(--fg-disabled); }.week-capacity-lift-normal { color: var(--fg-secondary); }.week-capacity-lift-above { color: var(--amber); }
 .week-capacity:focus-visible { border-radius: 4px; box-shadow: 0 0 0 1px var(--border-strong); }
 .week-capacity-tooltip { position: absolute; z-index: 90; top: calc(100% + 9px); right: 0; width: 390px; padding: 11px 12px; box-sizing: border-box; display: grid; gap: 5px; color: var(--fg-secondary); background: var(--surface-3); border: 1px solid var(--border-strong); border-radius: 8px; box-shadow: 0 10px 28px rgba(0,0,0,.65); font: 11px/1.45 var(--font-sans); letter-spacing: 0; white-space: normal; opacity: 0; visibility: hidden; transform: translateY(-3px); transition: opacity var(--dur-fast), transform var(--dur-fast), visibility var(--dur-fast); pointer-events: none; }
 .week-capacity-tooltip strong { color: var(--fg-primary); font-size: 12px; }.week-capacity-tooltip>span { display: block; }.week-capacity-tooltip small { padding-top: 6px; border-top: 1px solid var(--border); color: var(--fg-tertiary); line-height: 1.55; }
+.week-capacity-jts-reference { margin-top: 2px; padding-top: 7px; border-top: 1px solid var(--border); display: grid !important; gap: 4px; }.week-capacity-jts-reference>b { color: var(--fg-primary); font-size: 11px; }.week-capacity-jts-reference>span { display: block; }.week-capacity-jts-reference>small { display: block; margin-top: 2px; padding-top: 6px; border-top: 1px solid var(--border); }.week-capacity-deadlift-note { display: block; padding: 2px 0 0 11px !important; border: 0 !important; color: var(--fg-tertiary); }
 .week-capacity:hover .week-capacity-tooltip,.week-capacity:focus .week-capacity-tooltip { opacity: 1; visibility: visible; transform: translateY(0); }
+
+/* Toolbar is a single 38px row: shed low-priority text before functional controls get clipped. */
+@media (max-width: 1240px) { .plan-toolbar .t-hint { display: none; } }
+@media (max-width: 1020px) { .plan-toolbar .t-mono-label { display: none; } }
 
 /* Exercise catalog: the data-page scan surface plus a writing-panel drawer. */
 .catalog-page { position: relative; display: flex; flex-direction: column; overflow: hidden; min-width: 780px; }
