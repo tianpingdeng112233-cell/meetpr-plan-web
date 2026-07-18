@@ -50,6 +50,32 @@ function serverPlan(days: PlanDayResponse[], status: 'draft' | 'published' = 'pu
   }
 }
 
+function serverDaysFromBatch(days: Parameters<typeof plans.batchDays>[1]['upsert_days']): PlanDayResponse[] {
+  return days.map((day) => ({
+      id: `batch-day-${day.week_number}-${day.day_of_week}`,
+      plan_id: 'p', day_of_week: day.day_of_week, week_number: day.week_number, sort_order: day.sort_order,
+      exercises: day.exercises.map((exercise, exerciseIndex) => ({
+        ...exercise,
+        notes: exercise.notes ?? null,
+        id: `batch-ex-${day.week_number}-${day.day_of_week}-${exerciseIndex}`,
+        plan_day_id: `batch-day-${day.week_number}-${day.day_of_week}`,
+        has_logs: false,
+        sets: exercise.sets.map((set, setIndex) => ({
+          ...set,
+          id: `batch-set-${day.week_number}-${day.day_of_week}-${exerciseIndex}-${setIndex}`,
+          plan_exercise_id: `batch-ex-${day.week_number}-${day.day_of_week}-${exerciseIndex}`,
+          created_at: '',
+        })),
+      })),
+    }))
+}
+
+function mockBatchEcho(): void {
+  vi.mocked(plans.batchDays).mockImplementation(async (_planId, body) => (
+    serverPlan(serverDaysFromBatch(body.upsert_days), 'draft')
+  ))
+}
+
 function boundRow(id: string, serverId: string | null, exerciseId: string, value = '100', partial: Partial<ExerciseRow> = {}): ExerciseRow {
   return row({
     id, serverRowId: serverId, serverSortOrder: partial.serverSortOrder ?? null,
@@ -62,10 +88,7 @@ describe('reconcilePlan — skippedRows counts only contentful unbound rows', ()
   beforeEach(() => {
     vi.clearAllMocks()
     vi.mocked(plans.getPlan).mockResolvedValue({ id: 'p', plan_weeks: 1, start_date: '2026-01-01', days: [] } as never)
-    vi.mocked(plans.createDay).mockResolvedValue({ id: 'day1' } as never)
-    vi.mocked(plans.createExercise).mockResolvedValue({ id: 'pe1' } as never)
-    vi.mocked(plans.createSet).mockResolvedValue(undefined as never)
-    vi.mocked(plans.deleteDay).mockResolvedValue(undefined as never)
+    mockBatchEcho()
     vi.mocked(plans.deleteExercise).mockResolvedValue(undefined as never)
     vi.mocked(plans.createExercise).mockImplementation(async (_dayId, body) => ({
       id: `new-${body.exercise_id}-${body.sort_order}`,
@@ -114,12 +137,10 @@ describe('reconcilePlan — skippedRows counts only contentful unbound rows', ()
 
     await reconcilePlan('p', [weekWithMondayRows(rows)])
 
-    expect(plans.createSet).toHaveBeenCalledWith('new-ex1-0', expect.objectContaining({
-      target_reps: 10,
-      target_reps_max: 12,
-      intensity_mode: 'rpe',
-      target_value: '9',
-    }))
+    expect(vi.mocked(plans.batchDays).mock.calls[0][1].upsert_days[0].exercises[0].sets[0]).toEqual({
+      set_number: 1, target_reps: 10, target_reps_max: 12, intensity_mode: 'rpe',
+      target_value: '9', set_type: 'working', rest_seconds: null, coach_note: null,
+    })
   })
 
   it('persists bodyweight rows as publishable sets with a bodyweight coach note', async () => {
@@ -137,13 +158,15 @@ describe('reconcilePlan — skippedRows counts only contentful unbound rows', ()
 
     await reconcilePlan('p', [weekWithMondayRows(rows)])
 
-    expect(plans.createSet).toHaveBeenCalledTimes(4)
-    expect(plans.createSet).toHaveBeenCalledWith('new-ex1-0', expect.objectContaining({
+    const sets = vi.mocked(plans.batchDays).mock.calls[0][1].upsert_days[0].exercises[0].sets
+    expect(sets).toHaveLength(4)
+    expect(sets[0]).toEqual(expect.objectContaining({
       target_reps: 10,
       target_reps_max: 15,
       intensity_mode: 'rpe',
       target_value: '10',
       coach_note: '自重',
+      rest_seconds: null,
     }))
   })
 
@@ -155,7 +178,7 @@ describe('reconcilePlan — skippedRows counts only contentful unbound rows', ()
     await expect(reconcilePlan('p', [weekWithMondayRows([
       row({ exerciseId: 'ex1', name: '深蹲', boxes: [{ val: '100', empty: false }] }),
     ])])).resolves.toMatchObject({ changedDays: 1 })
-    expect(plans.createDay).toHaveBeenCalled()
+    expect(plans.batchDays).toHaveBeenCalledTimes(1)
   })
 
   it('rejects incomplete bound prescriptions before replacing any server day', async () => {
@@ -175,8 +198,7 @@ describe('reconcilePlan — skippedRows counts only contentful unbound rows', ()
     await expect(reconcilePlan('p', [weekWithMondayRows([incomplete])])).rejects.toMatchObject({
       code: 'PLAN_SET_SPEC_INCOMPLETE',
     })
-    expect(plans.deleteDay).not.toHaveBeenCalled()
-    expect(plans.createDay).not.toHaveBeenCalled()
+    expect(plans.batchDays).not.toHaveBeenCalled()
   })
 
   it.each([
@@ -194,8 +216,7 @@ describe('reconcilePlan — skippedRows counts only contentful unbound rows', ()
     await expect(reconcilePlan('p', [weekWithMondayRows([
       row({ exerciseId: 'ex1', name: '深蹲', ...partial }),
     ])])).rejects.toMatchObject({ code: 'PLAN_SET_SPEC_INCOMPLETE' })
-    expect(plans.deleteDay).not.toHaveBeenCalled()
-    expect(plans.createDay).not.toHaveBeenCalled()
+    expect(plans.batchDays).not.toHaveBeenCalled()
   })
 
   it('refuses backend plans with richer per-set fields rather than flattening them', async () => {
@@ -231,15 +252,14 @@ describe('reconcilePlan — skippedRows counts only contentful unbound rows', ()
     await expect(reconcilePlan('p', [weekWithMondayRows([])])).rejects.toMatchObject({
       code: 'PLAN_REQUIRES_NATIVE_EDITOR',
     })
-    expect(plans.deleteDay).not.toHaveBeenCalled()
+    expect(plans.batchDays).not.toHaveBeenCalled()
   })
 })
 
 describe('reconcilePlan — exercise-granularity history locks', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    vi.mocked(plans.deleteDay).mockResolvedValue(undefined as never)
-    vi.mocked(plans.createDay).mockResolvedValue({ id: 'created-day' } as never)
+    mockBatchEcho()
     vi.mocked(plans.deleteExercise).mockResolvedValue(undefined as never)
     vi.mocked(plans.createSet).mockResolvedValue(undefined as never)
     vi.mocked(plans.patchPlan).mockResolvedValue({} as never)
@@ -261,7 +281,7 @@ describe('reconcilePlan — exercise-granularity history locks', () => {
     ])])
 
     expect(plans.deleteDay).not.toHaveBeenCalled()
-    expect(plans.createDay).not.toHaveBeenCalled()
+    expect(plans.batchDays).not.toHaveBeenCalled()
     expect(plans.deleteExercise).toHaveBeenCalledWith('changed')
     expect(plans.deleteExercise).toHaveBeenCalledWith('removed')
     expect(plans.deleteExercise).not.toHaveBeenCalledWith('locked')
@@ -280,17 +300,22 @@ describe('reconcilePlan — exercise-granularity history locks', () => {
 
     await expect(reconcilePlan('p', weeks)).rejects.toBeInstanceOf(LockedRowMutationError)
     expect(plans.deleteDay).not.toHaveBeenCalled()
-    expect(plans.createDay).not.toHaveBeenCalled()
+    expect(plans.batchDays).not.toHaveBeenCalled()
     expect(plans.deleteExercise).not.toHaveBeenCalled()
     expect(plans.createExercise).not.toHaveBeenCalled()
   })
 
-  it('keeps the legacy whole-day replacement path for a day without logs', async () => {
+  it('routes a day without logs through whole-day batch upsert', async () => {
     const original = serverExercise('old', 'ex', 0, '100')
     vi.mocked(plans.getPlan).mockResolvedValue(serverPlan([serverDay([original])], 'draft'))
     await reconcilePlan('p', [weekWithMondayRows([boundRow('r', 'old', 'ex', '105')])])
-    expect(plans.deleteDay).toHaveBeenCalledWith('day1')
-    expect(plans.createDay).toHaveBeenCalled()
+    expect(plans.batchDays).toHaveBeenCalledWith('p', expect.objectContaining({
+      // The changed day's original must be deleted in the same batch:
+      // upsert_days is pure INSERT, so keeping it would duplicate the day.
+      delete_day_ids: ['day1'],
+      upsert_days: [expect.objectContaining({ week_number: 1, day_of_week: 1 })],
+    }))
+    expect(plans.deleteDay).not.toHaveBeenCalled()
     expect(plans.deleteExercise).not.toHaveBeenCalled()
   })
 
@@ -298,9 +323,145 @@ describe('reconcilePlan — exercise-granularity history locks', () => {
     vi.mocked(plans.getPlan).mockResolvedValue(serverPlan([], 'published'))
     await reconcilePlan('p', [weekWithMondayRows([])], undefined, { published: true })
     expect(plans.patchPlan).not.toHaveBeenCalled()
+    expect(plans.batchDays).not.toHaveBeenCalled()
     await expect(reconcileImportedPlan('p', [weekWithMondayRows([])], '2026-01-01', undefined, { published: true }))
       .rejects.toMatchObject({ code: 'PUBLISHED_IMPORT_FORBIDDEN' })
     expect(plans.patchPlan).not.toHaveBeenCalled()
+  })
+
+  it('runs the unlocked batch before mixed-day row CRUD and reports both progress routes', async () => {
+    const unlocked = serverExercise('unlocked', 'unlocked-ex', 0, '100')
+    const locked = { ...serverExercise('locked', 'locked-ex', 0, '90', true), plan_day_id: 'mixed-day' }
+    const mutable = { ...serverExercise('mutable', 'mutable-ex', 1, '80'), plan_day_id: 'mixed-day' }
+    const mixedDay = { ...serverDay([locked, mutable], 'mixed-day'), day_of_week: 2 }
+    const initial = serverPlan([serverDay([unlocked]), mixedDay])
+    vi.mocked(plans.getPlan).mockResolvedValue(initial)
+    vi.mocked(plans.batchDays).mockResolvedValue(initial)
+    const week = weekWithMondayRows([boundRow('u', 'unlocked', 'unlocked-ex', '105')])
+    week.days[1] = { ...week.days[1], rest: false, rows: [
+      boundRow('l', 'locked', 'locked-ex', '90', { hasLogs: true, serverSortOrder: 0 }),
+      boundRow('m', 'mutable', 'mutable-ex', '85', { serverSortOrder: 1 }),
+    ] }
+    const progress = vi.fn()
+
+    const result = await reconcilePlan('p', [week], progress)
+
+    expect(vi.mocked(plans.batchDays).mock.calls[0][1].upsert_days).toEqual([
+      expect.objectContaining({ week_number: 1, day_of_week: 1 }),
+    ])
+    expect(plans.deleteExercise).toHaveBeenCalledWith('mutable')
+    expect(vi.mocked(plans.batchDays).mock.invocationCallOrder[0])
+      .toBeLessThan(vi.mocked(plans.deleteExercise).mock.invocationCallOrder[0])
+    expect(progress.mock.calls).toEqual([[1, 2], [2, 2]])
+    expect(result.changedDays).toBe(2)
+  })
+})
+
+describe('reconcilePlan — batch payload and errors', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockBatchEcho()
+  })
+
+  it('upserts only changed non-empty days, deletes a cleared day, and preserves result counts', async () => {
+    const changed = serverDay([serverExercise('changed', 'change-ex', 0, '100')], 'changed-day')
+    const unchangedExercise = { ...serverExercise('same', 'same-ex', 0, '80'), plan_day_id: 'same-day' }
+    const unchanged = { ...serverDay([unchangedExercise], 'same-day'), day_of_week: 2 }
+    const clearedExercise = { ...serverExercise('clear', 'clear-ex', 0, '60'), plan_day_id: 'clear-day' }
+    const cleared = { ...serverDay([clearedExercise], 'clear-day'), day_of_week: 3 }
+    vi.mocked(plans.getPlan).mockResolvedValue(serverPlan([changed, unchanged, cleared], 'draft'))
+    const week = weekWithMondayRows([
+      boundRow('changed-row', 'changed', 'change-ex', '105'),
+      row({ id: 'unbound', name: '未绑定动作' }),
+    ])
+    week.days[1] = { ...week.days[1], rest: false, rows: [boundRow('same-row', 'same', 'same-ex', '80')] }
+
+    const result = await reconcilePlan('p', [week])
+
+    expect(plans.batchDays).toHaveBeenCalledTimes(1)
+    expect(vi.mocked(plans.batchDays).mock.calls[0][1]).toEqual({
+      delete_day_ids: ['changed-day', 'clear-day'],
+      upsert_days: [{
+        week_number: 1, day_of_week: 1, sort_order: 0,
+        exercises: [{
+          exercise_id: 'change-ex', is_main_lift: false, sort_order: 0, notes: null,
+          sets: [{
+            set_number: 1, target_reps: 5, target_reps_max: null, intensity_mode: 'weight',
+            target_value: '105', set_type: 'working', rest_seconds: null, coach_note: null,
+          }],
+        }],
+      }],
+    })
+    expect(result).toMatchObject({ changedDays: 2, skippedRows: 1 })
+    expect(result.weeks[0].days[0].rows[0].serverRowId).toBe('batch-ex-1-1-0')
+  })
+
+  it('sends no batch request when the live baseline already matches', async () => {
+    const same = serverExercise('same', 'same-ex', 0, '80')
+    vi.mocked(plans.getPlan).mockResolvedValue(serverPlan([serverDay([same])], 'draft'))
+
+    const result = await reconcilePlan('p', [weekWithMondayRows([
+      boundRow('same-row', 'same', 'same-ex', '80'),
+    ])])
+
+    expect(plans.batchDays).not.toHaveBeenCalled()
+    expect(result.changedDays).toBe(0)
+    expect(result.weeks[0].days[0].rows[0].serverRowId).toBe('same')
+  })
+
+  it('propagates EXERCISE_NOT_FOUND_OR_HIDDEN without a 409 refetch/merge', async () => {
+    const error = new ApiException(400, 'EXERCISE_NOT_FOUND_OR_HIDDEN')
+    vi.mocked(plans.getPlan).mockResolvedValue(serverPlan([], 'draft'))
+    vi.mocked(plans.batchDays).mockRejectedValueOnce(error)
+
+    await expect(reconcilePlan('p', [weekWithMondayRows([
+      boundRow('new', null, 'hidden-ex', '50'),
+    ])])).rejects.toBe(error)
+    expect(plans.getPlan).toHaveBeenCalledTimes(1)
+  })
+
+  it('chunks more than 60 upserts sequentially and sends import patch/deletes only in the first chunk', async () => {
+    let dayIndex = 0
+    const weeks: Week[] = Array.from({ length: 9 }, (_, weekIndex) => ({
+      num: weekIndex + 1,
+      num2: String(weekIndex + 1).padStart(2, '0'),
+      range: '', isCurrent: false, vol: '',
+      days: Array.from({ length: 7 }, (_, dow) => {
+        const index = dayIndex++
+        return {
+          dow, dowLabel: '', dateLabel: '', rest: index >= 61,
+          rows: index < 61 ? [boundRow(`row-${index}`, null, `exercise-${index}`, '50')] : [],
+        }
+      }),
+    }))
+    const outside = { ...serverDay([], 'outside'), week_number: 10 }
+    const baseline = { ...serverPlan([outside], 'draft'), plan_weeks: 10 }
+    vi.mocked(plans.getPlan).mockResolvedValue(baseline)
+    const liveDays = new Map<string, PlanDayResponse>([['outside', outside]])
+    vi.mocked(plans.batchDays).mockImplementation(async (_planId, body) => {
+      for (const id of body.delete_day_ids) liveDays.delete(id)
+      for (const day of serverDaysFromBatch(body.upsert_days)) liveDays.set(day.id, day)
+      return { ...baseline, days: [...liveDays.values()] }
+    })
+    const progress = vi.fn()
+
+    const result = await reconcileImportedPlan('p', weeks, '2026-01-01', progress)
+
+    expect(plans.batchDays).toHaveBeenCalledTimes(2)
+    const first = vi.mocked(plans.batchDays).mock.calls[0][1]
+    const second = vi.mocked(plans.batchDays).mock.calls[1][1]
+    expect(first.plan_patch).toEqual({
+      plan_weeks: 9, start_date: '2026-01-01', end_date: '2026-03-04',
+    })
+    expect(first.delete_day_ids).toEqual(['outside'])
+    expect(first.upsert_days).toHaveLength(60)
+    expect(second).not.toHaveProperty('plan_patch')
+    expect(second.delete_day_ids).toEqual([])
+    expect(second.upsert_days).toHaveLength(1)
+    expect(progress.mock.calls).toEqual([[1, 2], [2, 2]])
+    expect(result.changedDays).toBe(61)
+    expect(result.weeks[0].days[0].rows[0].serverRowId).toBe('batch-ex-1-1-0')
+    expect(result.weeks[8].days[4].rows[0].serverRowId).toBe('batch-ex-9-5-0')
   })
 })
 
@@ -444,6 +605,7 @@ describe('reconcilePlan — mixed-day sort_order invariants', () => {
 describe('reconcilePlan — scoped 409 merge', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mockBatchEcho()
     vi.mocked(plans.createSet).mockResolvedValue(undefined as never)
     vi.mocked(plans.deleteExercise).mockResolvedValue(undefined as never)
     vi.mocked(plans.createExercise).mockResolvedValue({ id: 'new' } as never)
@@ -483,7 +645,7 @@ describe('reconcilePlan — scoped 409 merge', () => {
       .mockResolvedValueOnce(serverPlan([serverDay([target, other])], 'published'))
       .mockResolvedValueOnce(serverPlan([fresh], 'published'))
       .mockResolvedValueOnce(serverPlan([fresh], 'published'))
-    vi.mocked(plans.deleteDay).mockRejectedValueOnce(new ApiException(409, 'DAY_HISTORY_IMMUTABLE', {
+    vi.mocked(plans.batchDays).mockRejectedValueOnce(new ApiException(409, 'DAY_HISTORY_IMMUTABLE', {
       details: { day_id: 'day1' },
     }))
     const local = [weekWithMondayRows([
@@ -496,7 +658,7 @@ describe('reconcilePlan — scoped 409 merge', () => {
 
     vi.mocked(plans.deleteExercise).mockResolvedValue(undefined as never)
     await reconcilePlan('p', conflict.weeks)
-    expect(plans.deleteDay).toHaveBeenCalledTimes(1)
+    expect(plans.batchDays).toHaveBeenCalledTimes(1)
     expect(plans.deleteExercise).toHaveBeenCalledWith('other')
     expect(plans.deleteExercise).not.toHaveBeenCalledWith('target')
   })
@@ -510,7 +672,7 @@ describe('reconcilePlan — scoped 409 merge', () => {
     vi.mocked(plans.getPlan)
       .mockResolvedValueOnce(serverPlan([serverDay([t1]), day2], 'published'))
       .mockResolvedValueOnce(serverPlan([freshDay1, freshDay2], 'published'))
-    vi.mocked(plans.deleteDay).mockRejectedValueOnce(new ApiException(409, 'DAY_HISTORY_IMMUTABLE', {
+    vi.mocked(plans.batchDays).mockRejectedValueOnce(new ApiException(409, 'DAY_HISTORY_IMMUTABLE', {
       details: { day_ids: ['day1'] },
     }))
     const week = weekWithMondayRows([boundRow('a', 't1', 't1-ex', '105', { serverSortOrder: 0 })])
@@ -583,7 +745,7 @@ describe('reconcilePlan — scoped 409 merge', () => {
     vi.mocked(plans.getPlan)
       .mockResolvedValueOnce(serverPlan([serverDay([target])], 'published'))
       .mockResolvedValueOnce(serverPlan([serverDay([{ ...target, has_logs: true }])], 'published'))
-    vi.mocked(plans.deleteDay).mockRejectedValueOnce(new ApiException(409, 'PLAN_HISTORY_IMMUTABLE'))
+    vi.mocked(plans.batchDays).mockRejectedValueOnce(new ApiException(409, 'PLAN_HISTORY_IMMUTABLE'))
     const local = [weekWithMondayRows([boundRow('t', 'target', 'target', '105', {
       serverSortOrder: 0, exerciseId: null, name: '本地未绑定改名', ku: false,
     })])]
