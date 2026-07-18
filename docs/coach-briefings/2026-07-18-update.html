@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MeetPR 计划编辑器 · 7月18日更新</title>
+<style>
+  :root {
+    --red: #E5221E; --red-soft: rgba(229,34,30,.12);
+    --bg: #000; --s1: #0E0E0E; --s2: #161616; --s3: #1F1F1F;
+    --bd: #262626; --bds: #3A3A3A;
+    --fg: #FFF; --fg2: #B5B5B5; --fg3: #737373;
+    --green: #1FB358; --amber: #E0A810;
+    --mono: ui-monospace, "SF Mono", Menlo, monospace;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg); color: var(--fg);
+    font-family: "Noto Sans SC", -apple-system, "PingFang SC", sans-serif;
+    font-size: 15px; line-height: 1.7;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 640px; margin: 0 auto; padding: 28px 18px 60px; }
+  .brand { display: flex; align-items: baseline; gap: 8px; margin-bottom: 4px; }
+  .brand b { font-size: 22px; font-weight: 900; letter-spacing: -.02em; }
+  .brand span { color: var(--red); font: 700 11px var(--mono); letter-spacing: .14em; }
+  h1 { font-size: 21px; line-height: 1.35; margin: 14px 0 6px; }
+  .date { color: var(--fg3); font: 12px var(--mono); letter-spacing: .06em; }
+  .lead { margin-top: 14px; color: var(--fg2); }
+  .lead b { color: var(--fg); }
+  .card {
+    margin-top: 22px; padding: 18px 16px 16px;
+    background: var(--s1); border: 1px solid var(--bd); border-radius: 12px;
+  }
+  .card.hot { border-color: rgba(229,34,30,.45); }
+  .tag {
+    display: inline-block; padding: 2px 8px; margin-bottom: 10px;
+    border-radius: 999px; font: 700 11px var(--mono); letter-spacing: .08em;
+  }
+  .tag.fix { background: var(--red-soft); color: var(--red); }
+  .tag.new { background: rgba(31,179,88,.14); color: var(--green); }
+  .card h2 { font-size: 17px; margin-bottom: 8px; }
+  .card p { color: var(--fg2); margin-bottom: 8px; }
+  .card p b, .card li b { color: var(--fg); font-weight: 600; }
+  .how {
+    margin-top: 10px; padding: 10px 12px;
+    background: var(--s2); border-left: 3px solid var(--bds); border-radius: 6px;
+    color: var(--fg2); font-size: 13.5px;
+  }
+  .how em { font-style: normal; color: var(--amber); font-weight: 600; }
+  .kbd {
+    display: inline-block; padding: 0 6px; border: 1px solid var(--bds); border-radius: 4px;
+    background: var(--s3); color: var(--fg); font: 600 12px var(--mono); white-space: nowrap;
+  }
+  .demo {
+    margin: 10px 0 2px; padding: 10px 12px; overflow-x: auto;
+    background: #050505; border: 1px solid var(--bd); border-radius: 8px;
+    font: 11.5px var(--mono); color: var(--fg3); white-space: nowrap;
+  }
+  .demo b { color: var(--fg); font-weight: 600; }
+  .demo .r { color: var(--red); }
+  ul { padding-left: 18px; color: var(--fg2); }
+  li { margin-bottom: 6px; }
+  .foot {
+    margin-top: 30px; padding-top: 16px; border-top: 1px solid var(--bd);
+    color: var(--fg3); font-size: 13px;
+  }
+  .foot a { color: var(--fg2); }
+  .addr {
+    margin-top: 8px; padding: 10px 12px; background: var(--s1);
+    border: 1px solid var(--bd); border-radius: 8px;
+    font: 600 13px var(--mono); color: var(--fg); word-break: break-all;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="brand"><b>MeetPR</b><span>COACH · 计划编辑器</span></div>
+  <h1>本次更新：保存更稳更快、训练日能拖着排、容量一眼看全</h1>
+  <div class="date">2026 · 07 · 18</div>
+
+  <p class="lead">这次更新主要解决大家反馈的三件事：<b>写的东西再也不会丢</b>、<b>保存快了不止一个量级</b>、<b>每周练多少一眼看到</b>。刷新页面即可用到全部新功能。</p>
+
+  <div class="card hot">
+    <span class="tag fix">修复 + 加固</span>
+    <h2>① 写的内容不会丢了，保存也快了</h2>
+    <p><b>切页面丢内容已修复。</b>之前写到一半切去看学员看板、再切回来内容不见——这个问题已经根治：切换前会自动保存，切回来看到的一定是最新内容。</p>
+    <p><b>新增本地草稿保护。</b>就算断网、误关页面、电脑死机，重新打开计划时顶部会出现一条<b>「检测到未保存本地草稿」</b>，点「恢复」就能找回刚才写的东西——包括还没绑定动作库的行。</p>
+    <p><b>保存速度大提升。</b>保存整份计划从原来的几分钟变成几秒钟，导入 Excel 后落库也快了。</p>
+    <div class="how">提醒：<em>已发布的计划</em>不会自动保存——你的修改要点右上角「更新计划」并确认后，学员才会看到。这是刻意设计，防止改到一半学员就看到半成品。</div>
+  </div>
+
+  <div class="card">
+    <span class="tag new">新功能</span>
+    <h2>② 训练日整列拖拽</h2>
+    <p>训练日可以整列搬动了：按住日期表头（有 <span class="kbd">⠿</span> 标记的）拖到同一周的其他日子——拖到休息日就是<b>搬过去</b>，拖到另一个训练日就是<b>互换</b>。</p>
+    <ul>
+      <li>草稿和已发布计划都能拖；<b>学员已打卡的日子</b>会锁定不让动（表头没有 ⠿ 就是锁定）。</li>
+      <li>已发布计划拖完记得点「更新计划」才生效。</li>
+      <li>普通点一下表头还是选中日，不冲突。</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <span class="tag new">新功能</span>
+    <h2>③ 每周容量汇总</h2>
+    <p>每周标题旁边直接显示这一周的量：</p>
+    <div class="demo"><span class="r">W01</span>&nbsp;&nbsp;<b>第 1 周</b>&nbsp;&nbsp;7/8 – 7/14&nbsp;&nbsp;&nbsp;<b>主项 12 组 · 辅项 16 组 · 总重 5.2t</b></div>
+    <p>鼠标放上去可以看<b>深蹲 / 卧推 / 硬拉分列组数</b>和<b>与上周的对比</b>。</p>
+    <p>每个训练日里，「主项及变式」「辅助项」两条分隔线上也各自显示<b>本日组数和总重</b>。</p>
+    <div class="how">总重口径：只统计写了<em>公斤数</em>的组；用 RPE 或自重开的处方计组数、不计重量，所以不会出现误导性的「0kg」。</div>
+  </div>
+
+  <div class="card">
+    <span class="tag new">小改进</span>
+    <h2>④ 顺手的小东西</h2>
+    <ul>
+      <li>「主项及变式」和「辅助项」分区里各自有 <span class="kbd">＋ 加动作</span>，新动作直接落进对应分区。</li>
+      <li>学员看板 → 点开学员，能看到 ta <b>本周计划容量</b>（深蹲/卧推/硬拉各几组）。</li>
+    </ul>
+  </div>
+
+  <div class="foot">
+    <div>使用地址（电脑浏览器打开）：</div>
+    <div class="addr">http://121.40.160.241:3000/</div>
+    <p style="margin-top:10px">用着不顺手、数字口径有疑问、或者想要新功能——直接微信反馈，通常当天就能改。</p>
+  </div>
+
+</div>
+</body>
+</html>
