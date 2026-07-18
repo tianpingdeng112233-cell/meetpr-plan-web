@@ -232,11 +232,6 @@ export interface CreatePlanBody {
   source: 'coach'
   kind?: 'regular'
 }
-export interface CreatePlanDayBody {
-  day_of_week: number
-  week_number: number
-  sort_order: number
-}
 export interface CreatePlanExerciseBody {
   exercise_id: string
   is_main_lift: boolean
@@ -251,6 +246,40 @@ export interface CreatePlanSetBody {
   target_value: string
   set_type: SetType
   coach_note?: string | null
+}
+
+export interface BatchPlanSetBody {
+  set_number: number
+  target_reps: number
+  target_reps_max: number | null
+  intensity_mode: IntensityModeWire
+  target_value: string
+  set_type: SetType
+  rest_seconds: number | null
+  coach_note: string | null
+}
+export interface BatchPlanExerciseBody {
+  exercise_id: string
+  is_main_lift: boolean
+  sort_order: number
+  notes?: string | null
+  sets: BatchPlanSetBody[]
+}
+export interface BatchPlanDayBody {
+  week_number: number
+  day_of_week: number
+  sort_order: number
+  exercises: BatchPlanExerciseBody[]
+}
+export interface BatchPlanDaysBody {
+  plan_patch?: {
+    name?: string
+    start_date?: string
+    end_date?: string
+    plan_weeks?: number
+  }
+  delete_day_ids: string[]
+  upsert_days: BatchPlanDayBody[]
 }
 
 export interface ApiError {

@@ -1,8 +1,8 @@
 import { api } from './client'
 import type {
   CoachStudent, StudentOnboardingProfile, PlanResponse, PlanWithChildren, PlanStatus,
-  CreatePlanBody, CreatePlanDayBody, CreatePlanExerciseBody, CreatePlanSetBody,
-  PlanDayResponse, PlanExerciseResponse, PlanSetResponse,
+  CreatePlanBody, CreatePlanExerciseBody, CreatePlanSetBody,
+  BatchPlanDaysBody, PlanExerciseResponse, PlanSetResponse,
 } from './types'
 
 export const getCoachStudents = () =>
@@ -43,9 +43,9 @@ export const markImportedHistory = (planId: string) =>
   }>(`/plans/${planId}/imported-history`, { confirm: true })
 
 // nested tree mutations
-export const createDay = (planId: string, body: CreatePlanDayBody) =>
-  api.post<PlanDayResponse>(`/plans/${planId}/days`, body)
 export const deleteDay = (dayId: string) => api.del<void>(`/plans/days/${dayId}`)
+export const batchDays = (planId: string, body: BatchPlanDaysBody) =>
+  api.post<PlanWithChildren>(`/plans/${planId}/days/batch`, body)
 
 export const createExercise = (dayId: string, body: CreatePlanExerciseBody) =>
   api.post<PlanExerciseResponse>(`/plans/days/${dayId}/exercises`, body)

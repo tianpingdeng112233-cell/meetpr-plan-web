@@ -8,10 +8,10 @@ import type { Week, DayCol, ExerciseRow, SetBox } from './types'
 import { isBoundNoSets, isContentfulUnbound } from './types'
 import type {
   PlanWithChildren, PlanDayResponse, PlanExerciseResponse, CreatePlanSetBody,
-  IntensityModeWire, SetType,
+  BatchPlanDayBody, BatchPlanDaysBody, IntensityModeWire, SetType,
 } from '../../api/types'
 import {
-  getPlan, createDay, deleteDay, createExercise, deleteExercise, createSet, patchPlan,
+  getPlan, batchDays, deleteDay, createExercise, deleteExercise, createSet, patchPlan,
 } from '../../api/plans'
 import { ApiException } from '../../api/client'
 import { addDays, type Catalog } from './mapping'
@@ -177,6 +177,7 @@ function canonServer(exs: PlanExerciseResponse[]): string {
 }
 
 const EMPTY = '[]'
+const CHUNK_DAYS = 60
 
 function fmtISO(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
@@ -412,12 +413,17 @@ export async function reconcileImportedPlan(
   const server: PlanWithChildren = await getPlan(planId)
   if (options.published || server.status === 'published') throw new ApiException(409, 'PUBLISHED_IMPORT_FORBIDDEN')
   assertSupportedServerTree(server)
-  for (const day of server.days) {
-    if (day.week_number > weeks.length) await deleteDay(day.id)
-  }
   const endDate = fmtISO(addDays(startDate, weeks.length * 7 - 1))
-  await patchPlan(planId, { plan_weeks: weeks.length, start_date: startDate, end_date: endDate })
-  const result = await reconcilePlan(planId, weeks, onProgress, options)
+  // Frozen days must never enter a batch (the whole transaction would 409);
+  // out-of-range days carrying logs go through the per-day endpoint instead,
+  // keeping the pre-batch per-day server verdict semantics.
+  const overrange = server.days.filter((day) => day.week_number > weeks.length)
+  const dayFrozen = (day: PlanDayResponse) => day.exercises.some((exercise) => exercise.has_logs ?? false)
+  for (const day of overrange.filter(dayFrozen)) await deleteDay(day.id)
+  const result = await reconcileFromBaseline(planId, weeks, server, onProgress, options, {
+    plan_patch: { plan_weeks: weeks.length, start_date: startDate, end_date: endDate },
+    delete_day_ids: overrange.filter((day) => !dayFrozen(day)).map((day) => day.id),
+  })
   return {
     ...result,
     planStartDate: startDate,
@@ -434,6 +440,66 @@ interface DayWork {
   entries: DesiredEntry[]
 }
 
+function validateMixedWork(work: DayWork, lockedMutationRows: string[]): void {
+  const baseline = work.original?.exercises ?? []
+  const claims = claimBaseline(work.entries, baseline)
+  for (const entry of work.entries) {
+    const claim = claims.get(entry.row.id)
+    if (claim) bindClaim(entry.row, claim)
+    if ((entry.row.hasLogs || (claim?.has_logs ?? false))
+      && (!claim || canonDesiredOne(entry.desired) !== canonServerOne(claim))) {
+      entry.row.conflictMessage = '学员已打卡,锁定行不能修改'
+      lockedMutationRows.push(entry.row.id)
+    }
+  }
+  const claimedIds = new Set([...claims.values()].map((exercise) => exercise.id))
+  for (const baselineRow of baseline) {
+    if ((baselineRow.has_logs ?? false) && !claimedIds.has(baselineRow.id)) lockedMutationRows.push(baselineRow.id)
+  }
+}
+
+function planMixedWork(work: DayWork) {
+  const baseline = work.original?.exercises ?? []
+  const claims = claimBaseline(work.entries, baseline)
+  const claimedIds = new Set([...claims.values()].map((exercise) => exercise.id))
+  const changed = work.entries.filter((entry) => {
+    const claim = claims.get(entry.row.id)
+    return !!claim && !(claim.has_logs ?? false) && canonDesiredOne(entry.desired) !== canonServerOne(claim)
+  })
+  const additions = work.entries.filter((entry) => !claims.has(entry.row.id))
+  const removals = baseline.filter((exercise) => !claimedIds.has(exercise.id) && !(exercise.has_logs ?? false))
+  const changedIds = new Set(changed.map((entry) => claims.get(entry.row.id)!.id))
+  const occupied = new Set(baseline
+    .filter((exercise) => !changedIds.has(exercise.id) && !removals.some((removed) => removed.id === exercise.id))
+    .map((exercise) => exercise.sort_order))
+  const released = new Set(removals.map((exercise) => exercise.sort_order))
+  for (const entry of additions) {
+    const oldSlot = entry.row.serverSortOrder
+    if (oldSlot != null && !occupied.has(oldSlot)) released.add(oldSlot)
+  }
+  const maxSort = baseline.reduce((max, exercise) => Math.max(max, exercise.sort_order), -1)
+  let tail = maxSort + 1
+  const assigned = new Map<string, number>()
+  for (const entry of work.entries) {
+    const claim = claims.get(entry.row.id)
+    if (claim) assigned.set(entry.row.id, claim.sort_order)
+  }
+  const used = new Set(assigned.values())
+  for (const entry of additions) {
+    const requested = entry.row.serverSortOrder
+    if (requested != null && released.has(requested) && !occupied.has(requested) && !used.has(requested)) {
+      assigned.set(entry.row.id, requested)
+      used.add(requested)
+      tail = Math.max(tail, requested + 1)
+    } else {
+      while (used.has(tail)) tail++
+      assigned.set(entry.row.id, tail)
+      used.add(tail++)
+    }
+  }
+  return { work, claims, changed, additions, removals, assigned, hasWrites: changed.length + additions.length + removals.length > 0 }
+}
+
 async function postExercise(dayId: string, entry: DesiredEntry, sortOrder: number): Promise<string> {
   const created = await createExercise(dayId, {
     exercise_id: entry.desired.exercise_id,
@@ -445,11 +511,47 @@ async function postExercise(dayId: string, entry: DesiredEntry, sortOrder: numbe
   return created.id
 }
 
+function workToBatchDay(work: DayWork): BatchPlanDayBody {
+  return {
+    week_number: work.weekNumber,
+    day_of_week: work.dow + 1,
+    sort_order: 0,
+    exercises: work.entries.map((entry, sortOrder) => ({
+      exercise_id: entry.desired.exercise_id,
+      is_main_lift: entry.desired.is_main_lift,
+      sort_order: sortOrder,
+      notes: entry.desired.notes,
+      sets: entry.desired.sets.map((set) => ({
+        set_number: set.set_number,
+        target_reps: set.target_reps,
+        target_reps_max: set.target_reps_max ?? null,
+        intensity_mode: set.intensity_mode,
+        target_value: set.target_value,
+        set_type: set.set_type,
+        rest_seconds: null,
+        coach_note: set.coach_note ?? null,
+      })),
+    })),
+  }
+}
+
+interface BatchPrelude {
+  plan_patch?: BatchPlanDaysBody['plan_patch']
+  delete_day_ids?: string[]
+}
+
 export async function reconcilePlan(
   planId: string, weeks: Week[], onProgress?: SaveProgress,
   options: ReconcileOptions = {},
 ): Promise<SaveResult> {
   const server: PlanWithChildren = await getPlan(planId)
+  return reconcileFromBaseline(planId, weeks, server, onProgress, options)
+}
+
+async function reconcileFromBaseline(
+  planId: string, weeks: Week[], server: PlanWithChildren, onProgress: SaveProgress | undefined,
+  options: ReconcileOptions, prelude: BatchPrelude = {},
+): Promise<SaveResult> {
   assertSupportedServerTree(server)
   const resultWeeks = cloneWeeks(weeks)
   const origByKey = new Map<string, PlanDayResponse>()
@@ -484,22 +586,9 @@ export async function reconcilePlan(
         continue
       }
 
-      const baseline = original?.exercises ?? []
-      const claims = claimBaseline(entries, baseline)
-      for (const entry of entries) {
-        const claim = claims.get(entry.row.id)
-        if (claim) bindClaim(entry.row, claim)
-        if ((entry.row.hasLogs || (claim?.has_logs ?? false))
-          && (!claim || canonDesiredOne(entry.desired) !== canonServerOne(claim))) {
-          entry.row.conflictMessage = '学员已打卡,锁定行不能修改'
-          lockedMutationRows.push(entry.row.id)
-        }
-      }
-      const claimedIds = new Set([...claims.values()].map((exercise) => exercise.id))
-      for (const baselineRow of baseline) {
-        if ((baselineRow.has_logs ?? false) && !claimedIds.has(baselineRow.id)) lockedMutationRows.push(baselineRow.id)
-      }
-      mixedWorks.push({ weekNumber: week.num, dow, day, original, entries })
+      const work = { weekNumber: week.num, dow, day, original, entries }
+      validateMixedWork(work, lockedMutationRows)
+      mixedWorks.push(work)
     }
   }
 
@@ -507,75 +596,78 @@ export async function reconcilePlan(
     throw new LockedRowMutationError([...new Set(lockedMutationRows)], resultWeeks)
   }
 
-  // Decide mixed-day CRUD and slots before writing so progress and locked validation are stable.
-  const mixedPlans = mixedWorks.map((work) => {
-    const baseline = work.original?.exercises ?? []
-    const claims = claimBaseline(work.entries, baseline)
-    const claimedIds = new Set([...claims.values()].map((exercise) => exercise.id))
-    const changed = work.entries.filter((entry) => {
-      const claim = claims.get(entry.row.id)
-      return !!claim && !(claim.has_logs ?? false) && canonDesiredOne(entry.desired) !== canonServerOne(claim)
-    })
-    const additions = work.entries.filter((entry) => !claims.has(entry.row.id))
-    const removals = baseline.filter((exercise) => !claimedIds.has(exercise.id) && !(exercise.has_logs ?? false))
-    const changedIds = new Set(changed.map((entry) => claims.get(entry.row.id)!.id))
-    const occupied = new Set(baseline
-      .filter((exercise) => !changedIds.has(exercise.id) && !removals.some((removed) => removed.id === exercise.id))
-      .map((exercise) => exercise.sort_order))
-    const released = new Set(removals.map((exercise) => exercise.sort_order))
-    for (const entry of additions) {
-      const oldSlot = entry.row.serverSortOrder
-      if (oldSlot != null && !occupied.has(oldSlot)) released.add(oldSlot)
-    }
-    const maxSort = baseline.reduce((max, exercise) => Math.max(max, exercise.sort_order), -1)
-    let tail = maxSort + 1
-    const assigned = new Map<string, number>()
-    for (const entry of work.entries) {
-      const claim = claims.get(entry.row.id)
-      if (claim) assigned.set(entry.row.id, claim.sort_order)
-    }
-    const used = new Set(assigned.values())
-    for (const entry of additions) {
-      const requested = entry.row.serverSortOrder
-      if (requested != null && released.has(requested) && !occupied.has(requested) && !used.has(requested)) {
-        assigned.set(entry.row.id, requested)
-        used.add(requested)
-        tail = Math.max(tail, requested + 1)
-      } else {
-        while (used.has(tail)) tail++
-        assigned.set(entry.row.id, tail)
-        used.add(tail++)
-      }
-    }
-    return { work, claims, changed, additions, removals, assigned, hasWrites: changed.length + additions.length + removals.length > 0 }
-  })
+  // Decide mixed-day CRUD and slots before writing so progress is stable.
+  let mixedPlans = mixedWorks.map(planMixedWork)
 
-  const total = unlockedWorks.length + mixedPlans.filter((plan) => plan.hasWrites).length
+  const upsertDays = unlockedWorks.filter((work) => work.entries.length > 0).map(workToBatchDay)
+  // Every changed unlocked day with a server original is delete+recreate —
+  // batch upsert_days is pure INSERT, so leaving the old day would duplicate
+  // it. Cleared days delete without a matching upsert. (spec 009 §3)
+  const deleteDayIds = [...new Set([
+    ...(prelude.delete_day_ids ?? []),
+    ...unlockedWorks.filter((work) => work.original).map((work) => work.original!.id),
+  ])]
+  const hasBatchPrelude = prelude.plan_patch !== undefined || deleteDayIds.length > 0
+  const batchChunks: BatchPlanDaysBody[] = []
+  for (let offset = 0; offset < upsertDays.length; offset += CHUNK_DAYS) {
+    batchChunks.push({
+      ...(offset === 0 && prelude.plan_patch ? { plan_patch: prelude.plan_patch } : {}),
+      delete_day_ids: offset === 0 ? deleteDayIds : [],
+      upsert_days: upsertDays.slice(offset, offset + CHUNK_DAYS),
+    })
+  }
+  if (batchChunks.length === 0 && hasBatchPrelude) {
+    batchChunks.push({
+      ...(prelude.plan_patch ? { plan_patch: prelude.plan_patch } : {}),
+      delete_day_ids: deleteDayIds,
+      upsert_days: [],
+    })
+  }
+
+  let mixedWriteCount = mixedPlans.filter((plan) => plan.hasWrites).length
+  const progressTotal = batchChunks.length + mixedWriteCount
   let done = 0
+  let liveBaseline = server
 
   try {
-    // Legacy whole-day replacements first. A mixed day id can never reach these calls.
+    // Pure unlocked days are atomically upserted/deleted in bounded sequential chunks.
+    for (const body of batchChunks) {
+      liveBaseline = await batchDays(planId, body)
+      onProgress?.(++done, progressTotal)
+    }
+
+    // The final batch response is the new live tree and therefore the identity baseline.
+    const liveByKey = new Map(liveBaseline.days.map((day) => [`${day.week_number}:${day.day_of_week}`, day]))
     for (const work of unlockedWorks) {
-      if (work.original) await deleteDay(work.original.id)
       for (const row of work.day?.rows ?? []) {
         row.serverRowId = null
         row.serverSortOrder = null
         row.hasLogs = false
       }
-      if (work.entries.length > 0) {
-        const createdDay = await createDay(planId, {
-          day_of_week: work.dow + 1, week_number: work.weekNumber, sort_order: 0,
-        })
-        for (let index = 0; index < work.entries.length; index++) {
-          const entry = work.entries[index]
-          const id = await postExercise(createdDay.id, entry, index)
-          entry.row.serverRowId = id
-          entry.row.serverSortOrder = index
-          entry.row.hasLogs = false
+      const saved = liveByKey.get(`${work.weekNumber}:${work.dow + 1}`)
+      if (saved) {
+        const claims = claimBaseline(work.entries, saved.exercises)
+        for (const entry of work.entries) {
+          const claim = claims.get(entry.row.id)
+          if (claim) bindClaim(entry.row, claim)
           entry.row.conflictMessage = null
         }
       }
-      onProgress?.(++done, total)
+    }
+
+    // Batch returns the complete GET-shaped tree. Use the last chunk's tree as the
+    // baseline for the row-level route that follows, including a second lock check.
+    if (batchChunks.length > 0) {
+      const refreshedLockedRows: string[] = []
+      for (const work of mixedWorks) {
+        work.original = liveByKey.get(`${work.weekNumber}:${work.dow + 1}`) ?? work.original
+        validateMixedWork(work, refreshedLockedRows)
+      }
+      if (refreshedLockedRows.length > 0) {
+        throw new LockedRowMutationError([...new Set(refreshedLockedRows)], resultWeeks)
+      }
+      mixedPlans = mixedWorks.map(planMixedWork)
+      mixedWriteCount = mixedPlans.filter((plan) => plan.hasWrites).length
     }
 
     // Mixed days: all exercise DELETEs settle before any POST for that day.
@@ -606,7 +698,7 @@ export async function reconcilePlan(
           return aOrder - bOrder
         })
       }
-      onProgress?.(++done, total)
+      onProgress?.(++done, progressTotal)
     }
   } catch (error) {
     if (error instanceof ApiException && error.status === 409) {
@@ -618,5 +710,5 @@ export async function reconcilePlan(
 
   for (const week of resultWeeks) for (const day of week.days) day.releasedSortOrders = []
 
-  return { changedDays: total, skippedRows, weeks: resultWeeks }
+  return { changedDays: unlockedWorks.length + mixedWriteCount, skippedRows, weeks: resultWeeks }
 }
