@@ -4,6 +4,7 @@ import {
   type JtsPhase, type JtsSetClassification,
 } from '../jtsVolumeBands'
 import type { LiftFamily } from '../../../api/types'
+import { JtsDeadliftFootnote, JtsVolumeDisclaimer } from './JtsReferenceNotes'
 
 interface Props {
   weekNumber: number
@@ -68,7 +69,7 @@ function JtsReferenceLine({ family, sets, phase }: { family: LiftFamily; sets: n
     <span>
       {LIFT_LABELS[family]} MEV {band.mev[0]}-{band.mev[1]} / MRV {band.mrv[0]}-{band.mrv[1]}；当周 {sets} 组，{verdict}
       {/* Source: Stronger By Science (SBS), first-hand deadlift-volume guidance. */}
-      {family === 'deadlift' && <small className="week-capacity-deadlift-note">硬拉容量个体差异大,约半数人最佳频率为每周 1 次,起点常为深蹲的 1/2-2/3</small>}
+      {family === 'deadlift' && <JtsDeadliftFootnote />}
     </span>
   )
 }
@@ -93,7 +94,7 @@ export function WeekCapacitySummary({ weekNumber, summary, totalSetsTrend, tonna
             <JtsReferenceLine family="squat" sets={summary.squatSets} phase={phase} />
             <JtsReferenceLine family="bench" sets={summary.benchSets} phase={phase} />
             <JtsReferenceLine family="deadlift" sets={summary.deadliftSets} phase={phase} />
-            <small>参考区间来自 JTS 手册,MRV 是中循环概念——蓄积末周有意超出属正常安排,仅供参考,不校验不拦截</small>
+            <JtsVolumeDisclaimer />
           </span>
         )}
         <small>口径：组数按每行动作的组槽数计算（空公斤框、RPE、自重仍计组数）；吨位仅计入「kg 模式 + 重量可解析 + reps 可解析」的组，reps 取首个整数（如 8+ 取 8、6-8 取 6），reps 无数字（如 —）的行吨位记 0。</small>

@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { JTS_PHASE_LABELS, type JtsPhaseSelection } from '../jtsVolumeBands'
+import type { JtsPhaseSelection } from '../jtsVolumeBands'
+import { JtsPhaseSelector } from './JtsPhaseSelector'
 
 interface Props {
   weeksCount: number
@@ -85,24 +86,7 @@ export function Toolbar({ weeksCount, calendarLocked = false, calendarLockedHint
           </>
         )}
       </span>
-      <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: 'var(--fg-tertiary)', whiteSpace: 'nowrap' }}>
-        <span>相位</span>
-        <select
-          aria-label="JTS 容量提示相位"
-          value={volumePhase}
-          onChange={(event) => onVolumePhaseChange(event.target.value as JtsPhaseSelection)}
-          title="仅控制 JTS MEV-MRV 周容量软提示，不参与保存或发布校验"
-          style={{
-            height: 26, padding: '0 22px 0 8px', border: '1px solid var(--border)', borderRadius: 'var(--r-md)',
-            color: volumePhase === 'off' ? 'var(--fg-tertiary)' : 'var(--fg-secondary)', background: 'var(--surface-1)',
-            font: '600 11px var(--font-sans)', cursor: 'pointer', outline: 'none',
-          }}
-        >
-          {(Object.keys(JTS_PHASE_LABELS) as JtsPhaseSelection[]).map((phase) => (
-            <option key={phase} value={phase}>{JTS_PHASE_LABELS[phase]}</option>
-          ))}
-        </select>
-      </label>
+      <JtsPhaseSelector value={volumePhase} onChange={onVolumePhaseChange} />
       <span style={{ width: 1, height: 16, background: 'var(--border)' }} />
       <span style={{ color: 'var(--fg-tertiary)' }}>可见</span>
       <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--brand-red)', fontWeight: 600, letterSpacing: '.04em' }}>
