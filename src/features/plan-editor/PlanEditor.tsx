@@ -71,6 +71,10 @@ export interface PlanEditorProps {
   /** Backfill the current plan's past, unlogged sessions as assumed-complete（补记历史）. */
   onBackfillHistory?: () => void | Promise<void>
   onLogout?: () => void | Promise<void>
+  /** Registers the same guarded-leave path used by the editor's own plan/student/logout controls. */
+  onLeaveGuardChange?: (guard: (() => Promise<boolean>) | null) => void
+  /** While true (guarded view switch in flight) global shortcuts must not mutate weeks. */
+  suspended?: boolean
   /** Current plan start date; enables xlsx import date remapping. */
   planStartDate?: string
   onChangeStartDate?: (startDate: string) => Promise<void>
@@ -205,6 +209,8 @@ export function replaceUnlockedRows(day: DayCol, sourceRows: ExerciseRow[], pref
 export function PlanEditor(props: PlanEditorProps) {
   const { initialWeeks, weeksCount, studentName, planName, initialPublished = false, onPublish } = props
   const [weeks, setWeeks] = useState<Week[]>(initialWeeks)
+  const suspendedRef = useRef(false)
+  suspendedRef.current = !!props.suspended
   // Keep the displayed start date separate from the metadata change waiting to
   // be persisted. Clearing a pending save must never make a second date shift
   // calculate from the old parent prop, and undo/redo needs the real date too.
@@ -734,6 +740,7 @@ export function PlanEditor(props: PlanEditorProps) {
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
+      if (suspendedRef.current) return
       const mod = e.metaKey || e.ctrlKey
       if (!mod || isEditableTarget(e.target)) return
       const key = e.key.toLowerCase()
@@ -1042,6 +1049,13 @@ export function PlanEditor(props: PlanEditorProps) {
   const guardLeaveId = (fn?: (id: string) => void | Promise<void>) => fn ? async (id: string) => {
     if (await confirmLeave()) await fn(id)
   } : undefined
+  const confirmLeaveRef = useRef(confirmLeave)
+  confirmLeaveRef.current = confirmLeave
+  useEffect(() => {
+    const guard = () => confirmLeaveRef.current()
+    props.onLeaveGuardChange?.(guard)
+    return () => props.onLeaveGuardChange?.(null)
+  }, [props.onLeaveGuardChange])
 
   // ---- ⚠ 待核对 chip: cycle through problem rows --------------------------------------------
   const issueCursor = useRef(0)
