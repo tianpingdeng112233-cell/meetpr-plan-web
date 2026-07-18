@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { ColKey, ColWidths, Week, DayCol, ExerciseRow } from './types'
 import { COL_DEFAULTS, COL_MIN, isContentfulUnbound } from './types'
 import { getBoundRowInputIssue, type BoundRowInputIssue } from './inputGuard'
@@ -21,6 +21,8 @@ import { createSaveController } from './autosave'
 import { parseClipboardRows, serializeDayForClipboard, serializeRowsForClipboard } from './clipboard'
 import { relabelWeeksForStartDate, resizeWeeksForCount } from './mapping'
 import { dayMoveDisabledReason, moveDayInWeek } from './dayMove'
+import { compareWeekMetric, summarizeWeek } from './weeklySummary'
+import { WeekCapacitySummary } from './components/WeekCapacitySummary'
 
 interface Sel { wnum: number; dow: number }
 interface PopState { visible: boolean; x: number; y: number; wnum: number; dow: number; rowId: string; query: string }
@@ -628,6 +630,27 @@ export function PlanEditor(props: PlanEditorProps) {
     }
     return row.isMain ? 'main' : 'aux'
   }, [props.exerciseIndex])
+
+  const weeklySummaries = useMemo(() => {
+    const derived: Array<{
+      summary: ReturnType<typeof summarizeWeek>
+      totalSetsTrend: ReturnType<typeof compareWeekMetric> | null
+      tonnageTrend: ReturnType<typeof compareWeekMetric> | null
+    }> = []
+    for (const week of weeks) {
+      const summary = summarizeWeek(
+        week,
+        (exerciseId) => props.exerciseIndex?.classificationById(exerciseId) ?? null,
+      )
+      const previous = derived[derived.length - 1]?.summary
+      derived.push({
+        summary,
+        totalSetsTrend: previous ? compareWeekMetric(summary.totalSets, previous.totalSets) : null,
+        tonnageTrend: previous ? compareWeekMetric(summary.tonnage, previous.tonnage) : null,
+      })
+    }
+    return derived
+  }, [props.exerciseIndex, weeks])
 
   const reorderRow = (
     wnum: number,
@@ -1543,7 +1566,7 @@ export function PlanEditor(props: PlanEditorProps) {
         <div ref={sizerRef}>
           <div ref={zoomwrapRef} style={{ transformOrigin: '0 0', width: 'max-content' }}>
             <div ref={weeksRef}>
-              {weeks.map((wk) => (
+              {weeks.map((wk, weekIndex) => (
                 <div key={wk.num} className="weekband" data-wnum={wk.num} style={{ borderTop: '2px solid var(--border-strong)' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '7px 12px', background: 'var(--surface-1)', borderBottom: '1px solid var(--border)' }}>
                     <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, letterSpacing: '.12em', color: 'var(--brand-red)', fontWeight: 700 }}>W{wk.num2}</span>
@@ -1555,7 +1578,7 @@ export function PlanEditor(props: PlanEditorProps) {
                       </span>
                     )}
                     <span style={{ flex: 1 }} />
-                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--fg-tertiary)', letterSpacing: '.03em' }}>{wk.vol}</span>
+                    <WeekCapacitySummary weekNumber={wk.num} {...weeklySummaries[weekIndex]} />
                   </div>
                   <div className="weekrow" data-weekrow="" style={{ display: 'flex', alignItems: 'stretch' }}>
                     {wk.days.map((day) => (

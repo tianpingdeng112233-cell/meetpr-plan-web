@@ -5,6 +5,7 @@
 
 import aliasesData from '../../data/exercise-aliases.json'
 import type { ExerciseResponse } from '../../api/types'
+import type { CatalogClassification } from './weeklySummary'
 
 interface AliasEntry { alias: string; canonical: string }
 const ALIASES: AliasEntry[] = (aliasesData as { aliases: AliasEntry[] }).aliases
@@ -113,6 +114,15 @@ export class ExerciseIndex {
   /** Catalog tier for a bound exercise id; null when unknown (e.g. custom before reload). */
   typeById(id: string): ExerciseResponse['exercise_type'] | null {
     return this.byId.get(id)?.exercise_type ?? null
+  }
+
+  /** Exact catalog metadata used by derived weekly capacity summaries. */
+  classificationById(id: string): CatalogClassification | null {
+    const exercise = this.byId.get(id)
+    return exercise ? {
+      exerciseType: exercise.exercise_type,
+      mainLiftFamily: exercise.main_lift_family,
+    } : null
   }
 
   withAdded(e: ExerciseResponse): ExerciseIndex {

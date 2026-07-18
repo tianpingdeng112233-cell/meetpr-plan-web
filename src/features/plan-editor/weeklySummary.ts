@@ -1,0 +1,101 @@
+import type { ExerciseType, LiftFamily } from '../../api/types'
+import type { ExerciseRow, Week } from './types'
+
+export interface CatalogClassification {
+  exerciseType: ExerciseType
+  mainLiftFamily: LiftFamily | null
+}
+
+export type CatalogClassifier = (exerciseId: string) => CatalogClassification | null
+
+export interface WeekSummary {
+  squatSets: number
+  benchSets: number
+  deadliftSets: number
+  otherMainSets: number
+  auxiliarySets: number
+  totalSets: number
+  /** Planned volume in kg. Only parseable kg-mode set boxes contribute. */
+  tonnage: number
+}
+
+export type TrendDirection = 'up' | 'down' | 'flat' | 'new'
+
+export interface WeekTrend {
+  direction: TrendDirection
+  /** Signed percentage change. Null is the zero-baseline "new" case. */
+  percent: number | null
+}
+
+/** Parse the first integer from a reps target: 8+ -> 8, 6-8 -> 6. */
+export function parseTargetReps(reps: string): number | null {
+  const match = reps.match(/\d+/)
+  if (!match) return null
+  const parsed = Number.parseInt(match[0], 10)
+  return Number.isFinite(parsed) ? parsed : null
+}
+
+function rowTonnage(row: ExerciseRow): number {
+  if (row.mode !== 'kg') return 0
+  const reps = parseTargetReps(row.reps)
+  if (reps == null) return 0
+
+  return row.boxes.reduce((total, box) => {
+    if (box.val.trim() === '') return total
+    const weight = Number(box.val)
+    return Number.isFinite(weight) ? total + weight * reps : total
+  }, 0)
+}
+
+/**
+ * Derive one week's planned set distribution and tonnage without mutating it.
+ * Bound catalog metadata is authoritative. Unknown/unbound main rows are kept
+ * visible as "other main" rather than guessed into an S/B/D family.
+ */
+export function summarizeWeek(week: Week, classifyCatalog: CatalogClassifier): WeekSummary {
+  const summary: WeekSummary = {
+    squatSets: 0,
+    benchSets: 0,
+    deadliftSets: 0,
+    otherMainSets: 0,
+    auxiliarySets: 0,
+    totalSets: 0,
+    tonnage: 0,
+  }
+
+  for (const day of week.days) for (const row of day.rows) {
+    const sets = row.boxes.length
+    const catalog = row.exerciseId ? classifyCatalog(row.exerciseId) : null
+    const isMain = catalog ? catalog.exerciseType !== 'accessory' : row.isMain
+
+    summary.totalSets += sets
+    summary.tonnage += rowTonnage(row)
+
+    if (!isMain) {
+      summary.auxiliarySets += sets
+      continue
+    }
+
+    switch (catalog?.mainLiftFamily) {
+      case 'squat': summary.squatSets += sets; break
+      case 'bench': summary.benchSets += sets; break
+      case 'deadlift': summary.deadliftSets += sets; break
+      default: summary.otherMainSets += sets
+    }
+  }
+
+  return summary
+}
+
+/** Compare a current metric with the previous week using a ±2% flat band. */
+export function compareWeekMetric(current: number, previous: number): WeekTrend {
+  if (previous === 0) {
+    return current > 0
+      ? { direction: 'new', percent: null }
+      : { direction: 'flat', percent: 0 }
+  }
+
+  const percent = ((current - previous) / previous) * 100
+  if (Math.abs(percent) <= 2) return { direction: 'flat', percent }
+  return { direction: percent > 0 ? 'up' : 'down', percent }
+}
