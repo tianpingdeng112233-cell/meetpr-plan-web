@@ -249,6 +249,12 @@ export function PlanEditor(props: PlanEditorProps) {
   // W1 calendar/delete controls are draft-only. Keep this separate from main's
   // `published` flag, which drives explicit in-place updates for spec 004.
   const statusCalendarLocked = props.planStatus != null ? props.planStatus !== 'draft' : published
+  // Day dragging is allowed on live plans too (David 2026-07-18): a published
+  // plan never autosaves, so a move only reaches the student after the
+  // explicit「更新计划」confirm. Logged days stay frozen via dayMoveDisabledReason.
+  const dayMoveLocked = props.planStatus != null
+    ? props.planStatus !== 'draft' && props.planStatus !== 'published'
+    : false
   const [copyDone, setCopyDone] = useState(false)
   const [rowCopyDone, setRowCopyDone] = useState(false)
   const [hasRowClipboard, setHasRowClipboard] = useState(false)
@@ -459,7 +465,7 @@ export function PlanEditor(props: PlanEditorProps) {
     handleSelect(wnum, dow)
   }
   const handleDayMoveStart = (wnum: number, day: DayCol, e: React.MouseEvent) => {
-    if (e.button !== 0 || dayMoveDisabledReason(day, statusCalendarLocked)) return
+    if (e.button !== 0 || dayMoveDisabledReason(day, dayMoveLocked)) return
     if ((e.target as HTMLElement).closest('button')) return
 
     dayMoveCleanupRef.current?.()
@@ -1605,7 +1611,7 @@ export function PlanEditor(props: PlanEditorProps) {
                         onRecallContext={recallContext}
                         onSelectRow={(rowId) => handleSelectRow(wk.num, day.dow, rowId)}
                         dayMoveState={moveStateForDay(wk.num, day.dow)}
-                        dayMoveDisabledHint={dayMoveDisabledReason(day, statusCalendarLocked)}
+                        dayMoveDisabledHint={dayMoveDisabledReason(day, dayMoveLocked)}
                         onDayMoveStart={(e) => handleDayMoveStart(wk.num, day, e)}
                         onResizeStart={(col, e) => handleResizeStart(day.dow, col, e)}
                         onNameFocus={(rowId, name, el) => handleNameFocus(wk.num, day.dow, rowId, name, el)}

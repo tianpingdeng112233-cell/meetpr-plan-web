@@ -74,7 +74,7 @@ describe('moveDayInWeek', () => {
 
 describe('dayMoveDisabledReason', () => {
   it('uses the draft-calendar status lock before row history locks', () => {
-    expect(dayMoveDisabledReason(day(0, [row('logged', true)], false), true)).toBe('仅草稿计划可移动训练日')
+    expect(dayMoveDisabledReason(day(0, [row('logged', true)], false), true)).toBe('已完成/已停用的计划不可移动训练日')
   })
 
   it('blocks a day containing any logged row and allows an editable day', () => {
