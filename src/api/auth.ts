@@ -22,7 +22,10 @@ export async function login(
   })
   // Do this before any persistence: a student must not be able to leave a
   // valid token in this coach-only web app by simply refreshing after denial.
-  if (expectedRole && res.user.role !== expectedRole) throw new AuthRoleError(expectedRole)
+  const roleAllowed = !expectedRole
+    || res.user.role === expectedRole
+    || (expectedRole === 'coach' && res.user.role === 'admin')
+  if (!roleAllowed) throw new AuthRoleError(expectedRole)
   setTokens({ accessToken: res.accessToken, refreshToken: res.refreshToken })
   localStorage.setItem(USER_KEY, JSON.stringify(res.user))
   return res.user
