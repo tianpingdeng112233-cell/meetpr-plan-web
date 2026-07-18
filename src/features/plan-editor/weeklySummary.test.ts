@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { DayCol, ExerciseRow, Week } from './types'
 import {
-  compareWeekMetric, parseTargetReps, summarizeWeek, type CatalogClassification,
+  compareWeekMetric, parseTargetReps, summarizeDaySection, summarizeWeek, type CatalogClassification,
 } from './weeklySummary'
 
 function row(id: string, patch: Partial<ExerciseRow> = {}): ExerciseRow {
@@ -87,6 +87,21 @@ describe('weekly summary', () => {
     expect(summary.totalSets).toBe(8)
     expect(summary.auxiliarySets).toBe(8)
     expect(summary.tonnage).toBe(6 * (100 + 102.5) + 8 * 50)
+  })
+
+  it('summarizes a day section with the same set-slot and tonnage rules', () => {
+    const summary = summarizeDaySection([
+      row('kg', {
+        reps: '6-8',
+        boxes: [{ val: '100', empty: false }, { val: '', empty: true }, { val: '102.5', empty: false }],
+      }),
+      row('amrap', { reps: '8+', boxes: [{ val: '50', empty: false }] }),
+      row('no-reps', { reps: '—', boxes: [{ val: '200', empty: false }] }),
+      row('rpe', { mode: 'rpe', reps: '5', boxes: [{ val: '9', empty: false }] }),
+      row('invalid-weight', { reps: '5', boxes: [{ val: '重', empty: false }] }),
+    ])
+
+    expect(summary).toEqual({ sets: 7, tonnage: 6 * (100 + 102.5) + 8 * 50 })
   })
 
   it('falls back to the row isMain flag when a bound id is missing from the catalog', () => {

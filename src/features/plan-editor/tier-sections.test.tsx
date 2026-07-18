@@ -25,7 +25,7 @@ const noop = {
 const tierByIsMain = (r: ExerciseRow) => (r.isMain ? 'main' as const : 'aux' as const)
 
 function headerLabels(host: HTMLElement): string[] {
-  return [...host.querySelectorAll<HTMLElement>('.tierhead')].map((el) => el.textContent ?? '')
+  return [...host.querySelectorAll<HTMLElement>('.tierhead')].map((el) => el.children[1]?.textContent ?? '')
 }
 
 describe('day tier sections', () => {
@@ -73,6 +73,26 @@ describe('day tier sections', () => {
 
     act(() => root?.render(<DayColumn day={auxOnly} colW={COLW} selected rowTier={tierByIsMain} {...noop} />))
     expect(headerLabels(host)).toEqual(['主项及变式', '辅助项'])
+  })
+
+  it('shows section sets and tonnage, omitting zero tonnage from the auxiliary section', () => {
+    act(() => root?.render(
+      <DayColumn
+        day={{
+          dow: 0, dowLabel: '周一', dateLabel: '1/1', rest: false,
+          rows: [
+            row('sq', { isMain: true, boxes: [{ val: '100', empty: false }, { val: '100', empty: false }] }),
+            row('row1', { mode: 'rpe', boxes: [{ val: '8', empty: false }] }),
+          ],
+        }}
+        colW={COLW} selected={false} rowTier={tierByIsMain} {...noop}
+      />,
+    ))
+
+    const summaries = [...host.querySelectorAll<HTMLElement>('.tierhead-summary')]
+    expect(summaries.map((el) => el.textContent)).toEqual(['2 组 · 总重 1t', '1 组'])
+    expect(summaries[0].querySelector('.tierhead-tonnage')).not.toBeNull()
+    expect(summaries[1].querySelector('.tierhead-tonnage')).toBeNull()
   })
 
   it('renders the legacy flat list when no rowTier resolver is provided', () => {

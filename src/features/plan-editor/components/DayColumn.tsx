@@ -7,6 +7,7 @@ import {
   getBoundRowInputIssue,
   INPUT_GUARD_REASONS,
 } from '../inputGuard'
+import { compactTonnage, summarizeDaySection, type DaySectionSummary } from '../weeklySummary'
 
 interface Props {
   day: DayCol
@@ -96,10 +97,10 @@ function GuardedInput({ value, filter, onValue, ...rest }: {
 }
 
 /** Section divider between the main-lift block and the accessory block. */
-function TierHeader({ label, accent, width }: { label: string; accent?: boolean; width: number }) {
+function TierHeader({ label, accent, width, summary }: { label: string; accent?: boolean; width: number; summary: DaySectionSummary }) {
   return (
     <div className="tierhead" style={{
-      width, boxSizing: 'border-box', display: 'flex', alignItems: 'center', gap: 5,
+      width, minWidth: 0, overflow: 'hidden', boxSizing: 'border-box', display: 'flex', alignItems: 'center', gap: 5,
       padding: '3px 8px', background: 'var(--surface-1)', borderTop: '1px solid var(--border)',
     }}>
       <span style={{ width: 3, height: 8, borderRadius: 1, flex: 'none', background: accent ? 'var(--brand-red)' : 'var(--fg-tertiary)' }} />
@@ -107,6 +108,13 @@ function TierHeader({ label, accent, width }: { label: string; accent?: boolean;
         fontFamily: 'var(--font-mono)', fontSize: 9, letterSpacing: '.08em', whiteSpace: 'nowrap',
         color: accent ? 'var(--fg-secondary)' : 'var(--fg-tertiary)',
       }}>{label}</span>
+      <span className="tierhead-summary" aria-label={`${summary.sets} 组${summary.tonnage > 0 ? ` · 总重 ${compactTonnage(summary.tonnage)}` : ''}`} style={{
+        minWidth: 0, marginLeft: 'auto', display: 'flex', justifyContent: 'flex-end', overflow: 'hidden',
+        color: 'var(--fg-tertiary)', fontFamily: 'var(--font-mono)', fontSize: 9, whiteSpace: 'nowrap',
+      }}>
+        <span style={{ flex: 'none' }}>{summary.sets} 组</span>
+        {summary.tonnage > 0 && <span className="tierhead-tonnage" style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}> · 总重 {compactTonnage(summary.tonnage)}</span>}
+      </span>
     </div>
   )
 }
@@ -405,12 +413,14 @@ export function DayColumn({ day, colW, selected, selectedRowId, onSelect, onReca
         }
         const mainRows = day.rows.filter((r) => rowTier(r) === 'main')
         const auxRows = day.rows.filter((r) => rowTier(r) === 'aux')
+        const mainSummary = summarizeDaySection(mainRows)
+        const auxSummary = summarizeDaySection(auxRows)
         return (
           <>
-            {(mainRows.length > 0 || selected) && <TierHeader label="主项及变式" accent width={total} />}
+            {(mainRows.length > 0 || selected) && <TierHeader label="主项及变式" accent width={total} summary={mainSummary} />}
             {mainRows.map(renderRow)}
             {selected && addRowEntry('main')}
-            {(auxRows.length > 0 || selected) && <TierHeader label="辅助项" width={total} />}
+            {(auxRows.length > 0 || selected) && <TierHeader label="辅助项" width={total} summary={auxSummary} />}
             {auxRows.map(renderRow)}
             {selected && addRowEntry('aux')}
           </>

@@ -19,6 +19,11 @@ export interface WeekSummary {
   tonnage: number
 }
 
+export interface DaySectionSummary {
+  sets: number
+  tonnage: number
+}
+
 export type TrendDirection = 'up' | 'down' | 'flat' | 'new'
 
 export interface WeekTrend {
@@ -35,7 +40,14 @@ export function parseTargetReps(reps: string): number | null {
   return Number.isFinite(parsed) ? parsed : null
 }
 
-function rowTonnage(row: ExerciseRow): number {
+/** Single source for the set-count rule: every set slot counts (empty-kg, RPE
+ *  and bodyweight sets included) — week, day-section and any future consumer
+ *  must go through this, never `boxes.length` inline. */
+export function rowSetCount(row: ExerciseRow): number {
+  return row.boxes.length
+}
+
+export function rowTonnage(row: ExerciseRow): number {
   if (row.mode !== 'kg') return 0
   const reps = parseTargetReps(row.reps)
   if (reps == null) return 0
@@ -45,6 +57,19 @@ function rowTonnage(row: ExerciseRow): number {
     const weight = Number(box.val)
     return Number.isFinite(weight) ? total + weight * reps : total
   }, 0)
+}
+
+/** Summarize an already-classified day section using the weekly set/tonnage rules. */
+export function summarizeDaySection(rows: readonly ExerciseRow[]): DaySectionSummary {
+  return rows.reduce<DaySectionSummary>((summary, row) => ({
+    sets: summary.sets + rowSetCount(row),
+    tonnage: summary.tonnage + rowTonnage(row),
+  }), { sets: 0, tonnage: 0 })
+}
+
+export function compactTonnage(kg: number): string {
+  if (Math.abs(kg) < 1000) return `${kg.toLocaleString('zh-CN', { maximumFractionDigits: 1 })}kg`
+  return `${(kg / 1000).toLocaleString('zh-CN', { maximumFractionDigits: 1 })}t`
 }
 
 /**
@@ -64,7 +89,7 @@ export function summarizeWeek(week: Week, classifyCatalog: CatalogClassifier): W
   }
 
   for (const day of week.days) for (const row of day.rows) {
-    const sets = row.boxes.length
+    const sets = rowSetCount(row)
     const catalog = row.exerciseId ? classifyCatalog(row.exerciseId) : null
     const isMain = catalog ? catalog.exerciseType !== 'accessory' : row.isMain
 
