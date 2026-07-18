@@ -23,7 +23,7 @@ interface Props {
   onNameFocus: (rowId: string, name: string, el: HTMLElement) => void
   onNameChange: (rowId: string, value: string, el: HTMLElement) => void
   onNameBlur: () => void
-  onAddRow: () => void
+  onAddRow: (tier: 'main' | 'aux') => void
   /** Display tier resolver (catalog exercise_type based); absent = flat legacy list. */
   rowTier?: (row: ExerciseRow) => 'main' | 'aux'
   onEditRow: (rowId: string, updater: (r: ExerciseRow) => ExerciseRow) => void
@@ -389,24 +389,33 @@ export function DayColumn({ day, colW, selected, selectedRowId, onSelect, onReca
             </div>
           )
         }
-        if (!rowTier) return day.rows.map(renderRow)
+        const addRowEntry = (tier: 'main' | 'aux') => (
+          <div className="popitem" data-add-tier={tier} onClick={(e) => { e.stopPropagation(); onAddRow(tier) }}
+            style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 8px', borderTop: '1px dashed var(--border-strong)', color: 'var(--fg-tertiary)', cursor: 'pointer', fontSize: 11 }}>
+            <span style={{ color: 'var(--brand-red)', fontWeight: 700 }}>＋</span> 加动作
+          </div>
+        )
+        if (!rowTier) {
+          return (
+            <>
+              {day.rows.map(renderRow)}
+              {selected && addRowEntry('aux')}
+            </>
+          )
+        }
         const mainRows = day.rows.filter((r) => rowTier(r) === 'main')
         const auxRows = day.rows.filter((r) => rowTier(r) === 'aux')
         return (
           <>
             {(mainRows.length > 0 || selected) && <TierHeader label="主项及变式" accent width={total} />}
             {mainRows.map(renderRow)}
+            {selected && addRowEntry('main')}
             {(auxRows.length > 0 || selected) && <TierHeader label="辅助项" width={total} />}
             {auxRows.map(renderRow)}
+            {selected && addRowEntry('aux')}
           </>
         )
         })()}
-        {selected && (
-          <div className="popitem" onClick={(e) => { e.stopPropagation(); onAddRow() }}
-            style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 8px', borderTop: '1px dashed var(--border-strong)', color: 'var(--fg-tertiary)', cursor: 'pointer', fontSize: 11 }}>
-            <span style={{ color: 'var(--brand-red)', fontWeight: 700 }}>＋</span> 加动作
-          </div>
-        )}
       </div>
 
       {dividers.map((d) => (

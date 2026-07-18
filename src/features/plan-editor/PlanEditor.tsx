@@ -1043,8 +1043,11 @@ export function PlanEditor(props: PlanEditorProps) {
     exerciseId: null, name: '', ku: false, custom: false, isMain: false,
     aux: false, reps: '—', mode: 'kg', boxes: [], note: '',
   })
-  const addRowToDay = (wnum: number, dow: number) => {
+  // A blank row can't resolve its tier from the catalog yet, so seed isMain from
+  // the section whose ＋ 加动作 was clicked; bindRowAt re-derives it once a name binds.
+  const addRowToDay = (wnum: number, dow: number, tier: 'main' | 'aux' = 'aux') => {
     const row = blankRow()
+    row.isMain = tier === 'main'
     setWeeksWithHistory((prev) => prev.map((wk) => wk.num !== wnum ? wk : {
       ...wk, days: wk.days.map((d) => {
         if (d.dow !== dow) return d
@@ -1741,7 +1744,7 @@ export function PlanEditor(props: PlanEditorProps) {
                         onNameFocus={(rowId, name, el) => handleNameFocus(wk.num, day.dow, rowId, name, el)}
                         onNameChange={(rowId, value, el) => handleNameChange(wk.num, day.dow, rowId, value, el)}
                         onNameBlur={handleNameBlur}
-                        onAddRow={() => addRowToDay(wk.num, day.dow)}
+                        onAddRow={(tier) => addRowToDay(wk.num, day.dow, tier)}
                         onEditRow={(rowId, updater) => editRow(wk.num, day.dow, rowId, updater)}
                         onReorderRow={(dragRowId, targetRowId, position) => reorderRow(wk.num, day.dow, dragRowId, targetRowId, position)}
                         onDeleteRow={(rowId) => deleteRow(wk.num, day.dow, rowId)}
