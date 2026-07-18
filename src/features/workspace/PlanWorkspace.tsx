@@ -509,7 +509,7 @@ export function PlanWorkspace({ onLogout }: Props) {
       onCreateExercise={handleCreateExercise}
       onUseExercise={() => { void changeView('editor') }}
     />}
-    {view === 'board' && <StudentBoard students={students} />}
+    {view === 'board' && <StudentBoard students={students} catalog={catalog} index={index} />}
     {view === 'videos' && <VideosPage students={students} studentId={studentId} onStudent={(id) => { void switchStudent(id) }} />}
     {view === 'requests' && <RequestsPage requests={bindRequests} onRequestsChanged={setBindRequests} onAccepted={refreshStudentsAfterAccept} />}
     </div></div>
