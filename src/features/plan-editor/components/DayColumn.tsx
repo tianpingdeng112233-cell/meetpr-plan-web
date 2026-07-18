@@ -253,7 +253,7 @@ export function DayColumn({ day, colW, selected, selectedRowId, onSelect, onReca
       }}>
         <div className="dayhead" data-day-move-handle="" title={dayMoveTitle} onMouseDown={onDayMoveStart}
           style={{ padding: '4px 2px', textAlign: 'center', color: 'var(--fg-tertiary)', borderBottom: '1px solid var(--border)', cursor: dayMoveCursor, userSelect: 'none' }}>
-          <span style={{ display: 'block', fontSize: 10, fontWeight: 600 }}>{day.dowLabel}</span>
+          <span style={{ display: 'block', fontSize: 10, fontWeight: 600 }}>{!dayMoveDisabledHint && <span className="day-move-grip" aria-hidden="true">⠿ </span>}{day.dowLabel}</span>
           <span style={{ display: 'block', marginTop: 1, fontFamily: 'var(--font-mono)', fontSize: 8 }}>{day.dateLabel}</span>
           {selected && <button className="context-recall" onMouseDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); onRecallContext?.() }} title="显示撰写上下文">▤</button>}
         </div>
@@ -273,6 +273,7 @@ export function DayColumn({ day, colW, selected, selectedRowId, onSelect, onReca
       style={{ position: 'relative', flex: '0 0 auto', borderRight: '1px solid var(--border)', cursor: 'pointer' }}>
       <div className="dayhead" data-day-move-handle="" title={dayMoveTitle} onMouseDown={onDayMoveStart}
         style={{ display: 'flex', alignItems: 'baseline', gap: 7, padding: '5px 8px', background: 'var(--surface-1)', borderBottom: '1px solid var(--border)', whiteSpace: 'nowrap', overflow: 'hidden', cursor: dayMoveCursor, userSelect: 'none' }}>
+        {!dayMoveDisabledHint && <span className="day-move-grip" aria-hidden="true">⠿</span>}
         <span style={{ fontWeight: 700, fontSize: 12, color: '#fff' }}>{day.dowLabel}</span>
         <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--fg-tertiary)' }}>{day.dateLabel}</span>
         {selected && <button className="context-recall" onMouseDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); onRecallContext?.() }} title="显示撰写上下文">▤</button>}
