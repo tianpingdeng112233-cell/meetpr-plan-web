@@ -1,7 +1,7 @@
 // Wire types — mirror the MeetPR backend (src/routes/{auth,plans,exercises},
 // src/handlers/coach-students). Decimals arrive as strings; keep them strings.
 
-export type UserRole = 'coach' | 'student'
+export type UserRole = 'coach' | 'coached_student' | 'self_train_student' | 'admin'
 export type IntensityModeWire = 'weight' | 'rpe'
 export type SetType = 'warmup' | 'working' | 'failed' | 'amrap' | 'backoff'
 export type PlanStatus = 'draft' | 'published' | 'completed' | 'paused'

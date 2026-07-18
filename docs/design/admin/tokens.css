@@ -1,0 +1,58 @@
+/* ============================================================
+   MeetPR Design System — tokens (excerpt for admin workspace)
+   Source: claude.ai/design project "MeetPR 管理后台设计"
+   Dark-first. Values referenced by Admin管理后台.dc.html.
+   ============================================================ */
+
+:root {
+  /* ---------- Brand ---------- */
+  --brand-red:        #E5221E;   /* THE signal. PR / AI / active tab / danger */
+  --brand-red-press:  #B81A17;   /* pressed state */
+  --brand-red-soft:   rgba(229, 34, 30, 0.12); /* tinted bg */
+
+  /* ---------- Semantic ---------- */
+  --green:            #1FB358;   /* low fatigue / + delta / completion */
+  --green-soft:       rgba(31, 179, 88, 0.14);
+  --amber:            #E0A810;   /* RARE — overreaching */
+  --amber-soft:       rgba(224, 168, 16, 0.14);
+
+  /* ---------- Dark theme (PRIMARY) ---------- */
+  --bg:               #000000;   /* true black */
+  --surface-1:        #0E0E0E;   /* cards */
+  --surface-2:        #161616;   /* elevated card / modal / hover */
+  --surface-3:        #1F1F1F;   /* pressed / focus background */
+  --border:           #262626;   /* hairline divider */
+  --border-strong:    #3A3A3A;
+  --fg-primary:       #FFFFFF;
+  --fg-secondary:     #B5B5B5;
+  --fg-tertiary:      #737373;
+  --fg-disabled:      rgba(255,255,255,0.35);
+
+  /* ---------- Type stack ---------- */
+  --font-sans: "Noto Sans SC", -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display",
+               "PingFang SC", "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, Monaco, "Cascadia Mono",
+               "Roboto Mono", Consolas, monospace;
+  --font-display-cn: "Noto Sans SC", "PingFang SC", "Microsoft YaHei", -apple-system, sans-serif;
+
+  /* ---------- Spacing (8pt grid) ---------- */
+  --sp-xs:   4px;
+  --sp-sm:   8px;
+  --sp-md:   12px;
+  --sp-base: 16px;
+  --sp-lg:   24px;
+  --sp-xl:   32px;
+
+  /* ---------- Radius ---------- */
+  --r-sm:    4px;   /* chips, micro-pills */
+  --r-md:    8px;   /* inputs */
+  --r-lg:    12px;  /* cards */
+  --r-xl:    16px;  /* modals */
+  --r-pill:  999px;
+
+  /* ---------- Motion ---------- */
+  --ease-ios: cubic-bezier(0.32, 0.72, 0, 1);
+  --dur-fast: 200ms;
+  --dur-base: 240ms;
+  --dur-slow: 280ms;
+}
