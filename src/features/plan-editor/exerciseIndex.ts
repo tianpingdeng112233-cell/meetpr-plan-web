@@ -5,6 +5,7 @@
 
 import aliasesData from '../../data/exercise-aliases.json'
 import type { ExerciseResponse } from '../../api/types'
+import type { ExerciseUsageStat } from '../../api/exercises'
 import type { CatalogClassification } from './weeklySummary'
 
 interface AliasEntry { alias: string; canonical: string }
@@ -29,8 +30,16 @@ export class ExerciseIndex {
   private byName = new Map<string, ExerciseResponse>()
   private byId = new Map<string, ExerciseResponse>()
   private aliasToCanonical = new Map<string, string>()
+  private usage: Map<string, number>
 
-  constructor(private catalog: ExerciseResponse[], private opts: { deadliftStyle?: DeadliftStylePreference } = {}) {
+  constructor(
+    private catalog: ExerciseResponse[],
+    private opts: { deadliftStyle?: DeadliftStylePreference } = {},
+    usage: Map<string, number> | ExerciseUsageStat[] = [],
+  ) {
+    this.usage = usage instanceof Map
+      ? usage
+      : new Map(usage.map((stat) => [stat.exercise_id, stat.plan_count]))
     for (const e of catalog) {
       const display = { ...e, name: displayExerciseName(e.name) }
       this.byId.set(e.id, display)
@@ -52,8 +61,8 @@ export class ExerciseIndex {
     this.aliasToCanonical.set('暂停硬拉', opts.deadliftStyle === 'sumo' ? '相扑暂停硬拉' : '传统暂停硬拉')
   }
 
-  /** Exact resolve: a catalog name, or an alias -> canonical -> catalog. */
-  resolve(input: string): ExerciseResponse | null {
+  /** Strict resolve: exact catalog name or exact alias only — safe for auto-binding on blur. */
+  resolveExact(input: string): ExerciseResponse | null {
     const t = input.trim()
     if (!t) return null
     if (this.byName.has(t)) return this.byName.get(t)!
@@ -61,6 +70,14 @@ export class ExerciseIndex {
     if (this.byName.has(normalized)) return this.byName.get(normalized)!
     const canon = this.aliasToCanonical.get(t) ?? this.aliasToCanonical.get(normalized)
     if (canon && this.byName.has(canon)) return this.byName.get(canon)!
+    return null
+  }
+
+  /** Lenient resolve for import/paste paths: exact first, then fuzzy inference. */
+  resolve(input: string): ExerciseResponse | null {
+    const exact = this.resolveExact(input)
+    if (exact) return exact
+    const normalized = normalizeLookupName(input.trim())
     if (/二头.*弯举|弯举.*二头/.test(normalized)) {
       const curl = this.byName.get('哑铃二头弯举')
       if (curl) return curl
@@ -68,7 +85,8 @@ export class ExerciseIndex {
     return null
   }
 
-  /** Typeahead: alias matches first (show the canonical they map to), then catalog substring. */
+  /** Typeahead: alias matches first (show the canonical they map to), then catalog substring.
+   *  Usage reorders the complete result set stably, preserving that baseline order on ties. */
   search(query: string, limit = 8): ExerciseHit[] {
     const q = query.trim()
     if (!q) return []
@@ -93,7 +111,6 @@ export class ExerciseIndex {
       }
     }
     for (const e of this.catalog) {
-      if (hits.length >= limit) break
       const displayName = displayExerciseName(e.name)
       if (
         e.name.includes(q)
@@ -102,7 +119,16 @@ export class ExerciseIndex {
         || (e.name_en?.toLowerCase().includes(q.toLowerCase()) ?? false)
       ) push({ ...e, name: displayName })
     }
-    return hits.slice(0, limit)
+    return hits
+      .map((hit, baseIndex) => ({ hit, baseIndex }))
+      .sort((a, b) => (this.usage.get(b.hit.id) ?? 0) - (this.usage.get(a.hit.id) ?? 0)
+        || a.baseIndex - b.baseIndex)
+      .slice(0, limit)
+      .map(({ hit }) => hit)
+  }
+
+  bump(id: string): void {
+    this.usage.set(id, (this.usage.get(id) ?? 0) + 1)
   }
 
   add(e: ExerciseResponse) {
@@ -129,6 +155,7 @@ export class ExerciseIndex {
     return new ExerciseIndex(
       this.catalog.some((item) => item.id === e.id) ? this.catalog : [...this.catalog, e],
       this.opts,
+      this.usage,
     )
   }
 }

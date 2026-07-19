@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   getAdminBindings,
+  getAdminExerciseUsage,
   getAdminOverview,
   getAdminPlan,
   getAdminPlans,
@@ -31,6 +32,7 @@ describe('admin API contract', () => {
     await getAdminUser('user/one')
     await getAdminBindings()
     await getAdminPlans()
+    await getAdminExerciseUsage()
     await getAdminPlan('plan/one')
 
     const calls = vi.mocked(fetch).mock.calls
@@ -40,6 +42,7 @@ describe('admin API contract', () => {
       '/api/admin/users/user%2Fone',
       '/api/admin/bindings',
       '/api/admin/plans',
+      '/api/admin/exercise-usage',
       '/api/admin/plans/plan%2Fone',
     ])
     calls.forEach(([, init]) => expect(new Headers(init?.headers).get('Authorization')).toBe('Bearer admin-token'))

@@ -94,12 +94,24 @@ export interface AdminPlan {
 
 export interface AdminPlansResponse { plans: AdminPlan[] }
 
+export interface AdminExerciseUsage {
+  exercise_id: string
+  name: string
+  exercise_type: string
+  plan_count: number
+  coach_count: number
+}
+
+export interface AdminExerciseUsageResponse { exercises: AdminExerciseUsage[] }
+
 export const getAdminOverview = () => api.get<AdminOverviewResponse>('/admin/overview')
 export const getAdminUsers = () => api.get<AdminUsersResponse>('/admin/users')
 export const getAdminUser = (userId: string) =>
   api.get<AdminUserDetailResponse>(`/admin/users/${encodeURIComponent(userId)}`)
 export const getAdminBindings = () => api.get<AdminBindingsResponse>('/admin/bindings')
 export const getAdminPlans = () => api.get<AdminPlansResponse>('/admin/plans')
+export const getAdminExerciseUsage = () =>
+  api.get<AdminExerciseUsageResponse>('/admin/exercise-usage')
 // Admin plan detail carries display-ready exercise names: the admin cannot see
 // coach-private catalog entries via /exercises, so the backend joins names in.
 export type AdminPlanExercise = PlanExerciseResponse & { exercise_name: string }

@@ -280,6 +280,7 @@ export function PlanEditor(props: PlanEditorProps) {
   const [hasRowClipboard, setHasRowClipboard] = useState(false)
   const [curWeekLabel, setCurWeekLabel] = useState('—')
   const [pop, setPop] = useState<PopState>({ visible: false, x: 0, y: 0, wnum: 0, dow: 0, rowId: '', query: '' })
+  const [activeIndex, setActiveIndex] = useState(0)
   const [createExercise, setCreateExercise] = useState<CreateExerciseState>({ open: false, initialName: '', bindTarget: null })
   const [creatingExercise, setCreatingExercise] = useState(false)
   const [createExerciseError, setCreateExerciseError] = useState('')
@@ -678,14 +679,33 @@ export function PlanEditor(props: PlanEditorProps) {
     if (top + 260 > root.clientHeight) top = r.top - rr.top - 260
     setPop({ visible: true, x: left, y: top, wnum, dow, rowId, query })
   }
+  // Pending blur timers keyed per row: resuming edit on the same row must cancel its
+  // pending auto-bind/hide, or the stale callback races the new editing session.
+  const blurTimersRef = useRef(new Map<string, number>())
+  const blurTimerKey = (wnum: number, dow: number, rowId: string) => `${wnum}:${dow}:${rowId}`
+  const cancelPendingBlur = (wnum: number, dow: number, rowId: string) => {
+    const key = blurTimerKey(wnum, dow, rowId)
+    const pending = blurTimersRef.current.get(key)
+    if (pending !== undefined) {
+      window.clearTimeout(pending)
+      blurTimersRef.current.delete(key)
+    }
+  }
+  useEffect(() => {
+    const timers = blurTimersRef.current
+    return () => timers.forEach((id) => window.clearTimeout(id))
+  }, [])
   const handleNameFocus = (wnum: number, dow: number, rowId: string, name: string, el: HTMLElement) => {
+    cancelPendingBlur(wnum, dow, rowId)
+    setActiveIndex(0)
     positionPopAt(el, wnum, dow, rowId, name)
   }
   const handleNameChange = (wnum: number, dow: number, rowId: string, value: string, el: HTMLElement) => {
+    cancelPendingBlur(wnum, dow, rowId)
     editRow(wnum, dow, rowId, (r) => ({ ...r, name: value, exerciseId: null, ku: false, custom: false }))
+    setActiveIndex(0)
     positionPopAt(el, wnum, dow, rowId, value)
   }
-  const handleNameBlur = () => { window.setTimeout(() => setPop((p) => ({ ...p, visible: false })), 160) }
 
   const bindRowAt = (target: { wnum: number; dow: number; rowId: string }, exerciseId: string, name: string, custom: boolean) => {
     // Backfill is_main_lift from the catalog tier so manually picked rows persist
@@ -699,6 +719,28 @@ export function PlanEditor(props: PlanEditorProps) {
           : r),
       }),
     }))
+  }
+  const handleNameBlur = (wnum: number, dow: number, rowId: string) => {
+    cancelPendingBlur(wnum, dow, rowId)
+    const key = blurTimerKey(wnum, dow, rowId)
+    const id = window.setTimeout(() => {
+      blurTimersRef.current.delete(key)
+      const row = latestWeeks.current.find((wk) => wk.num === wnum)
+        ?.days.find((day) => day.dow === dow)
+        ?.rows.find((item) => item.id === rowId)
+      if (row && !row.exerciseId && row.name.trim()) {
+        // Strict resolver only: fuzzy inference is for import/paste, never for silent auto-bind.
+        const resolved = props.exerciseIndex?.resolveExact(row.name)
+        if (resolved) {
+          props.exerciseIndex?.bump(resolved.id)
+          bindRowAt({ wnum, dow, rowId }, resolved.id, resolved.name, false)
+        }
+      }
+      setPop((current) => current.wnum === wnum && current.dow === dow && current.rowId === rowId
+        ? { ...current, visible: false }
+        : current)
+    }, 160)
+    blurTimersRef.current.set(key, id)
   }
   const editRow = (wnum: number, dow: number, rowId: string, updater: (r: ExerciseRow) => ExerciseRow) => {
     setWeeksWithHistory((prev) => prev.map((wk) => wk.num !== wnum ? wk : {
@@ -786,6 +828,7 @@ export function PlanEditor(props: PlanEditorProps) {
   }
 
   const onPickHit = (hit: ExerciseHit) => {
+    props.exerciseIndex?.bump(hit.id)
     bindRowAt({ wnum: pop.wnum, dow: pop.dow, rowId: pop.rowId }, hit.id, hit.name, false)
     setPop((p) => ({ ...p, visible: false }))
   }
@@ -810,7 +853,12 @@ export function PlanEditor(props: PlanEditorProps) {
     setCreateExerciseError('')
     try {
       const e = await props.onCreateExercise(input)
-      if (createExercise.bindTarget) bindRowAt(createExercise.bindTarget, e.id, e.name, true)
+      // Only a create that actually lands in a plan row counts as usage — the toolbar
+      // "new exercise" flow (bindTarget null) just adds to the catalog.
+      if (createExercise.bindTarget) {
+        bindRowAt(createExercise.bindTarget, e.id, e.name, true)
+        props.exerciseIndex?.bump(e.id)
+      }
       setStatusText(`已创建动作「${e.name}」`)
       setCreateExercise({ open: false, initialName: '', bindTarget: null })
     } catch (e) {
@@ -819,6 +867,35 @@ export function PlanEditor(props: PlanEditorProps) {
     } finally {
       setCreatingExercise(false)
     }
+  }
+
+  const handleNameKeyDown = (
+    wnum: number,
+    dow: number,
+    rowId: string,
+    event: React.KeyboardEvent<HTMLInputElement>,
+  ) => {
+    if (!pop.visible || pop.wnum !== wnum || pop.dow !== dow || pop.rowId !== rowId || !pop.query.trim()) return
+    const hits = props.exerciseIndex?.search(pop.query) ?? []
+    const selectableCount = hits.length + (props.onCreateExercise ? 1 : 0)
+    if (event.key === 'Escape') {
+      event.preventDefault()
+      setPop((current) => ({ ...current, visible: false }))
+      return
+    }
+    if (selectableCount === 0) return
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      event.preventDefault()
+      const direction = event.key === 'ArrowDown' ? 1 : -1
+      setActiveIndex((current) => (current + direction + selectableCount) % selectableCount)
+      return
+    }
+    if (event.key !== 'Enter' && event.key !== 'Tab') return
+    const selectedIndex = Math.min(activeIndex, selectableCount - 1)
+    const hit = hits[selectedIndex]
+    if (hit) onPickHit(hit)
+    else if (props.onCreateExercise && selectedIndex === hits.length) void onCreateCustom(pop.query.trim())
+    if (event.key === 'Enter') event.preventDefault()
   }
 
   const patchSelDay = (updater: (d: DayCol) => DayCol) => {
@@ -1730,7 +1807,8 @@ export function PlanEditor(props: PlanEditorProps) {
                         onResizeStart={(col, e) => handleResizeStart(day.dow, col, e)}
                         onNameFocus={(rowId, name, el) => handleNameFocus(wk.num, day.dow, rowId, name, el)}
                         onNameChange={(rowId, value, el) => handleNameChange(wk.num, day.dow, rowId, value, el)}
-                        onNameBlur={handleNameBlur}
+                        onNameKeyDown={(rowId, event) => handleNameKeyDown(wk.num, day.dow, rowId, event)}
+                        onNameBlur={(rowId) => handleNameBlur(wk.num, day.dow, rowId)}
                         onAddRow={(tier) => addRowToDay(wk.num, day.dow, tier)}
                         onEditRow={(rowId, updater) => editRow(wk.num, day.dow, rowId, updater)}
                         onReorderRow={(dragRowId, targetRowId, position) => reorderRow(wk.num, day.dow, dragRowId, targetRowId, position)}
@@ -1755,6 +1833,7 @@ export function PlanEditor(props: PlanEditorProps) {
       <ExercisePopover
         visible={pop.visible} x={pop.x} y={pop.y}
         index={props.exerciseIndex ?? null} query={pop.query}
+        activeIndex={activeIndex} onActiveIndexChange={setActiveIndex}
         onPick={onPickHit} onCreateCustom={props.onCreateExercise ? onCreateCustom : undefined}
       />
       <CustomExerciseDialog

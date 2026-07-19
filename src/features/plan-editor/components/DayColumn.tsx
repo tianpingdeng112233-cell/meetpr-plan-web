@@ -23,7 +23,8 @@ interface Props {
   onResizeStart: (col: ColKey, e: React.MouseEvent) => void
   onNameFocus: (rowId: string, name: string, el: HTMLElement) => void
   onNameChange: (rowId: string, value: string, el: HTMLElement) => void
-  onNameBlur: () => void
+  onNameKeyDown?: (rowId: string, event: React.KeyboardEvent<HTMLInputElement>) => void
+  onNameBlur: (rowId: string) => void
   onAddRow: (tier: 'main' | 'aux') => void
   /** Display tier resolver (catalog exercise_type based); absent = flat legacy list. */
   rowTier?: (row: ExerciseRow) => 'main' | 'aux'
@@ -179,7 +180,7 @@ function EditableStrength({ row, width, edit }: { row: ExerciseRow; width: numbe
   )
 }
 
-export function DayColumn({ day, colW, selected, selectedRowId, onSelect, onRecallContext, onSelectRow, dayMoveState, dayMoveDisabledHint, onDayMoveStart, onResizeStart, onNameFocus, onNameChange, onNameBlur, onAddRow, rowTier, onEditRow, onReorderRow, onDeleteRow }: Props) {
+export function DayColumn({ day, colW, selected, selectedRowId, onSelect, onRecallContext, onSelectRow, dayMoveState, dayMoveDisabledHint, onDayMoveStart, onResizeStart, onNameFocus, onNameChange, onNameKeyDown, onNameBlur, onAddRow, rowTier, onEditRow, onReorderRow, onDeleteRow }: Props) {
   const [dragRowId, setDragRowId] = useState<string | null>(null)
   const [dropTarget, setDropTarget] = useState<{ rowId: string; position: 'before' | 'after' } | null>(null)
   const dragDisabled = day.rows.some((row) => row.hasLogs)
@@ -334,7 +335,8 @@ export function DayColumn({ day, colW, selected, selectedRowId, onSelect, onReca
                   onMouseDown={stop} onClick={stop}
                   onFocus={(e) => onNameFocus(row.id, row.name, e.currentTarget)}
                   onChange={(e) => onNameChange(row.id, e.target.value, e.currentTarget)}
-                  onBlur={onNameBlur}
+                  onKeyDown={(e) => onNameKeyDown?.(row.id, e)}
+                  onBlur={() => onNameBlur(row.id)}
                   style={{ ...baseInput, flex: 1, minWidth: 0, color: '#fff', fontWeight: 500 }}
                 />
                 {row.ku && <span style={{ color: 'var(--green)', fontSize: 9, flex: 'none' }}>✓</span>}

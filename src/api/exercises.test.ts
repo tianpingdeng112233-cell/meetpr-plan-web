@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { createCustomExercise, customExerciseBody } from './exercises'
+import { createCustomExercise, customExerciseBody, getExerciseUsageStats } from './exercises'
 
 function res(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), {
@@ -85,5 +85,15 @@ describe('createCustomExercise', () => {
       equipment: ['dumbbell'],
       movement_pattern: ['horizontal_pull'],
     })
+  })
+
+  it('fetches coach-scoped usage stats from the fixed endpoint', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(res(200, {
+      stats: [{ exercise_id: 'ex-1', plan_count: 7 }],
+    }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await expect(getExerciseUsageStats()).resolves.toEqual([{ exercise_id: 'ex-1', plan_count: 7 }])
+    expect(fetchMock).toHaveBeenCalledWith('/api/exercises/usage-stats', expect.objectContaining({ method: 'GET' }))
   })
 })

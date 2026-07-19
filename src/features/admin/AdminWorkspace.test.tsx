@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AdminPlanWithChildren } from '../../api/admin'
 
 const api = vi.hoisted(() => ({
-  overview: vi.fn(), users: vi.fn(), user: vi.fn(), bindings: vi.fn(), plans: vi.fn(), plan: vi.fn(),
+  overview: vi.fn(), users: vi.fn(), user: vi.fn(), bindings: vi.fn(), plans: vi.fn(), plan: vi.fn(), exerciseUsage: vi.fn(),
 }))
 
 vi.mock('../../api/admin', () => ({
@@ -14,6 +14,7 @@ vi.mock('../../api/admin', () => ({
   getAdminBindings: api.bindings,
   getAdminPlans: api.plans,
   getAdminPlan: api.plan,
+  getAdminExerciseUsage: api.exerciseUsage,
 }))
 
 import { AdminWorkspace } from './AdminWorkspace'
@@ -67,6 +68,11 @@ describe('AdminWorkspace', () => {
     api.bindings.mockResolvedValue({ bindings: [] })
     api.plans.mockResolvedValue({ plans: [{ id: 'p1', name: '力量积累', coachId: 'c1', coachName: '教练甲', traineeId: 's1', studentName: '学员乙', status: 'published', weeks: 1, startDate: '2026-07-01', endDate: '2026-07-28', createdAt: '2026-06-30' }] })
     api.plan.mockResolvedValue(fullPlan)
+    api.exerciseUsage.mockResolvedValue({ exercises: [
+      { exercise_id: 'e1', name: '低杠位深蹲', exercise_type: 'main_lift', plan_count: 4, coach_count: 2 },
+      { exercise_id: 'e2', name: '绳索下压', exercise_type: 'accessory', plan_count: 12, coach_count: 5 },
+      { exercise_id: 'e3', name: '暂停卧推', exercise_type: 'main_lift_variation', plan_count: 4, coach_count: 3 },
+    ] })
   })
 
   afterEach(() => {
@@ -121,5 +127,24 @@ describe('AdminWorkspace', () => {
     expect(detailText).toContain('未设置姓名 → 未设置姓名')
     expect(detailText).not.toContain('c2')
     expect(detailText).not.toContain('s2')
+  })
+
+  it('loads the read-only exercise library, sorts by plan usage, and filters locally', async () => {
+    await act(async () => { root.render(<AdminWorkspace onLogout={vi.fn()}/>); await settle() })
+    await act(async () => { button(host, '动作库').click(); await settle() })
+
+    expect(api.exerciseUsage).toHaveBeenCalledTimes(1)
+    const page = host.querySelector<HTMLElement>('[data-testid="admin-exercises"]')!
+    expect(page.textContent).toContain('动作名类型使用计划数使用教练数')
+    const names = [...page.querySelectorAll('.grid.h-12 span:first-child')].map((item) => item.textContent)
+    expect(names).toEqual(['绳索下压', '低杠位深蹲', '暂停卧推'])
+    expect(page.textContent).toContain('辅助动作')
+    expect(page.querySelector('button:not([type="button"])')).toBeNull()
+
+    const search = page.querySelector<HTMLInputElement>('input[placeholder="搜索动作名或类型"]')!
+    await act(async () => { type(search, '暂停'); await settle() })
+    expect(page.textContent).toContain('暂停卧推')
+    expect(page.textContent).not.toContain('绳索下压')
+    expect(page.textContent).not.toContain('低杠位深蹲')
   })
 })

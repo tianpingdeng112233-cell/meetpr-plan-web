@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   getAdminBindings,
+  getAdminExerciseUsage,
   getAdminOverview,
   getAdminPlan,
   getAdminPlans,
@@ -8,6 +9,7 @@ import {
   getAdminUsers,
   type AdminBinding,
   type AdminBindingStatus,
+  type AdminExerciseUsage,
   type AdminManagedRole,
   type AdminPlan,
   type AdminPlanExercise,
@@ -19,15 +21,15 @@ import type { PlanStatus } from '../../api/types'
 
 interface Props { onLogout: () => void }
 
-type AdminPage = 'overview' | 'users' | 'userDetail' | 'bindings' | 'plans' | 'planDetail'
-type RootPage = 'overview' | 'users' | 'bindings' | 'plans'
+type AdminPage = 'overview' | 'users' | 'userDetail' | 'bindings' | 'plans' | 'planDetail' | 'exercises'
+type RootPage = 'overview' | 'users' | 'bindings' | 'plans' | 'exercises'
 type ResourceState<T> = { data: T | null; loading: boolean; error: boolean; retry: () => void }
 type BadgeSpec = { label: string; color: string; background: string; border: string; weight?: number }
 
 export const ADMIN_WRITE_ENABLED = false
 
 const pageTitles: Record<RootPage, string> = {
-  overview: '总览', users: '用户管理', bindings: '绑定关系', plans: '计划总览',
+  overview: '总览', users: '用户管理', bindings: '绑定关系', plans: '计划总览', exercises: '动作库',
 }
 
 const dowNames = ['周一', '周二', '周三', '周四', '周五', '周六', '周日']
@@ -105,7 +107,7 @@ function Badge({ spec }: { spec: BadgeSpec }) {
   )
 }
 
-type IconName = 'overview' | 'users' | 'bindings' | 'plans' | 'logout' | 'back' | 'chevron' | 'search' | 'arrow' | 'lock'
+type IconName = 'overview' | 'users' | 'bindings' | 'plans' | 'exercises' | 'logout' | 'back' | 'chevron' | 'search' | 'arrow' | 'lock'
 
 function Icon({ name, size = 20 }: { name: IconName; size?: number }) {
   const common = { width: size, height: size, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 1.75, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const }
@@ -113,6 +115,7 @@ function Icon({ name, size = 20 }: { name: IconName; size?: number }) {
   if (name === 'users') return <svg {...common}><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
   if (name === 'bindings') return <svg {...common}><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
   if (name === 'plans') return <svg {...common}><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+  if (name === 'exercises') return <svg {...common}><path d="M6.5 6.5 17.5 17.5M5 9l4-4M15 19l4-4M3.5 7.5l3-3M17.5 19.5l3-3"/></svg>
   if (name === 'logout') return <svg {...common}><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5M21 12H9"/></svg>
   if (name === 'back') return <svg {...common} strokeWidth="2"><path d="M19 12H5m7 7-7-7 7-7"/></svg>
   if (name === 'chevron') return <svg {...common} strokeWidth="2"><path d="m9 18 6-6-6-6"/></svg>
@@ -336,6 +339,51 @@ function PlansPage({ state, openPlan }: { state: ResourceState<Awaited<ReturnTyp
   return <div className="flex max-w-[1400px] flex-col gap-4" data-testid="admin-plans"><div className="flex flex-wrap items-center gap-3"><FilterChips options={[["all", '全部'], ['published', '已发布'], ['draft', '草稿'], ['completed', '已完成'], ['paused', '已暂停']]} value={filter} onChange={setFilter}/><select value={coach} onChange={(event) => setCoach(event.target.value)} className="h-9 cursor-pointer rounded-md border border-border bg-s1 px-3 text-[13px] text-white outline-none"><option value="all">全部教练</option>{coaches.map(([id, name]) => <option key={id} value={id}>{name}</option>)}<option value="template">模板（自主）</option></select><span className="text-xs text-fg-tertiary tabular-nums">{state.data ? `共 ${rows.length} 份计划` : ''}</span></div><Card className="overflow-x-auto"><div className="min-w-[930px]"><div className="grid h-10 grid-cols-[minmax(170px,1.4fr)_110px_110px_100px_90px_180px_24px] items-center gap-3 border-b border-border px-4 font-mono text-[10.5px] uppercase tracking-[0.08em] text-fg-tertiary"><span>计划名</span><span>教练</span><span>学员</span><span>状态</span><span>周期</span><span>起止日期</span><span/></div>{state.loading ? <SkeletonRows/> : state.error ? <ErrorState retry={state.retry}/> : rows.length === 0 ? <EmptyState text={filtered ? '没有匹配的计划。' : '暂无计划。'} clear={filtered ? () => { setFilter('all'); setCoach('all') } : undefined}/> : <>{rows.map((plan) => <button type="button" key={plan.id} onClick={() => openPlan(plan.id, planContext(plan))} className="grid h-12 w-full grid-cols-[minmax(170px,1.4fr)_110px_110px_100px_90px_180px_24px] items-center gap-3 border-b border-[#1A1A1A] px-4 text-left hover:bg-s2"><span className="truncate font-medium">{plan.name}</span><span className="truncate text-[12.5px] text-fg-secondary">{plan.coachId ? displayName(plan.coachName) : '—（模板）'}</span><span className="truncate text-[12.5px] text-fg-secondary">{displayName(plan.studentName)}</span><span><Badge spec={planBadge(plan.status)}/></span><span className="text-[12.5px] text-fg-secondary">{plan.weeks} 周</span><span className="font-mono text-xs text-fg-tertiary tabular-nums">{plan.startDate ? `${dateOnly(plan.startDate)} → ${dateOnly(plan.endDate)}` : '未排期'}</span><span className="text-fg-tertiary"><Icon name="chevron" size={14}/></span></button>)}<div className="px-4 py-2.5 text-[11.5px] text-fg-tertiary">共 {rows.length} 条 · 内测期全量展示 · 预留「每页 50 条」分页降级</div></>}</div></Card></div>
 }
 
+const exerciseTypeLabels: Record<string, string> = {
+  main_lift: '主项',
+  main_lift_variation: '主项变式',
+  accessory: '辅助动作',
+}
+
+function ExerciseUsagePage({ state }: { state: ResourceState<Awaited<ReturnType<typeof getAdminExerciseUsage>>> }) {
+  const [search, setSearch] = useState('')
+  const rows = useMemo(() => {
+    const query = search.trim().toLowerCase()
+    return (state.data?.exercises ?? [])
+      .map((exercise, sourceIndex) => ({ exercise, sourceIndex }))
+      .filter(({ exercise }) => !query
+        || exercise.name.toLowerCase().includes(query)
+        || (exerciseTypeLabels[exercise.exercise_type] ?? exercise.exercise_type).toLowerCase().includes(query))
+      .sort((a, b) => b.exercise.plan_count - a.exercise.plan_count || a.sourceIndex - b.sourceIndex)
+      .map(({ exercise }) => exercise)
+  }, [search, state.data])
+  return (
+    <div className="flex max-w-[1200px] flex-col gap-4" data-testid="admin-exercises">
+      <div className="flex flex-wrap items-center gap-3">
+        <SearchBox value={search} onChange={setSearch} placeholder="搜索动作名或类型"/>
+        <span className="text-xs text-fg-tertiary tabular-nums">{state.data ? `共 ${rows.length} 个动作` : ''}</span>
+      </div>
+      <Card className="overflow-x-auto">
+        <div className="min-w-[720px]">
+          <div className="grid h-10 grid-cols-[minmax(220px,1fr)_160px_150px_150px] items-center gap-3 border-b border-border px-4 font-mono text-[10.5px] uppercase tracking-[0.08em] text-fg-tertiary">
+            <span>动作名</span><span>类型</span><span>使用计划数</span><span>使用教练数</span>
+          </div>
+          {state.loading ? <SkeletonRows/> : state.error ? <ErrorState retry={state.retry}/> : rows.length === 0
+            ? <EmptyState text={search.trim() ? '没有匹配的动作。' : '暂无动作使用数据。'} clear={search.trim() ? () => setSearch('') : undefined}/>
+            : <>{rows.map((exercise: AdminExerciseUsage) => (
+              <div key={exercise.exercise_id} className="grid h-12 grid-cols-[minmax(220px,1fr)_160px_150px_150px] items-center gap-3 border-b border-[#1A1A1A] px-4">
+                <span className="truncate font-medium">{exercise.name}</span>
+                <span className="text-[12.5px] text-fg-secondary">{exerciseTypeLabels[exercise.exercise_type] ?? exercise.exercise_type}</span>
+                <span className="font-mono text-[12.5px] tabular-nums">{exercise.plan_count}</span>
+                <span className="font-mono text-[12.5px] text-fg-secondary tabular-nums">{exercise.coach_count}</span>
+              </div>
+            ))}<div className="px-4 py-2.5 text-[11.5px] text-fg-tertiary">共 {rows.length} 条 · 按使用计划数降序</div></>}
+        </div>
+      </Card>
+    </div>
+  )
+}
+
 interface MatrixCell { text: string; tag: string; tagColor: string }
 interface MatrixExercise { key: string; name: string; main: boolean; cells: Array<MatrixCell | null> }
 interface MatrixDay { dayOfWeek: number; exercises: MatrixExercise[] }
@@ -397,7 +445,7 @@ function PlanDetailPage({ state, context }: { state: ResourceState<AdminPlanWith
 
 function AdminRail({ page, navigate, onLogout }: { page: AdminPage; navigate: (page: RootPage) => void; onLogout: () => void }) {
   const tabs: Array<{ page: RootPage; label: string; icon: IconName }> = [
-    { page: 'overview', label: '总览', icon: 'overview' }, { page: 'users', label: '用户管理', icon: 'users' }, { page: 'bindings', label: '绑定关系', icon: 'bindings' }, { page: 'plans', label: '计划总览', icon: 'plans' },
+    { page: 'overview', label: '总览', icon: 'overview' }, { page: 'users', label: '用户管理', icon: 'users' }, { page: 'bindings', label: '绑定关系', icon: 'bindings' }, { page: 'plans', label: '计划总览', icon: 'plans' }, { page: 'exercises', label: '动作库', icon: 'exercises' },
   ]
   const activeRoot: RootPage = page === 'userDetail' ? 'users' : page === 'planDetail' ? 'plans' : page
   return <nav className="flex w-[92px] flex-none flex-col items-center border-r border-border bg-black pb-3 pt-4"><div className="flex h-10 w-10 items-center justify-center rounded-md border border-border-strong text-lg font-black tracking-[-0.02em]">M</div><div className="mt-2 rounded-[4px] border border-[rgba(229,34,30,0.35)] bg-brand-soft px-2 py-[3px] font-mono text-[9px] font-bold tracking-[0.12em] text-brand">ADMIN</div><div className="mt-6 flex w-full flex-col gap-0.5">{tabs.map((tab) => { const active = activeRoot === tab.page; return <button type="button" key={tab.page} onClick={() => navigate(tab.page)} className={`relative flex flex-col items-center gap-[5px] py-3 pb-2.5 text-[11px] font-medium ${active ? 'bg-s1 text-white' : 'text-fg-tertiary hover:text-white'}`}><span className={`absolute bottom-2 left-0 top-2 w-0.5 ${active ? 'bg-brand' : 'bg-transparent'}`}/><Icon name={tab.icon}/><span>{tab.label}</span></button> })}</div><div className="flex-1"/><div className="h-px w-[60px] bg-border"/><div className="mt-2.5 flex h-8 w-8 items-center justify-center rounded-pill bg-s3 text-[13px] font-bold">创</div><div className="mt-1 text-[10px] text-fg-tertiary">创始人</div><button type="button" title="退出登录" aria-label="退出登录" onClick={onLogout} className="mt-2 flex h-8 w-8 items-center justify-center rounded-md text-fg-tertiary hover:bg-s2 hover:text-white"><Icon name="logout" size={16}/></button></nav>
@@ -417,6 +465,7 @@ export function AdminWorkspace({ onLogout }: Props) {
   const userDetail = useResource(page === 'userDetail' && userId ? `user:${userId}` : null, () => getAdminUser(userId as string))
   const bindings = useResource(page === 'bindings' ? 'bindings' : null, getAdminBindings)
   const plans = useResource(page === 'plans' ? 'plans' : null, getAdminPlans)
+  const exercises = useResource(page === 'exercises' ? 'exercises' : null, getAdminExerciseUsage)
   const detail = useResource(page === 'planDetail' && planId ? `plan:${planId}` : null, async () => {
     // Exercise names ride along in the admin payload; a failure here must land
     // in the error state with retry, never silently degrade to bare IDs.
@@ -429,9 +478,9 @@ export function AdminWorkspace({ onLogout }: Props) {
   const openPlan = (id: string, context: PlanContext) => { setBackPage(rememberBack()); setPlanId(id); setSelectedPlan(context); setPage('planDetail') }
   const goBack = () => { setPage(backPage); setUserId(null); setPlanId(null) }
   const showToast = (text: string) => { setToast(text); window.setTimeout(() => setToast(''), 2600) }
-  const active = page === 'overview' ? overview : page === 'users' ? users : page === 'userDetail' ? userDetail : page === 'bindings' ? bindings : page === 'plans' ? plans : detail
+  const active = page === 'overview' ? overview : page === 'users' ? users : page === 'userDetail' ? userDetail : page === 'bindings' ? bindings : page === 'plans' ? plans : page === 'exercises' ? exercises : detail
   const detailPage = page === 'userDetail' || page === 'planDetail'
   const leaf = page === 'userDetail' ? (userDetail.data ? displayName(userDetail.data.user.displayName, userDetail.data.user.phone) : userLabel) : page === 'planDetail' ? (detail.data?.name ?? selectedPlan?.name ?? '') : pageTitles[page]
 
-  return <div className="flex h-screen overflow-hidden bg-bg font-sans text-sm leading-[1.4] text-white" data-testid="admin-workspace"><AdminRail page={page} navigate={navigate} onLogout={onLogout}/><div className="relative flex min-w-0 flex-1 flex-col">{active.loading && <div className="absolute left-0 right-0 top-0 z-30 h-0.5 overflow-hidden"><div className="admin-loadbar absolute top-0 h-0.5 w-[30%] bg-brand"/></div>}<header className="flex h-14 flex-none items-center gap-3 border-b border-border px-6"><span className="text-base font-black tracking-[-0.01em]">MeetPR</span><span className="font-mono text-[11px] font-medium tracking-[0.08em] text-brand">ADMIN /</span>{detailPage && <><button type="button" onClick={goBack} className="-ml-1 flex items-center gap-1.5 rounded-[6px] px-2 py-1 text-[13px] text-fg-secondary hover:bg-s2 hover:text-white"><Icon name="back" size={15}/>{pageTitles[page === 'userDetail' ? 'users' : 'plans']}</button><span className="text-[13px] text-fg-tertiary">/</span></>}<span className="text-sm font-semibold">{leaf}</span><div className="flex-1"/></header><main className="min-w-0 flex-1 overflow-y-auto p-6">{page === 'overview' && <OverviewPage state={overview} openUser={openUser} openPlan={openPlan} navigate={navigate}/>} {page === 'users' && <UsersPage state={users} openUser={openUser}/>} {page === 'userDetail' && <UserDetailPage state={userDetail} openUser={openUser} openPlan={openPlan} onToast={showToast}/>} {page === 'bindings' && <BindingsPage state={bindings} openUser={openUser}/>} {page === 'plans' && <PlansPage state={plans} openPlan={openPlan}/>} {page === 'planDetail' && <PlanDetailPage state={detail} context={selectedPlan}/>}</main></div>{toast && <div className="fixed bottom-6 left-1/2 z-[60] -translate-x-1/2 rounded-md border border-border-strong bg-s2 px-[18px] py-2.5 text-[13px]">{toast}</div>}</div>
+  return <div className="flex h-screen overflow-hidden bg-bg font-sans text-sm leading-[1.4] text-white" data-testid="admin-workspace"><AdminRail page={page} navigate={navigate} onLogout={onLogout}/><div className="relative flex min-w-0 flex-1 flex-col">{active.loading && <div className="absolute left-0 right-0 top-0 z-30 h-0.5 overflow-hidden"><div className="admin-loadbar absolute top-0 h-0.5 w-[30%] bg-brand"/></div>}<header className="flex h-14 flex-none items-center gap-3 border-b border-border px-6"><span className="text-base font-black tracking-[-0.01em]">MeetPR</span><span className="font-mono text-[11px] font-medium tracking-[0.08em] text-brand">ADMIN /</span>{detailPage && <><button type="button" onClick={goBack} className="-ml-1 flex items-center gap-1.5 rounded-[6px] px-2 py-1 text-[13px] text-fg-secondary hover:bg-s2 hover:text-white"><Icon name="back" size={15}/>{pageTitles[page === 'userDetail' ? 'users' : 'plans']}</button><span className="text-[13px] text-fg-tertiary">/</span></>}<span className="text-sm font-semibold">{leaf}</span><div className="flex-1"/></header><main className="min-w-0 flex-1 overflow-y-auto p-6">{page === 'overview' && <OverviewPage state={overview} openUser={openUser} openPlan={openPlan} navigate={navigate}/>} {page === 'users' && <UsersPage state={users} openUser={openUser}/>} {page === 'userDetail' && <UserDetailPage state={userDetail} openUser={openUser} openPlan={openPlan} onToast={showToast}/>} {page === 'bindings' && <BindingsPage state={bindings} openUser={openUser}/>} {page === 'plans' && <PlansPage state={plans} openPlan={openPlan}/>} {page === 'exercises' && <ExerciseUsagePage state={exercises}/>} {page === 'planDetail' && <PlanDetailPage state={detail} context={selectedPlan}/>}</main></div>{toast && <div className="fixed bottom-6 left-1/2 z-[60] -translate-x-1/2 rounded-md border border-border-strong bg-s2 px-[18px] py-2.5 text-[13px]">{toast}</div>}</div>
 }

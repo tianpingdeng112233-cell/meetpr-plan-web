@@ -11,6 +11,7 @@ const api = vi.hoisted(() => ({
   getStudentOnboarding: vi.fn(),
   getBindRequests: vi.fn(),
   listExercises: vi.fn(),
+  getExerciseUsageStats: vi.fn(),
 }))
 
 vi.mock('../../api/plans', () => ({
@@ -27,6 +28,7 @@ vi.mock('../../api/plans', () => ({
 }))
 vi.mock('../../api/exercises', () => ({
   listExercises: api.listExercises,
+  getExerciseUsageStats: api.getExerciseUsageStats,
   createCustomExercise: vi.fn(),
 }))
 vi.mock('../../api/coach', () => ({
@@ -112,6 +114,7 @@ describe('PlanWorkspace editor remount', () => {
       } satisfies Storage,
     })
     api.listExercises.mockResolvedValue([exercise])
+    api.getExerciseUsageStats.mockResolvedValue([])
     api.getCoachStudents.mockResolvedValue([{ id: 'student', display_name: '学员', status: 'active', evaluation: null }])
     api.getStudentPlans.mockResolvedValue([plan('加载时快照')])
     api.getStudentOnboarding.mockResolvedValue(null)
@@ -149,5 +152,19 @@ describe('PlanWorkspace editor remount', () => {
 
     expect(api.getPlan).toHaveBeenCalledTimes(2)
     expect(host.querySelector('[data-testid="editor-note"]')?.textContent).toBe('服务端最新备注')
+  })
+
+  it('silently boots with catalog ordering when usage stats are unavailable', async () => {
+    api.getExerciseUsageStats.mockRejectedValue(new Error('404'))
+    api.getPlan.mockResolvedValue(plan('频次接口降级'))
+
+    await act(async () => {
+      root.render(<PlanWorkspace onLogout={vi.fn()} />)
+      await settle()
+    })
+
+    expect(api.getExerciseUsageStats).toHaveBeenCalledTimes(1)
+    expect(host.querySelector('[data-testid="editor-note"]')?.textContent).toBe('频次接口降级')
+    expect(host.textContent).not.toContain('无法连接后端')
   })
 })
