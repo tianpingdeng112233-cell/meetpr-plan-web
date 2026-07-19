@@ -11,6 +11,11 @@ export interface CreateCustomExerciseInput {
   movementPattern?: MovementPattern
 }
 
+export interface ExerciseUsageStat {
+  exercise_id: string
+  plan_count: number
+}
+
 export const DEFAULT_CUSTOM_EXERCISE: Omit<CreateCustomExerciseBody, 'name'> = {
   exercise_type: 'accessory',
   main_lift_family: null,
@@ -37,6 +42,9 @@ export function customExerciseBody(input: CreateCustomExerciseInput): CreateCust
 // The catalog is small enough to fetch once and filter client-side for typeahead.
 export const listExercises = () =>
   api.get<{ exercises: ExerciseResponse[] }>('/exercises').then((r) => r.exercises)
+
+export const getExerciseUsageStats = () =>
+  api.get<{ stats: ExerciseUsageStat[] }>('/exercises/usage-stats').then((r) => r.stats)
 
 export const createCustomExercise = (input: CreateCustomExerciseInput) =>
   api.post<ExerciseResponse>('/exercises', customExerciseBody(input))

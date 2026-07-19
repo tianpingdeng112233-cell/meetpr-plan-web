@@ -36,6 +36,15 @@ describe('ExerciseIndex', () => {
     expect(index.resolve('二头动作自选')).toMatchObject({ id: 'curl' })
   })
 
+  it('resolveExact refuses fuzzy inference that resolve still allows for import paths', () => {
+    const index = new ExerciseIndex([exercise('curl', '哑铃二头弯举')])
+
+    expect(index.resolveExact('二头弯举加停顿')).toBeNull()
+    expect(index.resolve('二头弯举加停顿')).toMatchObject({ id: 'curl' })
+    expect(index.resolveExact('哑铃二头弯举')).toMatchObject({ id: 'curl' })
+    expect(index.resolveExact('二头')).toMatchObject({ id: 'curl' })
+  })
+
   it('resolves coach shorthand aliases from import sheets', () => {
     const index = new ExerciseIndex([
       exercise('side-plank', '侧平板支撑'),
@@ -82,5 +91,34 @@ describe('ExerciseIndex', () => {
       .toMatchObject({ id: 'conv' })
     expect(new ExerciseIndex(catalog, { deadliftStyle: 'sumo' }).resolve('暂停硬拉'))
       .toMatchObject({ id: 'sumo' })
+  })
+
+  it('stably ranks the complete alias/catalog result set by usage before taking the limit', () => {
+    const catalog = Array.from({ length: 10 }, (_, index) => exercise(`row-${index}`, `测试动作${index}`))
+    const usage = [{ exercise_id: 'row-9', plan_count: 20 }]
+    const index = new ExerciseIndex(catalog, {}, usage)
+
+    expect(index.search('测试动作').map((hit) => hit.id)).toEqual([
+      'row-9', 'row-0', 'row-1', 'row-2', 'row-3', 'row-4', 'row-5', 'row-6',
+    ])
+
+    const tied = new ExerciseIndex(catalog, {}, [
+      { exercise_id: 'row-2', plan_count: 3 },
+      { exercise_id: 'row-3', plan_count: 3 },
+    ])
+    expect(tied.search('测试动作').slice(0, 2).map((hit) => hit.id)).toEqual(['row-2', 'row-3'])
+  })
+
+  it('bumps session usage immediately and shares it with derived indexes', () => {
+    const sharedUsage = new Map<string, number>()
+    const index = new ExerciseIndex([
+      exercise('first', '测试推举一'),
+      exercise('second', '测试推举二'),
+    ], {}, sharedUsage)
+
+    expect(index.search('测试推举').map((hit) => hit.id)).toEqual(['first', 'second'])
+    index.bump('second')
+    expect(index.search('测试推举').map((hit) => hit.id)).toEqual(['second', 'first'])
+    expect(index.withAdded(exercise('third', '测试推举三')).search('测试推举')[0].id).toBe('second')
   })
 })

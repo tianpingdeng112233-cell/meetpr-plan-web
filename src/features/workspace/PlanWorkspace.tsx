@@ -4,7 +4,7 @@ import {
   getCoachStudents, getStudentPlans, getPlan, publishPlan, createPlan, patchPlan, getStudentOnboarding,
   markImportedHistory, renameCoachStudent, deletePlan,
 } from '../../api/plans'
-import { listExercises, createCustomExercise } from '../../api/exercises'
+import { listExercises, createCustomExercise, getExerciseUsageStats } from '../../api/exercises'
 import type { CreateCustomExerciseInput } from '../../api/exercises'
 import { ApiException } from '../../api/client'
 import { mapPlanToWeeks, type Catalog } from '../plan-editor/mapping'
@@ -57,6 +57,9 @@ export function PlanWorkspace({ onLogout }: Props) {
   // quickly. A single generation covers both levels so an old response can
   // never pair one student's label with another student's editable plan.
   const loadGeneration = useRef(0)
+  // Shared across per-student ExerciseIndex instances so in-session picks keep
+  // influencing ordering after the coach switches students.
+  const exerciseUsage = useRef(new Map<string, number>())
   const leaveGuardRef = useRef<(() => Promise<boolean>) | null>(null)
   const viewTransitioning = useRef(false)
   // Mirrors viewTransitioning for rendering: while a guarded view switch is in
@@ -105,7 +108,7 @@ export function PlanWorkspace({ onLogout }: Props) {
       ])
       if (generation !== loadGeneration.current) return false
       setOnboarding(onboarding)
-      setIndex(new ExerciseIndex(exercises, { deadliftStyle: onboarding?.deadlift_style }))
+      setIndex(new ExerciseIndex(exercises, { deadliftStyle: onboarding?.deadlift_style }, exerciseUsage.current))
       const sorted = sortedPlans(list)
       setPlans(sorted)
       const remembered = localStorage.getItem(`${LAST_PLAN_PREFIX}${id}`)
@@ -122,9 +125,15 @@ export function PlanWorkspace({ onLogout }: Props) {
   useEffect(() => {
     (async () => {
       try {
-        const [ex, st, requests] = await Promise.all([listExercises(), getCoachStudents(), getBindRequests().catch(() => [])])
+        const [ex, usage, st, requests] = await Promise.all([
+          listExercises(),
+          getExerciseUsageStats().catch(() => []),
+          getCoachStudents(),
+          getBindRequests().catch(() => []),
+        ])
+        exerciseUsage.current = new Map(usage.map((stat) => [stat.exercise_id, stat.plan_count]))
         const cat: Catalog = new Map(ex.map((e) => [e.id, { name: displayExerciseName(e.name), custom: e.created_by_coach_id != null }]))
-        setExerciseList(ex); setCatalog(cat); setIndex(new ExerciseIndex(ex)); setStudents(st); setBindRequests(requests)
+        setExerciseList(ex); setCatalog(cat); setIndex(new ExerciseIndex(ex, {}, exerciseUsage.current)); setStudents(st); setBindRequests(requests)
         if (st.length > 0) await loadStudent(st[0].id, cat, ex)
       } catch (e) {
         setError(errText(e, '无法连接后端'))
@@ -254,7 +263,7 @@ export function PlanWorkspace({ onLogout }: Props) {
       next.set(exercise.id, { name: displayExerciseName(exercise.name), custom })
       return next
     })
-    setIndex((prev) => (prev ? prev.withAdded(exercise) : new ExerciseIndex([exercise])))
+    setIndex((prev) => (prev ? prev.withAdded(exercise) : new ExerciseIndex([exercise], {}, exerciseUsage.current)))
     return { id: exercise.id, name: exercise.name }
   }
 
