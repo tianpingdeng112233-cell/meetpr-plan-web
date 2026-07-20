@@ -97,6 +97,40 @@ function GuardedInput({ value, filter, onValue, ...rest }: {
   )
 }
 
+/** Set-count field. Backed by a local draft so the digit can be deleted: an empty
+ *  field is a valid transient edit state (shown blank) that commits to 0 sets on
+ *  blur, instead of snapping back to the current count. Non-empty edits still
+ *  commit live so the per-set boxes track the count as the coach types. */
+function SetsInput({ count, disabled, aux, onCommit }: {
+  count: number
+  disabled?: boolean
+  aux: boolean
+  onCommit: (n: number) => void
+}) {
+  const [draft, setDraft] = useState<string | null>(null)
+  const value = draft ?? (count > 0 ? String(count) : '')
+  const clamp = (raw: string) => Math.max(0, Math.min(12, parseInt(raw, 10) || 0))
+  return (
+    <input
+      value={value} inputMode="numeric" disabled={disabled} placeholder={aux ? '—' : ''}
+      onClick={stop}
+      onChange={(e) => {
+        const raw = e.target.value.replace(/[^0-9]/g, '')
+        setDraft(raw)
+        // Empty is a transient edit state (deferred to blur → 0); non-empty commits
+        // live so the weight boxes appear/disappear as the count is typed.
+        if (raw !== '') onCommit(clamp(raw))
+      }}
+      onBlur={() => {
+        if (draft === null) return
+        onCommit(draft.trim() === '' ? 0 : clamp(draft))
+        setDraft(null)
+      }}
+      style={{ ...baseInput, width: '100%', textAlign: 'center', color: 'var(--fg-secondary)' }}
+    />
+  )
+}
+
 /** Section divider between the main-lift block and the accessory block. */
 function TierHeader({ label, accent, width, summary }: { label: string; accent?: boolean; width: number; summary: DaySectionSummary }) {
   return (
@@ -351,17 +385,8 @@ export function DayColumn({ day, colW, selected, selectedRowId, onSelect, onReca
               {/* 组 — editable on aux rows too: a zero-set (note-driven) row can't publish, so
                   typing a count here is how the coach turns it into a real tracked exercise. */}
               <div className="gcell" data-c="sets" style={{ width: colW.sets, padding: '4px 2px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <input value={row.boxes.length || ''} inputMode="numeric" onClick={stop} placeholder={row.aux ? '—' : ''}
-                  disabled={row.hasLogs}
-                  onChange={(e) => {
-                    const raw = e.target.value.trim()
-                    // Do not interpret the transient empty value while editing
-                    // a number as “delete every set”.
-                    if (raw === '') return
-                    const n = Math.max(0, Math.min(12, parseInt(raw, 10) || 0))
-                    edit((r) => ({ ...r, boxes: setBoxesLen(r.boxes, n), aux: n > 0 ? false : r.aux }))
-                  }}
-                  style={{ ...baseInput, width: '100%', textAlign: 'center', color: 'var(--fg-secondary)' }} />
+                <SetsInput count={row.boxes.length} disabled={row.hasLogs} aux={row.aux}
+                  onCommit={(n) => edit((r) => ({ ...r, boxes: setBoxesLen(r.boxes, n), aux: n > 0 ? false : r.aux }))} />
               </div>
 
               {/* 次 */}
