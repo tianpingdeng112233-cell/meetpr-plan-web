@@ -1,5 +1,5 @@
 import { api } from './client'
-import type { CoachBindRequest, CoachStudent, ExerciseStatsDetail, ExerciseStatsOverview, InviteCode, StudentVideo } from './types'
+import type { CoachBindRequest, CoachFeedbackPayload, CoachFeedbackResponse, CoachStudent, ExerciseStatsDetail, ExerciseStatsOverview, InviteCode, StudentVideo } from './types'
 
 export const getExerciseStatsOverview = (studentId: string) =>
   api.get<ExerciseStatsOverview>(`/coach/students/${studentId}/exercise-stats`)
@@ -14,5 +14,6 @@ export const rejectBindRequest = (id: string) =>
 export const getStudentVideos = (studentId: string) =>
   api.get<{ videos: StudentVideo[] }>(`/students/${studentId}/videos`).then((r) => r.videos)
 export const getUploadUrl = (id: string) => api.get<{ url: string; expires_in: number }>(`/uploads/${id}/url`)
+export const postCoachFeedback = (payload: CoachFeedbackPayload) => api.post<CoachFeedbackResponse>('/coach/feedback', payload)
 export const getInviteCodes = () => api.get<{ invite_codes: InviteCode[] }>('/coach/invite-codes').then((r) => r.invite_codes)
 export const refreshCoachStudents = () => api.get<{ students: CoachStudent[] }>('/coach/students').then((r) => r.students)
