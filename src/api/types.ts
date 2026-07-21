@@ -93,6 +93,24 @@ export interface StudentVideo {
   reps?: number | null
   viewed_at?: string | null
 }
+export interface CoachFeedbackPayload {
+  student_id: string
+  day_date: string
+  plan_exercise_id: string | null
+  video_id: string
+  text: string
+}
+export interface CoachFeedbackResponse {
+  id: string
+  coach_id: string
+  student_id: string
+  day_date: string | null
+  plan_exercise_id: string | null
+  video_id: string | null
+  text: string
+  posted_at: string
+  read_at: string | null
+}
 export interface InviteCode {
   id: string
   code: string
