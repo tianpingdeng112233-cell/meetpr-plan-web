@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { profileEmptyMessage, writingContextLevel, writingContextPosition } from './components/WritingContextPanel'
 import type { ExerciseRow } from './types'
+import { techniqueStyleLine } from '../workspace/WorkspaceCommon'
 
 const row = (patch: Partial<ExerciseRow>): ExerciseRow => ({
   id: 'r', serverRowId: null, serverSortOrder: null, hasLogs: false, conflictMessage: null,
@@ -20,6 +21,11 @@ describe('writing context state machine', () => {
     expect(profileEmptyMessage(undefined)).toBe('画像载入中…')
     expect(profileEmptyMessage(null)).toBe('学员未填写画像')
     expect(profileEmptyMessage({ deadlift_style: null })).toBeNull()
+  })
+
+  it('把技术风格枚举显示为中文', () => {
+    expect(techniqueStyleLine({ squat_stance: 'high_bar', deadlift_style: 'sumo', bench_grip: 'standard' }))
+      .toBe('高杠 · 相扑 · 标准')
   })
 
   it('keeps the panel visible when the selected day is at either viewport edge', () => {

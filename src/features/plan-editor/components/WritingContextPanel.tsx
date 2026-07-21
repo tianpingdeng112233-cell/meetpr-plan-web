@@ -4,7 +4,7 @@ import { getExerciseStats } from '../../../api/coach'
 import type { ExerciseStatsDetail, StudentOnboardingProfile } from '../../../api/types'
 import type { DayCol, ExerciseRow } from '../types'
 import { RmStrip, SessionDetail } from '../../workspace/StatsViews'
-import { kg, profileLine, shortDate } from '../../workspace/WorkspaceCommon'
+import { kg, profileLine, shortDate, techniqueStyleLine } from '../../workspace/WorkspaceCommon'
 
 export function writingContextLevel(row: ExerciseRow | null): 1 | 2 | 3 | 4 {
   if (!row?.exerciseId) return 1
@@ -56,5 +56,5 @@ export function WritingContextPanel({ studentId, studentName, profile, day, row,
 
 function Profile({ profile, compact = false }: { profile: StudentOnboardingProfile | null | undefined; compact?: boolean }) {
   if (profile == null) return <div className="empty-state">{profileEmptyMessage(profile)}</div>
-  return <div className={`panel-profile${compact ? ' compact' : ''}`}><h3>学员画像 · ONBOARDING</h3><dl><dt>基础</dt><dd>{profileLine(profile)}</dd><dt>训练年限</dt><dd>{profile.training_years != null ? `${profile.training_years} 年 · 每周 ${profile.training_days?.length ?? '—'} 天` : '未填写'}</dd><dt>技术风格</dt><dd>{[profile.squat_stance, profile.deadlift_style, profile.bench_grip].filter(Boolean).join(' · ') || '未填写'}</dd><dt>自报 1RM</dt><dd>S {kg(profile.squat_1rm_kg)} / B {kg(profile.bench_1rm_kg)} / D {kg(profile.deadlift_1rm_kg)}</dd><dt>伤病</dt><dd>{profile.injury_notes || profile.injury_areas?.join('、') || '无'}</dd><dt>备赛</dt><dd>{profile.is_competing ? `${shortDate(profile.competition_date)} · ${profile.target_weight_class || '未填级别'}` : '暂不备赛'}</dd></dl>{profile.note_to_coach && <blockquote>“{profile.note_to_coach}”</blockquote>}</div>
+  return <div className={`panel-profile${compact ? ' compact' : ''}`}><h3>学员画像 · ONBOARDING</h3><dl><dt>基础</dt><dd>{profileLine(profile)}</dd><dt>训练年限</dt><dd>{profile.training_years != null ? `${profile.training_years} 年 · 每周 ${profile.training_days?.length ?? '—'} 天` : '未填写'}</dd><dt>技术风格</dt><dd>{techniqueStyleLine(profile)}</dd><dt>自报 1RM</dt><dd>S {kg(profile.squat_1rm_kg)} / B {kg(profile.bench_1rm_kg)} / D {kg(profile.deadlift_1rm_kg)}</dd><dt>伤病</dt><dd>{profile.injury_notes || profile.injury_areas?.join('、') || '无'}</dd><dt>备赛</dt><dd>{profile.is_competing ? `${shortDate(profile.competition_date)} · ${profile.target_weight_class || '未填级别'}` : '暂不备赛'}</dd></dl>{profile.note_to_coach && <blockquote>“{profile.note_to_coach}”</blockquote>}</div>
 }

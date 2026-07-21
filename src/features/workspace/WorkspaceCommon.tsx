@@ -24,3 +24,20 @@ export const profileLine = (p: { gender?: string | null; birth_date?: string | n
   const age = p.birth_date ? Math.max(0, new Date().getFullYear() - new Date(p.birth_date).getFullYear()) : null
   return [p.gender === 'male' ? '男' : p.gender === 'female' ? '女' : null, age ? `${age} 岁` : null, p.height_cm ? `${kg(p.height_cm)}cm` : null, p.weight_kg ? `${kg(p.weight_kg)}kg` : null, p.training_years != null ? `训练 ${p.training_years} 年` : null].filter(Boolean).join(' · ') || '未填写'
 }
+
+const techniqueLabels: Record<string, string> = {
+  high_bar: '高杠',
+  low_bar: '低杠',
+  conventional: '传统',
+  sumo: '相扑',
+  both: '传统/相扑',
+  narrow: '窄距',
+  standard: '标准',
+  wide: '宽距',
+}
+
+export const techniqueStyleLine = (p: { squat_stance?: string | null; deadlift_style?: string | null; bench_grip?: string | null }) =>
+  [p.squat_stance, p.deadlift_style, p.bench_grip]
+    .filter((value): value is string => Boolean(value))
+    .map((value) => techniqueLabels[value] ?? value)
+    .join(' · ') || '未填写'
