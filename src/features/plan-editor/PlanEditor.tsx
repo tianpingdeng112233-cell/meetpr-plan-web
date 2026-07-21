@@ -1705,6 +1705,7 @@ export function PlanEditor(props: PlanEditorProps) {
         students={props.students} currentStudentId={props.currentStudentId} onSwitchStudent={guardLeaveId(props.onSwitchStudent)}
         plans={props.plans} currentPlanId={props.currentPlanId} onSwitchPlan={guardLeaveId(props.onSwitchPlan)}
         onNewPlan={guardLeave(props.onNewPlan)} onLogout={guardLeave(props.onLogout)}
+        onSessionInvalidated={props.onLogout} onConfirmLeave={confirmLeave}
         currentPlanStatus={published ? 'published' : props.planStatus ?? 'draft'}
         onDeleteCurrentDraft={guardLeave(props.onDeleteCurrentDraft)}
         onMarkComplete={props.onMarkComplete}

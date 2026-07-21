@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { AuthRoleError, login } from '../../api/auth'
+import { useEffect, useState } from 'react'
+import { AuthRoleError, clearLoginNotice, login, peekLoginNotice } from '../../api/auth'
 import { ApiException } from '../../api/client'
 import type { AuthUser } from '../../api/types'
 
@@ -18,6 +18,18 @@ export function LoginScreen({ onLogin, onSampleMode }: Props) {
   const [password, setPassword] = useState('')
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
+  // Handed over by a forced sign-out (e.g. a password change) that had nowhere
+  // left to report success. Read (peek) and clear are split so StrictMode's
+  // double-invoked effect is safe: a destructive read would blank the notice
+  // on the second pass. We only clear once it is captured in state, and never
+  // overwrite a captured notice with an empty second read.
+  const [notice, setNotice] = useState('')
+  useEffect(() => {
+    const pending = peekLoginNotice()
+    if (!pending) return
+    setNotice(pending)
+    clearLoginNotice()
+  }, [])
 
   // Coach types the local number; we default the +86 country code.
   // A full international number (starting with +) is respected as-is.
@@ -60,6 +72,16 @@ export function LoginScreen({ onLogin, onSampleMode }: Props) {
           <span className="t-mono-label" style={{ color: 'var(--brand-red)' }}>COACH</span>
         </div>
         <div style={{ color: 'var(--fg-tertiary)', fontSize: 13, marginBottom: 24 }}>登录编写学员计划</div>
+
+        {notice && (
+          <div role="status" style={{
+            marginBottom: 20, padding: '10px 12px', borderRadius: 'var(--r-md)',
+            border: '1px solid var(--border-strong)', background: 'var(--surface-2)',
+            color: 'var(--fg-secondary)', fontSize: 13, lineHeight: 1.6,
+          }}>
+            {notice}
+          </div>
+        )}
 
         <label style={{ display: 'block', fontSize: 12, color: 'var(--fg-secondary)', marginBottom: 6 }}>手机号</label>
         <div style={{ ...field, marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8, padding: 0 }}>
