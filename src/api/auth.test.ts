@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { AuthRoleError, login } from './auth'
+import { AuthRoleError, changePassword, login } from './auth'
 import type { UserRole } from './types'
 
 function response(role: UserRole) {
@@ -36,4 +36,25 @@ describe('web login role gate', () => {
       expect(localStorage.getItem('mpw.user')).toBeNull()
     },
   )
+})
+
+describe('changePassword wire contract', () => {
+  // Pins the method, path and snake_case body: the iOS side shipped a login-
+  // breaking bug precisely because a request DTO's casing drifted from the
+  // backend schema, and unit tests over in-memory repos never see the wire.
+  it('PUTs snake_case old/new fields to /me/password', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 204 }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await changePassword('old-secret-1', 'new-secret-2')
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit]
+    expect(String(url)).toContain('/me/password')
+    expect(init.method).toBe('PUT')
+    expect(JSON.parse(init.body as string)).toEqual({
+      old_password: 'old-secret-1',
+      new_password: 'new-secret-2',
+    })
+  })
 })

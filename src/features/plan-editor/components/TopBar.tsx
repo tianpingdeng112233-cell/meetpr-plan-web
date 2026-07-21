@@ -2,6 +2,7 @@ import { useRef, useState } from 'react'
 import type { PlanStatus } from '../../../api/types'
 import { shiftISODate } from '../mapping'
 import { mmdd, WeekdayDateSelector } from './PlanCalendarControls'
+import { ChangePasswordDialog } from '../../workspace/ChangePasswordDialog'
 
 interface Option { id: string; label: string; tag?: string; sub?: string }
 
@@ -19,6 +20,17 @@ interface Props {
   currentPlanId?: string
   onSwitchPlan?: (id: string) => void | Promise<void>
   onNewPlan?: () => void | Promise<void>
+  /**
+   * Session teardown that must bypass the unsaved-changes guard: used after a
+   * password change, when the server has already revoked this session and the
+   * work in progress can no longer be saved anyway.
+   */
+  onSessionInvalidated?: () => void | Promise<void>
+  /**
+   * Unsaved-changes preflight, run before an action that will end the session
+   * while saving is still possible. Returns false if the coach backs out.
+   */
+  onConfirmLeave?: () => Promise<boolean>
   currentPlanStatus?: PlanStatus
   onDeleteCurrentDraft?: () => void | Promise<void>
   onMarkComplete?: () => void | Promise<void>
@@ -161,6 +173,7 @@ const smallButton: React.CSSProperties = {
 
 export function TopBar(p: Props) {
   const [menu, setMenu] = useState<'student' | 'plan' | null>(null)
+  const [passwordOpen, setPasswordOpen] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
   const connected = !!p.students
   const close = () => setMenu(null)
@@ -214,6 +227,7 @@ export function TopBar(p: Props) {
 
       <span style={{ flex: 1 }} />
 
+      {p.onSessionInvalidated && <button type="button" onClick={() => setPasswordOpen(true)} style={{ cursor: 'pointer', color: 'var(--fg-tertiary)', fontSize: 12, padding: '4px 8px', background: 'transparent', border: 0, font: 'inherit' }}>改密码</button>}
       {p.onLogout && <span onClick={() => { void p.onLogout?.() }} style={{ cursor: 'pointer', color: 'var(--fg-tertiary)', fontSize: 12, padding: '4px 8px' }}>退出</span>}
       {(p.issueCount ?? 0) > 0 && (
         <button onClick={p.onJumpIssue} title={p.issueHint} style={{
@@ -289,6 +303,14 @@ export function TopBar(p: Props) {
         {p.published ? '已发布 · 不可撤回' : '发布给学员'}
       </button>
       {backdrop}
+      {p.onSessionInvalidated && (
+        <ChangePasswordDialog
+          open={passwordOpen}
+          onClose={() => setPasswordOpen(false)}
+          onSessionInvalidated={() => { setPasswordOpen(false); return p.onSessionInvalidated?.() }}
+          onBeforeSubmit={p.onConfirmLeave}
+        />
+      )}
     </div>
   )
 }
