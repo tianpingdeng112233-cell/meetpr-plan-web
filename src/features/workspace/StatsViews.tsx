@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { getExerciseStats, getExerciseStatsOverview } from '../../api/coach'
 import { getStudentOnboarding } from '../../api/plans'
-import type { CoachStudent, ExerciseStatsDetail, ExerciseStatsOverview, StudentOnboardingProfile } from '../../api/types'
+import type { CoachStudent, E1rmFamilySeries, E1rmTrend, ExerciseStatsDetail, ExerciseStatsOverview, LiftFamily, StudentOnboardingProfile, WeeklyTrainingVolume } from '../../api/types'
 import type { ExerciseIndex } from '../plan-editor/exerciseIndex'
 import type { Catalog } from '../plan-editor/mapping'
 import { PageTop, daysSince, kg, profileLine, relativeDays, shortDate } from './WorkspaceCommon'
@@ -14,6 +14,52 @@ export function RmStrip({ detail, weight }: { detail: ExerciseStatsDetail; weigh
   if (!detail.e1rm && detail.one_rm_reference == null) return null
   const percent = detail.e1rm && weight != null ? Math.round(weight / Number(detail.e1rm.value) * 100) : null
   return <div className="rm-strip"><span><b>{detail.e1rm ? kg(detail.e1rm.value) : '—'}</b><small>e1RM · 后端滚动值</small></span><span><b>{kg(detail.one_rm_reference)}</b><small>登记 1RM</small></span>{percent != null && <span><b className="red">{percent}%</b><small>{weight} ÷ e1RM</small></span>}</div>
+}
+
+const LIFT_LABELS: Record<LiftFamily, string> = { squat: '深蹲', bench: '卧推', deadlift: '硬拉' }
+const E1RM_TREND_ARROWS: Record<E1rmTrend, string> = { up: '↑', flat: '→', down: '↓', new: '' }
+export const e1rmTrendArrow = (trend: E1rmTrend | undefined): string => trend ? E1RM_TREND_ARROWS[trend] : ''
+
+function latestE1rm(series: E1rmFamilySeries | undefined) {
+  return series?.points.length ? series.points[series.points.length - 1] : null
+}
+
+function RosterE1rm({ overview, family }: { overview: ExerciseStatsOverview | null | undefined; family: LiftFamily }) {
+  const series = overview?.e1rm_series?.[family]
+  const point = latestE1rm(series)
+  if (point) return <span className="roster-e1rm" data-testid={`roster-e1rm-${family}`} title={`${LIFT_LABELS[family]}最新实测 e1RM · ${shortDate(point.date)}`}><b>{kg(point.value)}</b>{series && e1rmTrendArrow(series.trend) && <i className={`trend-${series.trend}`} aria-label={`趋势${series.trend}`}>{e1rmTrendArrow(series.trend)}</i>}</span>
+  const registered = overview?.one_rm[family]
+  return <span className="roster-e1rm registered" data-testid={`roster-e1rm-${family}`} title={registered == null ? '尚无实测或登记值' : '登记值,尚无实测'}>{kg(registered)}</span>
+}
+
+function sparklinePoints(points: { value: string }[], width: number, height: number): string {
+  const values = points.map((point) => Number(point.value))
+  const min = Math.min(...values), max = Math.max(...values), span = max - min
+  return values.map((value, index) => {
+    const x = points.length === 1 ? width / 2 : 6 + index * (width - 12) / (points.length - 1)
+    const y = span === 0 ? height / 2 : 6 + (max - value) * (height - 12) / span
+    return `${x.toFixed(1)},${y.toFixed(1)}`
+  }).join(' ')
+}
+
+function E1rmTrendPanel({ series }: { series: ExerciseStatsOverview['e1rm_series'] }) {
+  return <section className="e1rm-trends" data-testid="e1rm-trends"><h3>e1RM 走势 · 近 90 天</h3>{(Object.keys(LIFT_LABELS) as LiftFamily[]).map((family) => {
+    const familySeries = series?.[family]
+    const points = familySeries?.points.filter((point) => Number.isFinite(Number(point.value))) ?? []
+    const latest = latestE1rm(familySeries)
+    const plot = points.length > 0 ? sparklinePoints(points, 260, 52) : ''
+    return <div className="e1rm-trend-row" key={family} data-lift-family={family}><span><small>{LIFT_LABELS[family]}</small><b>{latest ? `${kg(latest.value)} kg` : '暂无实测 e1RM'}</b></span>{points.length > 0 && <><svg viewBox="0 0 260 52" role="img" aria-label={`${LIFT_LABELS[family]}近 90 天 e1RM 曲线`} preserveAspectRatio="none"><polyline points={plot} fill="none" vectorEffect="non-scaling-stroke" /><circle cx={points.length === 1 ? 130 : 254} cy={plot.split(' ').at(-1)?.split(',')[1]} r="3" /></svg><i className={`trend-${familySeries?.trend ?? 'new'}`}>{e1rmTrendArrow(familySeries?.trend)}</i></>}</div>
+  })}</section>
+}
+
+function formatVolume(value: string): string {
+  return Number(value).toLocaleString('zh-CN', { maximumFractionDigits: 0 })
+}
+
+function ActualTrainingVolumeCard({ weeklyVolume }: { weeklyVolume: WeeklyTrainingVolume[] | undefined }) {
+  const weeks = (weeklyVolume ?? []).filter((week) => Number.isFinite(Number(week.volume_kg))).slice(-13)
+  const latest = weeks.at(-1), max = Math.max(...weeks.map((week) => Number(week.volume_kg)), 1)
+  return <article className="student-capacity-card actual-capacity-card" data-testid="actual-training-volume"><header><div><h3>实际训练容量</h3><small>已完成且非导入组 · 近 90 天周走势</small></div>{latest && <strong><b>{formatVolume(latest.volume_kg)} kg</b><small>{shortDate(latest.week_start)} 当周{latest.avg_rpe ? ` · 平均 RPE ${Number(latest.avg_rpe)}` : ''}</small></strong>}</header>{weeks.length === 0 ? <p>暂无实际训练容量数据</p> : <><svg className="actual-volume-chart" viewBox="0 0 420 86" role="img" aria-label="近 90 天实际训练容量周走势" preserveAspectRatio="none">{weeks.map((week, index) => { const slot = 420 / weeks.length, height = Math.max(3, Number(week.volume_kg) / max * 66); return <rect key={week.week_start} x={index * slot + slot * .18} y={70 - height} width={slot * .64} height={height} rx="2" className={index === weeks.length - 1 ? 'latest' : ''}><title>{shortDate(week.week_start)} · {formatVolume(week.volume_kg)} kg</title></rect> })}<line x1="0" y1="70" x2="420" y2="70" /></svg><div className="actual-volume-axis"><small>{shortDate(weeks[0].week_start)}</small><small>{shortDate(latest?.week_start)}</small></div></>}</article>
 }
 export function SessionDetail({ detail, limit = 6 }: { detail: ExerciseStatsDetail; limit?: number }) {
   return <div className="sessions">{detail.recent_sessions.slice(0, limit).map((s) => <section className="session" key={s.date}><header><b>{shortDate(s.date)}</b><span>{s.sets.length} 组</span></header>{s.sets.map((set) => <div className="set-line" key={set.set_index}><span>{set.set_index}</span><b>{kg(set.weight_kg)}kg × {set.reps}</b><span>{set.rpe ? `@${Number(set.rpe)}` : '—'}</span>{set.assumed && <i>导</i>}{set.has_video && <button title="播放该组视频">▶</button>}<em className={set.failed ? 'failed' : ''}>{set.failed ? '力竭' : set.completed ? '✓' : '—'}</em></div>)}</section>)}</div>
@@ -90,7 +136,7 @@ function RosterBoard({ students, onOpen }: { students: CoachStudent[]; onOpen: (
           <td>{!e?.loaded ? '…' : relativeDays(o?.last_trained_at)}</td>
           <td>{o ? <span className="roster-attend"><b>{o.recent_4w.trained_days}/{planned}</b><i><em style={{ width: `${planned ? Math.min(100, o.recent_4w.trained_days / planned * 100) : 0}%` }} /></i></span> : '—'}</td>
           <td>{rate == null ? '—' : `${rate}%`}</td>
-          <td>{kg(o?.one_rm.squat)}</td><td>{kg(o?.one_rm.bench)}</td><td>{kg(o?.one_rm.deadlift)}</td>
+          <td><RosterE1rm overview={o} family="squat" /></td><td><RosterE1rm overview={o} family="bench" /></td><td><RosterE1rm overview={o} family="deadlift" /></td>
           <td className="roster-flags">{p?.is_competing && <span title={`备赛${p.competition_date ? ' ' + shortDate(p.competition_date) : ''}`}>🏆</span>}{injured && <span title={p?.injury_notes || '有伤病记录'}>🩹</span>}</td>
         </tr>
       })}</tbody>
@@ -113,8 +159,8 @@ export function StudentDetail({ students, studentId, onStudent, onBack, catalog,
   useEffect(() => { setDetail(null); if (studentId && exerciseId) void getExerciseStats(studentId, exerciseId).then(setDetail) }, [studentId, exerciseId])
   const exercises = useMemo(() => overview?.exercises.filter((e) => e.name.toLowerCase().includes(query.toLowerCase())) ?? [], [overview, query])
   return <main className="data-page"><PageTop title="学员看板" students={students} studentId={studentId} onStudent={onStudent} onBack={onBack} tail={<span className="page-status">● 最近训练 {shortDate(overview?.last_trained_at)}</span>} />
-    <div className="overview-cards"><article><h3>登记 1RM</h3><div className="rm-three"><span><b>{kg(overview?.one_rm.squat)}</b><small>深蹲</small></span><span><b>{kg(overview?.one_rm.bench)}</b><small>卧推</small></span><span><b>{kg(overview?.one_rm.deadlift)}</b><small>硬拉</small></span></div></article><article><h3>画像</h3><p>{profile ? profileLine(profile) : '加载中…'}</p><p>{profile?.is_competing ? `备赛 ${shortDate(profile.competition_date)} · ${profile.target_weight_class ?? '未填级别'}` : '暂无备赛计划'} · {profile?.injury_notes || '无伤病备注'}</p></article><article><h3>近 4 周</h3><p>出勤 {overview?.recent_4w.trained_days ?? '—'} / {overview?.recent_4w.total_planned_days ?? '—'} 天</p><p>完成率 {overview ? Math.round(overview.recent_4w.completion_rate * 100) : '—'}%</p></article><StudentPlanCapacityCard studentId={studentId} catalog={catalog} index={index} /></div>
-    <div className="board-grid"><aside className="exercise-list"><input placeholder="搜索动作…" value={query} onChange={(e) => setQuery(e.target.value)} />{exercises.map((e) => <button className={exerciseId === e.exercise_id ? 'active' : ''} onClick={() => setExerciseId(e.exercise_id)} key={e.exercise_id}><span>{e.name}</span><small>{e.session_count} 次</small></button>)}</aside><section className="exercise-archive">{detail ? <><div><RmStrip detail={detail} /><h3>次数 PR</h3><table className="pr-table"><thead><tr><th>次数</th><th>重量</th><th>日期</th></tr></thead><tbody>{detail.rep_prs.map((p) => <tr key={p.reps}><td>{p.reps}RM</td><td>{kg(p.weight_kg)} {p.source === 'imported' && <i>导</i>}</td><td>{shortDate(p.logged_at)}</td></tr>)}</tbody></table><h3>近 6 次顶组 RPE</h3><div className="rpe-bars">{detail.recent_sessions.slice(0, 6).reverse().map((s) => { const rpe = Math.max(...s.sets.map((x) => Number(x.rpe ?? 0))); return <span key={s.date}><i style={{ height: `${Math.max(4, rpe * 5)}px` }} /><small>{rpe || '—'}</small></span> })}</div></div><div><h3>近期执行</h3><SessionDetail detail={detail} /></div></> : <div className="empty-state">选择动作查看档案</div>}</section></div>
+    <div className="overview-cards"><article><h3>登记 1RM</h3><div className="rm-three"><span><b>{kg(overview?.one_rm.squat)}</b><small>深蹲</small></span><span><b>{kg(overview?.one_rm.bench)}</b><small>卧推</small></span><span><b>{kg(overview?.one_rm.deadlift)}</b><small>硬拉</small></span></div></article><article><h3>画像</h3><p>{profile ? profileLine(profile) : '加载中…'}</p><p>{profile?.is_competing ? `备赛 ${shortDate(profile.competition_date)} · ${profile.target_weight_class ?? '未填级别'}` : '暂无备赛计划'} · {profile?.injury_notes || '无伤病备注'}</p></article><article><h3>近 4 周</h3><p>出勤 {overview?.recent_4w.trained_days ?? '—'} / {overview?.recent_4w.total_planned_days ?? '—'} 天</p><p>完成率 {overview ? Math.round(overview.recent_4w.completion_rate * 100) : '—'}%</p></article><StudentPlanCapacityCard studentId={studentId} catalog={catalog} index={index} /><ActualTrainingVolumeCard weeklyVolume={overview?.weekly_volume} /></div>
+    <div className="board-grid"><aside className="exercise-list"><input placeholder="搜索动作…" value={query} onChange={(e) => setQuery(e.target.value)} />{exercises.map((e) => <button className={exerciseId === e.exercise_id ? 'active' : ''} onClick={() => setExerciseId(e.exercise_id)} key={e.exercise_id}><span>{e.name}</span><small>{e.session_count} 次</small></button>)}</aside><section className="exercise-archive">{detail ? <><div><RmStrip detail={detail} /><E1rmTrendPanel series={overview?.e1rm_series} /><h3>次数 PR</h3><table className="pr-table"><thead><tr><th>次数</th><th>重量</th><th>日期</th></tr></thead><tbody>{detail.rep_prs.map((p) => <tr key={p.reps}><td>{p.reps}RM</td><td>{kg(p.weight_kg)} {p.source === 'imported' && <i>导</i>}</td><td>{shortDate(p.logged_at)}</td></tr>)}</tbody></table><h3>近 6 次顶组 RPE</h3><div className="rpe-bars">{detail.recent_sessions.slice(0, 6).reverse().map((s) => { const rpe = Math.max(...s.sets.map((x) => Number(x.rpe ?? 0))); return <span key={s.date}><i style={{ height: `${Math.max(4, rpe * 5)}px` }} /><small>{rpe || '—'}</small></span> })}</div></div><div><h3>近期执行</h3><SessionDetail detail={detail} /></div></> : <div className="empty-state">选择动作查看档案</div>}</section></div>
   </main>
 }
 

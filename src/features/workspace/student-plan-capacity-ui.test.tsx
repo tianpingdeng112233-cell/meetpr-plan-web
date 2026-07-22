@@ -144,7 +144,55 @@ describe('StudentDetail plan capacity card', () => {
     await renderDetail()
 
     expect(host.querySelector('[data-testid="student-plan-capacity"]')?.textContent).toContain('暂无计划容量数据')
+    expect(host.querySelector('[data-testid="actual-training-volume"]')?.textContent).toContain('暂无实际训练容量数据')
     expect(api.getPlan).not.toHaveBeenCalled()
+  })
+
+  it('renders actual completed volume separately from planned set capacity', async () => {
+    api.getStudentPlans.mockResolvedValue([])
+    api.getExerciseStatsOverview.mockResolvedValue({
+      exercises: [],
+      one_rm: { squat: null, bench: null, deadlift: null },
+      last_trained_at: '2026-01-08',
+      recent_4w: { trained_days: 2, total_planned_days: 3, completion_rate: .67 },
+      weekly_volume: [
+        { week_start: '2025-12-29', volume_kg: '8400.00', avg_rpe: '7.50', volume_by_family: { squat: '3000.00', bench: '2400.00', deadlift: '3000.00', other: '0.00' } },
+        { week_start: '2026-01-05', volume_kg: '10250.00', avg_rpe: '8.00', volume_by_family: { squat: '3500.00', bench: '2750.00', deadlift: '4000.00', other: '0.00' } },
+      ],
+    })
+    await renderDetail()
+
+    const actual = host.querySelector<HTMLElement>('[data-testid="actual-training-volume"]')!
+    expect(actual.querySelector('h3')?.textContent).toBe('实际训练容量')
+    expect(actual.textContent).toContain('已完成且非导入组 · 近 90 天周走势')
+    expect(actual.textContent).toContain('10,250 kg')
+    expect(actual.querySelectorAll('rect')).toHaveLength(2)
+    expect(host.querySelector('[data-testid="student-plan-capacity"]')?.textContent).toContain('教练当前排期 · 计划工作组数')
+  })
+
+  it('draws only families with e1RM points and gives other families an empty state', async () => {
+    api.getStudentPlans.mockResolvedValue([])
+    api.getExerciseStatsOverview.mockResolvedValue({
+      exercises: [{ exercise_id: 'squat', name: '深蹲', session_count: 2, last_logged_at: '2026-01-08' }],
+      one_rm: { squat: '160.00', bench: '100.00', deadlift: '190.00' },
+      last_trained_at: '2026-01-08',
+      recent_4w: { trained_days: 2, total_planned_days: 3, completion_rate: .67 },
+      e1rm_series: {
+        squat: { points: [{ date: '2025-12-20', value: '165.00' }, { date: '2026-01-08', value: '172.50' }], trend: 'up' },
+        bench: { points: [], trend: 'new' },
+        deadlift: { points: [], trend: 'flat' },
+      },
+    })
+    api.getExerciseStats.mockResolvedValue({ rep_prs: [], recent_sessions: [], by_set_count: {}, e1rm: { value: '172.50', computed_at: '2026-01-08' }, one_rm_reference: '160.00' })
+    await renderDetail()
+
+    const trends = host.querySelector<HTMLElement>('[data-testid="e1rm-trends"]')!
+    const squat = trends.querySelector<HTMLElement>('[data-lift-family="squat"]')!
+    const bench = trends.querySelector<HTMLElement>('[data-lift-family="bench"]')!
+    expect(squat.querySelector('svg')).not.toBeNull()
+    expect(squat.textContent).toContain('172.5 kg')
+    expect(bench.textContent).toContain('暂无实测 e1RM')
+    expect(bench.querySelector('svg')).toBeNull()
   })
 
   it('renders plain S/B/D set tiles for the located current week', async () => {

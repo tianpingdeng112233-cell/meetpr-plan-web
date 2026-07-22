@@ -73,9 +73,9 @@ export function StudentPlanCapacityCard({ studentId, catalog, index }: {
   }, [studentId, catalog, index])
 
   return (
-    <article className="student-capacity-card" data-testid="student-plan-capacity">
+    <article className="student-capacity-card plan-capacity-card" data-testid="student-plan-capacity">
       <header>
-        <div><h3>本周计划容量</h3>{capacity.kind === 'ready' && <small>{capacity.planName} · 第 {capacity.weekNumber} 周</small>}</div>
+        <div><h3>本周计划容量</h3>{capacity.kind === 'ready' ? <small>{capacity.planName} · 第 {capacity.weekNumber} 周</small> : <small>教练当前排期 · 计划工作组数</small>}</div>
       </header>
       {capacity.kind === 'loading' && <p>计划容量加载中…</p>}
       {capacity.kind === 'empty' && <p>暂无计划容量数据</p>}

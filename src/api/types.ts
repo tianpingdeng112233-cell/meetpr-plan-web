@@ -55,6 +55,21 @@ export interface ExerciseStatsOverview {
   one_rm: { squat: string | null; bench: string | null; deadlift: string | null }
   last_trained_at: string | null
   recent_4w: { trained_days: number; total_planned_days: number; completion_rate: number }
+  /** Optional while the backend overview contract rolls out. */
+  e1rm_series?: Record<LiftFamily, E1rmFamilySeries>
+  /** Optional while the backend overview contract rolls out. */
+  weekly_volume?: WeeklyTrainingVolume[]
+}
+export type E1rmTrend = 'up' | 'flat' | 'down' | 'new'
+export interface E1rmFamilySeries {
+  points: { date: string; value: string }[]
+  trend: E1rmTrend
+}
+export interface WeeklyTrainingVolume {
+  week_start: string
+  volume_kg: string
+  avg_rpe: string | null
+  volume_by_family: Record<LiftFamily | 'other', string>
 }
 export interface ExerciseStatsDetail {
   rep_prs: { reps: number; weight_kg: string; logged_at: string; source: 'imported' | 'logged' }[]
