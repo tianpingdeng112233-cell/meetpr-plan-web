@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import { createPortal } from 'react-dom'
 import { ApiException } from '../../api/client'
+import { isSessionExpired } from '../../api/errors'
 import { changePassword, logout, setLoginNotice } from '../../api/auth'
 
 export const PASSWORD_CHANGED_NOTICE = '密码已修改，请用新密码登录。其他已登录的设备也需要重新登录。'
@@ -75,11 +76,6 @@ export function passwordFormError(
   if (newPassword !== confirmPassword) return '两次输入的新密码不一致'
   if (newPassword === oldPassword) return '新密码不能和当前密码相同'
   return null
-}
-
-/** A 401 here means the session is already gone — the client cleared the tokens. */
-export function isSessionExpired(error: unknown): boolean {
-  return error instanceof ApiException && error.status === 401
 }
 
 /** Maps the backend's error codes onto wording a coach can act on. */

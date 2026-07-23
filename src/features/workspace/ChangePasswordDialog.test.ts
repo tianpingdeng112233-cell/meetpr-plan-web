@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { ApiException } from '../../api/client'
-import { changePasswordErrorText, isSessionExpired, passwordFormError, MIN_PASSWORD_LENGTH } from './ChangePasswordDialog'
+import { isSessionExpired } from '../../api/errors'
+import { changePasswordErrorText, passwordFormError, MIN_PASSWORD_LENGTH } from './ChangePasswordDialog'
 
 describe('passwordFormError', () => {
   it('要求填当前密码', () => {

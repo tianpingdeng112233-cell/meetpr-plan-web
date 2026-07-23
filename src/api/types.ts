@@ -121,6 +121,62 @@ export interface InviteCode {
   used_count: number
 }
 
+export interface ChatReadCursor {
+  message_id: string
+  seq: number
+}
+
+export interface ChatLastMessage {
+  id: string
+  seq: number
+  kind: string
+  preview: string
+  created_at: string
+  sender_id: string
+}
+
+export interface ChatConversation {
+  id: string
+  other_party: { id: string; display_name: string }
+  last_message: ChatLastMessage | null
+  last_message_at: string | null
+  unread_count: number
+  my_last_read: ChatReadCursor | null
+  other_last_read: ChatReadCursor | null
+}
+
+export interface ChatMessage {
+  id: string
+  conversation_id: string
+  seq: number
+  sender_id: string
+  kind: 'text' | 'image' | (string & {})
+  body: string | null
+  attachment_id: string | null
+  image_url: string | null
+  image_expires_in: number | null
+  client_id: string
+  created_at: string
+}
+
+export interface ChatMessagePage {
+  messages: ChatMessage[]
+  meta: {
+    other_last_read: ChatReadCursor | null
+    has_more: boolean
+  }
+}
+
+export interface ChatReadState {
+  my_last_read: ChatReadCursor
+  unread_count: number
+}
+
+export type MessagesQuery =
+  | { mode: 'latest'; limit?: number }
+  | { mode: 'since'; seq: number; limit?: number }
+  | { mode: 'before'; seq: number; limit?: number }
+
 export interface PlanResponse {
   id: string
   coach_id: string | null
