@@ -370,6 +370,7 @@ export function PlanWorkspace({ onLogout }: Props) {
         planName={loaded?.plan.name ?? '（暂无计划）'}
         planStartDate={loaded?.plan.start_date}
         planStatus={loaded?.plan.status}
+        totalShiftDays={loaded?.plan.total_shift_days}
         initialPublished={loaded?.plan.status === 'published'}
         onPublish={loaded ? async () => {
           const updated = await publishPlan(loaded.plan.id)

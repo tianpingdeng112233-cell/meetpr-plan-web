@@ -135,6 +135,8 @@ export interface PlanResponse {
   kind: string
   created_at: string
   updated_at: string
+  total_shift_days: number
+  latest_shift_created_at: string | null
 }
 
 export interface PlanSetResponse {
@@ -167,6 +169,7 @@ export interface PlanDayResponse {
   day_of_week: number // 1..7
   week_number: number // 1..52
   sort_order: number
+  shifted_to_date: string | null
   exercises: PlanExerciseResponse[]
 }
 export interface PlanWithChildren extends PlanResponse {

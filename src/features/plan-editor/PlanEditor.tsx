@@ -56,6 +56,7 @@ export interface PlanEditorProps {
   planName: string
   initialPublished?: boolean
   planStatus?: PlanStatus
+  totalShiftDays?: number
   /** Real publish call; when omitted the button just toggles locally (sample mode). */
   onPublish?: () => Promise<void>
   /** Save current edits back to the backend; resolves with how many contentful rows were skipped. */
@@ -633,20 +634,25 @@ export function PlanEditor(props: PlanEditorProps) {
           const sourceDay = sourceWeek?.days.find((candidate) => candidate.dow === day.dow)
           const targetDay = sourceWeek?.days.find((candidate) => candidate.dow === currentTarget!.dow)
           if (sourceWeek && sourceDay && targetDay && !dayMoveDisabledReason(sourceDay, false)) {
-            const swapped = !targetDay.rest && targetDay.rows.length > 0
-            setWeeksWithHistory((previous) => {
-              const index = previous.findIndex((week) => week.num === wnum)
-              if (index < 0) return previous
-              const moved = moveDayInWeek(previous[index], day.dow, currentTarget!.dow)
-              if (moved === previous[index]) return previous
-              const next = [...previous]
-              next[index] = moved
-              return next
-            })
-            handleSelect(wnum, currentTarget.dow)
-            setStatusText(swapped
-              ? `已交换 ${dayDisplay(sourceDay)} 与 ${dayDisplay(targetDay)}`
-              : `已移动 ${dayDisplay(sourceDay)} 至 ${dayDisplay(targetDay)}`)
+            const confirmed = (!sourceDay.shiftBadge && !targetDay.shiftBadge) || window.confirm(
+              '该操作涉及带学员顺延日期的天。保存后该天的顺延日期会丢失、回到按序数计算的日期。确认继续搬动？',
+            )
+            if (confirmed) {
+              const swapped = !targetDay.rest && targetDay.rows.length > 0
+              setWeeksWithHistory((previous) => {
+                const index = previous.findIndex((week) => week.num === wnum)
+                if (index < 0) return previous
+                const moved = moveDayInWeek(previous[index], day.dow, currentTarget!.dow)
+                if (moved === previous[index]) return previous
+                const next = [...previous]
+                next[index] = moved
+                return next
+              })
+              handleSelect(wnum, currentTarget.dow)
+              setStatusText(swapped
+                ? `已交换 ${dayDisplay(sourceDay)} 与 ${dayDisplay(targetDay)}`
+                : `已移动 ${dayDisplay(sourceDay)} 至 ${dayDisplay(targetDay)}`)
+            }
           }
         }
       }
@@ -1730,6 +1736,7 @@ export function PlanEditor(props: PlanEditorProps) {
         onChangeStartDate={props.planStartDate ? (props.onChangeStartDate ? handleChangeStartDate : async () => {}) : undefined}
         onNewExercise={props.onCreateExercise ? () => openCreateExercise() : undefined}
         issueCount={issues.length} issueHint={issueHint} onJumpIssue={jumpToNextIssue}
+        totalShiftDays={props.totalShiftDays}
       />
       {recoveryMirror && (
         <DraftMirrorBanner

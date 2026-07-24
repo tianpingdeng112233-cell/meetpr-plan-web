@@ -1,4 +1,4 @@
-import type { PlanWithChildren, PlanExerciseResponse } from '../../api/types'
+import type { PlanWithChildren, PlanExerciseResponse, PlanDayResponse } from '../../api/types'
 import type { Week, DayCol, ExerciseRow, SetBox } from './types'
 
 export const DOW_LABELS = ['周一', '周二', '周三', '周四', '周五', '周六', '周日']
@@ -54,6 +54,14 @@ export function currentPlanWeek(startDate: string): number {
   return dayDiff >= 0 ? Math.floor(dayDiff / 7) + 1 : -1
 }
 
+function dateOnlyDiff(from: string, to: string): number {
+  const [fromYear, fromMonth, fromDay] = from.split('-').map(Number)
+  const [toYear, toMonth, toDay] = to.split('-').map(Number)
+  return Math.round((
+    Date.UTC(toYear, toMonth - 1, toDay) - Date.UTC(fromYear, fromMonth - 1, fromDay)
+  ) / 86_400_000)
+}
+
 export function relabelWeeksForStartDate(weeks: Week[], startDate: string): Week[] {
   const curWeek = currentPlanWeek(startDate)
   return weeks.map((week) => ({
@@ -64,6 +72,8 @@ export function relabelWeeksForStartDate(weeks: Week[], startDate: string): Week
       ...day,
       dowLabel: planDayDowLabel(startDate, week.num, day.dow),
       dateLabel: planDayDateLabel(startDate, week.num, day.dow),
+      shiftedToDate: null,
+      shiftBadge: null,
     })),
   }))
 }
@@ -79,6 +89,8 @@ function emptyWeek(startDate: string, num: number): Week {
       dow,
       dowLabel: planDayDowLabel(startDate, num, dow),
       dateLabel: planDayDateLabel(startDate, num, dow),
+      shiftedToDate: null,
+      shiftBadge: null,
       rest: true,
       rows: [],
     })),
@@ -135,11 +147,13 @@ export function mapPlanToWeeks(plan: PlanWithChildren, catalog: Catalog): Week[]
   const curWeek = currentPlanWeek(plan.start_date)
 
   // index backend days by week -> day_of_week
-  const byWeek = new Map<number, Map<number, PlanExerciseResponse[]>>()
+  const byWeek = new Map<number, Map<number, PlanDayResponse>>()
   for (const day of plan.days) {
     if (!byWeek.has(day.week_number)) byWeek.set(day.week_number, new Map())
-    const exs = [...day.exercises].sort((a, b) => a.sort_order - b.sort_order)
-    byWeek.get(day.week_number)!.set(day.day_of_week, exs)
+    byWeek.get(day.week_number)!.set(day.day_of_week, {
+      ...day,
+      exercises: [...day.exercises].sort((a, b) => a.sort_order - b.sort_order),
+    })
   }
 
   const weeks: Week[] = []
@@ -147,12 +161,26 @@ export function mapPlanToWeeks(plan: PlanWithChildren, catalog: Catalog): Week[]
     const dayMap = byWeek.get(w)
     const days: DayCol[] = []
     for (let dow = 0; dow < 7; dow++) {
-      const dateLabel = planDayDateLabel(plan.start_date, w, dow)
-      const exs = dayMap?.get(dow + 1)
+      const originalDate = isoDate(planDayDate(plan.start_date, w, dow))
+      const serverDay = dayMap?.get(dow + 1)
+      const shiftedToDate = serverDay?.shifted_to_date != null
+        && serverDay.shifted_to_date !== originalDate
+        ? serverDay.shifted_to_date
+        : null
+      const displayDate = shiftedToDate ? addDays(shiftedToDate, 0) : planDayDate(plan.start_date, w, dow)
+      const dateLabel = mdLabel(displayDate)
+      const displayDowLabel = dowLabel(displayDate)
+      const shiftBadge = shiftedToDate
+        ? { originalDate, days: dateOnlyDiff(originalDate, shiftedToDate) }
+        : null
+      const exs = serverDay?.exercises
       if (!exs || exs.length === 0) {
-        days.push({ dow, dowLabel: planDayDowLabel(plan.start_date, w, dow), dateLabel, rest: true, rows: [] })
+        days.push({ dow, dowLabel: displayDowLabel, dateLabel, shiftedToDate, shiftBadge, rest: true, rows: [] })
       } else {
-        days.push({ dow, dowLabel: planDayDowLabel(plan.start_date, w, dow), dateLabel, rest: false, rows: exs.map((e) => mapExercise(e, catalog)) })
+        days.push({
+          dow, dowLabel: displayDowLabel, dateLabel, shiftedToDate, shiftBadge,
+          rest: false, rows: exs.map((e) => mapExercise(e, catalog)),
+        })
       }
     }
     weeks.push({

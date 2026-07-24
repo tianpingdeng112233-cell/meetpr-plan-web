@@ -39,14 +39,15 @@ function serverExercise(
 }
 
 function serverDay(exercises: PlanExerciseResponse[], id = 'day1'): PlanDayResponse {
-  return { id, plan_id: 'p', day_of_week: 1, week_number: 1, sort_order: 0, exercises }
+  return { id, plan_id: 'p', day_of_week: 1, week_number: 1, sort_order: 0, shifted_to_date: null, exercises }
 }
 
 function serverPlan(days: PlanDayResponse[], status: 'draft' | 'published' = 'published'): PlanWithChildren {
   return {
     id: 'p', coach_id: 'c', trainee_id: 't', name: '计划', start_date: '2026-01-01',
     end_date: '2026-01-07', plan_weeks: 1, source: 'coach', source_template_id: null,
-    status, kind: 'regular', created_at: '', updated_at: '', days,
+    status, kind: 'regular', created_at: '', updated_at: '',
+    total_shift_days: 0, latest_shift_created_at: null, days,
   }
 }
 
@@ -54,6 +55,7 @@ function serverDaysFromBatch(days: Parameters<typeof plans.batchDays>[1]['upsert
   return days.map((day) => ({
       id: `batch-day-${day.week_number}-${day.day_of_week}`,
       plan_id: 'p', day_of_week: day.day_of_week, week_number: day.week_number, sort_order: day.sort_order,
+      shifted_to_date: null,
       exercises: day.exercises.map((exercise, exerciseIndex) => ({
         ...exercise,
         notes: exercise.notes ?? null,

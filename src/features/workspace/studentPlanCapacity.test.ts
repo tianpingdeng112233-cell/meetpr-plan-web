@@ -51,6 +51,8 @@ function plan(id: string, status: PlanResponse['status'], updatedAt: string): Pl
     kind: 'regular',
     created_at: updatedAt,
     updated_at: updatedAt,
+    total_shift_days: 0,
+    latest_shift_created_at: null,
   }
 }
 

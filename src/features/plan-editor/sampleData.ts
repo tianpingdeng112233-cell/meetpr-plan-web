@@ -70,6 +70,8 @@ export function buildWeeks(): Week[] {
       dow,
       dowLabel: DOW[dow],
       dateLabel: dlabel(w, dow),
+      shiftedToDate: null,
+      shiftBadge: null,
       rest: rows === null,
       rows: rows ?? [],
     })
