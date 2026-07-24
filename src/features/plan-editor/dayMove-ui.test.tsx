@@ -98,6 +98,89 @@ describe('whole-day column dragging', () => {
     expect(dayAt(host, 1, 2).className).toContain('restday')
   })
 
+  it('renders the shifted-day badge, tooltip details, and plan-level shift notice', () => {
+    const shiftedWeek = week(1, { 0: [row('squat')] })
+    shiftedWeek.days[0] = {
+      ...shiftedWeek.days[0],
+      dowLabel: '周三',
+      dateLabel: '7/22',
+      shiftedToDate: '2026-07-22',
+      shiftBadge: { originalDate: '2026-07-20', days: 2 },
+    }
+    act(() => root?.render(
+      <PlanEditor initialWeeks={[shiftedWeek]} weeksCount={1} totalShiftDays={2}
+        studentName="学员" planName="计划" />,
+    ))
+
+    const badge = dayAt(host, 1, 0).querySelector<HTMLElement>('[data-shift-badge]')!
+    expect(badge.textContent).toBe('顺延')
+    expect(badge.title).toContain('原定日期：2026-07-20')
+    expect(badge.title).toContain('顺延天数：2 天')
+    expect(host.querySelector<HTMLElement>('[data-plan-shift-notice]')?.textContent)
+      .toContain('学员已整体顺延 2 天')
+  })
+
+  it('asks before moving a shifted day and leaves it in place when cancelled', () => {
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    const shiftedWeek = week(1, { 0: [row('squat')] })
+    shiftedWeek.days[0] = {
+      ...shiftedWeek.days[0],
+      shiftedToDate: '2026-07-22',
+      shiftBadge: { originalDate: '2026-07-20', days: 2 },
+    }
+    act(() => root?.render(
+      <PlanEditor initialWeeks={[shiftedWeek]} weeksCount={1}
+        studentName="学员" planName="计划" />,
+    ))
+
+    const source = dayAt(host, 1, 0)
+    const target = dayAt(host, 1, 2)
+    pointAt(target)
+    act(() => source.querySelector<HTMLElement>('[data-day-move-handle]')!
+      .dispatchEvent(new MouseEvent('mousedown', { bubbles: true, button: 0, clientX: 0, clientY: 0 })))
+    act(() => window.dispatchEvent(new MouseEvent('mousemove', { buttons: 1, clientX: 8, clientY: 0 })))
+    act(() => window.dispatchEvent(new MouseEvent('mouseup', { clientX: 8, clientY: 0 })))
+
+    expect(confirm).toHaveBeenCalledOnce()
+    expect(confirm.mock.calls[0][0]).toContain('保存后该天的顺延日期会丢失')
+    expect(dayAt(host, 1, 0).querySelector('[data-rowid="squat"]')).not.toBeNull()
+    expect(dayAt(host, 1, 2).className).toContain('restday')
+  })
+
+  it('asks when the target is shifted, clears badges on accept, and undo restores them', () => {
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    const shiftedWeek = week(1, { 0: [row('squat')] })
+    shiftedWeek.days[2] = {
+      ...shiftedWeek.days[2],
+      dowLabel: '周四',
+      dateLabel: '7/23',
+      shiftedToDate: '2026-07-23',
+      shiftBadge: { originalDate: '2026-07-22', days: 1 },
+    }
+    act(() => root?.render(
+      <PlanEditor initialWeeks={[shiftedWeek]} weeksCount={1}
+        studentName="学员" planName="计划" />,
+    ))
+
+    const source = dayAt(host, 1, 0)
+    const target = dayAt(host, 1, 2)
+    pointAt(target)
+    act(() => source.querySelector<HTMLElement>('[data-day-move-handle]')!
+      .dispatchEvent(new MouseEvent('mousedown', { bubbles: true, button: 0, clientX: 0, clientY: 0 })))
+    act(() => window.dispatchEvent(new MouseEvent('mousemove', { buttons: 1, clientX: 8, clientY: 0 })))
+    act(() => window.dispatchEvent(new MouseEvent('mouseup', { clientX: 8, clientY: 0 })))
+
+    expect(confirm).toHaveBeenCalledOnce()
+    expect(dayAt(host, 1, 2).querySelector('[data-rowid="squat"]')).not.toBeNull()
+    expect(host.querySelector('[data-shift-badge]')).toBeNull()
+    expect(dayAt(host, 1, 2).textContent).toContain('周三')
+    expect(dayAt(host, 1, 2).textContent).toContain('7/22')
+
+    act(() => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', metaKey: true, bubbles: true })))
+    expect(host.querySelector('[data-shift-badge]')).not.toBeNull()
+    expect(dayAt(host, 1, 2).textContent).toContain('7/23')
+  })
+
   it('shows a logged target as invalid and refuses the exchange', () => {
     act(() => root?.render(
       <PlanEditor initialWeeks={[week(1, { 0: [row('squat')], 2: [row('logged', true)] })]} weeksCount={1}

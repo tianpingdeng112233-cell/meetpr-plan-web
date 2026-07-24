@@ -39,6 +39,23 @@ const head: React.CSSProperties = {
 }
 const stop = (e: React.MouseEvent) => e.stopPropagation()
 
+function ShiftBadge({ day }: { day: DayCol }) {
+  if (!day.shiftBadge) return null
+  return (
+    <span
+      data-shift-badge=""
+      title={`原定日期：${day.shiftBadge.originalDate}；顺延天数：${day.shiftBadge.days} 天`}
+      style={{
+        display: 'inline-flex', alignItems: 'center', flex: 'none', padding: '1px 4px',
+        border: '1px solid var(--amber)', borderRadius: 999, color: 'var(--amber)',
+        fontSize: 8, fontWeight: 600, lineHeight: 1.2, cursor: 'help',
+      }}
+    >
+      顺延
+    </span>
+  )
+}
+
 const baseInput: React.CSSProperties = {
   background: 'transparent', border: '1px solid transparent', borderRadius: 3,
   color: '#fff', fontSize: 11, fontFamily: 'var(--font-sans)', outline: 'none',
@@ -298,6 +315,7 @@ export function DayColumn({ day, colW, selected, selectedRowId, onSelect, onReca
           style={{ padding: '4px 2px', textAlign: 'center', color: 'var(--fg-tertiary)', borderBottom: '1px solid var(--border)', cursor: dayMoveCursor, userSelect: 'none' }}>
           <span style={{ display: 'block', fontSize: 10, fontWeight: 600 }}>{!dayMoveDisabledHint && <span className="day-move-grip" aria-hidden="true">⠿ </span>}{day.dowLabel}</span>
           <span style={{ display: 'block', marginTop: 1, fontFamily: 'var(--font-mono)', fontSize: 8 }}>{day.dateLabel}</span>
+          <ShiftBadge day={day} />
           {selected && <button className="context-recall" onMouseDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); onRecallContext?.() }} title="显示撰写上下文">▤</button>}
         </div>
         <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '18px 0' }}>
@@ -319,6 +337,7 @@ export function DayColumn({ day, colW, selected, selectedRowId, onSelect, onReca
         {!dayMoveDisabledHint && <span className="day-move-grip" aria-hidden="true">⠿</span>}
         <span style={{ fontWeight: 700, fontSize: 12, color: '#fff' }}>{day.dowLabel}</span>
         <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--fg-tertiary)' }}>{day.dateLabel}</span>
+        <ShiftBadge day={day} />
         {selected && <button className="context-recall" onMouseDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); onRecallContext?.() }} title="显示撰写上下文">▤</button>}
       </div>
 

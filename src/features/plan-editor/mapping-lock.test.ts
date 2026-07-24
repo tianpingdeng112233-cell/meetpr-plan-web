@@ -7,8 +7,10 @@ function plan(hasLogs?: boolean): PlanWithChildren {
     id: 'p', coach_id: 'c', trainee_id: 't', name: 'p', start_date: '2026-01-01',
     end_date: '2026-01-07', plan_weeks: 1, source: 'coach', source_template_id: null,
     status: 'draft', kind: 'regular', created_at: '', updated_at: '',
+    total_shift_days: 0, latest_shift_created_at: null,
     days: [{
       id: 'd', plan_id: 'p', day_of_week: 1, week_number: 1, sort_order: 0,
+      shifted_to_date: null,
       exercises: [{
         id: 'pe', plan_day_id: 'd', exercise_id: 'ex', is_main_lift: false,
         sort_order: 4, ...(hasLogs === undefined ? {} : { has_logs: hasLogs }), notes: null, sets: [],

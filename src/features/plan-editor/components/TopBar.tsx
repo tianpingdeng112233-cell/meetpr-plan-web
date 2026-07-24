@@ -53,6 +53,7 @@ interface Props {
   issueCount?: number
   issueHint?: string
   onJumpIssue?: () => void
+  totalShiftDays?: number
 }
 
 const pill: React.CSSProperties = {
@@ -229,6 +230,15 @@ export function TopBar(p: Props) {
 
       {p.onSessionInvalidated && <button type="button" onClick={() => setPasswordOpen(true)} style={{ cursor: 'pointer', color: 'var(--fg-tertiary)', fontSize: 12, padding: '4px 8px', background: 'transparent', border: 0, font: 'inherit' }}>改密码</button>}
       {p.onLogout && <span onClick={() => { void p.onLogout?.() }} style={{ cursor: 'pointer', color: 'var(--fg-tertiary)', fontSize: 12, padding: '4px 8px' }}>退出</span>}
+      {(p.totalShiftDays ?? 0) > 0 && (
+        <span data-plan-shift-notice="" style={{
+          display: 'inline-flex', alignItems: 'center', padding: '5px 10px',
+          background: 'var(--amber-soft)', color: 'var(--amber)', border: '1px solid var(--amber)',
+          borderRadius: 999, fontSize: 11, fontWeight: 600, lineHeight: 1, whiteSpace: 'nowrap',
+        }}>
+          学员已整体顺延 {p.totalShiftDays} 天
+        </span>
+      )}
       {(p.issueCount ?? 0) > 0 && (
         <button onClick={p.onJumpIssue} title={p.issueHint} style={{
           display: 'inline-flex', alignItems: 'center', gap: 6, padding: '5px 10px',

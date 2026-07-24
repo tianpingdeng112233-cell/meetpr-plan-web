@@ -1,4 +1,5 @@
 import type { DayCol, Week } from './types'
+import { addDays, dowLabel, mdLabel } from './mapping'
 
 export const DAY_MOVE_STATUS_LOCKED_HINT = '已完成/已停用的计划不可移动训练日'
 export const DAY_MOVE_LOGGED_HINT = '该日含学员已打卡动作，不可移动或交换'
@@ -8,6 +9,19 @@ export function dayMoveDisabledReason(day: DayCol, statusCalendarLocked: boolean
   if (statusCalendarLocked) return DAY_MOVE_STATUS_LOCKED_HINT
   if (day.rows.some((row) => row.hasLogs)) return DAY_MOVE_LOGGED_HINT
   return null
+}
+
+/** Saving a moved day drops its plan_day_shifts row, so the shifted snapshot no longer applies. */
+function clearShiftSnapshot(day: DayCol): DayCol {
+  if (!day.shiftBadge) return day
+  const original = addDays(day.shiftBadge.originalDate, 0)
+  return {
+    ...day,
+    dowLabel: dowLabel(original),
+    dateLabel: mdLabel(original),
+    shiftedToDate: null,
+    shiftBadge: null,
+  }
 }
 
 /**
@@ -24,15 +38,15 @@ export function moveDayInWeek(week: Week, fromDow: number, toDow: number): Week 
   if (source.rows.length === 0 && target.rows.length === 0) return week
 
   const targetHasTraining = !target.rest && target.rows.length > 0
-  const nextSource: DayCol = targetHasTraining
+  const nextSource: DayCol = clearShiftSnapshot(targetHasTraining
     ? { ...source, rest: target.rest, rows: target.rows, releasedSortOrders: [] }
-    : { ...source, rest: true, rows: [], releasedSortOrders: [] }
-  const nextTarget: DayCol = {
+    : { ...source, rest: true, rows: [], releasedSortOrders: [] })
+  const nextTarget: DayCol = clearShiftSnapshot({
     ...target,
     rest: source.rest,
     rows: source.rows,
     releasedSortOrders: [],
-  }
+  })
 
   return {
     ...week,

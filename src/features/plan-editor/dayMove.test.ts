@@ -58,6 +58,43 @@ describe('moveDayInWeek', () => {
     expect(moved.days[1]).toMatchObject({ dowLabel: '周5', dateLabel: '7/24', rows: monday.rows })
   })
 
+  it('clears the shift snapshot and restores ordinal labels on a moved shifted day', () => {
+    const shiftedMonday: DayCol = {
+      ...day(0, [row('squat')], false),
+      dowLabel: '周三', dateLabel: '7/22',
+      shiftedToDate: '2026-07-22',
+      shiftBadge: { originalDate: '2026-07-20', days: 2 },
+    }
+    const original = week([shiftedMonday, day(1, []), day(2, [], true)])
+
+    const moved = moveDayInWeek(original, 0, 2)
+
+    expect(moved.days[0]).toMatchObject({
+      dowLabel: '周一', dateLabel: '7/20', shiftedToDate: null, shiftBadge: null, rest: true,
+    })
+    // undo replays history snapshots, so the pre-move week must keep its shift state
+    expect(original.days[0].shiftBadge).toEqual({ originalDate: '2026-07-20', days: 2 })
+    expect(original.days[0].dateLabel).toBe('7/22')
+  })
+
+  it('clears the target-side snapshot when swapping onto a shifted day', () => {
+    const monday = day(0, [row('squat')], false)
+    const shiftedFriday: DayCol = {
+      ...day(4, [row('deadlift')], false),
+      dowLabel: '周六', dateLabel: '7/25',
+      shiftedToDate: '2026-07-25',
+      shiftBadge: { originalDate: '2026-07-24', days: 1 },
+    }
+    const original = week([monday, shiftedFriday])
+
+    const moved = moveDayInWeek(original, 0, 4)
+
+    expect(moved.days[1]).toMatchObject({
+      dowLabel: '周五', dateLabel: '7/24', shiftedToDate: null, shiftBadge: null, rows: monday.rows,
+    })
+    expect(moved.days[0]).toMatchObject({ dowLabel: '周1', dateLabel: '7/20', rows: shiftedFriday.rows })
+  })
+
   it('is a no-op for the same/missing weekday and for either logged day', () => {
     const logged = day(0, [row('logged', true)], false)
     const editable = day(1, [row('editable')], false)

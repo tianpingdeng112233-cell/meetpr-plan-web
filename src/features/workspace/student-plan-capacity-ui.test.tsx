@@ -79,12 +79,15 @@ function publishedPlan(): PlanWithChildren {
     kind: 'regular',
     created_at: '2026-01-01T00:00:00Z',
     updated_at: '2026-01-02T00:00:00Z',
+    total_shift_days: 0,
+    latest_shift_created_at: null,
     days: [{
       id: 'day',
       plan_id: 'plan-capacity',
       day_of_week: 1,
       week_number: 1,
       sort_order: 0,
+      shifted_to_date: null,
       exercises: [
         { id: 'squat-row', plan_day_id: 'day', exercise_id: 'squat', is_main_lift: true, sort_order: 0, notes: null, sets: sets('squat', 2) },
         { id: 'bench-row', plan_day_id: 'day', exercise_id: 'bench', is_main_lift: true, sort_order: 1, notes: null, sets: sets('bench', 17) },

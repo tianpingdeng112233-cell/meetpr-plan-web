@@ -33,6 +33,10 @@ export interface DayCol {
   dow: number          // 0=Mon … 6=Sun
   dowLabel: string
   dateLabel: string
+  /** Server shift snapshot, present only when it differs from the ordinal plan date. */
+  shiftedToDate?: string | null
+  /** Tooltip details for a genuinely shifted day. */
+  shiftBadge?: { originalDate: string; days: number } | null
   rest: boolean
   rows: ExerciseRow[]
   /** Unsaved mixed-day deletions whose sort slots may be reused immediately by new rows. */
