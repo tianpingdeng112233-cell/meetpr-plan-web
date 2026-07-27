@@ -1,4 +1,11 @@
-import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
+import {
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type FormEvent,
+  type KeyboardEvent,
+} from 'react'
 import { getMessages, markConversationRead, openConversation } from '../../api/chat'
 import { ApiException } from '../../api/client'
 import { isBindLost, isSessionExpired } from '../../api/errors'
@@ -239,6 +246,10 @@ function ConversationThread({
   const initialized = useRef(false)
   const alive = useRef(true)
   const scrollRef = useRef<HTMLDivElement>(null)
+  // Scrolling has to wait for React to commit the new bubbles: a bare rAF can run before the
+  // commit, so scrollHeight is still the pre-render value and a 50-message page lands at the
+  // top instead of the bottom. useLayoutEffect fires after the DOM mutation, before paint.
+  const pendingScroll = useRef<{ kind: 'bottom' } | { kind: 'anchor'; previousHeight: number } | null>(null)
   const latestAppliedReadSeq = useRef(conversation.my_last_read?.seq ?? 0)
   const latestRequestedReadSeq = useRef(conversation.my_last_read?.seq ?? 0)
   const readRequest = useRef(0)
@@ -401,14 +412,22 @@ function ConversationThread({
     })
   }
 
+  useLayoutEffect(() => {
+    const action = pendingScroll.current
+    if (!action) return
+    pendingScroll.current = null
+    const scroll = scrollRef.current
+    if (!scroll) return
+    if (action.kind === 'bottom') scroll.scrollTop = scroll.scrollHeight
+    else scroll.scrollTop += scroll.scrollHeight - action.previousHeight
+  }, [messages])
+
   const mergePage = (pageMessages: ChatMessage[], otherLastRead: ChatReadCursor | null, scrollToBottom: boolean) => {
     const next = mergeMessages(messagesRef.current, pageMessages)
     commitMessages(next)
     chatOutbox.reconcile(conversation.id, pageMessages, me.id)
     commitOtherLastRead(otherLastRead)
-    if (scrollToBottom) window.requestAnimationFrame(() => {
-      if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight
-    })
+    if (scrollToBottom) pendingScroll.current = { kind: 'bottom' }
     return next
   }
 
@@ -458,9 +477,7 @@ function ConversationThread({
       chatOutbox.reconcile(conversation.id, page.messages, me.id)
       commitOtherLastRead(page.meta.other_last_read)
       setHasMoreHistory(page.meta.has_more)
-      window.requestAnimationFrame(() => {
-        if (scrollRef.current) scrollRef.current.scrollTop += scrollRef.current.scrollHeight - oldHeight
-      })
+      pendingScroll.current = { kind: 'anchor', previousHeight: oldHeight }
     } catch (caught) {
       handleError(caught)
     } finally {

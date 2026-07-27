@@ -117,6 +117,39 @@ describe('MessagesPage', () => {
     expect(host.querySelector('.chat-dot')).toBeNull()
   })
 
+  it('重入会话拿到整页历史后滚到底部，而不是停在这一页顶部', async () => {
+    // 走查 2026-07-27 抓到的回归:滚动曾用裸 requestAnimationFrame,在真实浏览器里会赶在 React
+    // 提交 50 条气泡之前跑,读到的 scrollHeight 还是渲染前的旧值,落点停在这一页顶部。
+    // jsdom 没有布局、act() 又会同步冲刷提交,那个竞态在这里复现不出来。所以这条测试钉的是
+    // 更强也更稳的不变量:**滚动不许依赖 rAF 触发**——把 rAF 打桩成永不回调,滚动仍须发生。
+    vi.stubGlobal('requestAnimationFrame', () => 0)
+    let scrollTopValue = 0
+    Object.defineProperty(HTMLElement.prototype, 'scrollHeight', { configurable: true, get: () => 4200 })
+    Object.defineProperty(HTMLElement.prototype, 'scrollTop', {
+      configurable: true,
+      get: () => scrollTopValue,
+      set(next: number) { scrollTopValue = next },
+    })
+
+    chatApi.getMessages.mockResolvedValue({
+      messages: Array.from({ length: 50 }, (_unused, index) => message({
+        id: `message-${index + 1}`, seq: index + 1, body: `第 ${index + 1} 条`,
+      })),
+      meta: { other_last_read: null, has_more: true },
+    })
+    chatApi.markConversationRead.mockResolvedValue({
+      my_last_read: { message_id: 'message-50', seq: 50 },
+      unread_count: 0,
+    })
+
+    await act(async () => { root.render(<Harness />); await settle() })
+    const row = host.querySelector<HTMLButtonElement>('.chat-row')
+    await act(async () => { row?.click(); await settle() })
+
+    expect(host.textContent).toContain('第 50 条')
+    expect(scrollTopValue).toBe(4200)
+  })
+
   it('未知 kind 前向兼容降级，不让整个线程崩掉', async () => {
     chatApi.getMessages.mockResolvedValue({
       messages: [message({ kind: 'future_set_card', sender_id: 'coach' })],
