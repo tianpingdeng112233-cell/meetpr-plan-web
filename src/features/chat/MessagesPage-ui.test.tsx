@@ -47,15 +47,21 @@ function Harness({
   initial = [conversation()],
   students = [{ id: 'student', display_name: '王晨曦', status: 'active' as const, evaluation: null }],
   initialStudentId = 'student',
+  initialActiveId = null,
+  initialBindLostIds = [],
+  onOpenPlan = vi.fn(),
 }: {
   initial?: ChatConversation[] | null
   students?: { id: string; display_name: string; status: 'active'; evaluation: null }[]
   initialStudentId?: string
+  initialActiveId?: string | null
+  initialBindLostIds?: string[]
+  onOpenPlan?: (studentId: string) => void
 }) {
   const [conversations, setConversations] = useState<ChatConversation[] | null>(initial)
-  const [activeId, setActiveId] = useState<string | null>(null)
+  const [activeId, setActiveId] = useState<string | null>(initialActiveId)
   const [selectedStudentId, setSelectedStudentId] = useState(initialStudentId)
-  const [bindLostIds, setBindLostIds] = useState<Set<string>>(() => new Set())
+  const [bindLostIds, setBindLostIds] = useState<Set<string>>(() => new Set(initialBindLostIds))
   const applyRead = (conversationId: string, state: ChatReadState) => setConversations((current) => (
     current?.map((item) => item.id === conversationId
       ? { ...item, unread_count: state.unread_count, my_last_read: state.my_last_read }
@@ -73,7 +79,7 @@ function Harness({
       drafts={{}}
       onActiveIdChange={setActiveId}
       onStudentChange={setSelectedStudentId}
-      onOpenPlan={vi.fn()}
+      onOpenPlan={onOpenPlan}
       onDraftChange={vi.fn()}
       onConversationsChanged={(update) => setConversations((current) => update(current ?? []))}
       onReadStateApplied={applyRead}
@@ -85,6 +91,12 @@ function Harness({
 
 async function settle(): Promise<void> {
   for (let index = 0; index < 12; index += 1) await Promise.resolve()
+}
+
+function inputTextarea(textarea: HTMLTextAreaElement, value: string) {
+  const valueSetter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!
+  valueSetter.call(textarea, value)
+  textarea.dispatchEvent(new Event('input', { bubbles: true }))
 }
 
 // vi.restoreAllMocks() 不撤销 stubGlobal,也不撤销手写的 defineProperty——布局桩必须自己收。
@@ -141,7 +153,125 @@ describe('MessagesPage', () => {
     expect(host.querySelector('.chat-row.active')?.textContent).toContain('王晨曦')
   })
 
-  it('点击快捷回复会把完整文案真正填入输入框', async () => {
+  it('当前学员没有会话时不越界打开其他学员会话', async () => {
+    await act(async () => {
+      root.render(<Harness
+        initial={[conversation(1)]}
+        initialStudentId="student-2"
+        students={[
+          { id: 'student', display_name: '王晨曦', status: 'active', evaluation: null },
+          { id: 'student-2', display_name: '林知夏', status: 'active', evaluation: null },
+        ]}
+      />)
+      await settle()
+    })
+
+    expect(host.querySelector('.chat-row.active')).toBeNull()
+    expect(host.textContent).toContain('选择会话开始聊天')
+    expect(chatApi.getMessages).not.toHaveBeenCalled()
+    expect(chatApi.markConversationRead).not.toHaveBeenCalled()
+    expect(host.querySelector('[data-selected-student]')?.getAttribute('data-selected-student')).toBe('student-2')
+  })
+
+  it('跨页保留的 active 与当前学员不一致时同步到当前学员会话', async () => {
+    const second = conversation(2, {
+      id: 'conversation-2',
+      other_party: { id: 'student-2', display_name: '林知夏' },
+      last_message: {
+        id: 'message-2', seq: 1, kind: 'text', preview: '第二个会话',
+        created_at: '2026-07-22T11:00:00.000Z', sender_id: 'student-2',
+      },
+      last_message_at: '2026-07-22T11:00:00.000Z',
+    })
+    chatApi.getMessages.mockImplementation((conversationId: string) => Promise.resolve({
+      messages: [message({
+        id: conversationId === 'conversation-2' ? 'message-2' : 'message-1',
+        conversation_id: conversationId,
+        sender_id: conversationId === 'conversation-2' ? 'student-2' : 'student',
+        body: conversationId === 'conversation-2' ? '第二个会话' : '第一个会话',
+      })],
+      meta: { other_last_read: null, has_more: false },
+    }))
+
+    await act(async () => {
+      root.render(<Harness
+        initial={[conversation(0), second]}
+        initialActiveId="conversation"
+        initialStudentId="student-2"
+        students={[
+          { id: 'student', display_name: '王晨曦', status: 'active', evaluation: null },
+          { id: 'student-2', display_name: '林知夏', status: 'active', evaluation: null },
+        ]}
+      />)
+      await settle()
+    })
+
+    expect(host.querySelector('.chat-row.active')?.textContent).toContain('林知夏')
+    expect(host.querySelector('.chat-thread-head')?.textContent).toContain('林知夏')
+    expect(chatApi.getMessages).toHaveBeenCalledWith('conversation-2', { mode: 'latest', limit: 50 })
+    expect(chatApi.getMessages).not.toHaveBeenCalledWith('conversation', expect.anything())
+  })
+
+  it('跨页保留的 active 与当前学员不一致且当前学员无会话时清空 active', async () => {
+    await act(async () => {
+      root.render(<Harness
+        initial={[conversation(1)]}
+        initialActiveId="conversation"
+        initialStudentId="student-2"
+        students={[
+          { id: 'student', display_name: '王晨曦', status: 'active', evaluation: null },
+          { id: 'student-2', display_name: '林知夏', status: 'active', evaluation: null },
+        ]}
+      />)
+      await settle()
+    })
+
+    expect(host.querySelector('.chat-row.active')).toBeNull()
+    expect(host.textContent).toContain('选择会话开始聊天')
+    expect(chatApi.getMessages).not.toHaveBeenCalled()
+    expect(chatApi.markConversationRead).not.toHaveBeenCalled()
+  })
+
+  it('lost 会话可查看历史但不污染当前学员，且不能打开计划', async () => {
+    const openPlan = vi.fn()
+    const lost = conversation(0, {
+      id: 'conversation-lost',
+      other_party: { id: 'student-lost', display_name: '已解绑学员' },
+      last_message: {
+        id: 'message-lost', seq: 1, kind: 'text', preview: '历史消息',
+        created_at: '2026-07-21T11:00:00.000Z', sender_id: 'student-lost',
+      },
+      last_message_at: '2026-07-21T11:00:00.000Z',
+    })
+    chatApi.getMessages.mockImplementation((conversationId: string) => Promise.resolve({
+      messages: [message({
+        id: conversationId === 'conversation-lost' ? 'message-lost' : 'message-1',
+        conversation_id: conversationId,
+        sender_id: conversationId === 'conversation-lost' ? 'student-lost' : 'student',
+        body: conversationId === 'conversation-lost' ? '只读历史消息' : '当前学员消息',
+      })],
+      meta: { other_last_read: null, has_more: false },
+    }))
+    await act(async () => {
+      root.render(<Harness initial={[conversation(0), lost]} onOpenPlan={openPlan} />)
+      await settle()
+    })
+
+    const lostRow = [...host.querySelectorAll<HTMLButtonElement>('.chat-row')]
+      .find((row) => row.textContent?.includes('已解绑学员'))!
+    await act(async () => { lostRow.click(); await settle() })
+
+    expect(host.querySelector('.chat-row.active')?.textContent).toContain('已解绑学员')
+    expect(host.textContent).toContain('只读历史消息')
+    expect(host.querySelector('[data-selected-student]')?.getAttribute('data-selected-student')).toBe('student')
+    const planButton = host.querySelector<HTMLButtonElement>('.chat-open-plan')!
+    expect(planButton.disabled).toBe(true)
+    expect(planButton.title).toBe('该学员已不在你的名下，无法打开计划')
+    planButton.click()
+    expect(openPlan).not.toHaveBeenCalled()
+  })
+
+  it('草稿为空时点击快捷回复会填入完整文案并移除未实现的快捷键提示', async () => {
     await act(async () => { root.render(<Harness initial={[conversation(0)]} />); await settle() })
     const quickReply = host.querySelector<HTMLButtonElement>('.chat-quick-reply')!
     const textarea = host.querySelector<HTMLTextAreaElement>('.chat-composer textarea')!
@@ -149,7 +279,72 @@ describe('MessagesPage', () => {
     await act(async () => { quickReply.click(); await settle() })
 
     expect(textarea.value).toBe('按计划完成，很好，下周继续加。')
+    expect(quickReply.querySelector('kbd')).toBeNull()
+    expect(quickReply.textContent).not.toContain('⌥1')
     expect(chatApi.sendTextMessage).not.toHaveBeenCalled()
+  })
+
+  it('草稿非空时点击快捷回复会换行追加而不覆盖草稿', async () => {
+    await act(async () => { root.render(<Harness initial={[conversation(0)]} />); await settle() })
+    const quickReply = host.querySelector<HTMLButtonElement>('.chat-quick-reply')!
+    const textarea = host.querySelector<HTMLTextAreaElement>('.chat-composer textarea')!
+    await act(async () => { inputTextarea(textarea, '已有草稿') })
+
+    await act(async () => { quickReply.click(); await settle() })
+
+    expect(textarea.value).toBe('已有草稿\n按计划完成，很好，下周继续加。')
+    expect(chatApi.sendTextMessage).not.toHaveBeenCalled()
+  })
+
+  it('快捷回复追加不会顶穿 4000 字上限，超限草稿也发不出去', async () => {
+    await act(async () => { root.render(<Harness initial={[conversation(0)]} />); await settle() })
+    const quickReply = host.querySelector<HTMLButtonElement>('.chat-quick-reply')!
+    const textarea = host.querySelector<HTMLTextAreaElement>('.chat-composer textarea')!
+    await act(async () => { inputTextarea(textarea, '长'.repeat(3995)) })
+
+    await act(async () => { quickReply.click(); await settle() })
+    expect(textarea.value.length).toBe(4000)
+
+    await act(async () => {
+      textarea.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
+      await settle()
+    })
+    expect(chatApi.sendTextMessage).toHaveBeenCalledTimes(1)
+    const [, body] = chatApi.sendTextMessage.mock.calls[0]
+    expect(String(body.body ?? body).length).toBeLessThanOrEqual(4000)
+  })
+
+  it('跨日发送的 pending 气泡归入新建的今天日期组', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-07-23T12:00:00.000Z'))
+    let finishSend: (sent: ChatMessage) => void = () => {}
+    chatApi.sendTextMessage.mockImplementation(() => new Promise<ChatMessage>((resolve) => {
+      finishSend = resolve
+    }))
+    try {
+      await act(async () => { root.render(<Harness initial={[conversation(0)]} />) })
+      await act(async () => { await vi.advanceTimersByTimeAsync(50) })
+      const textarea = host.querySelector<HTMLTextAreaElement>('.chat-composer textarea')!
+      await act(async () => {
+        inputTextarea(textarea, '今天待发送')
+        textarea.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
+        await settle()
+      })
+
+      const groups = [...host.querySelectorAll<HTMLElement>('.chat-day-group')]
+      expect(groups.map((group) => group.querySelector('.chat-day-label')?.textContent))
+        .toEqual(['昨天', '今天'])
+      expect(groups.at(-1)?.querySelector('.chat-message.pending')?.textContent).toContain('今天待发送')
+    } finally {
+      await act(async () => {
+        finishSend(message({
+          id: 'sent-message', seq: 2, sender_id: 'coach', body: '今天待发送', client_id: 'sent-client',
+          created_at: '2026-07-23T12:00:00.000Z',
+        }))
+        await settle()
+      })
+      vi.useRealTimers()
+    }
   })
 
   it('下一条未读按现有列表顺序跳到第一个有未读的会话', async () => {

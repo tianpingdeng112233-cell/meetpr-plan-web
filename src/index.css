@@ -860,7 +860,8 @@ textarea {
 .chat-thread-head>b { flex: 0 0 auto; font-size: 14px; }
 .chat-thread-meta { min-width: 0; overflow: hidden; color: var(--mut); font: 11px var(--font-mono); text-overflow: ellipsis; }
 .chat-open-plan { height: 26px; margin-left: auto; padding: 0 11px; flex: 0 0 auto; border: 1px solid var(--bd); border-radius: var(--r-sm); color: var(--txt); background: var(--card-bg); font-size: 12px; cursor: pointer; }
-.chat-open-plan:hover { border-color: var(--ink); color: var(--ink); }
+.chat-open-plan:hover:not(:disabled) { border-color: var(--ink); color: var(--ink); }
+.chat-open-plan:disabled { opacity: .45; cursor: not-allowed; }
 .chat-thread { flex: 1; min-height: 0; padding: 16px 20px; overflow-y: auto; overflow-x: hidden; box-sizing: border-box; display: flex; flex-direction: column; gap: 11px; }
 /* 消息少时把内容压到底部,像聊天窗而不是从顶部往下排。用首个子元素的 auto 上边距吸走空白,
    而不是 justify-content: flex-end —— 后者在内容溢出时顶部会滚不到。空态不参与,否则
@@ -888,7 +889,6 @@ textarea {
 .chat-quick-replies { display: flex; flex-wrap: wrap; gap: 5px; }
 .chat-quick-reply { max-width: 280px; height: 24px; padding: 0 9px; border: 1px solid var(--bd); border-radius: var(--r-pill); display: flex; align-items: center; gap: 5px; color: var(--sec); background: var(--card-bg); font-size: 11px; white-space: nowrap; cursor: pointer; }
 .chat-quick-reply:hover { border-color: var(--tint-bd); background: var(--row-hover); }
-.chat-quick-reply kbd { flex: 0 0 auto; color: var(--faint); font: 9px var(--font-mono); }
 .chat-quick-reply span { min-width: 0; overflow: hidden; font-family: var(--font-mono); text-overflow: ellipsis; }
 .chat-composer-row { display: flex; align-items: flex-end; gap: 8px; }
 .chat-composer textarea { min-height: 40px; max-height: 140px; flex: 1; resize: vertical; box-sizing: border-box; border: 1px solid var(--tint-bd); border-radius: var(--r-lg); padding: 9px 11px; background: var(--card-bg); color: var(--txt); font: 13px/1.6 var(--font-mono); }

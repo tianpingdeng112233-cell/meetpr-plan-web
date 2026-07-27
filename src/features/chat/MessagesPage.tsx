@@ -31,6 +31,7 @@ import { chatOutbox, type OutboxItem } from './chatOutbox'
 import { useClockTick, useVisiblePolling } from './useVisiblePolling'
 
 const INTERACTION_WINDOW_MS = 120_000
+const MAX_MESSAGE_CHARS = 4000
 const QUICK_REPLIES = [
   '按计划完成，很好，下周继续加。',
   '这组速度掉得太多，下周降 5% 重量。',
@@ -84,21 +85,35 @@ export default function MessagesPage({
   onSessionExpired,
 }: MessagesPageProps) {
   const now = useClockTick(60_000)
-  const found = activeId == null
+  const localSelection = useRef<{ conversationId: string; selectedStudentId: string } | null>(null)
+  const activeFromList = activeId == null
     ? null
     : conversations?.find((conversation) => conversation.id === activeId) ?? null
+  const selectedConversation = conversations?.find((conversation) => (
+    conversation.other_party.id === selectedStudentId
+  )) ?? null
+  const keepLocalSelection = activeFromList != null
+    && localSelection.current?.conversationId === activeId
+    && localSelection.current.selectedStudentId === selectedStudentId
+  const activeMatchesSelectedStudent = activeFromList?.other_party.id === selectedStudentId
+  const synchronizedActiveId = conversations === null || keepLocalSelection || activeMatchesSelectedStudent
+    ? activeId
+    : selectedConversation?.id ?? null
+  const found = synchronizedActiveId == null
+    ? null
+    : conversations?.find((conversation) => conversation.id === synchronizedActiveId) ?? null
   const [activeSnapshot, setActiveSnapshot] = useState<ChatConversation | null>(null)
   const [unavailableStudentIds, setUnavailableStudentIds] = useState<Set<string>>(() => new Set())
   const [openingConversation, setOpeningConversation] = useState(false)
   const [openError, setOpenError] = useState('')
-  const active = activeSnapshot?.id === activeId ? activeSnapshot : found
+  const active = activeSnapshot?.id === synchronizedActiveId ? activeSnapshot : found
   const activeBindLost = active == null
     ? false
     : bindLostIds.has(active.id) || !students.some((student) => student.id === active.other_party.id)
 
   useEffect(() => {
-    if (activeId == null) { setActiveSnapshot(null); return }
-    const incoming = conversations?.find((conversation) => conversation.id === activeId)
+    if (synchronizedActiveId == null) { setActiveSnapshot(null); return }
+    const incoming = conversations?.find((conversation) => conversation.id === synchronizedActiveId)
     if (!incoming) return
     setActiveSnapshot((current) => current?.id === incoming.id
       ? {
@@ -108,20 +123,23 @@ export default function MessagesPage({
           other_last_read: newerCursor(current.other_last_read, incoming.other_last_read),
         }
       : incoming)
-  }, [activeId, conversations])
+  }, [conversations, synchronizedActiveId])
 
   useEffect(() => {
-    if (activeId != null || !conversations?.length) return
-    const initial = conversations.find((conversation) => (
-      conversation.other_party.id === selectedStudentId
-    )) ?? conversations[0]
-    onActiveIdChange(initial.id)
-    onStudentChange(initial.other_party.id)
-  }, [activeId, conversations, onActiveIdChange, onStudentChange, selectedStudentId])
+    if (conversations === null || activeId === synchronizedActiveId) return
+    localSelection.current = null
+    onActiveIdChange(synchronizedActiveId)
+  }, [activeId, conversations, onActiveIdChange, synchronizedActiveId])
 
   const selectConversation = (conversation: ChatConversation) => {
+    localSelection.current = {
+      conversationId: conversation.id,
+      selectedStudentId,
+    }
     onActiveIdChange(conversation.id)
-    onStudentChange(conversation.other_party.id)
+    const lost = bindLostIds.has(conversation.id)
+      || !students.some((student) => student.id === conversation.other_party.id)
+    if (!lost) onStudentChange(conversation.other_party.id)
   }
 
   const startConversation = async (studentId: string) => {
@@ -176,7 +194,7 @@ export default function MessagesPage({
             students={students}
             bindLostIds={bindLostIds}
             unavailableStudentIds={unavailableStudentIds}
-            activeId={activeId}
+            activeId={synchronizedActiveId}
             openingConversation={openingConversation}
             sessionDead={sessionDead}
             now={now}
@@ -189,13 +207,19 @@ export default function MessagesPage({
         <span className="chat-thread-avatar">{active.other_party.display_name.slice(0, 1) || '?'}</span>
         <b>{active.other_party.display_name || '未命名学员'}</b>
         <span className="chat-thread-meta">{activeMeta}</span>
-        <button type="button" className="chat-open-plan" onClick={() => onOpenPlan(active.other_party.id)}>
+        <button
+          type="button"
+          className="chat-open-plan"
+          disabled={activeBindLost}
+          title={activeBindLost ? '该学员已不在你的名下，无法打开计划' : undefined}
+          onClick={() => onOpenPlan(active.other_party.id)}
+        >
           打开 TA 的计划
         </button>
       </header>}
       {conversations === null
         ? <div className="empty-state">加载中…</div>
-        : activeId == null
+        : synchronizedActiveId == null
           ? <div className="empty-state">选择会话开始聊天</div>
           : active
             ? <ConversationThread
@@ -629,6 +653,9 @@ function ConversationThread({
   const receipt = messages ? readReceiptFor(messages, me.id, snapshot.other_last_read) : null
   const pendingItems = chatOutbox.itemsFor(conversation.id)
   const messageGroups = messages ? groupMessagesByDay(messages, now) : []
+  const todayKey = localDayKey(now)
+  const lastMessageGroupIsToday = messageGroups.at(-1)?.key === todayKey
+  const pendingSharesLastMessageGroup = !error && lastMessageGroupIsToday
   return <>
     <div className="chat-thread" ref={scrollRef} aria-busy={messages === null && !error}>
       {hasMoreHistory && <button className="chat-more" disabled={loadingHistory} onClick={() => { void loadHistory() }}>
@@ -637,7 +664,7 @@ function ConversationThread({
       {error && <div className="empty-state">{error}</div>}
       {!error && messages === null && <div className="empty-state">加载中…</div>}
       {!error && messages?.length === 0 && pendingItems.length === 0 && <div className="empty-state">还没有消息</div>}
-      {!error && messageGroups.map((group) => <section className="chat-day-group" key={group.key}>
+      {!error && messageGroups.map((group, index) => <section className="chat-day-group" key={group.key}>
         <div className="chat-day-label">{group.label}</div>
         {group.messages.map((message) => <ChatBubble
           key={message.id}
@@ -648,8 +675,14 @@ function ConversationThread({
           imageUnavailable={unavailableImageIds.has(message.id)}
           onImageError={() => { void renewImage(message) }}
         />)}
+        {index === messageGroups.length - 1 && pendingSharesLastMessageGroup
+          && pendingItems.map((item) => <PendingBubble key={item.clientId} item={item} />)}
       </section>)}
-      {pendingItems.map((item) => <PendingBubble key={item.clientId} item={item} />)}
+      {pendingItems.length > 0 && !pendingSharesLastMessageGroup
+        && <section className="chat-day-group" key={todayKey}>
+          <div className="chat-day-label">今天</div>
+          {pendingItems.map((item) => <PendingBubble key={item.clientId} item={item} />)}
+        </section>}
     </div>
     <ChatComposer
       conversationId={conversation.id}
@@ -689,9 +722,14 @@ function ChatComposer({ conversationId, initialDraft, disabled, onDraftChange }:
     draftRef.current = text
     setDraft(text)
   }
+  const applyQuickReply = (reply: string) => {
+    const current = draftRef.current
+    // Programmatic writes bypass the textarea's maxLength, so clamp here too.
+    changeDraft((current === '' ? reply : `${current}\n${reply}`).slice(0, MAX_MESSAGE_CHARS))
+  }
   const send = () => {
     const body = draftRef.current.trim()
-    if (disabled || body === '') return
+    if (disabled || body === '' || body.length > MAX_MESSAGE_CHARS) return
     chatOutbox.enqueue(conversationId, body)
     changeDraft('')
     onDraftChange('')
@@ -710,14 +748,13 @@ function ChatComposer({ conversationId, initialDraft, disabled, onDraftChange }:
 
   return <form className="chat-composer" onSubmit={submit}>
     <div className="chat-quick-replies" aria-label="快捷回复">
-      {QUICK_REPLIES.map((reply, index) => <button
+      {QUICK_REPLIES.map((reply) => <button
         type="button"
         className="chat-quick-reply"
         key={reply}
         disabled={disabled}
-        onClick={() => changeDraft(reply)}
+        onClick={() => applyQuickReply(reply)}
       >
-        <kbd>⌥{index + 1}</kbd>
         <span>{reply}</span>
       </button>)}
     </div>
@@ -725,7 +762,7 @@ function ChatComposer({ conversationId, initialDraft, disabled, onDraftChange }:
       <textarea
         aria-label="输入消息"
         value={draft}
-        maxLength={4000}
+        maxLength={MAX_MESSAGE_CHARS}
         rows={1}
         disabled={disabled}
         placeholder={disabled ? '当前无法发送消息' : '输入消息'}
