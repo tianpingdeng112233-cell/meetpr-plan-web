@@ -101,6 +101,21 @@ async function settle(): Promise<void> {
   for (let index = 0; index < 8; index++) await Promise.resolve()
 }
 
+function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
+  let resolve!: (value: T) => void
+  const promise = new Promise<T>((done) => { resolve = done })
+  return { promise, resolve }
+}
+
+function overview(squat: number) {
+  return {
+    exercises: [],
+    one_rm: { squat, bench: null, deadlift: null },
+    last_trained_at: null,
+    recent_4w: { trained_days: 0, total_planned_days: 0, completion_rate: 0 },
+  }
+}
+
 describe('StudentDetail plan capacity card', () => {
   let host: HTMLDivElement
   let root: Root
@@ -167,5 +182,41 @@ describe('StudentDetail plan capacity card', () => {
     expect(bench.textContent).toBe('B17组')
     expect(deadlift.textContent).toBe('D4组')
     expect(card.querySelectorAll('.student-capacity-lift')).toHaveLength(3)
+  })
+
+  it('discards a slow previous student response after switching students', async () => {
+    const oldOverview = deferred<ReturnType<typeof overview>>()
+    const newOverview = deferred<ReturnType<typeof overview>>()
+    const oldProfile = deferred<null>()
+    const newProfile = deferred<null>()
+    api.getStudentPlans.mockResolvedValue([])
+    api.getExerciseStatsOverview.mockImplementation((studentId: string) => (
+      studentId === 'old-student' ? oldOverview.promise : newOverview.promise
+    ))
+    api.getStudentOnboarding.mockImplementation((studentId: string) => (
+      studentId === 'old-student' ? oldProfile.promise : newProfile.promise
+    ))
+    const students = [
+      { id: 'old-student', display_name: '旧学员', status: 'active' as const, evaluation: null },
+      { id: 'new-student', display_name: '新学员', status: 'active' as const, evaluation: null },
+    ]
+
+    await act(async () => {
+      root.render(<StudentDetail students={students} studentId="old-student" onStudent={vi.fn()} onBack={vi.fn()} catalog={catalog} index={index} />)
+      await settle()
+      root.render(<StudentDetail students={students} studentId="new-student" onStudent={vi.fn()} onBack={vi.fn()} catalog={catalog} index={index} />)
+      newOverview.resolve(overview(222))
+      newProfile.resolve(null)
+      await settle()
+    })
+    expect(host.textContent).toContain('222深蹲')
+
+    await act(async () => {
+      oldOverview.resolve(overview(111))
+      oldProfile.resolve(null)
+      await settle()
+    })
+    expect(host.textContent).toContain('222深蹲')
+    expect(host.textContent).not.toContain('111深蹲')
   })
 })

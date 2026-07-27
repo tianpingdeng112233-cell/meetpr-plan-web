@@ -57,6 +57,8 @@ export interface PlanEditorProps {
   initialPublished?: boolean
   planStatus?: PlanStatus
   totalShiftDays?: number
+  /** Completed/paused historical plans render as a true non-persisting viewer. */
+  readOnly?: boolean
   /** Real publish call; when omitted the button just toggles locally (sample mode). */
   onPublish?: () => Promise<void>
   /** Save current edits back to the backend; resolves with how many contentful rows were skipped. */
@@ -229,6 +231,7 @@ export function replaceUnlockedRows(day: DayCol, sourceRows: ExerciseRow[], pref
 
 export function PlanEditor(props: PlanEditorProps) {
   const { initialWeeks, weeksCount, studentName, planName, initialPublished = false, onPublish } = props
+  const readOnly = props.readOnly ?? (props.planStatus === 'completed' || props.planStatus === 'paused')
   const [weeks, setWeeks] = useState<Week[]>(initialWeeks)
   const latestWeeks = useRef(weeks)
   latestWeeks.current = weeks
@@ -239,7 +242,7 @@ export function PlanEditor(props: PlanEditorProps) {
     initialWeeks.length || weeksCount,
   ))
   const serverMirrorHash = useRef(draftContentHash(initialServerMirrorContent.current))
-  const mountedMirror = useRef<DraftMirror | null>(loadDraftMirror(mirrorPlanId))
+  const mountedMirror = useRef<DraftMirror | null>(readOnly ? null : loadDraftMirror(mirrorPlanId))
   const [recoveryMirror, setRecoveryMirror] = useState<DraftMirror | null>(() => {
     const mirror = mountedMirror.current
     return mirror && mirror.contentHash !== serverMirrorHash.current ? mirror : null
@@ -266,7 +269,9 @@ export function PlanEditor(props: PlanEditorProps) {
   // Published plans remain editable, but only through explicit confirmed updates;
   // rows with server-authoritative history are locked individually.
   const [published, setPublished] = useState(initialPublished)
-  const [statusText, setStatusText] = useState(initialPublished ? `已发布给 ${studentName}` : '草稿 · 已存')
+  const [statusText, setStatusText] = useState(readOnly
+    ? `${props.planStatus === 'completed' ? '已完成' : '已暂停'} · 只读`
+    : initialPublished ? `已发布给 ${studentName}` : '草稿 · 已存')
   // W1 calendar/delete controls are draft-only. Keep this separate from main's
   // `published` flag, which drives explicit in-place updates for spec 004.
   const statusCalendarLocked = props.planStatus != null ? props.planStatus !== 'draft' : published
@@ -320,6 +325,7 @@ export function PlanEditor(props: PlanEditorProps) {
   }, [props.planStartDate])
 
   const setWeeksWithHistory = useCallback((update: WeeksUpdate) => {
+    if (readOnly) return
     const startSnapshot = currentPlanStart.current
     setWeeks((prev) => {
       const next = typeof update === 'function' ? update(prev) : update
@@ -330,7 +336,7 @@ export function PlanEditor(props: PlanEditorProps) {
       redoStartRef.current = []
       return next
     })
-  }, [])
+  }, [readOnly])
 
   const markMirrorCovered = useCallback((content: DraftMirrorContent) => {
     const hash = draftContentHash(content)
@@ -343,7 +349,7 @@ export function PlanEditor(props: PlanEditorProps) {
     // The writer keeps running while the recovery banner is open: the banner's
     // candidate lives in React state, so edits typed before the coach decides
     // still reach storage instead of going unprotected.
-    if (!mirrorPlanId) return
+    if (!mirrorPlanId || readOnly) return
     const content = mirrorContent(
       weeks,
       currentPlanStart.current,
@@ -360,7 +366,7 @@ export function PlanEditor(props: PlanEditorProps) {
       return
     }
     mirrorWriter.current.schedule(content)
-  }, [mirrorPlanId, props.weeksCount, recoveryMirror, weeks])
+  }, [mirrorPlanId, props.weeksCount, readOnly, recoveryMirror, weeks])
 
   useEffect(() => {
     const writer = mirrorWriter.current
@@ -368,7 +374,7 @@ export function PlanEditor(props: PlanEditorProps) {
   }, [])
 
   const restoreDraftMirror = useCallback(() => {
-    if (!recoveryMirror) return
+    if (!recoveryMirror || readOnly) return
     const { content } = recoveryMirror
     // Restoring means the coach chose this candidate as THE current draft, so
     // it synchronously takes over the single storage slot — replacing even a
@@ -399,7 +405,7 @@ export function PlanEditor(props: PlanEditorProps) {
     pendingPlanStart.current = metadataChanged ? content.planStartDate : null
     saveDraftMirror(mirrorPlanId, content)
     setRecoveryMirror(null)
-  }, [mirrorPlanId, props.weeksCount, published, recoveryMirror, setWeeksWithHistory])
+  }, [mirrorPlanId, props.weeksCount, published, readOnly, recoveryMirror, setWeeksWithHistory])
 
   const discardDraftMirror = useCallback(() => {
     // Only the discarded candidate is removed; a newer mirror written while
@@ -1082,7 +1088,7 @@ export function PlanEditor(props: PlanEditorProps) {
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if (suspendedRef.current) return
+      if (readOnly || suspendedRef.current) return
       const mod = e.metaKey || e.ctrlKey
       if (!mod || isEditableTarget(e.target)) return
       const key = e.key.toLowerCase()
@@ -1107,7 +1113,7 @@ export function PlanEditor(props: PlanEditorProps) {
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [copySelectedDay, copySelectedRow, pasteSelectedDay, pasteSelectedRows, redoWeeks, selectedRow, undoWeeks])
+  }, [copySelectedDay, copySelectedRow, pasteSelectedDay, pasteSelectedRows, readOnly, redoWeeks, selectedRow, undoWeeks])
 
   const blankRow = (): ExerciseRow => ({
     id: `n${Date.now()}-${Math.round(performance.now())}`,
@@ -1269,7 +1275,7 @@ export function PlanEditor(props: PlanEditorProps) {
     return null
   }
   persistRef.current = async () => {
-    if (!props.onSave || published) return true
+    if (!props.onSave || published || readOnly) return true
     const auto = saveMode.current === 'auto'
     const importStart = pendingPlanStart.current
     const markPastAsAssumedComplete = importedPastHistory.current
@@ -1347,16 +1353,16 @@ export function PlanEditor(props: PlanEditorProps) {
     // Only a real edit marks content unsaved — this effect also fires when `published`
     // flips (same weeks identity), which must not re-arm the guard.
     if (weeksChanged && props.onSave) unsavedRef.current = true
-    if (published || publishing.current || !props.onSave) { saver.current.cancelAutosave(); return }
+    if (published || readOnly || publishing.current || !props.onSave) { saver.current.cancelAutosave(); return }
     saveMode.current = 'auto'
     saver.current.scheduleAutosave()
-  }, [weeks, published]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [weeks, published, readOnly]) // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     const s = saver.current
     // Leaving this plan: persist any pending DRAFT edits to it. Never flush a published plan — its
     // writes are explicit-confirm only, never a silent background reconcile.
-    return () => { if (!publishedRef.current) void s.flush() }
-  }, [])
+    return () => { if (!publishedRef.current && !readOnly) void s.flush() }
+  }, [readOnly])
 
   // Unbound contentful rows can't be persisted at all (reconcile skips them), so autosave's
   //「已自动保存」can lull the coach while those rows still live only in this tab. The loss becomes
@@ -1364,8 +1370,8 @@ export function PlanEditor(props: PlanEditorProps) {
   // editor unmounts and the flush skips them too) — so every exit is guarded. Closing while a
   // save is scheduled/in flight would strand a partial write too, so that blocks as well.
   // Sample mode (no onSave) has nothing persistable to lose and stays quiet.
-  const canPersist = useRef(!!props.onSave)
-  canPersist.current = !!props.onSave
+  const canPersist = useRef(!!props.onSave && !readOnly)
+  canPersist.current = !!props.onSave && !readOnly
   const savingRef = useRef(saving)
   savingRef.current = saving
   useEffect(() => {
@@ -1457,7 +1463,7 @@ export function PlanEditor(props: PlanEditorProps) {
   }
 
   const handleSave = async () => {
-    if (!props.onSave || saving || publishing.current) return
+    if (!props.onSave || readOnly || saving || publishing.current) return
     if (published) {
       // 更新计划: reconciles in place, changing what the student sees right now — confirm first.
       // This is the ONLY way a published plan is persisted: an explicit, confirmed, one-shot write
@@ -1510,6 +1516,7 @@ export function PlanEditor(props: PlanEditorProps) {
   }
 
   const handleImport = async (file: File) => {
+    if (readOnly) return
     if (!props.exerciseIndex || !props.planStartDate) {
       setStatusText('导入失败 · 计划或动作库未就绪')
       return
@@ -1603,7 +1610,7 @@ export function PlanEditor(props: PlanEditorProps) {
   const handlePublish = async () => {
     // 发布后不可撤回，且当前编辑器不就地覆盖已发布树，避免破坏历史 set log。
     // saving 时也不发布:避免在后台 reconcile 半途翻页发布,发布按钮已 disabled,这里再兜底。
-    if (published || publishing.current || saving) return
+    if (readOnly || published || publishing.current || saving) return
     // Pre-flight: rows the publish would lose or that the backend will refuse. Zero-set bound
     // rows make the server reject with PLAN_PUBLISH_INCOMPLETE — block up front with a pointer
     // to the ⚠ chip instead of letting the coach discover it as an opaque failure.
@@ -1707,16 +1714,16 @@ export function PlanEditor(props: PlanEditorProps) {
       fontFamily: 'var(--font-sans)', fontSize: 13, WebkitFontSmoothing: 'antialiased',
     }}>
       <TopBar
-        studentName={studentName} planName={planName} published={published} statusText={statusText} onPublish={handlePublish}
+        studentName={studentName} planName={planName} published={published} readOnly={readOnly} statusText={statusText} onPublish={handlePublish}
         students={props.students} currentStudentId={props.currentStudentId} onSwitchStudent={guardLeaveId(props.onSwitchStudent)}
         plans={props.plans} currentPlanId={props.currentPlanId} onSwitchPlan={guardLeaveId(props.onSwitchPlan)}
         onNewPlan={guardLeave(props.onNewPlan)} onLogout={guardLeave(props.onLogout)}
         onSessionInvalidated={props.onLogout} onConfirmLeave={confirmLeave}
-        currentPlanStatus={published ? 'published' : props.planStatus ?? 'draft'}
+        currentPlanStatus={props.planStatus ?? (published ? 'published' : 'draft')}
         onDeleteCurrentDraft={guardLeave(props.onDeleteCurrentDraft)}
         onMarkComplete={props.onMarkComplete}
         onBackfillHistory={props.onBackfillHistory}
-        onRenamePlan={props.onRename ? () => {
+        onRenamePlan={!readOnly && props.onRename ? () => {
           const name = window.prompt('计划名称', planName)?.trim()
           if (name && name !== planName) void props.onRename!(name)
         } : undefined}
@@ -1728,14 +1735,14 @@ export function PlanEditor(props: PlanEditorProps) {
             })
           }
         } : undefined}
-        onSave={props.onSave ? handleSave : undefined} saving={saving}
-        onImport={props.exerciseIndex && props.planStartDate ? handleImport : undefined}
+        onSave={!readOnly && props.onSave ? handleSave : undefined} saving={saving}
+        onImport={!readOnly && props.exerciseIndex && props.planStartDate ? handleImport : undefined}
         planStartDate={props.planStartDate}
         calendarLocked={calendarLocked || !props.onChangeStartDate}
         calendarLockedHint={calendarLocked ? calendarLockedHint : '当前模式不可修改计划日期'}
         onChangeStartDate={props.planStartDate ? (props.onChangeStartDate ? handleChangeStartDate : async () => {}) : undefined}
-        onNewExercise={props.onCreateExercise ? () => openCreateExercise() : undefined}
-        issueCount={issues.length} issueHint={issueHint} onJumpIssue={jumpToNextIssue}
+        onNewExercise={!readOnly && props.onCreateExercise ? () => openCreateExercise() : undefined}
+        issueCount={readOnly ? 0 : issues.length} issueHint={issueHint} onJumpIssue={jumpToNextIssue}
         totalShiftDays={props.totalShiftDays}
       />
       {recoveryMirror && (
@@ -1758,7 +1765,7 @@ export function PlanEditor(props: PlanEditorProps) {
         curWeekLabel={curWeekLabel} zoomLabel={`${Math.round(zoom)}%`}
         weekNums={weeks.map((w) => w.num)} onJumpWeek={jumpToWeek} />
       <ContextBar
-        visible={!!sel}
+        visible={!!sel && !readOnly}
         dayLabel={selDayLabel}
         isRest={selIsRest}
         canCopyPrev={!!sel && sel.wnum > 1 && !copyTargetHasLockedRows}
@@ -1779,7 +1786,9 @@ export function PlanEditor(props: PlanEditorProps) {
         onClose={() => { setSel(null); setSelectedRow(null); setPop((p) => ({ ...p, visible: false })) }}
       />
 
-      <div className="scroller" ref={scrollerRef} style={{ flex: 1, overflow: 'auto', position: 'relative', background: 'var(--bg)' }}>
+      <div className="scroller" ref={scrollerRef} aria-readonly={readOnly || undefined} style={{ flex: 1, overflow: 'auto', position: 'relative', background: 'var(--bg)' }}>
+        {readOnly && <div role="status" style={{ position: 'sticky', top: 0, zIndex: 12, padding: '8px 16px', background: 'var(--surface-2)', borderBottom: '1px solid var(--border)', color: 'var(--fg-secondary)', fontSize: 12 }}>历史计划只读：可以查看，但不会保存任何修改</div>}
+        <div style={{ pointerEvents: readOnly ? 'none' : undefined }}>
         <div style={{ textAlign: 'center', color: 'var(--fg-tertiary)', fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '.1em', padding: 7, textTransform: 'uppercase' }}>▲ 计划开始 · W01</div>
         <div ref={sizerRef}>
           <div ref={zoomwrapRef} style={{ transformOrigin: '0 0', width: 'max-content' }}>
@@ -1830,6 +1839,7 @@ export function PlanEditor(props: PlanEditorProps) {
           </div>
         </div>
         <div style={{ textAlign: 'center', color: 'var(--fg-tertiary)', fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '.1em', padding: '10px 7px 20px', textTransform: 'uppercase' }}>▼ 共 {weeks.length} 周</div>
+        </div>
       </div>
 
       {selectedDayValue && props.studentId && !dismissedContextDays.has(selectedDayKey) && (

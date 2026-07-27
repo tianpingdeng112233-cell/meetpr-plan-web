@@ -423,6 +423,8 @@ export function PlanWorkspace({ onLogout, me }: Props) {
     sub: `${fmtStart(p.start_date)} 起 · ${p.plan_weeks} 周`,
     tag: statusTag(p.status),
   }))
+  const historicalReadOnly = loaded?.plan.status === 'completed' || loaded?.plan.status === 'paused'
+  const planContentEditable = loaded?.plan.status === 'draft' || loaded?.plan.status === 'published'
 
   return (
     <div className="coach-shell">
@@ -440,8 +442,9 @@ export function PlanWorkspace({ onLogout, me }: Props) {
         planStartDate={loaded?.plan.start_date}
         planStatus={loaded?.plan.status}
         totalShiftDays={loaded?.plan.total_shift_days}
+        readOnly={historicalReadOnly}
         initialPublished={loaded?.plan.status === 'published'}
-        onPublish={loaded ? async () => {
+        onPublish={loaded?.plan.status === 'draft' ? async () => {
           const updated = await publishPlan(loaded.plan.id)
           // Reflect the now-live status in the parent-owned list + loaded plan, so the plan
           // switcher's「草稿/已发布」tag can't contradict the editor — no UI shows「草稿」for a
@@ -449,7 +452,7 @@ export function PlanWorkspace({ onLogout, me }: Props) {
           setPlans((prev) => prev.map((p) => (p.id === updated.id ? updated : p)))
           setLoaded((prev) => (prev && prev.plan.id === updated.id ? { ...prev, plan: { ...prev.plan, ...updated } } : prev))
         } : undefined}
-        onSave={loaded ? async (weeks, importStart, markPastAsAssumedComplete, onProgress) => {
+        onSave={loaded && planContentEditable ? async (weeks, importStart, markPastAsAssumedComplete, onProgress) => {
           const reconcileOptions = {
             published: loaded.plan.status === 'published',
             catalog: catalog ?? undefined,
@@ -488,7 +491,7 @@ export function PlanWorkspace({ onLogout, me }: Props) {
           }
           return result
         } : undefined}
-        onRename={loaded ? async (name) => {
+        onRename={loaded && planContentEditable ? async (name) => {
           const updated = await patchPlan(loaded.plan.id, { name })
           // Keep the switcher list + the loaded plan in sync so the new name shows everywhere.
           setPlans((prev) => prev.map((p) => (p.id === updated.id ? updated : p)))

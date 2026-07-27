@@ -17,6 +17,7 @@ const api = vi.hoisted(() => ({
   markConversationRead: vi.fn(),
   sendTextMessage: vi.fn(),
   openConversation: vi.fn(),
+  captureEditorProps: vi.fn(),
 }))
 
 vi.mock('../../api/plans', () => ({
@@ -48,10 +49,16 @@ vi.mock('../../api/chat', () => ({
   openConversation: api.openConversation,
 }))
 vi.mock('../plan-editor/PlanEditor', () => ({
-  PlanEditor: ({ initialWeeks, onLeaveGuardChange }: {
+  PlanEditor: (props: {
     initialWeeks: Week[]
+    readOnly?: boolean
+    onSave?: unknown
+    onRename?: unknown
+    onPublish?: unknown
     onLeaveGuardChange?: (guard: (() => Promise<boolean>) | null) => void
   }) => {
+    const { initialWeeks, onLeaveGuardChange } = props
+    api.captureEditorProps(props)
     useEffect(() => {
       onLeaveGuardChange?.(async () => true)
       return () => onLeaveGuardChange?.(null)
@@ -86,11 +93,11 @@ const chatMessage: ChatMessage = {
   attachment_id: null, image_url: null, image_expires_in: null, client_id: 'student-client', created_at: '2026-07-22T10:00:00Z',
 }
 
-function plan(note: string): PlanWithChildren {
+function plan(note: string, status: PlanWithChildren['status'] = 'draft'): PlanWithChildren {
   return {
     id: 'plan', coach_id: 'coach', trainee_id: 'student', name: '计划',
     start_date: '2026-01-05', end_date: '2026-01-11', plan_weeks: 1,
-    source: 'coach', source_template_id: null, status: 'draft', kind: 'regular',
+    source: 'coach', source_template_id: null, status, kind: 'regular',
     created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z',
     total_shift_days: 0, latest_shift_created_at: null,
     days: [{
@@ -245,5 +252,22 @@ describe('PlanWorkspace editor remount', () => {
     })
     const messagesTab = [...host.querySelectorAll('button')].find((item) => item.textContent?.includes('消息'))
     expect(messagesTab?.querySelector('.coach-rail-badge')).toBeNull()
+  })
+
+  it('does not pass any write callbacks to a completed historical plan', async () => {
+    const completed = plan('历史快照', 'completed')
+    api.getStudentPlans.mockResolvedValue([completed])
+    api.getPlan.mockResolvedValue(completed)
+
+    await act(async () => {
+      root.render(<PlanWorkspace onLogout={vi.fn()} me={me} />)
+      await settle()
+    })
+
+    const props = api.captureEditorProps.mock.calls.at(-1)?.[0]
+    expect(props).toMatchObject({ readOnly: true })
+    expect(props.onSave).toBeUndefined()
+    expect(props.onRename).toBeUndefined()
+    expect(props.onPublish).toBeUndefined()
   })
 })
