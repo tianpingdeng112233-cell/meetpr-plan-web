@@ -26,6 +26,9 @@ const api = vi.hoisted(() => ({
   openConversation: vi.fn(),
   getUploadUrl: vi.fn(),
   postCoachFeedback: vi.fn(),
+  getVideoMarkers: vi.fn(),
+  createVideoMarker: vi.fn(),
+  deleteVideoMarker: vi.fn(),
 }))
 
 vi.mock('../../api/plans', () => ({
@@ -56,6 +59,11 @@ vi.mock('../../api/coach', () => ({
   getUploadUrl: api.getUploadUrl,
   postCoachFeedback: api.postCoachFeedback,
   rejectBindRequest: vi.fn(),
+}))
+vi.mock('../../api/markers', () => ({
+  getVideoMarkers: api.getVideoMarkers,
+  createVideoMarker: api.createVideoMarker,
+  deleteVideoMarker: api.deleteVideoMarker,
 }))
 vi.mock('../../api/chat', () => ({
   listConversations: api.listConversations,
@@ -222,6 +230,8 @@ describe('PlanWorkspace editor remount', () => {
     host = document.createElement('div')
     document.body.appendChild(host)
     root = createRoot(host)
+    vi.spyOn(HTMLMediaElement.prototype, 'pause').mockImplementation(() => {})
+    vi.spyOn(HTMLMediaElement.prototype, 'load').mockImplementation(() => {})
     const stored = new Map<string, string>()
     Object.defineProperty(window, 'localStorage', {
       configurable: true,
@@ -262,6 +272,9 @@ describe('PlanWorkspace editor remount', () => {
     api.markConversationRead.mockResolvedValue({ my_last_read: { message_id: 'chat-message', seq: 1 }, unread_count: 0 })
     api.getUploadUrl.mockResolvedValue({ url: 'https://example.test/video', expires_in: 60 })
     api.postCoachFeedback.mockResolvedValue({})
+    api.getVideoMarkers.mockResolvedValue([])
+    api.createVideoMarker.mockResolvedValue({})
+    api.deleteVideoMarker.mockResolvedValue(undefined)
   })
 
   afterEach(() => {
@@ -547,17 +560,16 @@ describe('PlanWorkspace editor remount', () => {
     expect(host.textContent).toContain('刷新前视频')
 
     await act(async () => {
-      host.querySelector<HTMLButtonElement>('.video-tiles button')?.click()
       await settle()
     })
-    const feedback = host.querySelector<HTMLInputElement>('.video-feedback input')!
+    const feedback = host.querySelector<HTMLTextAreaElement>('.video-feedback textarea')!
     await act(async () => {
-      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set
+      const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')?.set
       setter?.call(feedback, '动作反馈')
       feedback.dispatchEvent(new Event('input', { bubbles: true }))
     })
     await act(async () => {
-      host.querySelector<HTMLButtonElement>('.video-feedback button')?.click()
+      host.querySelector<HTMLButtonElement>('.video-feedback footer button')?.click()
       await settle()
     })
     expect(api.postCoachFeedback).toHaveBeenCalledTimes(1)

@@ -1,11 +1,73 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { ApiException } from '../../api/client'
 import { getUploadUrl, postCoachFeedback } from '../../api/coach'
-import type { CoachStudent, StudentVideo } from '../../api/types'
-import { PageTop, kg, shortDate } from './WorkspaceCommon'
+import { createVideoMarker, deleteVideoMarker, getVideoMarkers } from '../../api/markers'
+import type { CoachStudent, StudentVideo, VideoMarker, VideoMarkerLevel } from '../../api/types'
+import { kg } from './WorkspaceCommon'
 
-const size = (bytes: number) => bytes < 1024 * 1024 ? `${Math.round(bytes / 1024)} KB` : `${(bytes / 1024 / 1024).toFixed(1)} MB`
-export const moveVideoIndex = (index: number, direction: -1 | 1, total: number) => Math.max(0, Math.min(total - 1, index + direction))
-export const videoAssociation = (video: { logged_at: string | null; created_at: string | null; exercise_name?: string | null; set_index?: number | null }) => { const day = video.logged_at ?? video.created_at; return [day ? shortDate(day.slice(0, 10)) : null, video.exercise_name, video.set_index != null ? `第 ${video.set_index} 组` : null].filter(Boolean).join(' · ') }
+type VideoFilter = 'all' | 'pending' | 'reviewed'
+type MarkerAvailability = 'loading' | 'available' | 'error' | 'unavailable'
+
+const weekdays = ['周日', '周一', '周二', '周三', '周四', '周五', '周六']
+const markerLevels: { value: VideoMarkerLevel; label: string }[] = [
+  { value: 'info', label: '提示' },
+  { value: 'warn', label: '注意' },
+  { value: 'bad', label: '问题' },
+]
+
+const videoDay = (video: Pick<StudentVideo, 'logged_at' | 'created_at'>) =>
+  (video.logged_at ?? video.created_at).slice(0, 10)
+const dayLabel = (day: string) => {
+  const [year, month, date] = day.split('-').map(Number)
+  return `${String(month).padStart(2, '0')}-${String(date).padStart(2, '0')} ${weekdays[new Date(year, month - 1, date).getDay()]}`
+}
+const setLabel = (index: number | null | undefined) => index == null ? null : `第 ${index + 1} 组`
+const statusLabel = (video: StudentVideo) => video.viewed_at == null ? '待审' : '已反馈'
+const loadLabel = (video: StudentVideo) => (
+  video.weight_kg != null && video.reps != null
+    ? `${kg(video.weight_kg)}kg × ${video.reps}`
+    : video.weight_kg != null
+      ? `${kg(video.weight_kg)}kg`
+      : video.reps != null ? `${video.reps} 次` : ''
+)
+const videoTitle = (video: StudentVideo) =>
+  [video.exercise_name || video.filename || '训练视频', loadLabel(video)].filter(Boolean).join(' ')
+const size = (bytes: number) => bytes < 1024 * 1024
+  ? `${Math.round(bytes / 1024)} KB`
+  : `${(bytes / 1024 / 1024).toFixed(1)} MB`
+const timeLabel = (seconds: number) => {
+  const safe = Number.isFinite(seconds) && seconds > 0 ? Math.floor(seconds) : 0
+  return `${Math.floor(safe / 60)}:${String(safe % 60).padStart(2, '0')}`
+}
+const releaseVideo = (video: HTMLVideoElement | null) => {
+  if (!video) return
+  video.pause()
+  video.removeAttribute('src')
+  video.load()
+}
+
+export const moveVideoIndex = (index: number, direction: -1 | 1, total: number) =>
+  Math.max(0, Math.min(total - 1, index + direction))
+
+export const markerPositionPercent = (timeMs: number, durationSeconds: number) => {
+  if (!Number.isFinite(timeMs) || !Number.isFinite(durationSeconds) || durationSeconds <= 0) return 0
+  return Math.max(0, Math.min(100, timeMs / (durationSeconds * 1000) * 100))
+}
+
+export const videoAssociation = (video: {
+  logged_at: string | null
+  created_at: string | null
+  exercise_name?: string | null
+  set_index?: number | null
+}) => {
+  const day = video.logged_at ?? video.created_at
+  return [
+    day ? day.slice(5, 10).replace('-', '/') : null,
+    video.exercise_name,
+    setLabel(video.set_index),
+  ].filter(Boolean).join(' · ')
+}
+
 export function VideosPage({ students, studentId, videos, onRefreshVideos, onStudent }: {
   students: CoachStudent[]
   studentId: string
@@ -13,40 +75,614 @@ export function VideosPage({ students, studentId, videos, onRefreshVideos, onStu
   onRefreshVideos: (studentId: string) => Promise<void>
   onStudent: (id: string) => void
 }) {
-  const [activeIndex, setActiveIndex] = useState<number | null>(null), [url, setUrl] = useState(''), [rate, setRate] = useState(1), [error, setError] = useState('')
-  const [feedback, setFeedback] = useState(''), [feedbackState, setFeedbackState] = useState<'idle' | 'sending' | 'sent'>('idle'), [feedbackError, setFeedbackError] = useState('')
-  const retried = useRef(false), videoRef = useRef<HTMLVideoElement>(null), urlRequest = useRef(0), feedbackRequest = useRef(0), sentTimer = useRef<number>(), draftRef = useRef('')
-  // 草稿的实时值:发送在途时教练可以继续改,成功回调要拿当前值判断该不该清空(setState 闭包里的是旧值)。
-  const writeFeedback = (value: string) => { draftRef.current = value; setFeedback(value) }
+  const [filter, setFilter] = useState<VideoFilter>('all')
+  const [activeId, setActiveId] = useState<string | null>(null)
+  const [videoSource, setVideoSource] = useState<{ videoId: string; url: string } | null>(null)
+  const [rate, setRate] = useState(1)
+  const [playbackError, setPlaybackError] = useState('')
+  const [playing, setPlaying] = useState(false)
+  const [currentTime, setCurrentTime] = useState(0)
+  const [duration, setDuration] = useState(0)
+  const [feedback, setFeedback] = useState('')
+  const [feedbackState, setFeedbackState] = useState<'idle' | 'sending' | 'sent'>('idle')
+  const [feedbackError, setFeedbackError] = useState('')
+  const [markerAvailability, setMarkerAvailability] = useState<MarkerAvailability>('loading')
+  const [markers, setMarkers] = useState<VideoMarker[]>([])
+  const [markerOpen, setMarkerOpen] = useState(false)
+  const [markerNote, setMarkerNote] = useState('')
+  const [markerLevel, setMarkerLevel] = useState<VideoMarkerLevel>('info')
+  const [markerSaving, setMarkerSaving] = useState(false)
+  const [markerError, setMarkerError] = useState('')
+
+  const retried = useRef(false)
+  const videoRef = useRef<HTMLVideoElement>(null)
+  const urlRequest = useRef(0)
+  const markerRequest = useRef(0)
+  const feedbackRequest = useRef(0)
+  const sentTimer = useRef<number>()
+  const draftRef = useRef('')
+  const activeVideoIdRef = useRef<string | null>(null)
+
+  const writeFeedback = (value: string) => {
+    draftRef.current = value
+    setFeedback(value)
+  }
   const refreshVideos = useCallback(async () => {
     if (!studentId) return
     try {
       await onRefreshVideos(studentId)
     } catch {
-      // Keep the last authoritative array; a failed refresh must not invent a zero count.
+      // Preserve the last authoritative array when the refresh fails.
     }
   }, [onRefreshVideos, studentId])
+
   useEffect(() => {
-    setActiveIndex(null)
+    setActiveId(null)
     urlRequest.current += 1
+    markerRequest.current += 1
     feedbackRequest.current += 1
     void refreshVideos()
   }, [refreshVideos])
-  const grouped = useMemo(() => Object.entries(videos.reduce<Record<string, StudentVideo[]>>((acc, video) => { const d = (video.logged_at ?? video.created_at).slice(0, 10); (acc[d] ??= []).push(video); return acc }, {})), [videos])
-  const ordered = useMemo(() => grouped.flatMap(([, rows]) => rows), [grouped]), active = activeIndex == null ? null : ordered[activeIndex] ?? null
-  const sign = async (video: StudentVideo, failure: string) => { const request = ++urlRequest.current; setError(''); try { const signed = await getUploadUrl(video.id); if (request === urlRequest.current) setUrl(signed.url) } catch { if (request === urlRequest.current) setError(failure) } }
-  const resetFeedback = () => { feedbackRequest.current += 1; if (sentTimer.current != null) window.clearTimeout(sentTimer.current); writeFeedback(''); setFeedbackState('idle'); setFeedbackError('') }
-  const open = (index: number) => { const video = ordered[index]; if (!video) return; setActiveIndex(index); setUrl(''); setRate(1); setError(''); retried.current = false; resetFeedback(); void sign(video, '视频链接获取失败') }
-  const close = () => { urlRequest.current += 1; feedbackRequest.current += 1; if (sentTimer.current != null) window.clearTimeout(sentTimer.current); setActiveIndex(null) }
-  const move = (direction: -1 | 1) => { if (activeIndex == null) return; const index = moveVideoIndex(activeIndex, direction, ordered.length); if (index !== activeIndex) open(index) }
-  useEffect(() => { if (videoRef.current) videoRef.current.playbackRate = rate }, [rate, url])
-  useEffect(() => { if (!active) return; const keydown = (e: KeyboardEvent) => { if (e.defaultPrevented) return; const el = e.target instanceof HTMLElement ? e.target : null; const typing = !!el && (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement || el.isContentEditable); if (e.key === 'Escape') { if (el && typing) { el.blur(); return } e.preventDefault(); close(); return } if (typing || el instanceof HTMLVideoElement) return; if (e.key === 'ArrowLeft') { e.preventDefault(); move(-1) } if (e.key === 'ArrowRight') { e.preventDefault(); move(1) } }; window.addEventListener('keydown', keydown); return () => window.removeEventListener('keydown', keydown) })
-  useEffect(() => () => { if (sentTimer.current != null) window.clearTimeout(sentTimer.current) }, [])
-  const playbackFailed = () => { if (!active || retried.current) { setError('视频播放失败'); return } retried.current = true; void sign(active, '视频链接已过期，续签失败') }
-  const sendFeedback = async () => { if (!active || feedbackState === 'sending') return; const draft = feedback, text = draft.trim(); if (!text || text.length > 2000) return; const request = ++feedbackRequest.current; setFeedbackState('sending'); setFeedbackError(''); try { await postCoachFeedback({ student_id: studentId, day_date: (active.logged_at ?? active.created_at).slice(0, 10), plan_exercise_id: active.plan_exercise_id, video_id: active.id, text }); if (request !== feedbackRequest.current) return; void refreshVideos(); if (draftRef.current !== draft) { setFeedbackState('idle'); return } writeFeedback(''); setFeedbackState('sent'); sentTimer.current = window.setTimeout(() => { if (request === feedbackRequest.current) setFeedbackState('idle') }, 2000) } catch { if (request === feedbackRequest.current) { setFeedbackState('idle'); setFeedbackError('反馈发送失败，请稍后重试') } } }
-  const association = active ? videoAssociation(active) : '', detail = active ? [active.weight_kg != null && active.reps != null ? `${kg(active.weight_kg)}kg × ${active.reps}` : active.weight_kg != null ? `${kg(active.weight_kg)}kg` : active.reps != null ? `${active.reps} 次` : null, shortDate(active.logged_at ?? active.created_at), activeIndex != null ? `${activeIndex + 1}/${ordered.length}` : null].filter(Boolean).join(' · ') : ''
-  return <main className="data-page"><PageTop title="训练视频" students={students} studentId={studentId} onStudent={onStudent} tail={<span className="page-status">最近 {videos.length} 条</span>} />
-    <div className="video-wall">{grouped.length === 0 && <div className="empty-state">暂无训练视频</div>}{grouped.map(([date, rows]) => <section key={date}><h3>{shortDate(date)}</h3><div className="video-tiles">{rows.map((v) => <button key={v.id} onClick={() => open(ordered.findIndex((item) => item.id === v.id))}><span className="play">▶</span><span><b>{v.exercise_name || v.filename || '训练视频'}{v.set_index != null ? ` · 第 ${v.set_index} 组` : ''}</b><small>{v.weight_kg != null && v.reps != null ? `${kg(v.weight_kg)}kg × ${v.reps} · ` : ''}{size(v.size_bytes)}</small></span></button>)}</div></section>)}</div>
-    {active && <div className="video-modal" onMouseDown={close}><div onMouseDown={(e) => e.stopPropagation()}><header><span><b>{active.exercise_name || active.filename || '训练视频'}{active.set_index != null ? ` · 第 ${active.set_index} 组` : ''}</b><small>{detail}</small></span><button onClick={close} aria-label="关闭">✕</button></header><div className="video-stage">{url ? <video ref={videoRef} src={url} controls autoPlay onError={playbackFailed} /> : <div className="video-loading">{error || '正在获取播放链接…'}</div>}<button className="video-nav prev" onClick={() => move(-1)} disabled={activeIndex === 0} aria-label="上一条视频">‹</button><button className="video-nav next" onClick={() => move(1)} disabled={activeIndex === ordered.length - 1} aria-label="下一条视频">›</button></div><footer>{[0.5, 1, 1.5, 2].map((x) => <button className={rate === x ? 'active' : ''} onClick={() => setRate(x)} key={x}>{x}×</button>)}</footer><section className="video-feedback">{association && <small>关联：{association}</small>}<div><input value={feedback} maxLength={2000} placeholder="给学员写反馈…" onChange={(e) => { writeFeedback(e.target.value); setFeedbackError(''); if (feedbackState === 'sent') setFeedbackState('idle') }} onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); void sendFeedback() } }} /><button onClick={() => void sendFeedback()} disabled={!feedback.trim() || feedback.length > 2000 || feedbackState === 'sending'}>{feedbackState === 'sending' ? '发送中…' : feedbackState === 'sent' ? '已发送 ✓' : '发送'}</button></div>{feedbackError && <em>{feedbackError}</em>}</section></div></div>}
-  </main>
+
+  const counts = useMemo(() => ({
+    all: videos.length,
+    pending: videos.filter((video) => video.viewed_at == null).length,
+    reviewed: videos.filter((video) => video.viewed_at != null).length,
+  }), [videos])
+  const visibleVideos = useMemo(() => videos.filter((video) => (
+    filter === 'all'
+    || (filter === 'pending' && video.viewed_at == null)
+    || (filter === 'reviewed' && video.viewed_at != null)
+  )), [filter, videos])
+  const selectedId = visibleVideos.some((video) => video.id === activeId)
+    ? activeId
+    : visibleVideos[0]?.id ?? null
+  const activeIndex = visibleVideos.findIndex((video) => video.id === selectedId)
+  const active = activeIndex < 0 ? null : visibleVideos[activeIndex] ?? null
+  const url = videoSource && videoSource.videoId === active?.id ? videoSource.url : ''
+  activeVideoIdRef.current = active?.id ?? null
+  const trainingDays = useMemo(() => new Set(videos.map(videoDay)).size, [videos])
+  const grouped = useMemo(() => {
+    const groups = new Map<string, StudentVideo[]>()
+    visibleVideos.forEach((video) => {
+      const day = videoDay(video)
+      const rows = groups.get(day)
+      if (rows) rows.push(video)
+      else groups.set(day, [video])
+    })
+    return [...groups.entries()]
+  }, [visibleVideos])
+
+  const resetFeedback = useCallback(() => {
+    feedbackRequest.current += 1
+    if (sentTimer.current != null) window.clearTimeout(sentTimer.current)
+    writeFeedback('')
+    setFeedbackState('idle')
+    setFeedbackError('')
+  }, [])
+
+  useEffect(() => {
+    const request = ++urlRequest.current
+    retried.current = false
+    setVideoSource(null)
+    setRate(1)
+    setPlaybackError('')
+    setPlaying(false)
+    setCurrentTime(0)
+    setDuration(0)
+    resetFeedback()
+    if (!active) return
+    void getUploadUrl(active.id)
+      .then((signed) => {
+        if (request === urlRequest.current) setVideoSource({ videoId: active.id, url: signed.url })
+      })
+      .catch(() => { if (request === urlRequest.current) setPlaybackError('视频链接获取失败') })
+  }, [active?.id, resetFeedback])
+
+  useEffect(() => {
+    const request = ++markerRequest.current
+    setMarkerAvailability('loading')
+    setMarkers([])
+    setMarkerOpen(false)
+    setMarkerNote('')
+    setMarkerLevel('info')
+    setMarkerSaving(false)
+    setMarkerError('')
+    if (!active) {
+      setMarkerAvailability('unavailable')
+      return
+    }
+    void getVideoMarkers(active.id)
+      .then((next) => {
+        if (request !== markerRequest.current) return
+        setMarkers([...next].sort((left, right) => left.time_ms - right.time_ms))
+        setMarkerAvailability('available')
+      })
+      .catch((error: unknown) => {
+        if (request !== markerRequest.current) return
+        const canDegrade = !(error instanceof ApiException) || error.status === 404
+        setMarkerAvailability(canDegrade ? 'unavailable' : 'error')
+        setMarkers([])
+      })
+  }, [active?.id])
+
+  // The <video> is keyed by active video id, so switching swaps elements; we
+  // release the outgoing element here. A same-video URL renewal keeps the
+  // element (and this effect must NOT release it — that was a regression that
+  // cleared the freshly renewed src).
+  const prevVideoNode = useRef<HTMLVideoElement | null>(null)
+  useLayoutEffect(() => {
+    const previous = prevVideoNode.current
+    if (previous && previous !== videoRef.current) releaseVideo(previous)
+    prevVideoNode.current = videoRef.current
+  })
+  useLayoutEffect(() => () => releaseVideo(videoRef.current), [])
+
+  useEffect(() => {
+    const video = videoRef.current
+    if (video) video.playbackRate = rate
+  }, [rate, url])
+
+  const pickVideo = (video: StudentVideo) => setActiveId(video.id)
+  const move = useCallback((direction: -1 | 1) => {
+    if (activeIndex < 0) return
+    const next = moveVideoIndex(activeIndex, direction, visibleVideos.length)
+    if (next !== activeIndex) setActiveId(visibleVideos[next]?.id ?? null)
+  }, [activeIndex, visibleVideos])
+
+  useEffect(() => {
+    const keydown = (event: KeyboardEvent) => {
+      if (event.defaultPrevented) return
+      const element = event.target instanceof HTMLElement ? event.target : null
+      const typing = !!element && (
+        element instanceof HTMLInputElement
+        || element instanceof HTMLTextAreaElement
+        || element instanceof HTMLSelectElement
+        || element.isContentEditable
+      )
+      if (event.key === 'Escape' && markerOpen) {
+        event.preventDefault()
+        setMarkerOpen(false)
+        setMarkerError('')
+        return
+      }
+      if (typing || element instanceof HTMLVideoElement) return
+      if (event.key === 'ArrowLeft') {
+        event.preventDefault()
+        move(-1)
+      } else if (event.key === 'ArrowRight') {
+        event.preventDefault()
+        move(1)
+      }
+    }
+    window.addEventListener('keydown', keydown)
+    return () => window.removeEventListener('keydown', keydown)
+  }, [markerOpen, move])
+
+  useEffect(() => () => {
+    if (sentTimer.current != null) window.clearTimeout(sentTimer.current)
+  }, [])
+
+  const playbackFailed = () => {
+    if (!active || retried.current) {
+      setPlaybackError('视频播放失败')
+      return
+    }
+    retried.current = true
+    const request = ++urlRequest.current
+    void getUploadUrl(active.id)
+      .then((signed) => {
+        if (request !== urlRequest.current) return
+        setPlaybackError('')
+        setVideoSource({ videoId: active.id, url: signed.url })
+      })
+      .catch(() => {
+        if (request !== urlRequest.current) return
+        // Drop the dead URL so the broken <video> unmounts and the error text
+        // actually becomes visible instead of hiding behind a black frame.
+        setVideoSource(null)
+        setPlaybackError('视频链接已过期，续签失败')
+      })
+  }
+
+  const togglePlayback = () => {
+    const video = videoRef.current
+    if (!video) return
+    if (video.paused) void video.play()
+    else video.pause()
+  }
+  const seekTo = (seconds: number) => {
+    const video = videoRef.current
+    if (!video || !Number.isFinite(seconds)) return
+    const next = Math.max(0, Math.min(duration || video.duration || seconds, seconds))
+    video.currentTime = next
+    setCurrentTime(next)
+  }
+  const seekFromProgress = (event: React.MouseEvent<HTMLButtonElement>) => {
+    if (duration <= 0) return
+    const rect = event.currentTarget.getBoundingClientRect()
+    if (rect.width <= 0) return
+    seekTo((event.clientX - rect.left) / rect.width * duration)
+  }
+
+  const sendFeedback = async () => {
+    if (!active || feedbackState === 'sending') return
+    const draft = feedback
+    const text = draft.trim()
+    if (!text || text.length > 2000) return
+    const request = ++feedbackRequest.current
+    setFeedbackState('sending')
+    setFeedbackError('')
+    try {
+      await postCoachFeedback({
+        student_id: studentId,
+        day_date: videoDay(active),
+        plan_exercise_id: active.plan_exercise_id,
+        video_id: active.id,
+        text,
+      })
+      if (request !== feedbackRequest.current) return
+      void refreshVideos()
+      if (draftRef.current !== draft) {
+        setFeedbackState('idle')
+        return
+      }
+      writeFeedback('')
+      setFeedbackState('sent')
+      sentTimer.current = window.setTimeout(() => {
+        if (request === feedbackRequest.current) setFeedbackState('idle')
+      }, 2000)
+    } catch {
+      if (request === feedbackRequest.current) {
+        setFeedbackState('idle')
+        setFeedbackError('反馈发送失败，请稍后重试')
+      }
+    }
+  }
+
+  const addMarker = async () => {
+    if (!active || markerSaving) return
+    const videoId = active.id
+    const note = markerNote.trim()
+    if (!note || note.length > 500) return
+    setMarkerSaving(true)
+    setMarkerError('')
+    try {
+      const marker = await createVideoMarker(videoId, {
+        time_ms: Math.max(0, Math.round(currentTime * 1000)),
+        level: markerLevel,
+        note,
+      })
+      if (activeVideoIdRef.current !== videoId) return
+      setMarkers((current) => (current.some((item) => item.id === marker.id)
+        ? current
+        : [...current, marker].sort((left, right) => left.time_ms - right.time_ms)))
+      setMarkerOpen(false)
+      setMarkerNote('')
+      setMarkerLevel('info')
+    } catch {
+      if (activeVideoIdRef.current === videoId) setMarkerError('打点保存失败，请稍后重试')
+    } finally {
+      if (activeVideoIdRef.current === videoId) setMarkerSaving(false)
+    }
+  }
+  const removeMarker = async (marker: VideoMarker) => {
+    if (!active) return
+    const videoId = active.id
+    try {
+      await deleteVideoMarker(videoId, marker.id)
+      if (activeVideoIdRef.current !== videoId) return
+      setMarkers((current) => current.filter((item) => item.id !== marker.id))
+    } catch {
+      if (activeVideoIdRef.current === videoId) setMarkerError('打点删除失败，请稍后重试')
+    }
+  }
+
+  const markerServiceVisible = markerAvailability === 'available' || markerAvailability === 'error'
+
+  const detailMeta = active ? [
+    dayLabel(videoDay(active)),
+    setLabel(active.set_index),
+    `RPE ${active.rpe == null ? '—' : Number(active.rpe)}`,
+  ].filter(Boolean).join(' · ') : ''
+
+  return (
+    <main className="videos-page">
+      <aside className="videos-master">
+        <header className="videos-master-head">
+          {students.length > 0 && (
+            <select
+              className="student-select"
+              aria-label="学员"
+              value={studentId}
+              onChange={(event) => onStudent(event.target.value)}
+            >
+              {students.map((student) => (
+                <option key={student.id} value={student.id}>{student.display_name}</option>
+              ))}
+            </select>
+          )}
+          <span>{videos.length} 条 · 近 {trainingDays} 个训练日</span>
+        </header>
+        <div className="video-filter-tabs" role="tablist" aria-label="视频状态">
+          {([
+            ['all', '全部'],
+            ['pending', '待审'],
+            ['reviewed', '已反馈'],
+          ] as const).map(([value, label]) => (
+            <button
+              type="button"
+              role="tab"
+              aria-selected={filter === value}
+              className={filter === value ? 'active' : ''}
+              onClick={() => setFilter(value)}
+              key={value}
+            >
+              {label}<span>{counts[value]}</span>
+            </button>
+          ))}
+        </div>
+        <div className="video-master-scroll">
+          {grouped.length === 0 && <div className="video-list-empty">暂无符合条件的视频</div>}
+          {grouped.map(([day, rows]) => (
+            <section className="video-date-group" key={day}>
+              <h2 className="video-date-heading">
+                <span>{dayLabel(day)}</span>
+                <small>· {rows.length} 条</small>
+              </h2>
+              {rows.map((video) => {
+                const selected = video.id === active?.id
+                return (
+                  <button
+                    type="button"
+                    className={`video-master-row${selected ? ' selected' : ''}`}
+                    aria-current={selected ? 'true' : undefined}
+                    onClick={() => pickVideo(video)}
+                    key={video.id}
+                  >
+                    <span className="video-thumb" aria-hidden="true">▶</span>
+                    <span className="video-row-copy">
+                      <b>{videoTitle(video)}</b>
+                      <small>
+                        {day.slice(5)} · {setLabel(video.set_index) ?? '未关联组'} · RPE {video.rpe == null ? '—' : Number(video.rpe)}
+                      </small>
+                    </span>
+                    <span className={`video-status ${video.viewed_at == null ? 'pending' : 'reviewed'}`}>
+                      {statusLabel(video)}
+                    </span>
+                  </button>
+                )
+              })}
+            </section>
+          ))}
+        </div>
+      </aside>
+
+      <section className="videos-detail">
+        {!active && <div className="video-detail-empty">暂无训练视频</div>}
+        {active && (
+          <>
+            <header className="video-detail-head">
+              <b>{videoTitle(active)}</b>
+              <span className={`video-status ${active.viewed_at == null ? 'pending' : 'reviewed'}`}>
+                {statusLabel(active)}
+              </span>
+              <small>{detailMeta}</small>
+              <span className="video-detail-nav">
+                <i>{activeIndex + 1} / {visibleVideos.length}</i>
+                <button
+                  type="button"
+                  aria-label="上一条视频"
+                  disabled={activeIndex === 0}
+                  onClick={() => move(-1)}
+                >‹</button>
+                <button
+                  type="button"
+                  aria-label="下一条视频"
+                  disabled={activeIndex === visibleVideos.length - 1}
+                  onClick={() => move(1)}
+                >›</button>
+              </span>
+            </header>
+
+            <div className="video-player">
+              <div className="video-player-stage">
+                <div className="video-portrait">
+                  {url ? (
+                    <video
+                      key={active?.id}
+                      ref={videoRef}
+                      src={url}
+                      autoPlay
+                      playsInline
+                      onClick={togglePlayback}
+                      onPlay={() => setPlaying(true)}
+                      onPause={() => setPlaying(false)}
+                      onTimeUpdate={(event) => setCurrentTime(event.currentTarget.currentTime)}
+                      onLoadedMetadata={(event) => setDuration(event.currentTarget.duration)}
+                      onDurationChange={(event) => setDuration(event.currentTarget.duration)}
+                      onEnded={() => setPlaying(false)}
+                      onError={playbackFailed}
+                    />
+                  ) : (
+                    <div className="video-loading">{playbackError || '正在获取播放链接…'}</div>
+                  )}
+                </div>
+              </div>
+              <div className="video-controls">
+                <button
+                  type="button"
+                  className="video-play-toggle"
+                  aria-label={playing ? '暂停' : '播放'}
+                  onClick={togglePlayback}
+                >{playing ? 'Ⅱ' : '▶'}</button>
+                <span className="video-time">{timeLabel(currentTime)} / {timeLabel(duration)}</span>
+                <button
+                  type="button"
+                  className="video-progress"
+                  aria-label="视频进度"
+                  onClick={seekFromProgress}
+                >
+                  <span style={{ width: `${duration > 0 ? markerPositionPercent(currentTime * 1000, duration) : 0}%` }} />
+                  {markerAvailability === 'available' && markers.map((marker) => (
+                    <i
+                      className={`video-marker-tick ${marker.level}`}
+                      style={{ left: `${markerPositionPercent(marker.time_ms, duration)}%` }}
+                      data-time-ms={marker.time_ms}
+                      key={marker.id}
+                    />
+                  ))}
+                </button>
+                <span className="video-speeds" aria-label="播放速度">
+                  {[0.5, 1, 1.5, 2].map((speed) => (
+                    <button
+                      type="button"
+                      className={rate === speed ? 'active' : ''}
+                      onClick={() => setRate(speed)}
+                      key={speed}
+                    >{speed}×</button>
+                  ))}
+                </span>
+                {markerServiceVisible && (
+                  <button
+                    type="button"
+                    className="video-add-marker"
+                    onClick={() => {
+                      setMarkerOpen(true)
+                      setMarkerError('')
+                    }}
+                  >＋ 在此处打点</button>
+                )}
+              </div>
+              {markerServiceVisible && markerOpen && (
+                <div className="video-marker-editor">
+                  <span className="video-marker-editor-time">{timeLabel(currentTime)}</span>
+                  <input
+                    autoFocus
+                    maxLength={500}
+                    value={markerNote}
+                    placeholder="写下这个时刻的动作反馈…"
+                    aria-label="打点短评"
+                    onChange={(event) => {
+                      setMarkerNote(event.target.value)
+                      setMarkerError('')
+                    }}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
+                        event.preventDefault()
+                        void addMarker()
+                      }
+                    }}
+                  />
+                  <span className="video-marker-levels">
+                    {markerLevels.map((level) => (
+                      <button
+                        type="button"
+                        className={`${level.value}${markerLevel === level.value ? ' active' : ''}`}
+                        aria-pressed={markerLevel === level.value}
+                        onClick={() => setMarkerLevel(level.value)}
+                        key={level.value}
+                      >{level.label}</button>
+                    ))}
+                  </span>
+                  <button
+                    type="button"
+                    className="video-marker-save"
+                    disabled={!markerNote.trim() || markerSaving}
+                    onClick={() => void addMarker()}
+                  >{markerSaving ? '保存中…' : '保存打点'}</button>
+                  <button
+                    type="button"
+                    className="video-marker-cancel"
+                    onClick={() => setMarkerOpen(false)}
+                  >取消</button>
+                </div>
+              )}
+            </div>
+
+            <div className="video-detail-bottom">
+              <section className="video-feedback">
+                <header>
+                  <b>给学员的反馈</b>
+                  <span>{videoAssociation(active)}</span>
+                </header>
+                <textarea
+                  value={feedback}
+                  maxLength={2000}
+                  placeholder="指出动作问题、给出下一组建议…"
+                  onChange={(event) => {
+                    writeFeedback(event.target.value)
+                    setFeedbackError('')
+                    if (feedbackState === 'sent') setFeedbackState('idle')
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
+                      event.preventDefault()
+                      void sendFeedback()
+                    }
+                  }}
+                />
+                <footer>
+                  <span>{feedbackError}</span>
+                  <button
+                    type="button"
+                    disabled={!feedback.trim() || feedback.length > 2000 || feedbackState === 'sending'}
+                    onClick={() => void sendFeedback()}
+                  >
+                    {feedbackState === 'sending' ? '发送中…' : feedbackState === 'sent' ? '已发送 ✓' : '发送反馈'}
+                    <small>⌘↵</small>
+                  </button>
+                </footer>
+              </section>
+
+              <section className="video-data-card">
+                <h2>本组数据</h2>
+                <dl>
+                  <div><dt>重量</dt><dd>{active.weight_kg == null ? '—' : `${kg(active.weight_kg)} kg`}</dd></div>
+                  <div><dt>次数</dt><dd>{active.reps == null ? '—' : active.reps}</dd></div>
+                  <div><dt>学员自评 RPE</dt><dd>{active.rpe == null ? '—' : Number(active.rpe)}</dd></div>
+                  <div><dt>文件大小</dt><dd>{size(active.size_bytes)}</dd></div>
+                </dl>
+              </section>
+
+              {markerServiceVisible && (
+                <section className="video-markers-card">
+                  <h2>打点 · {markers.length} 处</h2>
+                  <div>
+                    {markerAvailability === 'error'
+                      ? <span className="video-marker-service-error">打点服务异常</span>
+                      : (
+                        <>
+                          {markers.length === 0 && <span className="video-markers-empty">还没有打点</span>}
+                          {markers.map((marker) => (
+                            <div className="video-marker-row" key={marker.id}>
+                              <button
+                                type="button"
+                                className="video-marker-seek"
+                                onClick={() => seekTo(marker.time_ms / 1000)}
+                              >
+                                <i className={marker.level} />
+                                <time>{timeLabel(marker.time_ms / 1000)}</time>
+                                <span>{marker.note}</span>
+                              </button>
+                              <button
+                                type="button"
+                                className="video-marker-delete"
+                                aria-label={`删除 ${timeLabel(marker.time_ms / 1000)} 打点`}
+                                onClick={() => void removeMarker(marker)}
+                              >×</button>
+                            </div>
+                          ))}
+                        </>
+                      )}
+                  </div>
+                  {markerError && <small className="video-marker-error">{markerError}</small>}
+                </section>
+              )}
+            </div>
+          </>
+        )}
+      </section>
+    </main>
+  )
 }
