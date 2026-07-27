@@ -328,13 +328,18 @@ body {
 .chat-row-copy small { color: var(--fg-tertiary); font-weight: 400; }
 .chat-row-meta { min-width: 84px; align-self: stretch; display: flex; flex-direction: column; align-items: flex-end; justify-content: center; gap: 9px; color: var(--fg-tertiary); font: 10px var(--font-mono); }
 .chat-dot { width: 8px; height: 8px; flex: 0 0 8px; display: block; border-radius: 50%; background: var(--brand-red); }
-.chat-thread { flex: 1; min-height: 0; padding: 18px; overflow-y: auto; overflow-x: hidden; box-sizing: border-box; }
+.chat-thread { flex: 1; min-height: 0; padding: 18px; overflow-y: auto; overflow-x: hidden; box-sizing: border-box; display: flex; flex-direction: column; }
+/* 消息少时把内容压到底部,像聊天窗而不是从顶部往下排。用首个子元素的 auto 上边距吸走空白,
+   而不是 justify-content: flex-end —— 后者在内容溢出时顶部会滚不到。空态不参与,否则
+   「还没有消息」会被推到输入框上方。 */
+.chat-thread > * { flex: 0 0 auto; }
+.chat-thread > :first-child:not(.empty-state) { margin-top: auto; }
 .chat-message { margin: 8px 0; display: flex; flex-direction: column; align-items: flex-start; }
 .chat-message.mine { align-items: flex-end; }
 .chat-bubble { max-width: min(620px,75%); padding: 9px 12px; border-radius: 12px 12px 12px 3px; background: var(--surface-2); color: var(--fg-primary); box-sizing: border-box; }
 .chat-bubble.mine { border-radius: 12px 12px 3px 12px; background: var(--brand-red); color: #fff; }
 .chat-bubble p { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.45; }
-.chat-bubble time { margin-top: 5px; display: block; color: color-mix(in srgb,currentColor 60%,transparent); font: 9px var(--font-mono); text-align: right; }
+.chat-bubble time { margin-top: 5px; display: block; color: color-mix(in srgb,currentColor 78%,transparent); font: 10px var(--font-mono); text-align: right; }
 .chat-bubble img { display: block; max-width: min(360px,100%); max-height: 360px; border-radius: 8px; object-fit: cover; }
 .chat-receipt { margin-top: 3px; color: var(--fg-tertiary); font: 10px var(--font-mono); }
 .chat-send-state { margin-top: 3px; display: inline-flex; align-items: center; gap: 7px; color: var(--fg-tertiary); font: 10px var(--font-mono); }

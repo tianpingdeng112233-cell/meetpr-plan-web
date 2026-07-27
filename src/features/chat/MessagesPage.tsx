@@ -1,4 +1,11 @@
-import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
+import {
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type FormEvent,
+  type KeyboardEvent,
+} from 'react'
 import { getMessages, markConversationRead, openConversation } from '../../api/chat'
 import { ApiException } from '../../api/client'
 import { isBindLost, isSessionExpired } from '../../api/errors'
@@ -239,6 +246,15 @@ function ConversationThread({
   const initialized = useRef(false)
   const alive = useRef(true)
   const scrollRef = useRef<HTMLDivElement>(null)
+  // Scrolling has to wait for React to commit the new bubbles: a bare rAF can run before the
+  // commit, so scrollHeight is still the pre-render value and a 50-message page lands at the
+  // top instead of the bottom. useLayoutEffect fires after the DOM mutation, before paint.
+  const pendingScroll = useRef<{ kind: 'bottom' } | { kind: 'anchor'; previousHeight: number } | null>(null)
+  // Armed with the landing scrollTop of a programmatic scroll and consumed by the one scroll event
+  // that reports exactly it, so the document-level listener can tell that event apart from the
+  // coach actually touching the thread. A time window would not do: a long task can delay the
+  // event past any deadline, and a real scroll inside the window would be swallowed.
+  const programmaticScrollTop = useRef<number | null>(null)
   const latestAppliedReadSeq = useRef(conversation.my_last_read?.seq ?? 0)
   const latestRequestedReadSeq = useRef(conversation.my_last_read?.seq ?? 0)
   const readRequest = useRef(0)
@@ -321,7 +337,20 @@ function ConversationThread({
 
   useEffect(() => {
     alive.current = true
-    const interacted = () => { lastInteractionAt.current = Date.now() }
+    // Programmatic scrolling (the sink-to-bottom below) also fires a scroll event, and this is a
+    // capture listener on document, so it would see it. Counting that as user interaction lets an
+    // idle coach's thread mark itself read on the next tick — exactly what §8.2.25 forbids.
+    const interacted = (event: Event) => {
+      const thread = scrollRef.current
+      if (event.type === 'scroll' && thread !== null && event.target === thread) {
+        const armed = programmaticScrollTop.current
+        // Any scroll on the thread retires the marker, matching or not: leaving a stale one armed
+        // would swallow a later genuine scroll that happens to land back on the same offset.
+        programmaticScrollTop.current = null
+        if (armed !== null && thread.scrollTop === armed) return
+      }
+      lastInteractionAt.current = Date.now()
+    }
     window.addEventListener('pointerdown', interacted)
     window.addEventListener('keydown', interacted)
     window.addEventListener('wheel', interacted)
@@ -401,21 +430,40 @@ function ConversationThread({
     })
   }
 
+  useLayoutEffect(() => {
+    const action = pendingScroll.current
+    if (!action) return
+    pendingScroll.current = null
+    const scroll = scrollRef.current
+    if (!scroll) return
+    const before = scroll.scrollTop
+    if (action.kind === 'bottom') scroll.scrollTop = scroll.scrollHeight
+    else scroll.scrollTop += scroll.scrollHeight - action.previousHeight
+    // Only arm when the position actually moved — an unchanged scrollTop fires no event, and a
+    // stale marker would swallow the coach's next scroll that happens to land on the same value.
+    programmaticScrollTop.current = scroll.scrollTop === before ? null : scroll.scrollTop
+  }, [messages])
+
   const mergePage = (pageMessages: ChatMessage[], otherLastRead: ChatReadCursor | null, scrollToBottom: boolean) => {
     const next = mergeMessages(messagesRef.current, pageMessages)
     commitMessages(next)
     chatOutbox.reconcile(conversation.id, pageMessages, me.id)
     commitOtherLastRead(otherLastRead)
-    if (scrollToBottom) window.requestAnimationFrame(() => {
-      if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight
-    })
+    // An anchor already queued means the coach explicitly asked for older history; React may batch
+    // both updates into one commit, and yanking them back to the bottom would undo that click.
+    if (scrollToBottom && pendingScroll.current?.kind !== 'anchor') pendingScroll.current = { kind: 'bottom' }
     return next
+  }
+
+  // Evaluated at merge time, never at tick start: a request can be in flight while the coach
+  // scrolls up and loads older history, and a pre-request sample would then yank them back down.
+  const isNearBottom = () => {
+    const scroll = scrollRef.current
+    return !scroll || scroll.scrollHeight - scroll.scrollTop - scroll.clientHeight <= 48
   }
 
   useVisiblePolling(async () => {
     if (sessionDead) return
-    const scroll = scrollRef.current
-    const nearBottom = !scroll || scroll.scrollHeight - scroll.scrollTop - scroll.clientHeight <= 48
     try {
       if (!initialized.current || maxSeq(messagesRef.current) === 0) {
         const page = await getMessages(conversation.id, { mode: 'latest', limit: 50 })
@@ -433,7 +481,7 @@ function ConversationThread({
         return page
       }, maxSeq(messagesRef.current))
       const next = result.messages.length > 0
-        ? mergePage(result.messages, otherLastRead, nearBottom)
+        ? mergePage(result.messages, otherLastRead, isNearBottom())
         : messagesRef.current
       if (result.messages.length === 0) commitOtherLastRead(otherLastRead)
       await markReadIfNeeded(next)
@@ -449,18 +497,18 @@ function ConversationThread({
     const beforeSeq = minSeq(messagesRef.current)
     if (!beforeSeq || loadingHistory) return
     setLoadingHistory(true)
-    const scroll = scrollRef.current
-    const oldHeight = scroll?.scrollHeight ?? 0
     try {
       const page = await getMessages(conversation.id, { mode: 'before', seq: beforeSeq, limit: 50 })
+      // Sampled here, not before the request: a poll tick can append to the bottom while the
+      // history page is in flight, and a pre-request height would fold that growth into the
+      // anchor delta and shove the coach down by it.
+      const oldHeight = scrollRef.current?.scrollHeight ?? 0
       const next = mergeMessages(messagesRef.current, page.messages)
       commitMessages(next)
       chatOutbox.reconcile(conversation.id, page.messages, me.id)
       commitOtherLastRead(page.meta.other_last_read)
       setHasMoreHistory(page.meta.has_more)
-      window.requestAnimationFrame(() => {
-        if (scrollRef.current) scrollRef.current.scrollTop += scrollRef.current.scrollHeight - oldHeight
-      })
+      pendingScroll.current = { kind: 'anchor', previousHeight: oldHeight }
     } catch (caught) {
       handleError(caught)
     } finally {
