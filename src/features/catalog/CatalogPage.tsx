@@ -18,7 +18,6 @@ import {
   availableMuscleRegions,
   filterExercises,
   guessCatalogFields,
-  isFamilyCategory,
   type CatalogCategory,
   type CatalogRefine,
 } from './catalogModel'
@@ -94,7 +93,7 @@ export function CatalogPage({ exerciseList, catalog, index, onCreateExercise, on
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [drawer, creating])
 
-  const baseCount = (nextCategory: CatalogCategory, nextRefine: CatalogRefine = 'all') => filterExercises(exerciseList, {
+  const facetCount = (nextCategory: CatalogCategory, nextRefine: CatalogRefine) => filterExercises(exerciseList, {
     category: nextCategory,
     refine: nextRefine,
     equipment,
@@ -104,7 +103,6 @@ export function CatalogPage({ exerciseList, catalog, index, onCreateExercise, on
 
   const chooseCategory = (next: CatalogCategory) => {
     setCategory(next)
-    setRefine('all')
     setQuery('')
   }
   const openDetail = (exercise: ExerciseResponse) => {
@@ -117,86 +115,59 @@ export function CatalogPage({ exerciseList, catalog, index, onCreateExercise, on
   }
   const closeDrawer = () => { if (creating) return; setDrawer(null) }
 
-  const familyRefine = isFamilyCategory(category)
-  const showRefine = !trimmedQuery && (category === 'all' || familyRefine)
-  const refineOptions: { id: CatalogRefine; label: string }[] = category === 'all'
-    ? [
-        { id: 'all', label: '全部' },
-        { id: 'main_lift', label: '主项' },
-        { id: 'main_lift_variation', label: '主项变式' },
-        { id: 'accessory', label: '辅助' },
-      ]
-    : [
-        { id: 'all', label: '全部' },
-        { id: 'main_lift', label: '主项' },
-        { id: 'main_lift_variation', label: '变式' },
-      ]
+  const refineOptions: { id: CatalogRefine; label: string }[] = [
+    { id: 'all', label: '全部' },
+    { id: 'main_lift', label: '主项' },
+    { id: 'main_lift_variation', label: '主项变式' },
+    { id: 'accessory', label: '辅助' },
+  ]
 
   const renderRow = (exercise: ExerciseResponse) => {
     const custom = isCustom(exercise)
-    const muscles = exercise.muscle_groups ?? []
-    return <tr
+    const primaryMuscle = exercise.muscle_groups[0]
+    const open = () => openDetail(exercise)
+    return <div
       key={exercise.id}
       className={`roster-row catalog-row${selectedId === exercise.id && drawer === 'detail' ? ' selected' : ''}`}
-      onClick={() => openDetail(exercise)}
+      role="row"
+      tabIndex={0}
+      onClick={open}
+      onKeyDown={(event) => {
+        if (event.key !== 'Enter' && event.key !== ' ') return
+        event.preventDefault()
+        open()
+      }}
     >
-      <td>
+      <div className="catalog-name-cell" role="cell">
         <div className="catalog-name">
           {displayName(exercise)}
           {exercise.is_competition_lift && <span className="catalog-competition-badge" title="比赛动作">赛</span>}
           {custom && <span className="catalog-tag mine">自建</span>}
         </div>
-        {exercise.name_en && <div className="catalog-name-en">{exercise.name_en}</div>}
-      </td>
-      <td><span className={`catalog-tag ${exercise.exercise_type}`}>{EXERCISE_TYPE_SHORT_LABEL[exercise.exercise_type]}</span></td>
-      <td className="catalog-muted">{exercise.equipment.length ? exercise.equipment.map((item) => EQUIPMENT_LABEL[item]).join(' · ') : '—'}</td>
-      <td>{muscles.length
-        ? muscles.map((muscle, index) => <span key={muscle} className={`catalog-meta-tag${index === 0 ? ' primary' : ''}`}>{MUSCLE_LABEL[muscle]}</span>)
-        : <span className="catalog-muted">—</span>}</td>
-    </tr>
+        <div className="catalog-name-en">{exercise.name_en || '—'}</div>
+      </div>
+      <div role="cell"><span className={`catalog-tag ${exercise.exercise_type}`}>{EXERCISE_TYPE_SHORT_LABEL[exercise.exercise_type]}</span></div>
+      <div className="catalog-muted" role="cell">{exercise.equipment.length ? exercise.equipment.map((item) => EQUIPMENT_LABEL[item]).join(' · ') : '—'}</div>
+      <div role="cell">{primaryMuscle
+        ? <span className="catalog-meta-tag primary">{MUSCLE_LABEL[primaryMuscle]}</span>
+        : <span className="catalog-muted">—</span>}</div>
+    </div>
   }
 
   const primaryRows = rows.filter((exercise) => exercise.exercise_type !== 'accessory')
   const accessoryRows = rows.filter((exercise) => exercise.exercise_type === 'accessory')
 
   return <main className="data-page catalog-page">
-    <header className="page-top catalog-top">
-      <span className="page-eyebrow">COACH / 动作库</span><span className="page-divider" />
-      <label className="catalog-search">
-        <span aria-hidden="true">⌕</span>
-        <input
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-          placeholder="搜动作名 / 英文 / 别名，回车直达"
-          aria-label="搜索动作库"
-        />
-        {query && <button type="button" aria-label="清除搜索" onClick={() => setQuery('')}>✕</button>}
-      </label>
-      <select
-        className={`catalog-equipment-select${equipment !== 'all' ? ' active' : ''}`}
-        value={equipment}
-        onChange={(event) => setEquipment(event.target.value as Equipment | 'all')}
-        aria-label="按器械筛选"
-      >
-        <option value="all">器械 · 全部</option>
-        {EQUIPMENT_OPTIONS.map((item) => <option key={item} value={item}>器械 · {EQUIPMENT_LABEL[item]}</option>)}
-      </select>
-      <span className="page-spacer" />
-      <span className="catalog-result-count">{trimmedQuery ? <>搜到 <b>{rows.length}</b> 个（全库直达）</> : <><b>{rows.length}</b> 个动作</>}</span>
-      <button type="button" className="catalog-create-button" onClick={() => openCreate()}>＋ 新建动作</button>
-    </header>
-
     <div className="catalog-body">
       <aside className="catalog-categories" aria-label="动作分类">
-        <CategoryButton id="all" icon="≡" label="全部动作" count={baseCount('all')} active={!trimmedQuery && category === 'all'} onChoose={chooseCategory} />
-        <CategoryButton id="mine" icon="☆" label="我的自建" count={baseCount('mine')} active={!trimmedQuery && category === 'mine'} onChoose={chooseCategory} />
+        <CategoryButton id="all" label="全部动作" count={facetCount('all', refine)} active={!trimmedQuery && category === 'all'} onChoose={chooseCategory} />
+        <CategoryButton id="mine" label="我的自建" count={facetCount('mine', refine)} active={!trimmedQuery && category === 'mine'} onChoose={chooseCategory} />
         <div className="catalog-category-heading">比赛三项 · 按项</div>
         {FAMILY_CATEGORIES.map((family) => <CategoryButton
           key={family}
           id={family}
-          icon={family === 'squat' ? 'S' : family === 'bench' ? 'B' : 'D'}
-          label={`${LIFT_FAMILY_LABEL[family]}族`}
-          count={baseCount(family)}
+          label={`${family === 'squat' ? 'S' : family === 'bench' ? 'B' : 'D'} ${LIFT_FAMILY_LABEL[family]}族`}
+          count={facetCount(family, refine)}
           active={!trimmedQuery && category === family}
           onChoose={chooseCategory}
         />)}
@@ -206,41 +177,74 @@ export function CatalogPage({ exerciseList, catalog, index, onCreateExercise, on
             key={muscle}
             id={muscle}
             label={MUSCLE_LABEL[muscle]}
-            count={baseCount(muscle)}
+            count={facetCount(muscle, refine)}
             active={!trimmedQuery && category === muscle}
             onChoose={chooseCategory}
-            indented
           />)}
         </div>)}
       </aside>
 
       <section className="catalog-table-area">
-        {showRefine && <div className="catalog-refine">
-          <span>{category === 'all' ? '分类' : '细分'}</span>
+        <header className="catalog-toolbar">
+          <label className="catalog-search">
+            <span className="catalog-search-icon" aria-hidden="true" />
+            <input
+              value={query}
+              onChange={(event) => {
+                setQuery(event.target.value)
+                if (event.target.value.trim()) setRefine('all')
+              }}
+              placeholder="搜动作名 / 英文 / 别名，回车直达"
+              aria-label="搜索动作库"
+            />
+            {query && <button type="button" aria-label="清除搜索" onClick={() => setQuery('')}>✕</button>}
+          </label>
+          <select
+            className={`catalog-equipment-select${equipment !== 'all' ? ' active' : ''}`}
+            value={equipment}
+            onChange={(event) => setEquipment(event.target.value as Equipment | 'all')}
+            aria-label="按器械筛选"
+          >
+            <option value="all">器械 · 全部</option>
+            {EQUIPMENT_OPTIONS.map((item) => <option key={item} value={item}>器械 · {EQUIPMENT_LABEL[item]}</option>)}
+          </select>
+          <span className="catalog-result-count">{rows.length} 个动作</span>
+          <button type="button" className="catalog-create-button" onClick={() => openCreate()}>＋ 新建动作</button>
+        </header>
+        <div className="catalog-refine">
+          <span>分类</span>
           {refineOptions.map((option) => <button
             type="button"
             key={option.id}
             className={refine === option.id ? 'active' : ''}
-            onClick={() => setRefine(option.id)}
-          >{option.label}<small>{baseCount(category, option.id)}</small></button>)}
-        </div>}
-        <div className="catalog-table-wrap">
-          <table className="roster-table catalog-table">
-            <thead><tr>
-              <th className="roster-sortable" style={{ width: '38%' }} aria-sort={sortDirection === 1 ? 'ascending' : 'descending'} onClick={() => setSortDirection((value) => value === 1 ? -1 : 1)}>动作 <span className="catalog-sort-arrow">{sortDirection === 1 ? '↑' : '↓'}</span></th>
-              <th>分类</th><th>器械</th><th>肌群</th>
-            </tr></thead>
-            <tbody>{rows.length === 0
-              ? <tr><td colSpan={4}><div className="catalog-empty">{trimmedQuery
+            onClick={() => {
+              setQuery('')
+              setRefine(option.id)
+            }}
+          >{option.label}<small>{facetCount(category, option.id)}</small></button>)}
+        </div>
+        <div className="catalog-table" role="table" aria-label="动作列表">
+          <div className="catalog-table-head" role="row">
+            <button
+              type="button"
+              role="columnheader"
+              aria-sort={sortDirection === 1 ? 'ascending' : 'descending'}
+              onClick={() => setSortDirection((value) => value === 1 ? -1 : 1)}
+            >动作 <span className="catalog-sort-arrow">{sortDirection === 1 ? '↑' : '↓'}</span></button>
+            <span role="columnheader">分类</span><span role="columnheader">器械</span><span role="columnheader">肌群</span>
+          </div>
+          <div className="catalog-table-wrap" role="rowgroup">
+            {rows.length === 0
+              ? <div className="catalog-empty">{trimmedQuery
                 ? <>没有叫「{trimmedQuery}」的动作<br /><button type="button" onClick={() => openCreate(trimmedQuery)}>＋ 新建「{trimmedQuery}」</button></>
-                : '这个分类下暂无动作'}</div></td></tr>
+                : '这个分类下暂无动作'}</div>
               : !trimmedQuery && category === 'all'
                 ? <>
                     {primaryRows.length > 0 && <><GroupRow label="比赛三项与变式" count={primaryRows.length} />{primaryRows.map(renderRow)}</>}
                     {accessoryRows.length > 0 && <><GroupRow label="辅助动作" count={accessoryRows.length} />{accessoryRows.map(renderRow)}</>}
                   </>
-                : rows.map(renderRow)}</tbody>
-          </table>
+                : rows.map(renderRow)}
+          </div>
         </div>
       </section>
     </div>
@@ -276,22 +280,20 @@ export function CatalogPage({ exerciseList, catalog, index, onCreateExercise, on
   </main>
 }
 
-function CategoryButton({ id, icon, label, count, active, indented, onChoose }: {
+function CategoryButton({ id, label, count, active, onChoose }: {
   id: CatalogCategory
-  icon?: string
   label: string
   count: number
   active: boolean
-  indented?: boolean
   onChoose: (category: CatalogCategory) => void
 }) {
-  return <button type="button" className={`catalog-category${active ? ' active' : ''}${indented ? ' indented' : ''}`} onClick={() => onChoose(id)}>
-    <span className="catalog-category-icon">{icon ?? ''}</span><span>{label}</span><small>{count}</small>
+  return <button type="button" className={`catalog-category${active ? ' active' : ''}`} aria-pressed={active} onClick={() => onChoose(id)}>
+    <span>{label}</span><small>{count}</small>
   </button>
 }
 
 function GroupRow({ label, count }: { label: string; count: number }) {
-  return <tr className="catalog-group-row"><td colSpan={4}><b>{label}</b> · {count}</td></tr>
+  return <div className="catalog-group-row" role="row"><span role="cell">{label} · {count}</span></div>
 }
 
 function MetaTags<T extends string>({ values, labels, primary = false }: { values: T[]; labels: Record<T, string>; primary?: boolean }) {

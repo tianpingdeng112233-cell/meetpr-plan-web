@@ -20,7 +20,7 @@ import { getBindRequests, getExerciseStatsOverview, getStudentVideos, refreshCoa
 import { CoachShell, type CoachView } from './CoachShell'
 import { StudentBoard } from './StatsViews'
 import { VideosPage } from './VideosPage'
-import { RequestsPage } from './RequestsPage'
+import { REQUEST_POLL_INTERVAL_MS, RequestsPage } from './RequestsPage'
 import { CatalogPage } from '../catalog/CatalogPage'
 import { navigateCoachView } from './coachViewNavigation'
 import { clearDraftMirror } from '../plan-editor/draftMirror'
@@ -43,6 +43,7 @@ import {
 interface Props { onLogout: () => void | Promise<void>; me: AuthUser }
 type Loaded = { plan: PlanWithChildren; weeks: Week[]; weeksCount: number }
 const LAST_PLAN_PREFIX = 'mpw.lastPlan.'
+const BIND_REQUESTS_KEY = 'bind-requests'
 const sortedPlans = (list: PlanResponse[]) => [...list].sort((a, b) => (
   new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
 ))
@@ -89,6 +90,7 @@ export function PlanWorkspace({ onLogout, me }: Props) {
   const planRequestVersions = useRef(createKeyedRequestVersions())
   const videoRequestVersions = useRef(createKeyedRequestVersions())
   const rosterDataRequestVersions = useRef(createKeyedRequestVersions())
+  const bindRequestVersions = useRef(createKeyedRequestVersions())
   const plansByStudentRef = useRef<Record<string, PlanResponse[]>>({})
   const rosterDataByStudentRef = useRef<RosterDataByStudent>({})
   // Shared across per-student ExerciseIndex instances so in-session picks keep
@@ -110,6 +112,22 @@ export function PlanWorkspace({ onLogout, me }: Props) {
   }, [viewSwitching])
 
   const errText = (e: unknown, fb: string) => (e instanceof ApiException ? `${fb}（${e.code}）` : fb)
+  const refreshBindRequests = useCallback(async () => {
+    const version = bindRequestVersions.current.issue(BIND_REQUESTS_KEY)
+    try {
+      const rows = await getBindRequests()
+      if (!bindRequestVersions.current.isLatest(BIND_REQUESTS_KEY, version)) return
+      setBindRequests(rows)
+    } catch (caught) {
+      if (isSessionExpired(caught)) setSessionDead(true)
+    }
+  }, [])
+  const applyBindRequests = useCallback((rows: CoachBindRequest[]) => {
+    // A successful accept/reject is newer authority than every list request
+    // already in flight, so those responses must not resurrect the card/badge.
+    bindRequestVersions.current.invalidate(BIND_REQUESTS_KEY)
+    setBindRequests(rows)
+  }, [])
   const fetchStudentPlans = useCallback(async (id: string, canApply: () => boolean = () => true) => {
     const version = planRequestVersions.current.issue(id)
     const rows = sortedPlans(await getStudentPlans(id))
@@ -370,15 +388,15 @@ export function PlanWorkspace({ onLogout, me }: Props) {
     let alive = true;
     (async () => {
       try {
-        const [ex, usage, st, requests] = await Promise.all([
+        const [ex, usage, st] = await Promise.all([
           listExercises(),
           getExerciseUsageStats().catch(() => []),
           getCoachStudents(),
-          getBindRequests().catch(() => []),
+          refreshBindRequests(),
         ])
         exerciseUsage.current = new Map(usage.map((stat) => [stat.exercise_id, stat.plan_count]))
         const cat: Catalog = new Map(ex.map((e) => [e.id, { name: displayExerciseName(e.name), custom: e.created_by_coach_id != null }]))
-        setExerciseList(ex); setCatalog(cat); setIndex(new ExerciseIndex(ex, {}, exerciseUsage.current)); setStudents(st); setBindRequests(requests)
+        setExerciseList(ex); setCatalog(cat); setIndex(new ExerciseIndex(ex, {}, exerciseUsage.current)); setStudents(st)
         if (st.length > 0) {
           await loadStudent(st[0].id, cat, ex)
           if (!alive) return
@@ -399,11 +417,7 @@ export function PlanWorkspace({ onLogout, me }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  useVisiblePolling(async () => {
-    await getBindRequests().then(setBindRequests).catch((caught: unknown) => {
-      if (isSessionExpired(caught)) setSessionDead(true)
-    })
-  }, 60_000, {
+  useVisiblePolling(refreshBindRequests, REQUEST_POLL_INTERVAL_MS, {
     enabled: !sessionDead,
     immediate: false,
   })
@@ -431,11 +445,10 @@ export function PlanWorkspace({ onLogout, me }: Props) {
   }
   const refreshStudentsAfterAccept = async () => {
     const previousIds = new Set(students.map((student) => student.id))
-    const [next, requests] = await Promise.all([
+    const [next] = await Promise.all([
       refreshCoachStudents().catch(() => null),
-      getBindRequests().catch(() => null),
+      refreshBindRequests(),
     ])
-    if (requests) setBindRequests(requests)
     if (!next) return
     setStudents(next)
     const firstStudentId = !studentId ? next[0]?.id : undefined
@@ -869,7 +882,7 @@ export function PlanWorkspace({ onLogout, me }: Props) {
           onStudent={(id) => { void switchStudent(id) }}
         />
       : <div className="empty-page">接受学员申请后即可查看训练视频</div>)}
-    {view === 'requests' && <RequestsPage requests={bindRequests} onRequestsChanged={setBindRequests} onAccepted={refreshStudentsAfterAccept} />}
+    {view === 'requests' && <RequestsPage requests={bindRequests} onRequestsChanged={applyBindRequests} onAccepted={refreshStudentsAfterAccept} />}
     {view === 'messages' && (hasStudents
       ? <MessagesPage
           me={me}

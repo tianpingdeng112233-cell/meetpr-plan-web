@@ -46,6 +46,11 @@ function setInput(input: HTMLInputElement, value: string) {
   act(() => input.dispatchEvent(new Event('input', { bubbles: true })))
 }
 
+function setSelect(select: HTMLSelectElement, value: string) {
+  Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value')?.set?.call(select, value)
+  act(() => select.dispatchEvent(new Event('change', { bubbles: true })))
+}
+
 describe('CatalogPage', () => {
   let host: HTMLDivElement
   let root: Root
@@ -64,7 +69,7 @@ describe('CatalogPage', () => {
     vi.restoreAllMocks()
   })
 
-  it('switches contextual chips and lets search pierce the selected muscle category', () => {
+  it('combines category, type tab, and equipment filters with coherent live counts', () => {
     act(() => root.render(<CatalogPage
       exerciseList={exercises}
       catalog={catalog}
@@ -73,18 +78,34 @@ describe('CatalogPage', () => {
       onUseExercise={vi.fn()}
     />))
 
-    expect(host.querySelector('.catalog-refine')?.textContent).toContain('分类')
-    clickButton(host, '深蹲族')
-    expect(host.querySelector('.catalog-refine')?.textContent).toContain('细分')
+    expect(host.querySelector('.catalog-result-count')?.textContent).toBe('5 个动作')
     clickButton(host, '股四头')
-    expect(host.querySelector('.catalog-refine')).toBeNull()
-    expect(host.querySelector('.catalog-table')?.textContent).toContain('保加利亚分腿蹲')
+    clickButton(host, '辅助')
+    setSelect(host.querySelector<HTMLSelectElement>('[aria-label="按器械筛选"]')!, 'dumbbell')
 
+    const tableText = host.querySelector('.catalog-table-wrap')?.textContent
+    expect(tableText).toContain('保加利亚分腿蹲')
+    expect(tableText).not.toContain('史密斯箭步蹲')
+    expect(host.querySelector('.catalog-result-count')?.textContent).toBe('1 个动作')
+    expect(host.querySelector('.catalog-category.active')?.textContent).toBe('股四头1')
+    expect(host.querySelector('.catalog-refine button.active')?.textContent).toBe('辅助1')
+    expect([...host.querySelectorAll('.catalog-category')].find((button) => button.textContent?.startsWith('全部动作'))?.textContent).toBe('全部动作1')
+  })
+
+  it('keeps full-library search piercing the selected category', () => {
+    act(() => root.render(<CatalogPage
+      exerciseList={exercises}
+      catalog={catalog}
+      index={new ExerciseIndex(exercises)}
+      onCreateExercise={vi.fn().mockResolvedValue({ id: 'unused', name: 'unused' })}
+      onUseExercise={vi.fn()}
+    />))
+
+    clickButton(host, '股四头')
     setInput(host.querySelector<HTMLInputElement>('[aria-label="搜索动作库"]')!, '卧推')
-    expect(host.querySelector('.catalog-refine')).toBeNull()
     expect(host.querySelector('.catalog-table')?.textContent).toContain('竞技卧推')
     expect(host.querySelector('.catalog-table')?.textContent).not.toContain('保加利亚分腿蹲')
-    expect(host.querySelector('.catalog-result-count')?.textContent).toContain('全库直达')
+    expect(host.querySelector('.catalog-result-count')?.textContent).toBe('1 个动作')
   })
 
   it('keeps custom edit/delete disabled and submits guessed multi-field create input', async () => {
