@@ -24,7 +24,7 @@ import { chatOutbox } from './chatOutbox'
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
 const me: AuthUser = { id: 'coach', phone: '+8613900000001', role: 'coach', createdAt: '2026-01-01T00:00:00Z' }
-const conversation = (unread = 1): ChatConversation => ({
+const conversation = (unread = 1, overrides: Partial<ChatConversation> = {}): ChatConversation => ({
   id: 'conversation',
   other_party: { id: 'student', display_name: '王晨曦' },
   last_message: {
@@ -35,6 +35,7 @@ const conversation = (unread = 1): ChatConversation => ({
   unread_count: unread,
   my_last_read: null,
   other_last_read: null,
+  ...overrides,
 })
 const message = (overrides: Partial<ChatMessage> = {}): ChatMessage => ({
   id: 'message-1', conversation_id: 'conversation', seq: 1, sender_id: 'student', kind: 'text',
@@ -42,30 +43,44 @@ const message = (overrides: Partial<ChatMessage> = {}): ChatMessage => ({
   client_id: 'student-client', created_at: '2026-07-22T10:00:00.000Z', ...overrides,
 })
 
-function Harness({ initial = [conversation()] }: { initial?: ChatConversation[] | null }) {
+function Harness({
+  initial = [conversation()],
+  students = [{ id: 'student', display_name: '王晨曦', status: 'active' as const, evaluation: null }],
+  initialStudentId = 'student',
+}: {
+  initial?: ChatConversation[] | null
+  students?: { id: string; display_name: string; status: 'active'; evaluation: null }[]
+  initialStudentId?: string
+}) {
   const [conversations, setConversations] = useState<ChatConversation[] | null>(initial)
   const [activeId, setActiveId] = useState<string | null>(null)
+  const [selectedStudentId, setSelectedStudentId] = useState(initialStudentId)
   const [bindLostIds, setBindLostIds] = useState<Set<string>>(() => new Set())
   const applyRead = (conversationId: string, state: ChatReadState) => setConversations((current) => (
     current?.map((item) => item.id === conversationId
       ? { ...item, unread_count: state.unread_count, my_last_read: state.my_last_read }
       : item) ?? []
   ))
-  return <MessagesPage
-    me={me}
-    students={[{ id: 'student', display_name: '王晨曦', status: 'active', evaluation: null }]}
-    conversations={conversations}
-    bindLostIds={bindLostIds}
-    sessionDead={false}
-    activeId={activeId}
-    drafts={{}}
-    onActiveIdChange={setActiveId}
-    onDraftChange={vi.fn()}
-    onConversationsChanged={(update) => setConversations((current) => update(current ?? []))}
-    onReadStateApplied={applyRead}
-    onBindLost={(conversationId) => setBindLostIds((prev) => new Set(prev).add(conversationId))}
-    onSessionExpired={vi.fn()}
-  />
+  return <div data-selected-student={selectedStudentId}>
+    <MessagesPage
+      me={me}
+      students={students}
+      selectedStudentId={selectedStudentId}
+      conversations={conversations}
+      bindLostIds={bindLostIds}
+      sessionDead={false}
+      activeId={activeId}
+      drafts={{}}
+      onActiveIdChange={setActiveId}
+      onStudentChange={setSelectedStudentId}
+      onOpenPlan={vi.fn()}
+      onDraftChange={vi.fn()}
+      onConversationsChanged={(update) => setConversations((current) => update(current ?? []))}
+      onReadStateApplied={applyRead}
+      onBindLost={(conversationId) => setBindLostIds((prev) => new Set(prev).add(conversationId))}
+      onSessionExpired={vi.fn()}
+    />
+  </div>
 }
 
 async function settle(): Promise<void> {
@@ -117,16 +132,97 @@ describe('MessagesPage', () => {
     chatOutbox.reset()
   })
 
-  it('从列表进入线程，首屏没有新增消息也立即打已读并清红点', async () => {
+  it('进入消息屏自动选中当前学员的会话，首屏没有新增消息也立即打已读并清红点', async () => {
     await act(async () => { root.render(<Harness />); await settle() })
-    expect(host.querySelector('.chat-dot')).not.toBeNull()
-
-    const row = host.querySelector<HTMLButtonElement>('.chat-row')
-    await act(async () => { row?.click(); await settle() })
 
     expect(host.textContent).toContain('请看一下动作')
     expect(chatApi.markConversationRead).toHaveBeenCalledWith('conversation', 'message-1')
-    expect(host.querySelector('.chat-dot')).toBeNull()
+    expect(host.querySelector('.chat-unread-badge')).toBeNull()
+    expect(host.querySelector('.chat-row.active')?.textContent).toContain('王晨曦')
+  })
+
+  it('点击快捷回复会把完整文案真正填入输入框', async () => {
+    await act(async () => { root.render(<Harness initial={[conversation(0)]} />); await settle() })
+    const quickReply = host.querySelector<HTMLButtonElement>('.chat-quick-reply')!
+    const textarea = host.querySelector<HTMLTextAreaElement>('.chat-composer textarea')!
+
+    await act(async () => { quickReply.click(); await settle() })
+
+    expect(textarea.value).toBe('按计划完成，很好，下周继续加。')
+    expect(chatApi.sendTextMessage).not.toHaveBeenCalled()
+  })
+
+  it('下一条未读按现有列表顺序跳到第一个有未读的会话', async () => {
+    const second = conversation(2, {
+      id: 'conversation-2',
+      other_party: { id: 'student-2', display_name: '林知夏' },
+      last_message: {
+        id: 'message-2',
+        seq: 1,
+        kind: 'text',
+        preview: '第二个会话',
+        created_at: '2026-07-22T11:00:00.000Z',
+        sender_id: 'student-2',
+      },
+      last_message_at: '2026-07-22T11:00:00.000Z',
+    })
+    chatApi.getMessages.mockImplementation((conversationId: string) => Promise.resolve({
+      messages: [message({
+        id: conversationId === 'conversation-2' ? 'message-2' : 'message-1',
+        conversation_id: conversationId,
+        sender_id: conversationId === 'conversation-2' ? 'student-2' : 'student',
+        body: conversationId === 'conversation-2' ? '第二个会话' : '第一个会话',
+      })],
+      meta: { other_last_read: null, has_more: false },
+    }))
+    await act(async () => {
+      root.render(<Harness
+        initial={[conversation(0), second]}
+        students={[
+          { id: 'student', display_name: '王晨曦', status: 'active', evaluation: null },
+          { id: 'student-2', display_name: '林知夏', status: 'active', evaluation: null },
+        ]}
+      />)
+      await settle()
+    })
+
+    await act(async () => {
+      host.querySelector<HTMLButtonElement>('.chat-next-unread')?.click()
+      await settle()
+    })
+
+    expect(host.querySelector('.chat-row.active')?.textContent).toContain('林知夏')
+    expect(host.querySelector('.chat-thread-head')?.textContent).toContain('林知夏')
+    expect(host.querySelector('[data-selected-student]')?.getAttribute('data-selected-student')).toBe('student-2')
+    expect(chatApi.getMessages).toHaveBeenCalledWith('conversation-2', { mode: 'latest', limit: 50 })
+  })
+
+  it('教练气泡靠右，学员气泡靠左', async () => {
+    chatApi.getMessages.mockResolvedValue({
+      messages: [
+        message({ id: 'student-message', seq: 1, body: '学员消息' }),
+        message({ id: 'coach-message', seq: 2, sender_id: 'coach', body: '教练消息' }),
+      ],
+      meta: { other_last_read: null, has_more: false },
+    })
+
+    await act(async () => { root.render(<Harness initial={[conversation(0)]} />); await settle() })
+
+    expect(host.querySelector('.chat-message:not(.mine) .chat-bubble')?.textContent).toBe('学员消息')
+    expect(host.querySelector('.chat-message.mine .chat-bubble')?.textContent).toBe('教练消息')
+  })
+
+  it('没有未读时点击下一条未读提示没有未读消息', async () => {
+    const toast = vi.fn()
+    window.addEventListener('meetpr:toast', toast)
+    try {
+      await act(async () => { root.render(<Harness initial={[conversation(0)]} />); await settle() })
+      await act(async () => { host.querySelector<HTMLButtonElement>('.chat-next-unread')?.click() })
+      expect(toast).toHaveBeenCalledTimes(1)
+      expect((toast.mock.calls[0]?.[0] as CustomEvent<string>).detail).toBe('没有未读消息了')
+    } finally {
+      window.removeEventListener('meetpr:toast', toast)
+    }
   })
 
   it('重入会话拿到整页历史后滚到底部，而不是停在这一页顶部', async () => {
@@ -163,8 +259,6 @@ describe('MessagesPage', () => {
     })
 
     await act(async () => { root.render(<Harness />); await settle() })
-    const row = host.querySelector<HTMLButtonElement>('.chat-row')
-    await act(async () => { row?.click(); await settle() })
 
     expect(host.textContent).toContain('第 50 条')
     expect(scrollTopValue).toBe(50 * ROW_HEIGHT)
@@ -190,8 +284,6 @@ describe('MessagesPage', () => {
       })
 
       await act(async () => { root.render(<Harness initial={[conversation(0)]} />) })
-      await act(async () => { await vi.advanceTimersByTimeAsync(50) })
-      await act(async () => { host.querySelector<HTMLButtonElement>('.chat-row')?.click() })
       await act(async () => { await vi.advanceTimersByTimeAsync(50) })
       const thread = host.querySelector('.chat-thread')!
 
@@ -228,7 +320,6 @@ describe('MessagesPage', () => {
       meta: { other_last_read: null, has_more: false },
     })
     await act(async () => { root.render(<Harness initial={[conversation(0)]} />); await settle() })
-    await act(async () => { host.querySelector<HTMLButtonElement>('.chat-row')?.click(); await settle() })
     expect(host.textContent).toContain('当前版本暂不支持的消息类型')
   })
 
@@ -236,13 +327,12 @@ describe('MessagesPage', () => {
     await act(async () => { root.render(<Harness key="loading" initial={null} />) })
     expect(host.textContent).toContain('加载中…')
     expect(host.textContent).not.toContain('暂无会话')
-    await act(async () => { root.render(<Harness key="empty" initial={[]} />) })
+    await act(async () => { root.render(<Harness key="empty" initial={[]} students={[]} initialStudentId="" />) })
     expect(host.textContent).toContain('暂无会话')
   })
 
-  it('中文输入法候选态的 Enter 不误发，上屏后的 Enter 正常发送', async () => {
+  it('中文输入法候选态的 Enter 不误发，上屏后的 ⌘↵ 正常发送', async () => {
     await act(async () => { root.render(<Harness initial={[conversation(0)]} />); await settle() })
-    await act(async () => { host.querySelector<HTMLButtonElement>('.chat-row')?.click(); await settle() })
     const textarea = host.querySelector<HTMLTextAreaElement>('.chat-composer textarea')!
     const valueSetter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!
     await act(async () => {
@@ -257,7 +347,9 @@ describe('MessagesPage', () => {
     expect(chatApi.sendTextMessage).not.toHaveBeenCalled()
 
     await act(async () => {
-      textarea.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, isComposing: false }))
+      textarea.dispatchEvent(new KeyboardEvent('keydown', {
+        key: 'Enter', metaKey: true, bubbles: true, isComposing: false,
+      }))
       await settle()
     })
     expect(chatApi.sendTextMessage).toHaveBeenCalledTimes(1)
@@ -267,7 +359,6 @@ describe('MessagesPage', () => {
   it('发送遇到绑定失效后禁用输入框，失败气泡不提供重试', async () => {
     chatApi.sendTextMessage.mockRejectedValue(new ApiException(403, 'CHAT_BIND_REQUIRED'))
     await act(async () => { root.render(<Harness initial={[conversation(0)]} />); await settle() })
-    await act(async () => { host.querySelector<HTMLButtonElement>('.chat-row')?.click(); await settle() })
     const textarea = host.querySelector<HTMLTextAreaElement>('.chat-composer textarea')!
     const valueSetter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!
     await act(async () => {
@@ -285,13 +376,8 @@ describe('MessagesPage', () => {
 
   it('发起对话走 get-or-create 并直接进入线程', async () => {
     await act(async () => { root.render(<Harness initial={[]} />); await settle() })
-    const select = host.querySelector<HTMLSelectElement>('.chat-student-select')!
-    const valueSetter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value')!.set!
-    await act(async () => {
-      valueSetter.call(select, 'student')
-      select.dispatchEvent(new Event('change', { bubbles: true }))
-      await settle()
-    })
+    const start = host.querySelector<HTMLButtonElement>('.chat-row-new')!
+    await act(async () => { start.click(); await settle() })
     expect(chatApi.openConversation).toHaveBeenCalledWith('student')
     expect(host.textContent).toContain('王晨曦')
     expect(chatApi.getMessages).toHaveBeenCalledWith('conversation', { mode: 'latest', limit: 50 })
@@ -308,7 +394,6 @@ describe('MessagesPage', () => {
         meta: { other_last_read: null, has_more: false },
       })
     await act(async () => { root.render(<Harness initial={[conversation(0)]} />); await settle() })
-    await act(async () => { host.querySelector<HTMLButtonElement>('.chat-row')?.click(); await settle() })
     const image = host.querySelector<HTMLImageElement>('.chat-bubble img')!
     expect(image.src).toBe('https://old.example/image.jpg')
     await act(async () => { image.dispatchEvent(new Event('error')); await settle() })

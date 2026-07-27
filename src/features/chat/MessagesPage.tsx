@@ -31,16 +31,27 @@ import { chatOutbox, type OutboxItem } from './chatOutbox'
 import { useClockTick, useVisiblePolling } from './useVisiblePolling'
 
 const INTERACTION_WINDOW_MS = 120_000
+const QUICK_REPLIES = [
+  '按计划完成，很好，下周继续加。',
+  '这组速度掉得太多，下周降 5% 重量。',
+  '视频收到了，我今晚逐组给你反馈。',
+  '这周先别硬顶，睡够再练。',
+  '距比赛还有 5 周，注意控体重。',
+] as const
+const WEEKDAYS = ['日', '一', '二', '三', '四', '五', '六'] as const
 
 interface MessagesPageProps {
   me: AuthUser
   students: CoachStudent[]
+  selectedStudentId: string
   conversations: ChatConversation[] | null
   bindLostIds: ReadonlySet<string>
   sessionDead: boolean
   activeId: string | null
   drafts: Record<string, string>
   onActiveIdChange: (id: string | null) => void
+  onStudentChange: (studentId: string) => void
+  onOpenPlan: (studentId: string) => void
   onDraftChange: (conversationId: string, text: string) => void
   onConversationsChanged: (update: (prev: ChatConversation[]) => ChatConversation[]) => void
   onReadStateApplied: (conversationId: string, state: ChatReadState) => void
@@ -57,12 +68,15 @@ const newerCursor = (left: ChatReadCursor | null, right: ChatReadCursor | null) 
 export default function MessagesPage({
   me,
   students,
+  selectedStudentId,
   conversations,
   bindLostIds,
   sessionDead,
   activeId,
   drafts,
   onActiveIdChange,
+  onStudentChange,
+  onOpenPlan,
   onDraftChange,
   onConversationsChanged,
   onReadStateApplied,
@@ -96,6 +110,20 @@ export default function MessagesPage({
       : incoming)
   }, [activeId, conversations])
 
+  useEffect(() => {
+    if (activeId != null || !conversations?.length) return
+    const initial = conversations.find((conversation) => (
+      conversation.other_party.id === selectedStudentId
+    )) ?? conversations[0]
+    onActiveIdChange(initial.id)
+    onStudentChange(initial.other_party.id)
+  }, [activeId, conversations, onActiveIdChange, onStudentChange, selectedStudentId])
+
+  const selectConversation = (conversation: ChatConversation) => {
+    onActiveIdChange(conversation.id)
+    onStudentChange(conversation.other_party.id)
+  }
+
   const startConversation = async (studentId: string) => {
     if (!studentId || openingConversation || sessionDead) return
     setOpeningConversation(true)
@@ -105,7 +133,7 @@ export default function MessagesPage({
       onConversationsChanged((prev) => prev.some((item) => item.id === opened.id)
         ? prev.map((item) => item.id === opened.id ? opened : item)
         : [...prev, opened])
-      onActiveIdChange(opened.id)
+      selectConversation(opened)
     } catch (caught) {
       if (isSessionExpired(caught)) onSessionExpired()
       else if (isBindLost(caught)) {
@@ -117,101 +145,157 @@ export default function MessagesPage({
     }
   }
 
-  return <main className="data-page chat-page">
-    <header className="page-top">
-      {activeId != null && <button className="page-back" onClick={() => onActiveIdChange(null)}>← 全部会话</button>}
-      <span className="page-eyebrow">COACH / 消息</span>
-      <span className="page-divider" />
-      {activeId != null && <b>{active?.other_party.display_name || '未命名学员'}</b>}
-      <span className="page-spacer" />
-      <select
-        className="student-select chat-student-select"
-        aria-label="发起对话"
-        value=""
-        disabled={sessionDead || openingConversation}
-        onChange={(event) => { void startConversation(event.currentTarget.value) }}
-      >
-        <option value="">{openingConversation ? '发起中…' : '＋ 发起对话'}</option>
-        {students.map((student) => <option
-          key={student.id}
-          value={student.id}
-          disabled={unavailableStudentIds.has(student.id)}
-        >{student.display_name || '未命名学员'}</option>)}
-      </select>
-      <span className="page-status">{activeId == null
-        ? `● ${unreadTotal(conversations)} 条未读 · 30s 自动刷新`
-        : '● 5s 自动刷新'}</span>
-    </header>
-    {openError && <div className="chat-open-error">{openError}</div>}
-    {conversations === null
-      ? <div className="empty-state">加载中…</div>
-      : activeId == null
-        ? <ConversationList
+  const totalUnread = unreadTotal(conversations)
+  const activeStudent = active
+    ? students.find((student) => student.id === active.other_party.id) ?? null
+    : null
+  const activeMeta = activeBindLost
+    ? '已解除绑定'
+    : activeStudent?.status === 'in_evaluation'
+      ? '评估期'
+      : '在训学员'
+  const nextUnread = () => {
+    const next = conversations?.find((conversation) => conversation.unread_count > 0)
+    if (next) selectConversation(next)
+    else window.dispatchEvent(new CustomEvent('meetpr:toast', { detail: '没有未读消息了' }))
+  }
+
+  return <main className="chat-page">
+    <aside className="chat-sidebar" aria-label="会话列表">
+      <header className="chat-panel-head chat-list-head">
+        <b>会话</b>
+        <button type="button" className="chat-next-unread" onClick={nextUnread}>
+          下一条未读 <span>{totalUnread}</span>
+        </button>
+      </header>
+      {openError && <div className="chat-open-error">{openError}</div>}
+      {conversations === null
+        ? <div className="empty-state">加载中…</div>
+        : <ConversationList
             conversations={conversations}
+            students={students}
             bindLostIds={bindLostIds}
-            studentIds={new Set(students.map((student) => student.id))}
+            unavailableStudentIds={unavailableStudentIds}
+            activeId={activeId}
+            openingConversation={openingConversation}
+            sessionDead={sessionDead}
             now={now}
-            onOpen={onActiveIdChange}
-          />
-        : active
-          ? <ConversationThread
-              key={active.id}
-              me={me}
-              conversation={active}
-              now={now}
-              sessionDead={sessionDead}
-              bindLost={activeBindLost}
-              initialDraft={drafts[active.id] ?? ''}
-              onDraftChange={(text) => onDraftChange(active.id, text)}
-              onConversationChanged={(update) => {
-                setActiveSnapshot((current) => current?.id === active.id ? update(current) : current)
-                onConversationsChanged((prev) => prev.map((item) => item.id === active.id ? update(item) : item))
-              }}
-              onReadStateApplied={onReadStateApplied}
-              onMissing={() => {
-                onConversationsChanged((prev) => prev.filter((item) => item.id !== active.id))
-                onActiveIdChange(null)
-              }}
-              onBindLost={() => onBindLost(active.id)}
-              onSessionExpired={onSessionExpired}
-            />
-          : <div className="empty-state">会话不存在</div>}
+            onOpen={selectConversation}
+            onStart={(studentId) => { void startConversation(studentId) }}
+          />}
+    </aside>
+    <section className="chat-main-panel" aria-label="消息">
+      {active && <header className="chat-panel-head chat-thread-head">
+        <span className="chat-thread-avatar">{active.other_party.display_name.slice(0, 1) || '?'}</span>
+        <b>{active.other_party.display_name || '未命名学员'}</b>
+        <span className="chat-thread-meta">{activeMeta}</span>
+        <button type="button" className="chat-open-plan" onClick={() => onOpenPlan(active.other_party.id)}>
+          打开 TA 的计划
+        </button>
+      </header>}
+      {conversations === null
+        ? <div className="empty-state">加载中…</div>
+        : activeId == null
+          ? <div className="empty-state">选择会话开始聊天</div>
+          : active
+            ? <ConversationThread
+                key={active.id}
+                me={me}
+                conversation={active}
+                studentName={active.other_party.display_name || '未命名学员'}
+                now={now}
+                sessionDead={sessionDead}
+                bindLost={activeBindLost}
+                initialDraft={drafts[active.id] ?? ''}
+                onDraftChange={(text) => onDraftChange(active.id, text)}
+                onConversationChanged={(update) => {
+                  setActiveSnapshot((current) => current?.id === active.id ? update(current) : current)
+                  onConversationsChanged((prev) => prev.map((item) => item.id === active.id ? update(item) : item))
+                }}
+                onReadStateApplied={onReadStateApplied}
+                onMissing={() => {
+                  onConversationsChanged((prev) => prev.filter((item) => item.id !== active.id))
+                  onActiveIdChange(null)
+                }}
+                onBindLost={() => onBindLost(active.id)}
+                onSessionExpired={onSessionExpired}
+              />
+            : <div className="empty-state">会话不存在</div>}
+    </section>
   </main>
 }
 
-function ConversationList({ conversations, bindLostIds, studentIds, now, onOpen }: {
+function ConversationList({
+  conversations,
+  students,
+  bindLostIds,
+  unavailableStudentIds,
+  activeId,
+  openingConversation,
+  sessionDead,
+  now,
+  onOpen,
+  onStart,
+}: {
   conversations: ChatConversation[]
+  students: CoachStudent[]
   bindLostIds: ReadonlySet<string>
-  studentIds: ReadonlySet<string>
+  unavailableStudentIds: ReadonlySet<string>
+  activeId: string | null
+  openingConversation: boolean
+  sessionDead: boolean
   now: number
-  onOpen: (id: string) => void
+  onOpen: (conversation: ChatConversation) => void
+  onStart: (studentId: string) => void
 }) {
-  if (conversations.length === 0) return <div className="empty-state">暂无会话</div>
+  const studentIds = new Set(students.map((student) => student.id))
+  const conversationStudentIds = new Set(conversations.map((conversation) => conversation.other_party.id))
+  const unstarted = students.filter((student) => !conversationStudentIds.has(student.id))
+  if (conversations.length === 0 && unstarted.length === 0) {
+    return <div className="empty-state">暂无会话</div>
+  }
   return <div className="chat-list">{conversations.map((conversation) => {
     const name = conversation.other_party.display_name || '未命名学员'
     const lost = bindLostIds.has(conversation.id) || !studentIds.has(conversation.other_party.id)
     return <button
       type="button"
-      className={`chat-row${lost ? ' lost' : ''}`}
+      aria-current={activeId === conversation.id ? 'true' : undefined}
+      className={`chat-row${activeId === conversation.id ? ' active' : ''}${conversation.unread_count > 0 ? ' unread' : ''}${lost ? ' lost' : ''}`}
       key={conversation.id}
-      onClick={() => onOpen(conversation.id)}
+      onClick={() => onOpen(conversation)}
     >
-      <span className="avatar">{conversation.other_party.display_name.slice(0, 1) || '?'}</span>
       <span className="chat-row-copy">
         <b>{name}</b>
         <small>{lost && '（已解除绑定）'}{conversationPreview(conversation)}</small>
       </span>
       <span className="chat-row-meta">
         <time>{chatRelativeTime(conversation.last_message_at, now)}</time>
-        {conversation.unread_count > 0 && <i className="chat-dot" aria-label={`${conversation.unread_count} 条未读`} />}
+        {conversation.unread_count > 0 && <i className="chat-unread-badge" aria-label={`${conversation.unread_count} 条未读`}>
+          {conversation.unread_count}
+        </i>}
       </span>
     </button>
-  })}</div>
+  })}
+    {unstarted.map((student) => <button
+      type="button"
+      className="chat-row chat-row-new"
+      key={student.id}
+      disabled={sessionDead || openingConversation || unavailableStudentIds.has(student.id)}
+      onClick={() => onStart(student.id)}
+    >
+      <span className="chat-row-copy">
+        <b>{student.display_name || '未命名学员'}</b>
+        <small>{unavailableStudentIds.has(student.id) ? '该学员已不在你的名下' : '还没有消息'}</small>
+      </span>
+      <span className="chat-row-start">{openingConversation ? '发起中…' : '发起'}</span>
+    </button>)}
+  </div>
 }
 
 function ConversationThread({
   me,
   conversation,
+  studentName,
   now,
   sessionDead,
   bindLost,
@@ -225,6 +309,7 @@ function ConversationThread({
 }: {
   me: AuthUser
   conversation: ChatConversation
+  studentName: string
   now: number
   sessionDead: boolean
   bindLost: boolean
@@ -543,6 +628,7 @@ function ConversationThread({
 
   const receipt = messages ? readReceiptFor(messages, me.id, snapshot.other_last_read) : null
   const pendingItems = chatOutbox.itemsFor(conversation.id)
+  const messageGroups = messages ? groupMessagesByDay(messages, now) : []
   return <>
     <div className="chat-thread" ref={scrollRef} aria-busy={messages === null && !error}>
       {hasMoreHistory && <button className="chat-more" disabled={loadingHistory} onClick={() => { void loadHistory() }}>
@@ -551,15 +637,18 @@ function ConversationThread({
       {error && <div className="empty-state">{error}</div>}
       {!error && messages === null && <div className="empty-state">加载中…</div>}
       {!error && messages?.length === 0 && pendingItems.length === 0 && <div className="empty-state">还没有消息</div>}
-      {!error && messages?.map((message) => <ChatBubble
-        key={message.id}
-        message={message}
-        mine={message.sender_id === me.id}
-        now={now}
-        receipt={receipt?.messageId === message.id ? receipt.status : null}
-        imageUnavailable={unavailableImageIds.has(message.id)}
-        onImageError={() => { void renewImage(message) }}
-      />)}
+      {!error && messageGroups.map((group) => <section className="chat-day-group" key={group.key}>
+        <div className="chat-day-label">{group.label}</div>
+        {group.messages.map((message) => <ChatBubble
+          key={message.id}
+          message={message}
+          mine={message.sender_id === me.id}
+          senderLabel={studentName}
+          receipt={receipt?.messageId === message.id ? receipt.status : null}
+          imageUnavailable={unavailableImageIds.has(message.id)}
+          onImageError={() => { void renewImage(message) }}
+        />)}
+      </section>)}
       {pendingItems.map((item) => <PendingBubble key={item.clientId} item={item} />)}
     </div>
     <ChatComposer
@@ -575,6 +664,7 @@ function ConversationThread({
 function PendingBubble({ item }: { item: OutboxItem }) {
   const failure = item.status.state === 'failed' ? item.status : null
   return <div className="chat-message mine pending">
+    <div className="chat-message-meta"><span>我</span></div>
     <div className="chat-bubble mine"><p>{item.body}</p></div>
     <small className={`chat-send-state${failure ? ' failed' : ''}`}>
       {failure ? '发送失败' : '发送中'}
@@ -619,38 +709,102 @@ function ChatComposer({ conversationId, initialDraft, disabled, onDraftChange }:
   }
 
   return <form className="chat-composer" onSubmit={submit}>
-    <textarea
-      aria-label="输入消息"
-      value={draft}
-      maxLength={4000}
-      rows={1}
-      disabled={disabled}
-      placeholder={disabled ? '当前无法发送消息' : '输入消息'}
-      onCompositionStart={() => { composing.current = true }}
-      onCompositionEnd={(event) => { composing.current = false; changeDraft(event.currentTarget.value) }}
-      onChange={(event) => changeDraft(event.currentTarget.value)}
-      onKeyDown={keyDown}
-      onBlur={() => onDraftChange(draftRef.current)}
-    />
-    <button type="submit" disabled={disabled || draft.trim() === ''}>发送</button>
+    <div className="chat-quick-replies" aria-label="快捷回复">
+      {QUICK_REPLIES.map((reply, index) => <button
+        type="button"
+        className="chat-quick-reply"
+        key={reply}
+        disabled={disabled}
+        onClick={() => changeDraft(reply)}
+      >
+        <kbd>⌥{index + 1}</kbd>
+        <span>{reply}</span>
+      </button>)}
+    </div>
+    <div className="chat-composer-row">
+      <textarea
+        aria-label="输入消息"
+        value={draft}
+        maxLength={4000}
+        rows={1}
+        disabled={disabled}
+        placeholder={disabled ? '当前无法发送消息' : '输入消息'}
+        onCompositionStart={() => { composing.current = true }}
+        onCompositionEnd={(event) => { composing.current = false; changeDraft(event.currentTarget.value) }}
+        onChange={(event) => changeDraft(event.currentTarget.value)}
+        onKeyDown={keyDown}
+        onBlur={() => onDraftChange(draftRef.current)}
+      />
+      <button type="submit" disabled={disabled || draft.trim() === ''}>
+        发送 <span>⌘↵</span>
+      </button>
+    </div>
   </form>
 }
 
-function ChatBubble({ message, mine, now, receipt, imageUnavailable, onImageError }: {
+function ChatBubble({ message, mine, senderLabel, receipt, imageUnavailable, onImageError }: {
   message: ChatMessage
   mine: boolean
-  now: number
+  senderLabel: string
   receipt: '已送达' | '已读' | null
   imageUnavailable: boolean
   onImageError: () => void
 }) {
   return <div className={`chat-message${mine ? ' mine' : ''}`}>
+    <div className="chat-message-meta">
+      <span>{mine ? '我' : senderLabel}</span>
+      <time>{chatClockTime(message.created_at)}</time>
+    </div>
     <div className={`chat-bubble${mine ? ' mine' : ''}`}>
       {renderMessageBody(message, onImageError, imageUnavailable)}
-      <time>{chatRelativeTime(message.created_at, now)}</time>
     </div>
     {receipt && <small className="chat-receipt">{receipt}</small>}
   </div>
+}
+
+function localDayKey(value: string | number): string {
+  const date = new Date(value)
+  if (!Number.isFinite(date.getTime())) return String(value)
+  const pad = (part: number) => String(part).padStart(2, '0')
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
+}
+
+function chatDayLabel(iso: string, now: number): string {
+  const date = new Date(iso)
+  if (!Number.isFinite(date.getTime())) return '日期未知'
+  const today = new Date(now)
+  const yesterday = new Date(now)
+  yesterday.setDate(yesterday.getDate() - 1)
+  const key = localDayKey(iso)
+  if (key === localDayKey(today.getTime())) return '今天'
+  if (key === localDayKey(yesterday.getTime())) return '昨天'
+  const pad = (part: number) => String(part).padStart(2, '0')
+  return `${pad(date.getMonth() + 1)}-${pad(date.getDate())} 周${WEEKDAYS[date.getDay()]}`
+}
+
+function chatClockTime(iso: string): string {
+  const date = new Date(iso)
+  if (!Number.isFinite(date.getTime())) return ''
+  return new Intl.DateTimeFormat('zh-CN', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).format(date)
+}
+
+function groupMessagesByDay(messages: ChatMessage[], now: number): {
+  key: string
+  label: string
+  messages: ChatMessage[]
+}[] {
+  const groups: { key: string; label: string; messages: ChatMessage[] }[] = []
+  for (const message of messages) {
+    const key = localDayKey(message.created_at)
+    const current = groups[groups.length - 1]
+    if (current?.key === key) current.messages.push(message)
+    else groups.push({ key, label: chatDayLabel(message.created_at, now), messages: [message] })
+  }
+  return groups
 }
 
 export function renderMessageBody(message: ChatMessage, onImageError?: () => void, imageUnavailable = false) {

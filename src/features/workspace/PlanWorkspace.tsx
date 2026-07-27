@@ -874,12 +874,15 @@ export function PlanWorkspace({ onLogout, me }: Props) {
       ? <MessagesPage
           me={me}
           students={students}
+          selectedStudentId={studentId}
           conversations={conversations}
           bindLostIds={bindLostIds}
           sessionDead={sessionDead}
           activeId={chatActiveId}
           drafts={chatDrafts}
           onActiveIdChange={setChatActiveId}
+          onStudentChange={setStudentId}
+          onOpenPlan={(id) => { void openStudentEditor(id) }}
           onDraftChange={updateChatDraft}
           onConversationsChanged={applyConversations}
           onReadStateApplied={applyReadState}
