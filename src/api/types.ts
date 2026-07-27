@@ -342,6 +342,9 @@ export interface BatchPlanExerciseBody {
   notes?: string | null
   sets: BatchPlanSetBody[]
 }
+export interface BatchPlanExerciseCreateBody extends BatchPlanExerciseBody {
+  plan_day_id: string
+}
 export interface BatchPlanDayBody {
   week_number: number
   day_of_week: number
@@ -349,6 +352,7 @@ export interface BatchPlanDayBody {
   exercises: BatchPlanExerciseBody[]
 }
 export interface BatchPlanDaysBody {
+  expected_updated_at?: string
   plan_patch?: {
     name?: string
     start_date?: string
@@ -357,6 +361,8 @@ export interface BatchPlanDaysBody {
   }
   delete_day_ids: string[]
   upsert_days: BatchPlanDayBody[]
+  delete_exercise_ids?: string[]
+  create_exercises?: BatchPlanExerciseCreateBody[]
 }
 
 export interface ApiError {

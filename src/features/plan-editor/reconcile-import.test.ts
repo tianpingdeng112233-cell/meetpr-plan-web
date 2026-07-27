@@ -28,8 +28,10 @@ describe('reconcileImportedPlan — align backend plan to the import', () => {
     // server plan is 14 weeks; import only the latest 12 → W13/W14 must be removed.
     vi.mocked(plans.getPlan).mockResolvedValue({
       id: 'p',
+      status: 'draft',
       plan_weeks: 14,
       start_date: '2026-01-01',
+      updated_at: '2026-01-01T00:00:00.000Z',
       days: [
         { id: 'd1', week_number: 1, day_of_week: 1, exercises: [] },
         { id: 'd13', week_number: 13, day_of_week: 1, exercises: [] },
@@ -42,9 +44,12 @@ describe('reconcileImportedPlan — align backend plan to the import', () => {
     expect(plans.deleteDay).not.toHaveBeenCalled()
     expect(plans.patchPlan).not.toHaveBeenCalled()
     expect(plans.batchDays).toHaveBeenCalledWith('p', {
+      expected_updated_at: '2026-01-01T00:00:00.000Z',
       plan_patch: { plan_weeks: 12, start_date: '2025-12-29', end_date: '2026-03-22' },
       delete_day_ids: ['d13', 'd14'],
       upsert_days: [],
+      delete_exercise_ids: [],
+      create_exercises: [],
     })
     expect(result).toMatchObject({
       planStartDate: '2025-12-29',
@@ -53,11 +58,13 @@ describe('reconcileImportedPlan — align backend plan to the import', () => {
     })
   })
 
-  it('routes frozen out-of-range days through the per-day endpoint, never the batch', async () => {
+  it('includes frozen and ordinary out-of-range days in the same atomic request', async () => {
     vi.mocked(plans.getPlan).mockResolvedValue({
       id: 'p',
+      status: 'draft',
       plan_weeks: 14,
       start_date: '2026-01-01',
+      updated_at: '2026-01-01T00:00:00.000Z',
       days: [
         { id: 'd13', week_number: 13, day_of_week: 1, exercises: [{ id: 'a', has_logs: true, sets: [] }] },
         { id: 'd14', week_number: 14, day_of_week: 1, exercises: [] },
@@ -66,10 +73,9 @@ describe('reconcileImportedPlan — align backend plan to the import', () => {
 
     await reconcileImportedPlan('p', Array.from({ length: 12 }, (_, i) => emptyWeek(i + 1)), '2025-12-29')
 
-    expect(plans.deleteDay).toHaveBeenCalledTimes(1)
-    expect(plans.deleteDay).toHaveBeenCalledWith('d13')
+    expect(plans.deleteDay).not.toHaveBeenCalled()
     expect(plans.batchDays).toHaveBeenCalledWith('p', expect.objectContaining({
-      delete_day_ids: ['d14'],
+      delete_day_ids: ['d13', 'd14'],
     }))
   })
 })
@@ -81,9 +87,10 @@ describe('resizeServerPlanWeeks', () => {
     vi.mocked(plans.deleteDay).mockResolvedValue(undefined as never)
   })
 
-  it('deletes every out-of-range server day before shrinking plan_weeks', async () => {
+  it('deletes out-of-range days and shrinks plan_weeks atomically', async () => {
     vi.mocked(plans.getPlan).mockResolvedValue({
       id: 'p', status: 'draft', plan_weeks: 12, start_date: '2026-01-01',
+      updated_at: '2026-01-01T00:00:00.000Z',
       days: [
         { id: 'w11', week_number: 11, day_of_week: 1, exercises: [] },
         { id: 'w12a', week_number: 12, day_of_week: 1, exercises: [{ id: 'a', sets: [] }] },
@@ -93,24 +100,36 @@ describe('resizeServerPlanWeeks', () => {
 
     const result = await resizeServerPlanWeeks('p', 11)
 
-    expect(plans.deleteDay).toHaveBeenCalledTimes(2)
-    expect(plans.deleteDay).toHaveBeenNthCalledWith(1, 'w12a')
-    expect(plans.deleteDay).toHaveBeenNthCalledWith(2, 'w12b')
-    expect(plans.patchPlan).toHaveBeenCalledWith('p', { plan_weeks: 11 })
-    const deleteOrders = vi.mocked(plans.deleteDay).mock.invocationCallOrder
-    const patchOrder = vi.mocked(plans.patchPlan).mock.invocationCallOrder[0]
-    expect(Math.max(...deleteOrders)).toBeLessThan(patchOrder)
+    expect(plans.deleteDay).not.toHaveBeenCalled()
+    expect(plans.patchPlan).not.toHaveBeenCalled()
+    expect(plans.batchDays).toHaveBeenCalledWith('p', {
+      expected_updated_at: '2026-01-01T00:00:00.000Z',
+      plan_patch: { plan_weeks: 11 },
+      delete_day_ids: ['w12a', 'w12b'],
+      upsert_days: [],
+      delete_exercise_ids: [],
+      create_exercises: [],
+    })
     expect(result).toEqual({ deletedDays: 2, deletedExercises: 3 })
   })
 
-  it('adds weeks with a single plan_weeks PATCH and no day deletion', async () => {
+  it('adds weeks with a single atomic batch and no day deletion', async () => {
     vi.mocked(plans.getPlan).mockResolvedValue({
       id: 'p', status: 'draft', plan_weeks: 11, start_date: '2026-01-01', days: [],
+      updated_at: '2026-01-01T00:00:00.000Z',
     } as never)
 
     await resizeServerPlanWeeks('p', 12)
 
     expect(plans.deleteDay).not.toHaveBeenCalled()
-    expect(plans.patchPlan).toHaveBeenCalledWith('p', { plan_weeks: 12 })
+    expect(plans.patchPlan).not.toHaveBeenCalled()
+    expect(plans.batchDays).toHaveBeenCalledWith('p', {
+      expected_updated_at: '2026-01-01T00:00:00.000Z',
+      plan_patch: { plan_weeks: 12 },
+      delete_day_ids: [],
+      upsert_days: [],
+      delete_exercise_ids: [],
+      create_exercises: [],
+    })
   })
 })
