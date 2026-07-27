@@ -1,18 +1,37 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
-import { getStudentVideos, getUploadUrl, postCoachFeedback } from '../../api/coach'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { getUploadUrl, postCoachFeedback } from '../../api/coach'
 import type { CoachStudent, StudentVideo } from '../../api/types'
 import { PageTop, kg, shortDate } from './WorkspaceCommon'
 
 const size = (bytes: number) => bytes < 1024 * 1024 ? `${Math.round(bytes / 1024)} KB` : `${(bytes / 1024 / 1024).toFixed(1)} MB`
 export const moveVideoIndex = (index: number, direction: -1 | 1, total: number) => Math.max(0, Math.min(total - 1, index + direction))
 export const videoAssociation = (video: { logged_at: string | null; created_at: string | null; exercise_name?: string | null; set_index?: number | null }) => { const day = video.logged_at ?? video.created_at; return [day ? shortDate(day.slice(0, 10)) : null, video.exercise_name, video.set_index != null ? `第 ${video.set_index} 组` : null].filter(Boolean).join(' · ') }
-export function VideosPage({ students, studentId, onStudent }: { students: CoachStudent[]; studentId: string; onStudent: (id: string) => void }) {
-  const [videos, setVideos] = useState<StudentVideo[]>([]), [activeIndex, setActiveIndex] = useState<number | null>(null), [url, setUrl] = useState(''), [rate, setRate] = useState(1), [error, setError] = useState('')
+export function VideosPage({ students, studentId, videos, onRefreshVideos, onStudent }: {
+  students: CoachStudent[]
+  studentId: string
+  videos: StudentVideo[]
+  onRefreshVideos: (studentId: string) => Promise<void>
+  onStudent: (id: string) => void
+}) {
+  const [activeIndex, setActiveIndex] = useState<number | null>(null), [url, setUrl] = useState(''), [rate, setRate] = useState(1), [error, setError] = useState('')
   const [feedback, setFeedback] = useState(''), [feedbackState, setFeedbackState] = useState<'idle' | 'sending' | 'sent'>('idle'), [feedbackError, setFeedbackError] = useState('')
-  const retried = useRef(false), videoRef = useRef<HTMLVideoElement>(null), videosRequest = useRef(0), urlRequest = useRef(0), feedbackRequest = useRef(0), sentTimer = useRef<number>(), draftRef = useRef('')
+  const retried = useRef(false), videoRef = useRef<HTMLVideoElement>(null), urlRequest = useRef(0), feedbackRequest = useRef(0), sentTimer = useRef<number>(), draftRef = useRef('')
   // 草稿的实时值:发送在途时教练可以继续改,成功回调要拿当前值判断该不该清空(setState 闭包里的是旧值)。
   const writeFeedback = (value: string) => { draftRef.current = value; setFeedback(value) }
-  useEffect(() => { const request = ++videosRequest.current; setVideos([]); setActiveIndex(null); urlRequest.current += 1; feedbackRequest.current += 1; if (studentId) void getStudentVideos(studentId).then((rows) => { if (request === videosRequest.current) setVideos(rows) }).catch(() => { if (request === videosRequest.current) setVideos([]) }) }, [studentId])
+  const refreshVideos = useCallback(async () => {
+    if (!studentId) return
+    try {
+      await onRefreshVideos(studentId)
+    } catch {
+      // Keep the last authoritative array; a failed refresh must not invent a zero count.
+    }
+  }, [onRefreshVideos, studentId])
+  useEffect(() => {
+    setActiveIndex(null)
+    urlRequest.current += 1
+    feedbackRequest.current += 1
+    void refreshVideos()
+  }, [refreshVideos])
   const grouped = useMemo(() => Object.entries(videos.reduce<Record<string, StudentVideo[]>>((acc, video) => { const d = (video.logged_at ?? video.created_at).slice(0, 10); (acc[d] ??= []).push(video); return acc }, {})), [videos])
   const ordered = useMemo(() => grouped.flatMap(([, rows]) => rows), [grouped]), active = activeIndex == null ? null : ordered[activeIndex] ?? null
   const sign = async (video: StudentVideo, failure: string) => { const request = ++urlRequest.current; setError(''); try { const signed = await getUploadUrl(video.id); if (request === urlRequest.current) setUrl(signed.url) } catch { if (request === urlRequest.current) setError(failure) } }
@@ -24,7 +43,7 @@ export function VideosPage({ students, studentId, onStudent }: { students: Coach
   useEffect(() => { if (!active) return; const keydown = (e: KeyboardEvent) => { if (e.defaultPrevented) return; const el = e.target instanceof HTMLElement ? e.target : null; const typing = !!el && (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement || el.isContentEditable); if (e.key === 'Escape') { if (el && typing) { el.blur(); return } e.preventDefault(); close(); return } if (typing || el instanceof HTMLVideoElement) return; if (e.key === 'ArrowLeft') { e.preventDefault(); move(-1) } if (e.key === 'ArrowRight') { e.preventDefault(); move(1) } }; window.addEventListener('keydown', keydown); return () => window.removeEventListener('keydown', keydown) })
   useEffect(() => () => { if (sentTimer.current != null) window.clearTimeout(sentTimer.current) }, [])
   const playbackFailed = () => { if (!active || retried.current) { setError('视频播放失败'); return } retried.current = true; void sign(active, '视频链接已过期，续签失败') }
-  const sendFeedback = async () => { if (!active || feedbackState === 'sending') return; const draft = feedback, text = draft.trim(); if (!text || text.length > 2000) return; const request = ++feedbackRequest.current; setFeedbackState('sending'); setFeedbackError(''); try { await postCoachFeedback({ student_id: studentId, day_date: (active.logged_at ?? active.created_at).slice(0, 10), plan_exercise_id: active.plan_exercise_id, video_id: active.id, text }); if (request !== feedbackRequest.current) return; if (draftRef.current !== draft) { setFeedbackState('idle'); return } writeFeedback(''); setFeedbackState('sent'); sentTimer.current = window.setTimeout(() => { if (request === feedbackRequest.current) setFeedbackState('idle') }, 2000) } catch { if (request === feedbackRequest.current) { setFeedbackState('idle'); setFeedbackError('反馈发送失败，请稍后重试') } } }
+  const sendFeedback = async () => { if (!active || feedbackState === 'sending') return; const draft = feedback, text = draft.trim(); if (!text || text.length > 2000) return; const request = ++feedbackRequest.current; setFeedbackState('sending'); setFeedbackError(''); try { await postCoachFeedback({ student_id: studentId, day_date: (active.logged_at ?? active.created_at).slice(0, 10), plan_exercise_id: active.plan_exercise_id, video_id: active.id, text }); if (request !== feedbackRequest.current) return; void refreshVideos(); if (draftRef.current !== draft) { setFeedbackState('idle'); return } writeFeedback(''); setFeedbackState('sent'); sentTimer.current = window.setTimeout(() => { if (request === feedbackRequest.current) setFeedbackState('idle') }, 2000) } catch { if (request === feedbackRequest.current) { setFeedbackState('idle'); setFeedbackError('反馈发送失败，请稍后重试') } } }
   const association = active ? videoAssociation(active) : '', detail = active ? [active.weight_kg != null && active.reps != null ? `${kg(active.weight_kg)}kg × ${active.reps}` : active.weight_kg != null ? `${kg(active.weight_kg)}kg` : active.reps != null ? `${active.reps} 次` : null, shortDate(active.logged_at ?? active.created_at), activeIndex != null ? `${activeIndex + 1}/${ordered.length}` : null].filter(Boolean).join(' · ') : ''
   return <main className="data-page"><PageTop title="训练视频" students={students} studentId={studentId} onStudent={onStudent} tail={<span className="page-status">最近 {videos.length} 条</span>} />
     <div className="video-wall">{grouped.length === 0 && <div className="empty-state">暂无训练视频</div>}{grouped.map(([date, rows]) => <section key={date}><h3>{shortDate(date)}</h3><div className="video-tiles">{rows.map((v) => <button key={v.id} onClick={() => open(ordered.findIndex((item) => item.id === v.id))}><span className="play">▶</span><span><b>{v.exercise_name || v.filename || '训练视频'}{v.set_index != null ? ` · 第 ${v.set_index} 组` : ''}</b><small>{v.weight_kg != null && v.reps != null ? `${kg(v.weight_kg)}kg × ${v.reps} · ` : ''}{size(v.size_bytes)}</small></span></button>)}</div></section>)}</div>

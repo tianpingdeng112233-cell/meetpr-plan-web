@@ -1,0 +1,1360 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+html,body{margin:0;padding:0;background:#E9EBEF}
+*{box-sizing:border-box}
+a{color:#17395C;text-decoration:none}
+a:hover{color:#0F2942}
+.pb{transition:background .13s ease,color .13s ease,border-color .13s ease,opacity .13s ease}
+.pb:hover{opacity:.84}
+.pb:active{opacity:.68}
+.rw{transition:background .1s ease}
+.rw:hover{background:#F4F6F8}
+.cl:hover{background:#F0F3F6}
+.sc::-webkit-scrollbar{width:11px;height:11px}
+.sc::-webkit-scrollbar-thumb{background:#CBD2DA;border-radius:99px;border:3px solid #fff}
+.sc::-webkit-scrollbar-track{background:transparent}
+</style>
+</helmet>
+
+<div style="height:100vh;min-width:1440px;display:flex;flex-direction:column;background:#F6F7F9;color:#0E1726;font-family:'IBM Plex Sans','Noto Sans SC',sans-serif;overflow:hidden">
+
+<div style="flex:none;height:42px;background:#fff;border-bottom:1px solid #D6DAE0;display:flex;align-items:center;gap:10px;padding:0 14px;white-space:nowrap">
+<span style="flex:none;width:24px;height:24px;border-radius:4px;background:#17395C;color:#fff;display:flex;align-items:center;justify-content:center;font-family:'IBM Plex Mono',monospace;font-weight:700;font-size:12px">M</span>
+<span style="flex:none;font-family:'IBM Plex Mono','Noto Sans SC',monospace;font-size:11px;color:#6B7686">{{ crumb }}</span>
+<span class="pb" onclick="{{ sayCmd }}" style="flex:1;max-width:330px;height:26px;border:1px solid #D6DAE0;border-radius:4px;background:#FAFBFC;display:flex;align-items:center;gap:8px;padding:0 10px;cursor:pointer;margin-left:6px">
+<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#98A0AC" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.5-3.5"></path></svg>
+<span style="font-size:12px;color:#98A0AC">跳转学员、动作、计划…</span>
+<span style="margin-left:auto;font-family:'IBM Plex Mono',monospace;font-size:10px;color:#98A0AC;border:1px solid #E7EAEE;border-radius:4px;padding:1px 5px">⌘K</span>
+</span>
+<span style="margin-left:auto;flex:none;display:flex;align-items:center;gap:8px">
+<sc-if value="{{ isPlan }}" hint-placeholder-val="{{ true }}">
+<span style="flex:none;white-space:nowrap;display:flex;align-items:center;gap:6px;font-family:'IBM Plex Mono','Noto Sans SC',monospace;font-size:11px;color:#6B7686"><span style="width:6px;height:6px;border-radius:50%;background:#10715A"></span>{{ saveState }}</span>
+<span class="pb" onclick="{{ sayPublish }}" style="flex:none;white-space:nowrap;height:26px;padding:0 12px;border-radius:4px;background:#17395C;color:#fff;display:flex;align-items:center;gap:7px;font-size:12px;font-weight:600;cursor:pointer">更新计划<span style="font-family:'IBM Plex Mono',monospace;font-size:10px;opacity:.7">⌘↵</span></span>
+</sc-if>
+<sc-if value="{{ isOv }}" hint-placeholder-val="{{ false }}">
+<span class="pb" onclick="{{ goPlan }}" style="flex:none;white-space:nowrap;height:26px;padding:0 12px;border-radius:4px;background:#17395C;color:#fff;display:flex;align-items:center;gap:7px;font-size:12px;font-weight:600;cursor:pointer">排下周计划<span style="font-family:'IBM Plex Mono',monospace;font-size:10px;opacity:.7">⌘↵</span></span>
+</sc-if>
+<span style="flex:none;width:26px;height:26px;border-radius:50%;background:#EAEFF5;border:1px solid #D6DAE0;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;color:#17395C">李</span>
+</span>
+</div>
+
+<div style="flex:1;min-height:0;display:flex">
+
+<div style="width:172px;flex:none;background:#fff;border-right:1px solid #D6DAE0;display:flex;flex-direction:column;padding:10px 8px;gap:1px">
+<span style="font-family:'IBM Plex Mono','Noto Sans SC',monospace;font-size:10px;letter-spacing:.1em;color:#98A0AC;padding:6px 10px 4px">工作区</span>
+<sc-for list="{{ nav }}" as="n" hint-placeholder-count="5">
+<span class="pb" onclick="{{ n.go }}" style="{{ n.style }}">
+<span style="display:flex;align-items:center;gap:9px;white-space:nowrap">{{ n.label }}</span>
+<span style="{{ n.badgeStyle }}">{{ n.badge }}</span>
+</span>
+</sc-for>
+<span style="font-family:'IBM Plex Mono','Noto Sans SC',monospace;font-size:10px;letter-spacing:.1em;color:#98A0AC;padding:14px 10px 4px">待排队列 · {{ pendingN }}</span>
+<sc-for list="{{ queue }}" as="q" hint-placeholder-count="4">
+<span class="pb" onclick="{{ q.pick }}" style="{{ q.style }}">
+<span style="flex:1;min-width:0;font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ q.name }}</span>
+<span style="{{ q.unStyle }}">{{ q.un }}</span>
+</sc-for>
+<span style="margin-top:auto;font-family:'IBM Plex Mono','Noto Sans SC',monospace;font-size:10px;color:#98A0AC;padding:0 10px 6px;line-height:1.6">本周 07-27 — 08-02<br>已同步 09:12</span>
+</div>
+
+<sc-if value="{{ isOv }}" hint-placeholder-val="{{ false }}">
+<div style="flex:1;min-width:0;display:flex;flex-direction:column;background:#fff">
+<div style="flex:none;display:flex;align-items:center;gap:8px;height:34px;padding:0 14px;border-bottom:1px solid #E7EAEE">
+<sc-for list="{{ segs }}" as="t" hint-placeholder-count="3">
+<span class="pb" onclick="{{ t.pick }}" style="{{ t.style }}">{{ t.label }}<span style="font-family:'IBM Plex Mono',monospace;font-size:10px;opacity:.62;margin-left:5px">{{ t.n }}</span></span>
+</sc-for>
+<span style="margin-left:auto;font-family:'IBM Plex Mono','Noto Sans SC',monospace;font-size:10px;color:#98A0AC">J / K 上下移动 · ↵ 打开编排器</span>
+</div>
+<div style="flex:none;display:grid;grid-template-columns:150px 104px 116px 84px 78px 80px 1fr;align-items:center;height:26px;padding:0 14px;background:#FAFBFC;border-bottom:1px solid #E7EAEE;font-family:'IBM Plex Mono','Noto Sans SC',monospace;font-size:10px;color:#6B7686">
+<span>学员</span><span>级别 / 体重</span><span>完成率</span><span style="text-align:right">周总量</span><span style="text-align:right">RPE</span><span style="text-align:right">距赛</span><span style="padding-left:12px">下周计划</span>
+</div>
+<div class="sc" style="flex:1;overflow:auto">
+<sc-for list="{{ rows }}" as="r" hint-placeholder-count="12">
+<div class="rw" onclick="{{ r.pick }}" style="{{ r.rowStyle }}">
+<span style="display:flex;align-items:center;gap:8px;min-width:0"><span style="{{ r.keyStyle }}">{{ r.keyNum }}</span><span style="font-size:13px;font-weight:600;white-space:nowrap">{{ r.name }}</span><span style="{{ r.msgDotStyle }}"></span></span>
+<span style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:#6B7686;white-space:nowrap">{{ r.cls }} · {{ r.wt }}</span>
+<span style="display:flex;align-items:center;gap:8px"><span style="width:48px;height:4px;border-radius:4px;background:#E7EAEE;display:block;overflow:hidden"><span style="{{ r.adhBarStyle }}"></span></span><span style="{{ r.adhStyle }}">{{ r.adh }}</span></span>
+<span style="text-align:right;font-family:'IBM Plex Mono',monospace;font-size:12px">{{ r.tonn }}<span style="font-size:10px;color:#98A0AC;margin-left:2px">t</span></span>
+<span style="{{ r.rpeStyle }}">{{ r.rpe }}</span>
+<span style="text-align:right;font-family:'IBM Plex Mono','Noto Sans SC',monospace;font-size:11px;color:#6B7686">{{ r.meet }}</span>
+<span style="padding-left:12px;display:flex;align-items:center;gap:9px"><span style="{{ r.planStyle }}">{{ r.plan }}</span><span style="font-size:11px;color:#98A0AC;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ r.flag }}</span><span class="pb" onclick="{{ r.write }}" style="{{ r.writeStyle }}">排下周 ↵</span></span>
+</div>
+</sc-for>
+</div>
+</div>
+</sc-if>
+
+<sc-if value="{{ isPlan }}" hint-placeholder-val="{{ true }}">
+<div style="flex:1;min-width:0;display:flex;flex-direction:column;background:#fff">
+
+<div style="flex:none;height:38px;border-bottom:1px solid #E7EAEE;display:flex;align-items:center;gap:9px;padding:0 14px;white-space:nowrap">
+<span class="pb" onclick="{{ goOv }}" style="flex:none;font-size:12px;color:#3F4A5A;cursor:pointer">← 总览</span>
+<span style="flex:none;width:1px;height:16px;background:#E7EAEE"></span>
+<span style="flex:none;font-family:'IBM Plex Mono','Noto Sans SC',monospace;font-size:10px;color:#98A0AC">学员</span>
+<span class="pb" style="flex:none;height:26px;padding:0 10px;border:1px solid #D6DAE0;border-radius:4px;background:#fff;display:flex;align-items:center;gap:7px;font-size:12px;font-weight:600;cursor:pointer">{{ selName }}<span style="font-size:8px;color:#98A0AC">▼</span></span>
+<span style="flex:none;font-family:'IBM Plex Mono','Noto Sans SC',monospace;font-size:10px;color:#98A0AC">计划</span>
+<span class="pb" style="flex:none;height:26px;padding:0 10px;border:1px solid #D6DAE0;border-radius:4px;background:#fff;display:flex;align-items:center;gap:7px;font-size:12px;color:#3F4A5A;cursor:pointer">硬拉 300 · 12 周<span style="font-size:8px;color:#98A0AC">▼</span></span>
+<span class="pb" onclick="{{ sayDefer }}" style="flex:none;height:24px;padding:0 9px;border:1px solid #E0C08A;border-radius:4px;background:#FDF6E7;display:flex;align-items:center;font-size:11px;color:#8A5B00;cursor:pointer">学员已整体顺延 1 天</span>
+<span style="margin-left:auto;flex:none;display:flex;align-items:center;gap:6px">
+<span class="pb" onclick="{{ sayAdd }}" style="flex:none;height:24px;padding:0 10px;border:1px solid #D6DAE0;border-radius:4px;background:#fff;display:flex;align-items:center;font-size:12px;color:#0E1726;cursor:pointer">＋ 动作</span>
+<span class="pb" onclick="{{ sayImport }}" style="flex:none;height:24px;padding:0 10px;border:1px solid #D6DAE0;border-radius:4px;background:#fff;display:flex;align-items:center;font-size:12px;color:#0E1726;cursor:pointer">导入 .xlsx</span>
+<span class="pb" style="flex:none;height:24px;padding:0 10px;border:1px solid #D6DAE0;border-radius:4px;background:#fff;display:flex;align-items:center;gap:6px;font-family:'IBM Plex Mono','Noto Sans SC',monospace;font-size:11px;color:#3F4A5A;cursor:pointer">起始 07-13<span style="font-size:8px;color:#98A0AC">▼</span></span>
+<span style="flex:none;height:24px;padding:0 10px;border:1px solid #A7CDBB;border-radius:4px;background:#EDF7F2;display:flex;align-items:center;font-size:11px;color:#10715A">已发布 · 不可撤回</span>
+</span>
+</div>
+
+<div style="flex:none;height:28px;border-bottom:1px solid #E7EAEE;background:#FAFBFC;display:flex;align-items:center;gap:10px;padding:0 14px;white-space:nowrap;font-family:'IBM Plex Mono','Noto Sans SC',monospace;font-size:10px;color:#98A0AC">
+<span style="letter-spacing:.14em;color:#6B7686">MESOCYCLE</span>
+<span class="pb" style="color:#3F4A5A;cursor:pointer">12 周 · 周期化 ▾</span>
+<span style="width:1px;height:12px;background:#E7EAEE"></span>
+<span>可见</span><span style="color:#17395C;font-weight:700">{{ weekCode }} · 第 31 周</span>
+<span style="margin-left:auto">缩放 100%</span>
+<span>Ctrl + 滚轮缩放 · 中键拖动平移</span>
+<span class="pb" style="color:#3F4A5A;cursor:pointer">跳到周 ▾</span>
+</div>
+
+<div style="flex:none;min-height:32px;border-bottom:1px solid #C9D6E4;background:#EAEFF5;display:flex;align-items:center;gap:8px;padding:0 14px;white-space:nowrap">
+<span style="flex:none;font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.14em;color:#17395C;font-weight:700">SELECTED</span>
+<span style="flex:none;font-size:12px;font-weight:700">{{ selDayLabel }}</span>
+<span class="pb" onclick="{{ sayPasteWeek }}" style="flex:none;height:22px;padding:0 9px;border:1px solid #C9D6E4;border-radius:4px;background:#fff;display:flex;align-items:center;font-size:11px;color:#0E1726;cursor:pointer">复制上周计划到本周</span>
+<span style="flex:none;width:1px;height:14px;background:#C9D6E4"></span>
+<span style="flex:none;font-family:'IBM Plex Mono','Noto Sans SC',monospace;font-size:10px;color:#6B7686">当前行 · {{ selRowName }}</span>
+<span class="pb" onclick="{{ sayDupRow }}" style="flex:none;height:22px;padding:0 9px;border:1px solid #C9D6E4;border-radius:4px;background:#fff;display:flex;align-items:center;font-size:11px;color:#0E1726;cursor:pointer">复制动作</span>
+<span class="pb" onclick="{{ sayAdd }}" style="flex:none;height:22px;padding:0 9px;border:1px solid #C9D6E4;border-radius:4px;background:#fff;display:flex;align-items:center;font-size:11px;color:#0E1726;cursor:pointer">＋ 加动作</span>
+<span class="pb" onclick="{{ sayRest }}" style="flex:none;height:22px;padding:0 9px;border:1px solid #C9D6E4;border-radius:4px;background:#fff;display:flex;align-items:center;font-size:11px;color:#0E1726;cursor:pointer">设为休息</span>
+<span class="pb" onclick="{{ sayClear }}" style="flex:none;height:22px;padding:0 9px;border:1px solid #E0B4B0;border-radius:4px;background:#fff;display:flex;align-items:center;font-size:11px;color:#A81E17;cursor:pointer">清空本日</span>
+<span class="pb" onclick="{{ clearSel }}" style="margin-left:auto;flex:none;font-size:11px;color:#6B7686;cursor:pointer">✕ 取消选择</span>
+</div>
+
+<div style="flex:none;height:30px;border-bottom:1px solid #E7EAEE;background:#fff;display:flex;align-items:center;gap:10px;padding:0 14px;white-space:nowrap;font-family:'IBM Plex Mono','Noto Sans SC',monospace;font-size:11px">
+<span style="flex:none;min-width:52px;height:20px;border:1px solid #C9D6E4;border-radius:4px;background:#FAFBFC;display:flex;align-items:center;justify-content:center;color:#17395C;font-weight:600">{{ cellRef }}</span>
+<span style="flex:none;color:#6B7686">{{ cellLabel }}</span>
+<span style="flex:1;min-width:0;height:20px;border:1px solid #C9D6E4;border-radius:4px;background:#fff;display:flex;align-items:center;padding:0 8px;color:#0E1726">{{ cellValue }}<span style="width:1px;height:12px;background:#17395C;margin-left:1px"></span></span>
+<span style="flex:none;color:#98A0AC">Tab 右移 · ↵ 下移 · ⌘D 向下填充 · Esc 取消</span>
+</div>
+
+<div class="sc" style="flex:1;overflow:auto;background:#F6F7F9">
+<sc-for list="{{ weeks }}" as="w" hint-placeholder-count="2">
+<div style="border-bottom:1px solid #D6DAE0">
+<div style="{{ w.headStyle }}">
+<span style="flex:none;font-family:'IBM Plex Mono',monospace;font-size:11px;font-weight:700;color:#17395C;letter-spacing:.04em">{{ w.code }}</span>
+<span style="flex:none;font-size:13px;font-weight:700">{{ w.name }}</span>
+<span style="flex:none;font-family:'IBM Plex Mono',monospace;font-size:11px;color:#98A0AC">{{ w.range }}</span>
+<span style="flex:none;font-family:'IBM Plex Mono','Noto Sans SC',monospace;font-size:11px;color:#6B7686">{{ w.stat }}</span>
+<span style="{{ w.curStyle }}">● 当前周</span>
+</div>
+<div style="display:flex;align-items:stretch;background:#fff">
+<sc-for list="{{ w.days }}" as="d" hint-placeholder-count="7">
+<div class="pb" onclick="{{ d.pickDay }}" style="{{ d.colStyle }}">
+<div style="{{ d.headStyle }}">
+<span style="{{ d.headRowStyle }}">
+<span style="font-family:'IBM Plex Mono','Noto Sans SC',monospace;font-size:11px;font-weight:700;color:#17395C;letter-spacing:.04em;white-space:nowrap">{{ d.wd }}</span>
+<span style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:#98A0AC;white-space:nowrap">{{ d.date }}</span>
+<span style="{{ d.colChipStyle }}">{{ d.col }}</span>
+</span>
+<sc-if value="{{ d.hasWork }}" hint-placeholder-val="{{ true }}">
+<span style="font-size:12px;font-weight:600;color:#0E1726;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ d.title }}</span>
+<span style="font-family:'IBM Plex Mono','Noto Sans SC',monospace;font-size:10px;color:#6B7686;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ d.meta }}</span>
+</sc-if>
+</div>
+
+<sc-if value="{{ d.isRest }}" hint-placeholder-val="{{ false }}">
+<div class="pb" onclick="{{ d.addEx }}" style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:16px 0;cursor:pointer">
+<span style="font-family:'IBM Plex Mono','Noto Sans SC',monospace;font-size:11px;color:#98A0AC;writing-mode:vertical-rl;letter-spacing:.3em">休息</span>
+<span style="font-size:14px;color:#17395C;font-weight:600">＋</span>
+</div>
+</sc-if>
+
+<sc-if value="{{ d.hasWork }}" hint-placeholder-val="{{ true }}">
+<sc-for list="{{ d.groups }}" as="g" hint-placeholder-count="2">
+<div style="{{ g.labelStyle }}"><span style="{{ g.barStyle }}"></span>{{ g.label }}<span style="margin-left:auto;font-family:'IBM Plex Mono','Noto Sans SC',monospace;font-size:10px;color:#98A0AC">{{ g.meta }}</span></div>
+<sc-for list="{{ g.rows }}" as="r" hint-placeholder-count="2">
+<div style="{{ r.rowStyle }}">
+<div style="display:flex;align-items:center;gap:4px;padding:0 6px">
+<span class="cl" onclick="{{ r.namePick }}" style="{{ r.nameStyle }}">{{ r.name }}</span>
+<span style="{{ r.doneStyle }}">✓</span>
+<span style="{{ r.lockStyle }}">锁</span>
+<span class="pb" onclick="{{ r.openMenu }}" style="flex:none;font-size:9px;color:#98A0AC;cursor:pointer">▼</span>
+</div>
+<div style="display:grid;grid-template-columns:22px 1fr 1fr;align-items:center;padding:0 6px 2px">
+<span style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:#98A0AC">{{ r.num }}</span>
+<span class="cl" onclick="{{ r.setsPick }}" style="{{ r.setsStyle }}">{{ r.setsV }}</span>
+<span class="cl" onclick="{{ r.repsPick }}" style="{{ r.repsStyle }}">{{ r.repsV }}</span>
+</div>
+<div style="display:flex;flex-wrap:wrap;gap:3px;padding:0 6px 3px;align-items:center">
+<span style="{{ r.kindStyle }}">{{ r.kind }}</span>
+<sc-for list="{{ r.setBoxes }}" as="b" hint-placeholder-count="3">
+<span class="cl" onclick="{{ b.pick }}" style="{{ b.style }}">{{ b.v }}</span>
+</sc-for>
+</div>
+<div style="display:flex;flex-wrap:wrap;align-items:baseline;gap:0 6px;min-width:0;padding:0 6px 5px">
+<sc-for list="{{ r.lastToks }}" as="tk" hint-placeholder-count="2">
+<span style="flex:none;white-space:nowrap;font-family:'IBM Plex Mono','Noto Sans SC',monospace;font-size:11px;color:#6B7686">{{ tk.t }}</span>
+</sc-for>
+<sc-if value="{{ r.hasNote }}" hint-placeholder-val="{{ false }}">
+<span style="flex:1;min-width:0;font-size:11px;color:#17395C;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">· {{ r.note }}</span>
+</sc-if>
+</div>
+<sc-if value="{{ r.menuOpen }}" hint-placeholder-val="{{ false }}">
+<div style="border-top:1px solid #E7EAEE;background:#FAFBFC;padding:4px 0">
+<sc-for list="{{ r.variants }}" as="v" hint-placeholder-count="5">
+<div class="pb" onclick="{{ v.pick }}" style="{{ v.style }}">{{ v.n }}</div>
+</sc-for>
+<div class="pb" onclick="{{ r.createCustom }}" style="padding:6px 8px;font-size:11px;color:#17395C;font-weight:600;cursor:pointer;border-top:1px solid #E7EAEE">＋ 创建自定义</div>
+</div>
+</sc-if>
+</div>
+</sc-for>
+</sc-for>
+<div class="pb" onclick="{{ d.addEx }}" style="display:flex;align-items:center;gap:5px;height:26px;padding:0 6px;font-size:11px;color:#17395C;font-weight:600;cursor:pointer">＋ 加动作</div>
+</sc-if>
+</div>
+</sc-for>
+</div>
+</div>
+</sc-for>
+</div>
+</div>
+</sc-if>
+
+<sc-if value="{{ isMsg }}" hint-placeholder-val="{{ false }}">
+<div style="flex:1;min-width:0;display:flex;background:#fff">
+
+<div style="width:300px;flex:none;border-right:1px solid #D6DAE0;display:flex;flex-direction:column;min-width:0">
+<div style="flex:none;height:44px;border-bottom:1px solid #E7EAEE;display:flex;align-items:center;gap:8px;padding:0 12px;white-space:nowrap">
+<span style="font-size:13px;font-weight:700">会话</span>
+<span class="pb" onclick="{{ nextUnread }}" style="margin-left:auto;flex:none;height:22px;padding:0 9px;border-radius:4px;background:#0E1726;color:#fff;display:flex;align-items:center;font-size:11px;font-weight:600;cursor:pointer">下一条未读 {{ unreadTotal }}</span>
+</div>
+<div class="sc" style="flex:1;overflow:auto;padding:6px">
+<sc-for list="{{ convs }}" as="c" hint-placeholder-count="8">
+<span class="pb" onclick="{{ c.pick }}" style="{{ c.style }}">
+<span style="flex:1;min-width:0;display:flex;flex-direction:column;gap:1px">
+<span style="{{ c.nameStyle }}">{{ c.name }}</span>
+<span style="font-size:11px;color:#98A0AC;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ c.last }}</span>
+</span>
+<span style="flex:none;display:flex;flex-direction:column;align-items:flex-end;gap:3px">
+<span style="font-family:'IBM Plex Mono','Noto Sans SC',monospace;font-size:10px;color:#98A0AC">{{ c.time }}</span>
+<span style="{{ c.unStyle }}">{{ c.un }}</span>
+</span>
+</span>
+</sc-for>
+</div>
+</div>
+
+<div style="flex:1;min-width:0;display:flex;flex-direction:column;background:#F6F7F9">
+<div style="flex:none;height:44px;border-bottom:1px solid #E7EAEE;background:#fff;display:flex;align-items:center;gap:10px;padding:0 16px;white-space:nowrap">
+<span style="width:26px;height:26px;flex:none;border-radius:999px;background:#EAEFF5;border:1px solid #C9D6E4;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:#17395C">{{ selInitial }}</span>
+<span style="flex:none;font-size:14px;font-weight:700">{{ selName }}</span>
+<span style="flex:none;font-family:'IBM Plex Mono','Noto Sans SC',monospace;font-size:11px;color:#6B7686;overflow:hidden;text-overflow:ellipsis">{{ selSub }}</span>
+<span class="pb" onclick="{{ goPlan }}" style="margin-left:auto;flex:none;height:26px;padding:0 11px;border:1px solid #D6DAE0;border-radius:4px;background:#fff;display:flex;align-items:center;font-size:12px;color:#0E1726;cursor:pointer">打开 TA 的计划</span>
+</div>
+<div class="sc" style="flex:1;min-height:0;overflow:auto;padding:16px 20px;display:flex;flex-direction:column;gap:11px">
+<sc-for list="{{ msgGroups }}" as="g" hint-placeholder-count="2">
+<div style="align-self:center;font-family:'IBM Plex Mono','Noto Sans SC',monospace;font-size:10px;color:#98A0AC">{{ g.label }}</div>
+<sc-for list="{{ g.msgs }}" as="m" hint-placeholder-count="4">
+<div style="{{ m.rowStyle }}">
+<div style="{{ m.metaStyle }}"><span>{{ m.who }}</span><span>{{ m.time }}</span></div>
+<sc-if value="{{ m.hasText }}" hint-placeholder-val="{{ true }}">
+<div style="{{ m.bubbleStyle }}">{{ m.text }}</div>
+</sc-if>
+<sc-if value="{{ m.hasCard }}" hint-placeholder-val="{{ false }}">
+<div style="{{ m.cardStyle }}">
+<span style="{{ m.cardKindStyle }}">{{ m.cardKind }}</span>
+<span style="display:flex;flex-direction:column;gap:2px;min-width:0">
+<span style="font-size:12px;font-weight:600;color:#0E1726;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ m.cardTitle }}</span>
+<span style="font-family:'IBM Plex Mono','Noto Sans SC',monospace;font-size:10px;color:#6B7686;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ m.cardMeta }}</span>
+</span>
+</div>
+</sc-if>
+</div>
+</sc-for>
+</sc-for>
+</div>
+<div style="flex:none;border-top:1px solid #D6DAE0;background:#fff;padding:10px 16px 12px;display:flex;flex-direction:column;gap:8px">
+<div style="display:flex;flex-wrap:wrap;gap:5px">
+<sc-for list="{{ templates }}" as="t" hint-placeholder-count="5">
+<span class="pb" onclick="{{ t.pick }}" style="height:24px;padding:0 9px;border:1px solid #D6DAE0;border-radius:999px;background:#fff;display:flex;align-items:center;gap:5px;font-size:11px;color:#3F4A5A;cursor:pointer;white-space:nowrap;max-width:280px"><span style="font-family:'IBM Plex Mono',monospace;font-size:9px;color:#98A0AC;flex:none">{{ t.key }}</span><span style="min-width:0;overflow:hidden;text-overflow:ellipsis">{{ t.t }}</span></span>
+</sc-for>
+</div>
+<div style="display:flex;align-items:flex-end;gap:8px">
+<div style="flex:1;min-width:0;min-height:40px;background:#fff;border:1px solid #C9D6E4;border-radius:10px;padding:9px 11px;font-size:13px;line-height:1.6;color:#0E1726">{{ draft }}<span style="width:1px;height:16px;background:#17395C;margin-left:1px;display:inline-block;vertical-align:-3px"></span></div>
+<span class="pb" onclick="{{ sayQuoteCell }}" style="flex:none;height:32px;padding:0 10px;border:1px solid #D6DAE0;border-radius:4px;background:#fff;display:flex;align-items:center;font-size:12px;color:#0E1726;cursor:pointer;white-space:nowrap">引用 {{ cellRef }}</span>
+<span class="pb" onclick="{{ saySend }}" style="flex:none;height:32px;padding:0 16px;border-radius:4px;background:#17395C;color:#fff;display:flex;align-items:center;gap:7px;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap">发送<span style="font-family:'IBM Plex Mono',monospace;font-size:10px;opacity:.7">⌘↵</span></span>
+</div>
+</div>
+</div>
+</div>
+</sc-if>
+
+<sc-if value="{{ isCat }}" hint-placeholder-val="{{ false }}">
+<div style="flex:1;min-width:0;display:flex;background:#fff">
+<div class="sc" style="width:224px;flex:none;border-right:1px solid #D6DAE0;background:#FAFBFC;overflow:auto;padding:8px">
+<sc-for list="{{ catNav }}" as="c" hint-placeholder-count="14">
+<sc-if value="{{ c.isGroup }}" hint-placeholder-val="{{ false }}">
+<div style="{{ c.style }}">{{ c.label }}</div>
+</sc-if>
+<sc-if value="{{ c.isItem }}" hint-placeholder-val="{{ true }}">
+<div class="pb" onclick="{{ c.pick }}" style="{{ c.style }}"><span style="min-width:0;overflow:hidden;text-overflow:ellipsis;font-size:13px">{{ c.label }}</span><span style="{{ c.nStyle }}">{{ c.n }}</span></div>
+</sc-if>
+</sc-for>
+</div>
+<div style="flex:1;min-width:0;display:flex;flex-direction:column">
+<div style="flex:none;height:44px;border-bottom:1px solid #E7EAEE;display:flex;align-items:center;gap:10px;padding:0 16px;white-space:nowrap">
+<span style="flex:1;min-width:0;max-width:440px;height:28px;border:1px solid #D6DAE0;border-radius:4px;background:#FAFBFC;display:flex;align-items:center;gap:8px;padding:0 10px">
+<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#98A0AC" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.5-3.5"></path></svg>
+<span style="font-size:12px;color:#98A0AC">搜动作名 / 英文 / 别名，回车直达</span>
+</span>
+<span class="pb" style="flex:none;height:28px;padding:0 10px;border:1px solid #D6DAE0;border-radius:4px;background:#fff;display:flex;align-items:center;gap:7px;font-size:12px;color:#3F4A5A;cursor:pointer">器械 · 全部<span style="font-size:8px;color:#98A0AC">▼</span></span>
+<span style="margin-left:auto;flex:none;font-family:'IBM Plex Mono','Noto Sans SC',monospace;font-size:12px;color:#6B7686">{{ catTotal }} 个动作</span>
+<span class="pb" onclick="{{ sayNewEx }}" style="flex:none;height:28px;padding:0 14px;border-radius:4px;background:#17395C;color:#fff;display:flex;align-items:center;font-size:12px;font-weight:600;cursor:pointer">＋ 新建动作</span>
+</div>
+<div style="flex:none;height:40px;border-bottom:1px solid #E7EAEE;display:flex;align-items:center;gap:8px;padding:0 16px;white-space:nowrap">
+<span style="flex:none;font-family:'IBM Plex Mono','Noto Sans SC',monospace;font-size:10px;letter-spacing:.08em;color:#98A0AC">分类</span>
+<sc-for list="{{ catTabs }}" as="t" hint-placeholder-count="4">
+<span class="pb" onclick="{{ t.pick }}" style="{{ t.style }}">{{ t.label }}<span style="font-family:'IBM Plex Mono',monospace;font-size:10px;opacity:.62">{{ t.n }}</span></span>
+</sc-for>
+</div>
+<div style="flex:none;display:grid;grid-template-columns:minmax(280px,1fr) 96px 132px 110px;align-items:center;height:26px;padding:0 16px;background:#EFF1F4;border-bottom:1px solid #D6DAE0;font-family:'IBM Plex Mono','Noto Sans SC',monospace;font-size:10px;color:#6B7686">
+<span>动作 ↑</span><span>分类</span><span>器械</span><span>肌群</span>
+</div>
+<div class="sc" style="flex:1;overflow:auto">
+<sc-for list="{{ exRows }}" as="e" hint-placeholder-count="16">
+<sc-if value="{{ e.isSection }}" hint-placeholder-val="{{ false }}">
+<div style="{{ e.style }}">{{ e.label }}</div>
+</sc-if>
+<sc-if value="{{ e.isRow }}" hint-placeholder-val="{{ true }}">
+<div class="rw" onclick="{{ e.pick }}" style="display:grid;grid-template-columns:minmax(280px,1fr) 96px 132px 110px;align-items:center;padding:9px 16px;border-bottom:1px solid #EDEFF2;cursor:pointer">
+<span style="display:flex;flex-direction:column;gap:2px;min-width:0">
+<span style="font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ e.zh }}</span>
+<span style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:#98A0AC;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ e.en }}</span>
+</span>
+<span><span style="{{ e.kindStyle }}">{{ e.kind }}</span></span>
+<span style="font-size:12px;color:#3F4A5A;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ e.gear }}</span>
+<span><span style="padding:2px 8px;border-radius:999px;border:1px solid #E7EAEE;background:#FAFBFC;font-size:11px;color:#3F4A5A;white-space:nowrap">{{ e.muscle }}</span></span>
+</div>
+</sc-if>
+</sc-for>
+</div>
+</div>
+</div>
+</sc-if>
+
+<sc-if value="{{ isVid }}" hint-placeholder-val="{{ false }}">
+<div style="flex:1;min-width:0;display:flex;background:#fff">
+
+<div style="width:312px;flex:none;border-right:1px solid #D6DAE0;display:flex;flex-direction:column;min-width:0">
+<div style="flex:none;height:44px;border-bottom:1px solid #E7EAEE;display:flex;align-items:center;gap:8px;padding:0 12px;white-space:nowrap">
+<span class="pb" style="flex:none;height:28px;padding:0 10px;border:1px solid #D6DAE0;border-radius:4px;background:#fff;display:flex;align-items:center;gap:7px;font-size:12px;font-weight:600;cursor:pointer">{{ selName }}<span style="font-size:8px;color:#98A0AC">▼</span></span>
+<span style="margin-left:auto;flex:none;font-family:'IBM Plex Mono','Noto Sans SC',monospace;font-size:11px;color:#6B7686">{{ vidCount }}</span>
+</div>
+<div style="flex:none;display:flex;align-items:center;gap:6px;height:36px;padding:0 12px;border-bottom:1px solid #E7EAEE;white-space:nowrap">
+<sc-for list="{{ vidTabs }}" as="t" hint-placeholder-count="3">
+<span class="pb" onclick="{{ t.pick }}" style="{{ t.style }}">{{ t.label }}<span style="font-family:'IBM Plex Mono',monospace;font-size:10px;opacity:.62">{{ t.n }}</span></span>
+</sc-for>
+</div>
+<div class="sc" style="flex:1;overflow:auto;background:#fff">
+<sc-for list="{{ vidGroups }}" as="g" hint-placeholder-count="4">
+<div style="{{ g.headStyle }}">
+<span style="font-family:'IBM Plex Mono',monospace;font-size:11px;font-weight:700;color:#17395C">{{ g.date }}</span>
+<span style="font-family:'IBM Plex Mono','Noto Sans SC',monospace;font-size:10px;color:#6B7686">{{ g.wd }}</span>
+<span style="margin-left:auto;font-family:'IBM Plex Mono','Noto Sans SC',monospace;font-size:10px;color:#98A0AC">{{ g.n }}</span>
+</div>
+<sc-for list="{{ g.items }}" as="v" hint-placeholder-count="3">
+<div class="rw" onclick="{{ v.pick }}" style="{{ v.style }}">
+<span style="{{ v.thumbStyle }}"><svg width="12" height="12" viewBox="0 0 24 24" fill="#17395C"><path d="M8 5l11 7-11 7z"></path></svg></span>
+<span style="flex:1;min-width:0;display:flex;flex-direction:column;gap:3px">
+<span style="font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ v.head }}</span>
+<span style="font-family:'IBM Plex Mono','Noto Sans SC',monospace;font-size:11px;color:#6B7686;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ v.meta }}</span>
+</span>
+<span style="{{ v.tagStyle }}">{{ v.tag }}</span>
+</div>
+</sc-for>
+</sc-for>
+</div>
+</div>
+
+<div style="flex:1;min-width:0;display:flex;flex-direction:column;background:#F6F7F9">
+<div style="flex:none;height:44px;border-bottom:1px solid #E7EAEE;background:#fff;display:flex;align-items:center;gap:10px;padding:0 16px;white-space:nowrap">
+<span style="flex:none;font-size:14px;font-weight:700">{{ vTitle }}</span>
+<span style="{{ vTagStyle }}">{{ vTag }}</span>
+<span style="flex:none;font-family:'IBM Plex Mono','Noto Sans SC',monospace;font-size:12px;color:#6B7686">{{ vMeta }}</span>
+<span style="margin-left:auto;flex:none;display:flex;align-items:center;gap:6px">
+<span style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:#98A0AC;margin-right:2px">{{ vIdx }}</span>
+<span class="pb" onclick="{{ vPrev }}" style="width:26px;height:26px;border:1px solid #D6DAE0;border-radius:4px;background:#fff;display:flex;align-items:center;justify-content:center;font-size:12px;color:#3F4A5A;cursor:pointer">‹</span>
+<span class="pb" onclick="{{ vNext }}" style="width:26px;height:26px;border:1px solid #D6DAE0;border-radius:4px;background:#fff;display:flex;align-items:center;justify-content:center;font-size:12px;color:#3F4A5A;cursor:pointer">›</span>
+</span>
+</div>
+<div style="flex:1;min-height:0;display:flex;flex-direction:column;background:#0E1726">
+<div style="flex:1;min-height:0;display:flex;align-items:center;justify-content:center;padding:14px">
+<div style="position:relative;height:100%;aspect-ratio:9 / 16;background:#1B2534;border:1px solid #2A3646;border-radius:8px;display:flex;align-items:center;justify-content:center;overflow:hidden">
+<span style="width:46px;height:46px;border-radius:999px;background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.3);display:flex;align-items:center;justify-content:center"><svg width="16" height="16" viewBox="0 0 24 24" fill="#fff"><path d="M8 5l11 7-11 7z"></path></svg></span>
+<span style="position:absolute;left:10px;top:10px;font-family:'IBM Plex Mono','Noto Sans SC',monospace;font-size:10px;color:rgba(255,255,255,.5)">竖屏 9:16 · 学员上传</span>
+</div>
+</div>
+<div style="flex:none;display:flex;align-items:center;gap:10px;padding:0 14px 12px;white-space:nowrap">
+<span class="pb" style="width:28px;height:28px;flex:none;border-radius:4px;background:rgba(255,255,255,.14);display:flex;align-items:center;justify-content:center;cursor:pointer"><svg width="11" height="11" viewBox="0 0 24 24" fill="#fff"><rect x="6" y="5" width="4" height="14" rx="1"></rect><rect x="14" y="5" width="4" height="14" rx="1"></rect></svg></span>
+<span style="flex:none;font-family:'IBM Plex Mono',monospace;font-size:12px;color:#fff">0:12 / 0:37</span>
+<span style="flex:1;min-width:0;height:4px;border-radius:4px;background:rgba(255,255,255,.18);position:relative">
+<span style="position:absolute;left:0;top:0;bottom:0;width:32%;border-radius:4px;background:#fff"></span>
+<sc-for list="{{ vMarks }}" as="m" hint-placeholder-count="3"><span style="{{ m.tickStyle }}"></span></sc-for>
+</span>
+<span style="flex:none;display:flex;align-items:center;gap:2px;background:rgba(255,255,255,.1);border-radius:6px;padding:2px">
+<sc-for list="{{ speeds }}" as="p" hint-placeholder-count="4">
+<span class="pb" onclick="{{ p.pick }}" style="{{ p.style }}">{{ p.label }}</span>
+</sc-for>
+</span>
+<span class="pb" onclick="{{ vMark }}" style="flex:none;height:26px;padding:0 11px;border-radius:4px;border:1px solid rgba(255,255,255,.34);color:#fff;display:flex;align-items:center;font-size:12px;cursor:pointer">＋ 在此处打点</span>
+</div>
+</div>
+<div style="flex:none;display:flex;gap:12px;padding:12px 16px 14px;border-top:1px solid #D6DAE0">
+<div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:9px">
+<span style="font-family:'IBM Plex Mono','Noto Sans SC',monospace;font-size:10px;letter-spacing:.06em;color:#6B7686">写给 {{ selName }} 的反馈</span>
+<div style="min-height:56px;background:#fff;border:1px solid #C9D6E4;border-radius:10px;padding:9px 11px;font-size:13px;line-height:1.6;color:#0E1726">00:12 骨盆先动，下一组落杠前先把腹压顶住再推。<span style="width:1px;height:16px;background:#17395C;margin-left:1px;display:inline-block;vertical-align:-3px"></span></div>
+<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+<span class="pb" onclick="{{ vSend }}" style="margin-left:auto;height:30px;padding:0 18px;border-radius:4px;background:#17395C;color:#fff;display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;cursor:pointer">发送反馈<span style="font-family:'IBM Plex Mono',monospace;font-size:10px;opacity:.7">⌘↵</span></span>
+</div>
+</div>
+<div style="width:206px;flex:none;background:#fff;border:1px solid #E7EAEE;border-radius:10px;padding:11px 12px;display:flex;flex-direction:column;gap:7px">
+<span style="font-family:'IBM Plex Mono','Noto Sans SC',monospace;font-size:10px;letter-spacing:.08em;color:#6B7686">本组数据</span>
+<sc-for list="{{ vStats }}" as="c" hint-placeholder-count="5">
+<span style="display:flex;align-items:baseline;justify-content:space-between;gap:8px"><span style="font-size:12px;color:#3F4A5A;white-space:nowrap">{{ c.k }}</span><span style="{{ c.vStyle }}">{{ c.v }}</span></span>
+</sc-for>
+</div>
+<div style="width:212px;flex:none;background:#fff;border:1px solid #E7EAEE;border-radius:10px;padding:11px 12px;display:flex;flex-direction:column;gap:6px">
+<span style="font-family:'IBM Plex Mono','Noto Sans SC',monospace;font-size:10px;letter-spacing:.08em;color:#6B7686">打点 · 3 处</span>
+<sc-for list="{{ vMarks }}" as="m" hint-placeholder-count="3">
+<span class="pb" onclick="{{ m.pick }}" style="display:flex;align-items:flex-start;gap:7px;cursor:pointer">
+<span style="{{ m.dotStyle }}"></span>
+<span style="flex:none;font-family:'IBM Plex Mono',monospace;font-size:11px;font-weight:600;color:#17395C">{{ m.t }}</span>
+<span style="flex:1;min-width:0;font-size:11px;color:#3F4A5A;line-height:1.5">{{ m.txt }}</span>
+</span>
+</sc-for>
+</div>
+</div>
+</div>
+</div>
+</sc-if>
+
+<sc-if value="{{ isReq }}" hint-placeholder-val="{{ false }}">
+<div style="flex:1;min-width:0;display:flex;flex-direction:column;background:#fff">
+<div style="flex:none;height:44px;border-bottom:1px solid #E7EAEE;display:flex;align-items:center;gap:12px;padding:0 16px;white-space:nowrap">
+<span style="flex:none;font-size:14px;font-weight:600">待处理申请</span>
+<span style="flex:none;font-family:'IBM Plex Mono','Noto Sans SC',monospace;font-size:12px;color:#6B7686">{{ reqN }} 条</span>
+<span style="margin-left:auto;flex:none;display:flex;align-items:center;gap:6px;font-family:'IBM Plex Mono','Noto Sans SC',monospace;font-size:11px;color:#98A0AC"><span style="width:6px;height:6px;border-radius:50%;background:#10715A"></span>60s 自动刷新</span>
+</div>
+<div class="sc" style="flex:1;overflow:auto;padding:16px;background:#F6F7F9;display:flex;flex-direction:column;gap:10px">
+<sc-if value="{{ hasReq }}" hint-placeholder-val="{{ true }}">
+<sc-for list="{{ reqs }}" as="r" hint-placeholder-count="2">
+<div style="background:#fff;border:1px solid #E7EAEE;border-radius:10px;padding:14px 16px;display:flex;align-items:center;gap:14px">
+<span style="width:38px;height:38px;flex:none;border-radius:4px;background:#EAEFF5;border:1px solid #C9D6E4;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:600;color:#17395C">{{ r.initial }}</span>
+<span style="flex:1;min-width:0;display:flex;flex-direction:column;gap:3px">
+<span style="font-size:15px;font-weight:700">{{ r.name }}</span>
+<span style="font-family:'IBM Plex Mono','Noto Sans SC',monospace;font-size:11px;color:#98A0AC;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ r.meta }}</span>
+<span style="font-size:12px;color:#3F4A5A;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ r.extra }}</span>
+</span>
+<span class="pb" onclick="{{ r.reject }}" style="flex:none;height:30px;padding:0 14px;border-radius:4px;border:1px solid #E0B4B0;background:#fff;color:#A81E17;display:flex;align-items:center;font-size:12px;cursor:pointer">拒绝</span>
+<span class="pb" onclick="{{ r.accept }}" style="flex:none;height:30px;padding:0 18px;border-radius:4px;background:#17395C;color:#fff;display:flex;align-items:center;font-size:12px;font-weight:600;cursor:pointer">接受</span>
+</div>
+</sc-for>
+</sc-if>
+<sc-if value="{{ noReq }}" hint-placeholder-val="{{ false }}">
+<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;padding:80px 0">
+<span style="font-size:14px;color:#6B7686">暂无待处理申请</span>
+<span style="font-size:12px;color:#98A0AC">把下方邀请码发给学员，他们注册后会出现在这里</span>
+</div>
+</sc-if>
+</div>
+<div style="flex:none;height:56px;border-top:1px solid #D6DAE0;background:#fff;display:flex;align-items:center;gap:12px;padding:0 16px;white-space:nowrap">
+<span style="flex:none;font-size:13px;color:#3F4A5A">我的邀请码</span>
+<span style="flex:none;font-family:'IBM Plex Mono',monospace;font-size:17px;font-weight:700;letter-spacing:.16em;color:#0E1726">{{ inviteCode }}</span>
+<span class="pb" onclick="{{ sayCopyCode }}" style="margin-left:auto;flex:none;height:30px;padding:0 16px;border-radius:4px;border:1px solid #D6DAE0;background:#fff;color:#0E1726;display:flex;align-items:center;font-size:12px;font-weight:600;cursor:pointer">复制</span>
+</div>
+</div>
+</sc-if>
+
+<sc-if value="{{ hasPanel }}" hint-placeholder-val="{{ true }}">
+<div class="sc" style="width:308px;flex:none;background:#FAFBFC;border-left:1px solid #D6DAE0;overflow:auto;display:flex;flex-direction:column">
+<div style="flex:none;position:sticky;top:0;z-index:2;background:#fff;border-bottom:1px solid #D6DAE0;padding:8px 10px 0;display:flex;flex-direction:column;gap:8px">
+<div style="display:flex;align-items:center;gap:9px">
+<span style="width:28px;height:28px;flex:none;border-radius:4px;background:#EAEFF5;border:1px solid #C9D6E4;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;color:#17395C">{{ selInitial }}</span>
+<span style="display:flex;flex-direction:column;gap:1px;min-width:0">
+<span style="font-size:14px;font-weight:700;white-space:nowrap">{{ selName }}</span>
+<span style="font-family:'IBM Plex Mono','Noto Sans SC',monospace;font-size:10px;color:#6B7686;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ selSub }}</span>
+</span>
+</div>
+<div style="display:flex;gap:2px">
+<sc-for list="{{ tabs }}" as="t" hint-placeholder-count="3">
+<span class="pb" onclick="{{ t.pick }}" style="{{ t.style }}">{{ t.label }}<span style="{{ t.badgeStyle }}">{{ t.badge }}</span></span>
+</sc-for>
+</div>
+</div>
+
+<div style="flex:1;padding:12px 12px 16px;display:flex;flex-direction:column;gap:12px">
+
+<sc-if value="{{ tabEx }}" hint-placeholder-val="{{ true }}">
+<div style="display:grid;grid-template-columns:1fr 1fr 1fr;background:#fff;border:1px solid #E7EAEE;border-radius:10px;overflow:hidden">
+<sc-for list="{{ exMetrics }}" as="m" hint-placeholder-count="3">
+<span style="{{ m.style }}">
+<span style="{{ m.vStyle }}">{{ m.v }}</span>
+<span style="font-family:'IBM Plex Mono','Noto Sans SC',monospace;font-size:10px;color:#6B7686;text-align:center;line-height:1.4">{{ m.k }}</span>
+</span>
+</sc-for>
+</div>
+<div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap">
+<span style="padding:3px 10px;border-radius:999px;border:1px solid #C9D6E4;background:#EAEFF5;font-size:12px;font-weight:600;color:#17395C">{{ exName }}</span>
+<span style="padding:3px 9px;border-radius:999px;border:1px solid #E7EAEE;background:#fff;font-family:'IBM Plex Mono','Noto Sans SC',monospace;font-size:11px;color:#6B7686">{{ exSets }}</span>
+<span style="padding:3px 9px;border-radius:999px;border:1px solid #E7EAEE;background:#fff;font-family:'IBM Plex Mono','Noto Sans SC',monospace;font-size:11px;color:#6B7686">{{ exReps }}</span>
+</div>
+<div style="background:#fff;border:1px solid #E7EAEE;border-radius:10px;padding:12px 14px;display:flex;align-items:baseline;gap:8px">
+<span style="font-family:'IBM Plex Mono',monospace;font-size:22px;font-weight:700;line-height:1">{{ exBest }}</span>
+<span style="font-family:'IBM Plex Mono','Noto Sans SC',monospace;font-size:11px;color:#6B7686">{{ exBestMeta }}</span>
+</div>
+<span style="font-family:'IBM Plex Mono','Noto Sans SC',monospace;font-size:10px;letter-spacing:.06em;color:#6B7686">{{ exHistLabel }}</span>
+<sc-for list="{{ exHistory }}" as="h" hint-placeholder-count="2">
+<div style="background:#fff;border:1px solid #E7EAEE;border-radius:10px;overflow:hidden">
+<div style="display:flex;align-items:center;padding:8px 12px;background:#FAFBFC;border-bottom:1px solid #E7EAEE">
+<span style="font-family:'IBM Plex Mono',monospace;font-size:12px;font-weight:700">{{ h.date }}</span>
+<span style="margin-left:auto;font-family:'IBM Plex Mono','Noto Sans SC',monospace;font-size:11px;color:#6B7686">{{ h.sets }}</span>
+</div>
+<sc-for list="{{ h.rows }}" as="x" hint-placeholder-count="4">
+<div style="display:grid;grid-template-columns:20px 1fr 46px 34px;align-items:center;padding:6px 12px;border-bottom:1px solid #F1F3F5;font-family:'IBM Plex Mono','Noto Sans SC',monospace">
+<span style="font-size:10px;color:#98A0AC">{{ x.i }}</span>
+<span style="font-size:12px;font-weight:600;color:#0E1726">{{ x.v }}</span>
+<span style="font-size:11px;color:#6B7686">{{ x.rpe }}</span>
+<span style="display:flex;align-items:center;gap:6px;justify-content:flex-end"><span style="{{ x.vidStyle }}">▶</span><span style="color:#10715A;font-size:11px">✓</span></span>
+</div>
+</sc-for>
+</div>
+</sc-for>
+<div class="pb" onclick="{{ toggleProfile }}" style="display:flex;align-items:center;gap:6px;font-size:12px;color:#17395C;font-weight:600;cursor:pointer">{{ profileCaret }} 查看学员画像</div>
+<sc-if value="{{ profileOpen }}" hint-placeholder-val="{{ false }}">
+<div style="background:#fff;border:1px solid #E7EAEE;border-radius:10px;padding:12px;display:flex;flex-direction:column;gap:8px">
+<sc-for list="{{ profile }}" as="p" hint-placeholder-count="6">
+<span style="display:flex;gap:10px;align-items:baseline">
+<span style="flex:none;width:58px;font-family:'IBM Plex Mono','Noto Sans SC',monospace;font-size:11px;color:#6B7686">{{ p.k }}</span>
+<span style="flex:1;min-width:0;font-size:12px;color:#0E1726;line-height:1.55">{{ p.v }}</span>
+</span>
+</sc-for>
+</div>
+</sc-if>
+</sc-if>
+
+<sc-if value="{{ tabMsg }}" hint-placeholder-val="{{ false }}">
+<div style="display:flex;align-items:center;gap:8px">
+<span style="font-family:'IBM Plex Mono','Noto Sans SC',monospace;font-size:10px;letter-spacing:.06em;color:#6B7686">与 {{ selName }} 的对话</span>
+<span class="pb" onclick="{{ nextUnread }}" style="margin-left:auto;height:20px;padding:0 8px;border-radius:4px;background:#0E1726;color:#fff;display:flex;align-items:center;font-size:11px;font-weight:600;cursor:pointer">下一条未读 {{ unreadTotal }}</span>
+</div>
+<div style="display:flex;flex-direction:column;gap:11px">
+<sc-for list="{{ threadGroups }}" as="g" hint-placeholder-count="2">
+<div style="align-self:center;font-family:'IBM Plex Mono','Noto Sans SC',monospace;font-size:10px;color:#98A0AC">{{ g.label }}</div>
+<sc-for list="{{ g.msgs }}" as="m" hint-placeholder-count="4">
+<div style="{{ m.rowStyle }}">
+<div style="{{ m.metaStyle }}"><span>{{ m.who }}</span><span>{{ m.time }}</span></div>
+<sc-if value="{{ m.hasText }}" hint-placeholder-val="{{ true }}">
+<div style="{{ m.bubbleStyle }}">{{ m.text }}</div>
+</sc-if>
+<sc-if value="{{ m.hasCard }}" hint-placeholder-val="{{ false }}">
+<div style="{{ m.cardStyle }}">
+<span style="{{ m.cardKindStyle }}">{{ m.cardKind }}</span>
+<span style="display:flex;flex-direction:column;gap:2px;min-width:0">
+<span style="font-size:12px;font-weight:600;color:#0E1726;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ m.cardTitle }}</span>
+<span style="font-family:'IBM Plex Mono','Noto Sans SC',monospace;font-size:10px;color:#6B7686;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ m.cardMeta }}</span>
+</span>
+</div>
+</sc-if>
+</div>
+</sc-for>
+</sc-for>
+</div>
+<div style="background:#fff;border:1px solid #C9D6E4;border-radius:10px;padding:9px 10px;font-size:12px;line-height:1.6;color:#0E1726">{{ draft }}<span style="width:1px;height:16px;background:#17395C;margin-left:1px;display:inline-block;vertical-align:-3px"></span></div>
+<div style="display:flex;flex-wrap:wrap;gap:5px">
+<span class="pb" onclick="{{ sayQuoteCell }}" style="height:24px;padding:0 9px;border:1px solid #D6DAE0;border-radius:4px;background:#fff;display:flex;align-items:center;font-size:11px;color:#0E1726;cursor:pointer">引用当前单元格 {{ cellRef }}</span>
+<span class="pb" onclick="{{ sayQuoteSet }}" style="height:24px;padding:0 9px;border:1px solid #D6DAE0;border-radius:4px;background:#fff;display:flex;align-items:center;font-size:11px;color:#0E1726;cursor:pointer">引用某组数据</span>
+<span class="pb" onclick="{{ saySend }}" style="margin-left:auto;height:26px;padding:0 14px;border-radius:4px;background:#17395C;color:#fff;display:flex;align-items:center;gap:7px;font-size:12px;font-weight:600;cursor:pointer">发送<span style="font-family:'IBM Plex Mono',monospace;font-size:10px;opacity:.7">⌘↵</span></span>
+</div>
+<div style="display:flex;flex-direction:column;gap:2px">
+<span style="font-family:'IBM Plex Mono','Noto Sans SC',monospace;font-size:10px;letter-spacing:.06em;color:#6B7686;padding:2px 0">快捷回复 · ⌥1–5</span>
+<sc-for list="{{ templates }}" as="t" hint-placeholder-count="5">
+<span class="pb" onclick="{{ t.pick }}" style="{{ t.style }}">
+<span style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:#98A0AC;border:1px solid #E7EAEE;border-radius:4px;padding:1px 4px;flex:none">{{ t.key }}</span>
+<span style="flex:1;min-width:0">{{ t.t }}</span>
+</span>
+</sc-for>
+</div>
+<div style="display:flex;flex-direction:column;gap:2px;border-top:1px solid #E7EAEE;padding-top:9px">
+<span style="font-family:'IBM Plex Mono','Noto Sans SC',monospace;font-size:10px;letter-spacing:.06em;color:#6B7686;padding:2px 0">其他会话</span>
+<sc-for list="{{ convs }}" as="c" hint-placeholder-count="6">
+<span class="pb" onclick="{{ c.pick }}" style="{{ c.style }}">
+<span style="flex:1;min-width:0;display:flex;flex-direction:column;gap:1px">
+<span style="{{ c.nameStyle }}">{{ c.name }}</span>
+<span style="font-size:11px;color:#98A0AC;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ c.last }}</span>
+</span>
+<span style="flex:none;display:flex;flex-direction:column;align-items:flex-end;gap:3px">
+<span style="font-family:'IBM Plex Mono','Noto Sans SC',monospace;font-size:10px;color:#98A0AC">{{ c.time }}</span>
+<span style="{{ c.unStyle }}">{{ c.un }}</span>
+</span>
+</span>
+</sc-for>
+</div>
+</sc-if>
+
+<sc-if value="{{ tabSum }}" hint-placeholder-val="{{ false }}">
+<div style="background:#fff;border:1px solid #E7EAEE;border-radius:10px;padding:12px;display:flex;flex-direction:column;gap:10px">
+<span style="display:block;white-space:nowrap;font-family:'IBM Plex Mono','Noto Sans SC',monospace;font-size:10px;letter-spacing:.08em;color:#6B7686">本周汇总 · 与上周对照</span>
+<sc-for list="{{ weekSum }}" as="w" hint-placeholder-count="4">
+<span style="display:flex;align-items:center;gap:10px">
+<span style="flex:1;font-size:12px;color:#3F4A5A">{{ w.k }}</span>
+<span style="font-family:'IBM Plex Mono',monospace;font-size:13px;font-weight:600">{{ w.v }}</span>
+<span style="{{ w.dStyle }}">{{ w.d }}</span>
+</span>
+</sc-for>
+<span style="height:1px;background:#E7EAEE"></span>
+<sc-for list="{{ famSum }}" as="f" hint-placeholder-count="3">
+<span style="display:flex;align-items:center;gap:9px">
+<span style="width:20px;height:20px;flex:none;border-radius:4px;background:#EAEFF5;border:1px solid #C9D6E4;display:flex;align-items:center;justify-content:center;font-family:'IBM Plex Mono',monospace;font-size:10px;font-weight:700;color:#17395C">{{ f.k }}</span>
+<span style="flex:1;font-size:12px;color:#3F4A5A">{{ f.name }}</span>
+<span style="width:52px;height:4px;border-radius:4px;background:#E7EAEE;display:block;overflow:hidden"><span style="{{ f.barStyle }}"></span></span>
+<span style="font-family:'IBM Plex Mono',monospace;font-size:12px;font-weight:600;width:36px;text-align:right">{{ f.n }}<span style="font-size:10px;color:#98A0AC;margin-left:2px">组</span></span>
+</span>
+</sc-for>
+</div>
+<div style="background:#fff;border:1px solid #E7EAEE;border-radius:10px;padding:12px;display:flex;flex-direction:column;gap:8px">
+<span style="font-family:'IBM Plex Mono','Noto Sans SC',monospace;font-size:10px;letter-spacing:.08em;color:#6B7686">校验</span>
+<sc-for list="{{ checks }}" as="c" hint-placeholder-count="3">
+<span style="display:flex;align-items:flex-start;gap:8px"><span style="{{ c.dotStyle }}"></span><span style="flex:1;font-size:12px;color:#3F4A5A;line-height:1.55">{{ c.t }}</span></span>
+</sc-for>
+</div>
+<div style="background:#fff;border:1px solid #E7EAEE;border-radius:10px;padding:12px;display:flex;flex-direction:column;gap:7px">
+<span style="font-family:'IBM Plex Mono','Noto Sans SC',monospace;font-size:10px;letter-spacing:.08em;color:#6B7686">排计划建议</span>
+<span style="font-size:12px;color:#3F4A5A;line-height:1.65">{{ selAdvice }}</span>
+</div>
+</sc-if>
+
+</div>
+</div>
+</sc-if>
+
+</div>
+
+<div style="flex:none;height:24px;background:#EFF1F4;border-top:1px solid #D6DAE0;display:flex;align-items:center;gap:16px;padding:0 14px;white-space:nowrap;font-family:'IBM Plex Mono','Noto Sans SC',monospace;font-size:10px;color:#6B7686">
+<span>{{ statusLeft }}</span>
+<span>待排 {{ pendingN }}</span>
+<span>未读 {{ unreadTotal }}</span>
+<span>全员本周 {{ totalT }} t</span>
+<span style="margin-left:auto">{{ statusRight }}</span>
+</div>
+
+<sc-if value="{{ toast }}" hint-placeholder-val="{{ false }}">
+<div style="position:fixed;left:50%;bottom:44px;transform:translateX(-50%);z-index:60;background:#0E1726;color:#fff;font-size:13px;padding:11px 20px;border-radius:999px;box-shadow:0 18px 44px rgba(14,23,38,.24)">{{ toast }}</div>
+</sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;showLastWeek&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;编排器&quot;},&quot;denseRows&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;编排器&quot;}}">
+const C = {
+  ink:'#17395C', tint:'#EAEFF5', tintBd:'#C9D6E4',
+  txt:'#0E1726', sec:'#3F4A5A', mut:'#6B7686', faint:'#98A0AC',
+  line:'#E7EAEE', line2:'#EDEFF2', bd:'#D6DAE0',
+  ok:'#10715A', warn:'#A15C00', bad:'#A81E17'
+};
+
+const ATH = [
+  {n:'吕子豪',cls:'74kg',wt:73.4,meet:112,adh:63,tonn:7.4,sq:175,bp:120,dl:187.5,rpe:8.4,plan:'待排',flag:'完成率下滑',
+   advice:'连续两周漏训主项第二天。下周先把主项压到 3 组，把节奏深蹲挪到周三。',
+   prof:['男 · 24 岁 · 178cm · 73.4kg','3 年 · 每周 4 天','低杠 · 传统 · 标准','S 175 / B 120 / D 187.5','右肩曾有撞击史','11 月省锦标赛 · 74kg 级']},
+  {n:'陈思远',cls:'83kg',wt:82.1,meet:112,adh:90,tonn:8.9,sq:152.5,bp:100,dl:175,rpe:7.9,plan:'已排',flag:'',
+   advice:'执行稳定，下周按周期表加 2.5kg，主项维持 RPE 8。',
+   prof:['男 · 27 岁 · 180cm · 82.1kg','5 年 · 每周 4 天','高杠 · 相扑 · 标准','S 152.5 / B 100 / D 175','无','11 月省锦标赛 · 83kg 级']},
+  {n:'王一诺',cls:'66kg',wt:65.2,meet:35,adh:81,tonn:6.8,sq:140,bp:92.5,dl:165,rpe:8.1,plan:'待排',flag:'赛前 5 周',
+   advice:'进入赛前 5 周，开始减辅助项容量，主项转 3×2 @RPE 8。',
+   prof:['男 · 22 岁 · 168cm · 65.2kg','2 年 · 每周 5 天','低杠 · 传统 · 宽握','S 140 / B 92.5 / D 165','无','9 月城市赛 · 66kg 级']},
+  {n:'周霖',cls:'93kg',wt:94.6,meet:0,adh:42,tonn:3.1,sq:120,bp:80,dl:150,rpe:7.2,plan:'待排',flag:'连续缺席 3 天',
+   advice:'先发消息确认情况，不要直接排量。建议下周只排 2 天、每天 45 分钟。',
+   prof:['男 · 31 岁 · 182cm · 94.6kg','1 年 · 每周 3 天','高杠 · 传统 · 标准','S 120 / B 80 / D 150','腰部易紧','暂不备赛']},
+  {n:'苏晴',cls:'57kg',wt:56.8,meet:35,adh:96,tonn:5.9,sq:110,bp:62.5,dl:140,rpe:8.6,plan:'已排',flag:'本周 3 项 PR',
+   advice:'状态好但 RPE 已到 8.6，下周安排一次减量，避免赛前透支。',
+   prof:['女 · 25 岁 · 160cm · 56.8kg','3 年 · 每周 4 天','高杠 · 相扑 · 窄握','S 110 / B 62.5 / D 140','无','9 月城市赛 · 57kg 级']},
+  {n:'林牧',cls:'105kg',wt:103.2,meet:0,adh:35,tonn:2.4,sq:160,bp:105,dl:180,rpe:7.0,plan:'待排',flag:'需沟通',
+   advice:'近一个月只到 5 次。先约一次线下沟通，计划按每周 2 练重启。',
+   prof:['男 · 34 岁 · 186cm · 103.2kg','6 年 · 每周 2 天','低杠 · 传统 · 标准','S 160 / B 105 / D 180','右膝旧伤','暂不备赛']},
+  {n:'郑一帆',cls:'83kg',wt:81.7,meet:112,adh:88,tonn:8.2,sq:165,bp:112.5,dl:195,rpe:8.2,plan:'已排',flag:'',
+   advice:'三项都在涨，下周维持结构，硬拉加 5kg。',
+   prof:['男 · 26 岁 · 176cm · 81.7kg','4 年 · 每周 5 天','低杠 · 相扑 · 标准','S 165 / B 112.5 / D 195','无','11 月省锦标赛 · 83kg 级']},
+  {n:'高见',cls:'74kg',wt:74.9,meet:35,adh:74,tonn:7.1,sq:157.5,bp:107.5,dl:182.5,rpe:8.3,plan:'已排',flag:'超重 0.9kg',
+   advice:'距赛 5 周仍超 0.9kg，下周把有氧补到 3 次，主项容量不变。',
+   prof:['男 · 23 岁 · 172cm · 74.9kg','3 年 · 每周 4 天','高杠 · 传统 · 标准','S 157.5 / B 107.5 / D 182.5','无','9 月城市赛 · 74kg 级']},
+  {n:'何雨桐',cls:'63kg',wt:62.4,meet:112,adh:85,tonn:6.2,sq:125,bp:70,dl:152.5,rpe:7.8,plan:'已排',flag:'',
+   advice:'按原计划推进，卧推加 1.25kg。',
+   prof:['女 · 28 岁 · 164cm · 62.4kg','2 年 · 每周 4 天','高杠 · 相扑 · 标准','S 125 / B 70 / D 152.5','无','11 月省锦标赛 · 63kg 级']},
+  {n:'邵康',cls:'93kg',wt:92.8,meet:0,adh:69,tonn:6.6,sq:180,bp:130,dl:205,rpe:8.5,plan:'待排',flag:'RPE 连续偏高',
+   advice:'三周平均 RPE ≥ 8.4，容量却在降。下周主项降到 RPE 8 以内，加一天休息。',
+   prof:['男 · 29 岁 · 184cm · 92.8kg','7 年 · 每周 5 天','低杠 · 传统 · 标准','S 180 / B 130 / D 205','左肘不适','暂不备赛']},
+  {n:'谢澜',cls:'66kg',wt:66.3,meet:35,adh:92,tonn:5.4,sq:132.5,bp:75,dl:157.5,rpe:8.0,plan:'已排',flag:'',
+   advice:'完成率高，赛前 5 周开始降辅助项。',
+   prof:['女 · 24 岁 · 166cm · 66.3kg','3 年 · 每周 4 天','高杠 · 相扑 · 标准','S 132.5 / B 75 / D 157.5','无','9 月城市赛 · 66kg 级']},
+  {n:'崔铭',cls:'105kg',wt:106.1,meet:112,adh:57,tonn:5.1,sq:170,bp:122.5,dl:190,rpe:7.6,plan:'待排',flag:'两周未记录视频',
+   advice:'数据在退，但没有视频无法判断动作质量。下周先要求主项每次录一组。',
+   prof:['男 · 33 岁 · 188cm · 106.1kg','8 年 · 每周 4 天','低杠 · 传统 · 标准','S 170 / B 122.5 / D 190','无','11 月省锦标赛 · 105kg 级']}
+];
+const PROF_KEYS = ['基础','训练年限','技术风格','自报 1RM','伤病','备赛'];
+
+const VARIANTS = {
+  '竞技深蹲':['竞技深蹲','低杠位深蹲','高杠位深蹲','暂停深蹲','安全杆深蹲','1 又 ⅓ 深蹲'],
+  '节奏深蹲':['节奏深蹲','3 秒离心深蹲','箱式深蹲','前蹲'],
+  '竞技卧推':['竞技卧推','窄握卧推','中握卧推','暂停卧推','上斜卧推'],
+  '中握卧推':['中握卧推','超宽握卧推','窄握卧推','木板卧推'],
+  '传统硬拉':['传统硬拉','相扑硬拉','半程相扑硬拉','垫高拉','膝上暂停硬拉','低位等长硬拉']
+};
+
+// 一周 = 7 列；每行强度按组拆成独立单元格
+const W31 = [
+  {wd:'周一', date:'07-27', title:'深蹲日', rest:false, rows:[
+    {seg:'主项及变式', name:'竞技深蹲', lift:'sq', kind:'KG', reps:'3', vals:['152.5','152.5','152.5','152.5','152.5'], rest:'3-4 分', note:'起始重量', last:'5 × 3 @150', done:true, lock:false},
+    {seg:'主项及变式', name:'节奏深蹲', lift:'sq', kind:'KG', reps:'3', vals:['112.5','112.5','112.5'], rest:'2 分', note:'3 秒离心', best:'115 × 3', last:'3 × 3 @110', done:true, lock:true},
+    {seg:'辅助项', name:'腿举', lift:'', kind:'RPE', reps:'10', vals:['7','7','7'], rest:'90 秒', note:'', best:'220 × 10', last:'3 × 10 @RPE 7', done:true, lock:false},
+    {seg:'辅助项', name:'坐姿腿弯举', lift:'', kind:'RPE', reps:'12', vals:['8','8','8'], rest:'75 秒', note:'', best:'55 × 12', last:'3 × 12 @RPE 8', done:false, lock:false}
+  ]},
+  {wd:'周二', date:'07-28', title:'卧推日', rest:false, rows:[
+    {seg:'主项及变式', name:'竞技卧推', lift:'bp', kind:'KG', reps:'4', vals:['102.5','102.5','102.5','102.5','102.5'], rest:'3 分', note:'右肩控制在 RPE 8 内', last:'5 × 4 @100', done:true, lock:true},
+    {seg:'辅助项', name:'平板哑铃卧推', lift:'', kind:'RPE', reps:'10', vals:['7','7','7'], rest:'90 秒', note:'', best:'32.5 × 10', last:'3 × 10 @RPE 7', done:true, lock:false},
+    {seg:'辅助项', name:'侧平举', lift:'', kind:'RPE', reps:'15', vals:['8','8','8'], rest:'60 秒', note:'', best:'12.5 × 15', last:'3 × 15 @RPE 8', done:false, lock:false}
+  ]},
+  {wd:'周三', date:'07-29', title:'', rest:true, rows:[]},
+  {wd:'周四', date:'07-30', title:'硬拉日', rest:false, rows:[
+    {seg:'主项及变式', name:'传统硬拉', lift:'dl', kind:'KG', reps:'2', vals:['172.5','172.5','172.5','172.5'], rest:'4 分', note:'每组录一条视频', last:'4 × 2 @170', done:false, lock:false},
+    {seg:'辅助项', name:'杠铃划船', lift:'', kind:'RPE', reps:'8', vals:['7.5','7.5','7.5','7.5'], rest:'90 秒', note:'', best:'85 × 8', last:'4 × 8 @RPE 7.5', done:false, lock:false},
+    {seg:'辅助项', name:'坐姿划船', lift:'', kind:'RPE', reps:'12', vals:['8','8','8'], rest:'75 秒', note:'', best:'70 × 12', last:'3 × 12 @RPE 8', done:false, lock:false}
+  ]},
+  {wd:'周五', date:'07-31', title:'卧推变式日', rest:false, rows:[
+    {seg:'主项及变式', name:'中握卧推', lift:'bp', kind:'KG', reps:'6', vals:['87.5','87.5','87.5','87.5'], rest:'3 分', note:'', best:'92.5 × 6', last:'4 × 6 @85', done:false, lock:false},
+    {seg:'辅助项', name:'引体向上', lift:'', kind:'RPE', reps:'8', vals:['8','8','8','8'], rest:'90 秒', note:'负重 5kg', best:'+10kg × 8', last:'4 × 8 @RPE 8', done:false, lock:false},
+    {seg:'辅助项', name:'杠铃弯举', lift:'', kind:'RPE', reps:'12', vals:['8','8','8'], rest:'60 秒', note:'', best:'40 × 12', last:'3 × 12 @RPE 8', done:false, lock:false}
+  ]},
+  {wd:'周六', date:'08-01', title:'', rest:true, rows:[]},
+  {wd:'周日', date:'08-02', title:'', rest:true, rows:[]}
+];
+const W32 = [
+  {wd:'周一', date:'08-03', title:'', rest:true, rows:[]},
+  {wd:'周二', date:'08-04', title:'', rest:true, rows:[]},
+  {wd:'周三', date:'08-05', title:'', rest:true, rows:[]},
+  {wd:'周四', date:'08-06', title:'', rest:true, rows:[]},
+  {wd:'周五', date:'08-07', title:'', rest:true, rows:[]},
+  {wd:'周六', date:'08-08', title:'', rest:true, rows:[]},
+  {wd:'周日', date:'08-09', title:'', rest:true, rows:[]}
+];
+const WEEKS = [
+  {code:'W31', name:'第 31 周', range:'07-27 — 08-02', cur:true, days:W31},
+  {code:'W32', name:'第 32 周', range:'08-03 — 08-09', cur:false, days:W32}
+];
+
+const THREADS = [
+  {i:0, msgs:[
+    {s:'a', t:'昨天 21:42', x:'教练，今天第三组深蹲感觉腰有点塌，视频发你了', card:null},
+    {s:'a', t:'昨天 21:43', x:'', card:{k:'视频',ti:'竞技深蹲 152.5 × 3',me:'第 3 组 · RPE 9 · 00:14'}},
+    {s:'c', t:'昨天 22:10', x:'看了，第三组是骨盆先动，不是腰的问题。下一组下蹲前先把腹压顶住。', card:null},
+    {s:'c', t:'昨天 22:11', x:'本周四硬拉我先降一档，把动作稳住再加。', card:{k:'计划',ti:'W31 周四 · 传统硬拉',me:'4 × 2 @187.5 → 4 × 2 @180'}},
+    {s:'a', t:'今天 08:02', x:'收到。周三休息日我想做点有氧，可以吗', card:null},
+    {s:'c', t:'今天 09:05', x:'可以，20 分钟以内，周四要拉硬拉。', card:null},
+    {s:'a', t:'今天 09:07', x:'好，那周三我做 20 分钟有氧', card:null}
+  ]},
+  {i:9, msgs:[
+    {s:'a', t:'今天 08:40', x:'教练，这三周主项都在 RPE 8.5 以上，第二天基本练不动', card:null},
+    {s:'a', t:'今天 08:44', x:'这周主项一直很重，是不是该减一下', card:null}
+  ]},
+  {i:4, msgs:[
+    {s:'c', t:'昨天 18:30', x:'今天主项按 110 试一把单次，稳就停。', card:null},
+    {s:'a', t:'昨天 19:58', x:'今天深蹲 110 破了！', card:{k:'视频',ti:'竞技深蹲 110 × 1',me:'第 4 组 · RPE 8.5 · 00:09'}}
+  ]},
+  {i:2, msgs:[
+    {s:'a', t:'昨天 18:20', x:'赛前五周了，饮食还按之前那样吗', card:null},
+    {s:'c', t:'昨天 21:05', x:'按现在的吃法就行，赛前两周我再给你调水和盐。', card:null}
+  ]},
+  {i:3, msgs:[
+    {s:'a', t:'周五 22:14', x:'不好意思教练，这周加班太多，只到了一次', card:null},
+    {s:'c', t:'周五 22:30', x:'先别硬排，这周就练两天，把动作质量保住。', card:null}
+  ]},
+  {i:7, msgs:[
+    {s:'a', t:'周五 07:40', x:'今天称重 74.9，还差一点', card:null},
+    {s:'c', t:'周五 09:12', x:'有氧加到 3 次，主项量不动，赛前一周再降。', card:null}
+  ]},
+  {i:6, msgs:[
+    {s:'a', t:'周四 21:02', x:'硬拉 195 那组很稳，可以再加', card:null},
+    {s:'c', t:'周四 21:20', x:'下周加 5kg，别急，节奏别乱。', card:null}
+  ]},
+  {i:11, msgs:[
+    {s:'c', t:'周三 10:05', x:'这两周没看到视频，主项每次录一组给我。', card:null},
+    {s:'a', t:'周三 10:40', x:'收到，下周开始录视频', card:null}
+  ]}
+];
+
+// 动作历史（编写时的上下文）
+const HIST = {
+  '竞技深蹲':[{d:'07-20', v:'152.5kg × 3', rpe:'@8.5', n:5, vid:[1,1,1,0,0]},{d:'07-13', v:'150kg × 3', rpe:'@8', n:5, vid:[1,0,0,0,0]}],
+  '节奏深蹲':[{d:'07-20', v:'110kg × 3', rpe:'@7.5', n:3, vid:[1,0,0]},{d:'07-13', v:'107.5kg × 3', rpe:'@7.5', n:3, vid:[0,0,0]}],
+  '传统硬拉':[{d:'07-23', v:'185kg × 2', rpe:'@8', n:4, vid:[1,1,0,0]},{d:'07-16', v:'182.5kg × 2', rpe:'@8', n:4, vid:[1,0,0,0]}],
+  '竞技卧推':[{d:'07-21', v:'72.5kg × 4', rpe:'@8', n:5, vid:[1,0,0,0,0]},{d:'07-14', v:'72.5kg × 4', rpe:'@8.5', n:5, vid:[0,0,0,0,0]}],
+  '中握卧推':[{d:'07-24', v:'85kg × 6', rpe:'@8', n:4, vid:[1,0,0,0]},{d:'07-17', v:'82.5kg × 6', rpe:'@8', n:4, vid:[0,0,0,0]}],
+  '腿举':[{d:'07-20', v:'180kg × 10', rpe:'@7', n:3, vid:[0,0,0]},{d:'07-13', v:'175kg × 10', rpe:'@7', n:3, vid:[0,0,0]}],
+  '坐姿腿弯举':[{d:'07-20', v:'52kg × 12', rpe:'@8', n:3, vid:[0,0,0]},{d:'07-13', v:'50kg × 12', rpe:'@8', n:3, vid:[0,0,0]}],
+  '平板哑铃卧推':[{d:'07-21', v:'30kg × 10', rpe:'@7', n:3, vid:[0,0,0]},{d:'07-14', v:'28kg × 10', rpe:'@7.5', n:3, vid:[0,0,0]}],
+  '侧平举':[{d:'07-21', v:'10kg × 15', rpe:'@8', n:3, vid:[0,0,0]},{d:'07-14', v:'10kg × 15', rpe:'@8', n:3, vid:[0,0,0]}],
+  '杠铃划船':[{d:'07-23', v:'85kg × 8', rpe:'@7.5', n:4, vid:[0,0,0,0]},{d:'07-16', v:'82.5kg × 8', rpe:'@7.5', n:4, vid:[0,0,0,0]}],
+  '坐姿划船':[{d:'07-23', v:'68kg × 12', rpe:'@8', n:3, vid:[0,0,0]},{d:'07-16', v:'66kg × 12', rpe:'@8', n:3, vid:[0,0,0]}],
+  '引体向上':[{d:'07-24', v:'+5kg × 8', rpe:'@8', n:4, vid:[0,0,0,0]},{d:'07-17', v:'自重 × 8', rpe:'@7.5', n:4, vid:[0,0,0,0]}],
+  '杠铃弯举':[{d:'07-24', v:'35kg × 12', rpe:'@8', n:3, vid:[0,0,0]},{d:'07-17', v:'35kg × 12', rpe:'@8', n:3, vid:[0,0,0]}]
+};
+
+const CAT_TREE = [
+  {g:'', items:[['全部动作',1242,true],['我的自建',6,false]]},
+  {g:'比赛三项 · 按项', items:[['S 深蹲族',42],['B 卧推族',34],['D 硬拉族',43]]},
+  {g:'辅助 · 下肢', items:[['股四头',103],['臀',108],['腘绳肌',47],['内收肌',8],['髋',14],['髋屈肌',8],['小腿',17],['胫骨前肌',4]]},
+  {g:'辅助 · 上肢推', items:[['胸',130],['肩',111],['三头',61]]},
+  {g:'辅助 · 上肢拉', items:[['背',175],['二头',61],['斜方肌',19],['前臂',15],['握力',1]]},
+  {g:'辅助 · 核心 / 其他', items:[['核心',181],['灵活性',51],['心肺',9]]}
+];
+const CAT_ROWS = [
+  ['比赛三项与变式 · 119', null],
+  ['竞技深蹲','Competition Squat','主项','杠铃','股四头'],
+  ['竞技卧推','Competition Bench','主项','杠铃','胸'],
+  ['传统硬拉','Conventional Deadlift','主项','杠铃','腘绳肌'],
+  ['1 英寸相扑站高（下陷）硬拉','1in Sumo Deficit DL','变式','杠铃','腘绳肌'],
+  ['1 又 ⅓ 深蹲','1⅓ Squat','变式','杠铃','股四头'],
+  ['3 英寸相扑垫高拉','3in Sumo Block Pull','变式','杠铃','腘绳肌'],
+  ['安全杆前蹲','Safety Bar Front Squat','变式','特殊杆','股四头'],
+  ['安全杆暂停深蹲','Safety Bar Paused Squat','变式','特殊杆','股四头'],
+  ['安全杆早安式','Safety Bar Good Morning','变式','特殊杆','腘绳肌'],
+  ['半程相扑硬拉','Halting Sumo Deadlift','变式','杠铃','腘绳肌'],
+  ['低杠位暂停深蹲','Low Bar Paused Squat','变式','杠铃','股四头'],
+  ['弹力带中握卧推','Banded Medium Grip Bench','变式','弹力带','胸'],
+  ['地板卧推','Floor Press','变式','杠铃','胸'],
+  ['辅助项 · 1123', null],
+  ['坐姿划船','Seated Cable Row','辅助','绳索','背'],
+  ['腿举','Leg Press','辅助','器械','股四头'],
+  ['坐姿腿弯举','Seated Leg Curl','辅助','器械','腘绳肌'],
+  ['哥本哈根侧板','Copenhagen Plank','辅助','自重','内收肌'],
+  ['绳索过头臂屈伸','Cable Overhead Extension','辅助','绳索','三头']
+];
+const CAT_TOTAL = 1242;
+// [动作, 组, 重量×次数, RPE, 体积, 状态]
+const VIDS = [
+  {d:'07-27', wd:'周一', items:[
+    ['传统硬拉','第 3 组','140kg × 5','9','8.6 MB','待审'],
+    ['传统硬拉','第 2 组','140kg × 5','8.5','12.0 MB','待审'],
+    ['传统硬拉','第 1 组','140kg × 5','8','7.4 MB','待审']]},
+  {d:'07-26', wd:'周日', items:[
+    ['竞技卧推','第 4 组','95kg × 8','8.5','12.7 MB','待审'],
+    ['竞技卧推','第 1 组','95kg × 8','7.5','13.6 MB','已反馈'],
+    ['低杠位深蹲','第 4 组','120kg × 8','8.5','14.3 MB','已反馈'],
+    ['低杠位深蹲','第 2 组','120kg × 8','8','14.2 MB','已反馈']]},
+  {d:'07-24', wd:'周五', items:[
+    ['节奏卧推 310','第 4 组','75kg × 2','8','5.9 MB','已反馈'],
+    ['节奏卧推 310','第 1 组','75kg × 2','7','6.6 MB','已反馈'],
+    ['传统暂停硬拉','第 4 组','130kg × 3','8','10.1 MB','已反馈'],
+    ['传统暂停硬拉','第 1 组','130kg × 3','7','12.9 MB','已反馈']]},
+  {d:'07-22', wd:'周三', items:[
+    ['长暂停卧推 2s','第 1 组','92.5kg × 2','7.5','7.0 MB','已反馈'],
+    ['长暂停深蹲 2s','第 4 组','115kg × 3','8.5','14.4 MB','已反馈'],
+    ['长暂停深蹲 2s','第 1 组','115kg × 3','7.5','11.1 MB','已反馈']]}
+];
+
+class Component extends DCLogic {
+  state = { screen:'plan', sel:0, seg:0, tab:'ex', conv:0, read:[0],
+            cell:'0|0|0|v0', day:'W31|0', menu:'', profile:false,
+            cat:'全部动作', catTab:0, vidTab:0, reqs:[0,1], vid:-1, speed:1, toast:'' };
+
+  say(t){ clearTimeout(this._t); this.setState({toast:t}); this._t=setTimeout(()=>this.setState({toast:''}),1900); }
+
+  renderVals(){
+    const s = this.state;
+    const sel = ATH[s.sel] || ATH[0];
+    const pending = ATH.filter(a=>a.plan==='待排');
+    const totalT = ATH.reduce((x,a)=>x+a.tonn,0).toFixed(1);
+    const adhC = (v)=> v>=85 ? C.ok : v>=65 ? C.warn : C.bad;
+    const rpeC = (v)=> v>=8.4 ? C.bad : v>=8.0 ? C.warn : C.sec;
+    const isPlan = s.screen==='plan', isOv = s.screen==='ov';
+
+    // ── 消息：线程为唯一数据源 ──
+    const dayOf = (t)=>String(t).split(' ')[0];
+    const clockOf = (t)=>{ const p=String(t).split(' '); return p[1]||p[0]; };
+    const convs = THREADS.map((th,ci)=>{
+      const a = ATH[th.i], last = th.msgs[th.msgs.length-1];
+      let un = 0;
+      for(let k=th.msgs.length-1;k>=0 && th.msgs[k].s==='a';k--) un += 1;
+      if((s.read||[]).indexOf(ci)>=0) un = 0;
+      const on = ci===s.conv;
+      return {
+        name:a.n, un: un?String(un):'', unN:un,
+        last: last.x || (last.card ? '［'+last.card.k+'］'+last.card.ti : ''),
+        time: dayOf(last.t)==='今天' ? clockOf(last.t) : dayOf(last.t),
+        style:`display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:4px;cursor:pointer;${on?'background:'+C.tint:''}`,
+        nameStyle:`font-size:12px;font-weight:${un?700:600};color:${C.txt}`,
+        unStyle: un ? `min-width:15px;height:15px;padding:0 4px;border-radius:999px;background:${C.bad};color:#fff;font-family:'IBM Plex Mono',monospace;font-size:9px;font-weight:700;display:flex;align-items:center;justify-content:center` : 'display:none',
+        pick:()=>this.setState(st=>({conv:ci, sel:th.i, tab:'msg', read: st.read.indexOf(ci)>=0?st.read:st.read.concat([ci])}))
+      };
+    });
+    const unreadTotal = convs.reduce((x,c)=>x+c.unN,0);
+    const myConv = convs.filter((c)=>c.name===sel.n)[0];
+    const curTh = THREADS.filter(t=>ATH[t.i].n===sel.n)[0] || THREADS[0];
+    const thread = curTh.msgs.map(m=>{
+      const own = m.s==='c';
+      return {
+        text:m.x, time:clockOf(m.t), day:dayOf(m.t), who: own?'我':sel.n,
+        hasText: !!m.x, hasCard: !!m.card,
+        cardKind: m.card?m.card.k:'', cardTitle: m.card?m.card.ti:'', cardMeta: m.card?m.card.me:'',
+        rowStyle:`display:flex;flex-direction:column;align-items:${own?'flex-end':'flex-start'};gap:3px`,
+        metaStyle:`display:flex;align-items:center;gap:6px;font-family:'IBM Plex Mono','Noto Sans SC',monospace;font-size:10px;color:${C.faint};${own?'flex-direction:row-reverse':''}`,
+        bubbleStyle:`max-width:252px;padding:8px 10px;border-radius:10px;font-size:12px;line-height:1.6;${own?'background:'+C.ink+';color:#fff':'background:#F4F6F8;border:1px solid '+C.line+';color:'+C.txt}`,
+        cardStyle:`max-width:252px;display:flex;align-items:center;gap:8px;padding:8px 9px;border-radius:10px;border:1px solid ${C.tintBd};background:#fff`,
+        cardKindStyle:`flex:none;padding:2px 6px;border-radius:999px;background:${C.tint};color:${C.ink};font-family:'IBM Plex Mono','Noto Sans SC',monospace;font-size:10px;font-weight:600`
+      };
+    });
+    const threadGroups = [];
+    thread.forEach(m=>{
+      const g = threadGroups[threadGroups.length-1];
+      if(g && g.label===m.day) g.msgs.push(m); else threadGroups.push({label:m.day, msgs:[m]});
+    });
+
+    // ── 总览列表 ──
+    const rows = ATH.map((a,i)=>{
+      const on = i===s.sel, wait = a.plan==='待排';
+      const c = convs.filter(x=>x.name===a.n)[0];
+      return {
+        name:a.n, cls:a.cls, keyNum:String(i+1), wt:a.wt.toFixed(1), adh:a.adh+'%',
+        tonn:a.tonn.toFixed(1), rpe:a.rpe.toFixed(1),
+        meet: a.meet>0 ? a.meet+' 天' : '未报名', plan:a.plan, flag:a.flag,
+        rowStyle:`display:grid;grid-template-columns:150px 104px 116px 84px 78px 80px 1fr;align-items:center;height:36px;padding:0 14px;border-bottom:1px solid ${C.line2};cursor:pointer;${on?'background:'+C.tint+';box-shadow:inset 2px 0 0 '+C.ink:''}`,
+        keyStyle:`width:17px;height:15px;flex:none;border:1px solid ${on?C.tintBd:C.line};border-radius:4px;display:flex;align-items:center;justify-content:center;font-family:'IBM Plex Mono',monospace;font-size:9px;color:${on?C.ink:C.faint}`,
+        msgDotStyle: (c&&c.unN) ? `width:6px;height:6px;border-radius:50%;flex:none;background:${C.ink}` : 'display:none',
+        adhBarStyle:`display:block;width:${a.adh}%;height:100%;border-radius:4px;background:${adhC(a.adh)}`,
+        adhStyle:`text-align:right;width:34px;font-family:'IBM Plex Mono',monospace;font-size:12px;font-weight:600;color:${adhC(a.adh)}`,
+        rpeStyle:`text-align:right;font-family:'IBM Plex Mono',monospace;font-size:12px;font-weight:600;color:${rpeC(a.rpe)}`,
+        planStyle:`flex:none;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:600;${wait?'background:rgba(161,92,0,.1);color:'+C.warn:'background:rgba(16,113,90,.1);color:'+C.ok}`,
+        writeStyle: wait ? `margin-left:auto;flex:none;height:22px;padding:0 10px;border-radius:4px;background:${C.ink};color:#fff;display:flex;align-items:center;font-size:11px;font-weight:600;cursor:pointer` : 'display:none',
+        pick:()=>this.setState({sel:i}),
+        write:(e)=>{ if(e&&e.stopPropagation) e.stopPropagation(); this.setState({sel:i,screen:'plan',tab:'ex'}); }
+      };
+    });
+
+    const vidAll = VIDS.reduce((x,g)=>x+g.items.length,0);
+    const vidPend = VIDS.reduce((x,g)=>x+g.items.filter(i=>i[4]==='待审').length,0);
+    const vidDone = vidAll - vidPend;
+    const navDef = [['总览','ov',''],['计划编排','plan',''],['消息','msg', unreadTotal?String(unreadTotal):''],
+      ['动作库','cat',String(CAT_TOTAL)],['训练视频','vid', vidPend?String(vidPend):''],['学员申请','req', (s.reqs||[]).length?String((s.reqs||[]).length):'']];
+    const nav = navDef.map(([label,k,badge])=>({
+      label, badge,
+      style:`display:flex;align-items:center;justify-content:space-between;height:30px;padding:0 10px;border-radius:4px;font-size:13px;cursor:pointer;${s.screen===k?'background:'+C.tint+';color:'+C.ink+';font-weight:600':'color:'+C.sec}`,
+      badgeStyle: badge ? (k==='msg'||k==='req'
+        ? `min-width:16px;height:16px;padding:0 5px;border-radius:999px;background:${C.bad};color:#fff;font-family:'IBM Plex Mono',monospace;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center`
+        : `font-family:'IBM Plex Mono',monospace;font-size:10px;color:${C.faint}`) : 'display:none',
+      go:()=>this.setState({screen:k})
+    }));
+
+    const queue = pending.slice(0,4).map((a)=>{
+      const i = ATH.indexOf(a), c = convs.filter(x=>x.name===a.n)[0];
+      return { name:a.n, why:a.flag || '下周计划空白',
+        un: (c&&c.unN)?String(c.unN):'',
+        unStyle: (c&&c.unN) ? `min-width:15px;height:15px;padding:0 4px;border-radius:999px;background:${C.bad};color:#fff;font-family:'IBM Plex Mono',monospace;font-size:9px;font-weight:700;display:flex;align-items:center;justify-content:center;flex:none` : 'display:none',
+        style:`display:flex;align-items:center;justify-content:space-between;gap:8px;padding:7px 10px;border-radius:4px;cursor:pointer;${i===s.sel?'background:'+C.tint:''}`,
+        pick:()=>this.setState({sel:i}) };
+    });
+
+    const segDef = [['全部学员',12],['待排',pending.length],['需关注',4]];
+    const segs = segDef.map(([label,n],i)=>({
+      label, n, pick:()=>this.setState({seg:i}),
+      style:`height:22px;padding:0 10px;border-radius:4px;display:flex;align-items:center;font-size:12px;cursor:pointer;${s.seg===i?'background:'+C.txt+';color:#fff;font-weight:600':'color:'+C.sec}`
+    }));
+
+    // ── 编排器：多周纵向 + 每周 7 列 + 每组独立单元格 ──
+    const DAYL = ['A','B','C','D','E','F','G'];
+    const e1rm = (w,r)=> w*(1+r/30);
+    // 默认单元格由数据推导：第一个训练日的第一行第一组，重构列结构也不会失配
+    const firstCell = WEEKS[0].code+'|0|0|v0';
+    const validCell = WEEKS.filter(w=>String(s.cell||'').indexOf(w.code+'|')===0).length>0;
+    const activeCell = s.cell==='' ? '' : (validCell ? s.cell : firstCell);
+    let cellInfo = {ref:'—', label:'未选中单元格', value:''};
+    let selRow = null, selDayLabel = '未选择日期';
+    const agg = { sets:0, tonn:0, days:0, rpeSum:0, rpeN:0 };
+    const prev = { sets:0, tonn:0, rpeSum:0, rpeN:0 };
+
+    const weeks = WEEKS.map((wk)=>{
+      let wMain = 0, wAux = 0, wTonn = 0, n = 0;
+      const days = wk.days.map((d,di)=>{
+        const dayKey = wk.code+'|'+di;
+        if(wk.cur){
+          if(!d.rest) agg.days += 1;
+          d.rows.forEach(r=>{
+            const st = r.vals.length, rp = +r.reps||0;
+            agg.sets += st;
+            if(r.kind==='KG') agg.tonn += r.vals.reduce((x,v)=>x+(+v||0)*rp,0);
+            else { agg.rpeSum += r.vals.reduce((x,v)=>x+(+v||0),0)/st; agg.rpeN += 1; }
+            const m = /^(\d+)\s*×\s*(\d+)\s*@(RPE\s*)?([\d.]+)$/.exec(r.last||'');
+            if(m){ const pst=+m[1], prp=+m[2], pv=+m[4];
+              prev.sets += pst;
+              if(m[3]){ prev.rpeSum += pv; prev.rpeN += 1; } else prev.tonn += pst*prp*pv; }
+          });
+        }
+        let dMain = 0, dAux = 0, dTonn = 0;
+        const groups = [];
+        let seg = null;
+        d.rows.forEach((r,ri)=>{
+          n += 1;
+          const rn = n, rowKey = wk.code+'|'+di+'|'+ri;
+          const st = r.vals.length, rp = +r.reps||0;
+          if(r.seg==='辅助项') dAux += st; else dMain += st;
+          if(r.kind==='KG') dTonn += r.vals.reduce((x,v)=>x+(+v||0)*rp,0);
+          const mkCell = (id, v, label, extra)=>{
+            const on = activeCell === rowKey+'|'+id;
+            return { on, v,
+              style: extra + (on ? ';box-shadow:inset 0 0 0 2px '+C.ink+';background:#fff;position:relative;z-index:1' : ''),
+              pick:(e)=>{ if(e&&e.stopPropagation) e.stopPropagation(); this.setState({cell:rowKey+'|'+id, day:dayKey, sel:s.sel, tab:'ex'}); },
+              label };
+          };
+          const nameCell = mkCell('n', r.name, '动作',
+            `display:block;flex:1;min-width:0;line-height:22px;font-size:13px;font-weight:600;color:${C.txt};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:cell`);
+          const setsCell = mkCell('s', st+' 组', '组数',
+            `display:flex;align-items:center;justify-content:center;height:20px;font-family:'IBM Plex Mono','Noto Sans SC',monospace;font-size:11px;color:${C.sec};border:1px solid ${C.line};border-radius:4px;cursor:cell`);
+          const repsCell = mkCell('r', '× '+r.reps+' 次', '次数',
+            `display:flex;align-items:center;justify-content:center;height:20px;font-family:'IBM Plex Mono','Noto Sans SC',monospace;font-size:11px;color:${C.sec};border:1px solid ${C.line};border-radius:4px;cursor:cell;margin-left:3px`);
+          const setBoxes = r.vals.map((v,k)=>mkCell('v'+k, v, '第 '+(k+1)+' 组强度',
+            `min-width:44px;height:20px;display:flex;align-items:center;justify-content:center;border:1px solid ${C.bd};border-radius:4px;background:#fff;font-family:'IBM Plex Mono',monospace;font-size:11px;font-weight:600;color:${C.txt};cursor:cell`));
+          const allCells = [nameCell,setsCell,repsCell].concat(setBoxes);
+          const hit = allCells.filter(c=>c.on)[0];
+          if(hit){
+            const unit = r.kind==='KG' ? ' kg' : '';
+            cellInfo = { ref: DAYL[di]+rn+' · '+wk.code,
+              label: d.wd+' · '+r.name+' · '+hit.label,
+              value: hit.label.indexOf('强度')>=0 ? hit.v+unit : hit.v };
+            selRow = { r, d, wk, rn };
+          }
+          const vlist = (VARIANTS[r.name]||[r.name]);
+          const row = {
+            num:String(rn), name:nameCell.v, nameStyle:nameCell.style, namePick:nameCell.pick,
+            setsV:setsCell.v, setsStyle:setsCell.style, setsPick:setsCell.pick,
+            repsV:repsCell.v, repsStyle:repsCell.style, repsPick:repsCell.pick,
+            setBoxes, kind:r.kind,
+            kindStyle:`flex:none;padding:1px 5px;border-radius:4px;background:${r.kind==='KG'?C.tint:'#F0F2F5'};color:${r.kind==='KG'?C.ink:C.mut};font-family:'IBM Plex Mono',monospace;font-size:9px;font-weight:700;letter-spacing:.04em`,
+            // 竞赛主项：1RM + e1RM（按上周表现 @RPE8 估算）+ 历史；其他：最佳 + 历史。分成独立 token 以便列内换行
+            lastToks: (()=>{ const isComp = r.lift && ['竞技深蹲','竞技卧推','传统硬拉'].indexOf(r.name)>=0;
+              if(!isComp) return (r.best ? ['最佳 '+r.best] : []).concat(['上周 '+r.last]);
+              const rm = sel[r.lift];
+              const pm = /@([\d.]+)$/.exec(r.last||'');
+              const pr = /×\s*(\d+)/.exec(r.last||'');
+              const est = pm&&pr ? Math.round(e1rm(+pm[1], (+pr[1])+2)*2)/2 : rm;
+              return ['1RM '+rm, 'e1RM '+est, '上周 '+r.last]; })().map((t,ti)=>({t:(ti?'· ':'')+t})),
+            note:r.note, hasNote:!!r.note,
+            doneStyle: r.done ? `flex:none;color:${C.ok};font-size:11px` : 'display:none',
+            lockStyle: r.lock ? `flex:none;font-size:9px;color:${C.faint};border:1px solid ${C.line};border-radius:4px;padding:0 3px` : 'display:none',
+            rowStyle:`padding-top:4px;border-bottom:1px solid ${C.line2};background:${hit?'#FBFCFD':'#fff'}`,
+            menuOpen: s.menu===rowKey,
+            openMenu:(e)=>{ if(e&&e.stopPropagation) e.stopPropagation(); this.setState({menu: s.menu===rowKey?'':rowKey}); },
+            createCustom:(e)=>{ if(e&&e.stopPropagation) e.stopPropagation(); this.setState({menu:''}); this.say('已创建自定义「'+r.name+'」'); },
+            variants: vlist.map(v=>({
+              n:v,
+              style:`padding:5px 8px;font-size:12px;cursor:pointer;color:${v===r.name?C.ink:C.sec};${v===r.name?'font-weight:600;background:'+C.tint:''}`,
+              pick:(e)=>{ if(e&&e.stopPropagation) e.stopPropagation(); this.setState({menu:''}); this.say('已切换为「'+v+'」'); }
+            }))
+          };
+          if(!seg || seg.label!==r.seg){
+            seg = { label:r.seg, rows:[], meta:'',
+              labelStyle:`display:flex;align-items:center;gap:6px;padding:4px 8px;background:#FAFBFC;border-bottom:1px solid ${C.line2};font-family:'IBM Plex Mono','Noto Sans SC',monospace;font-size:10px;color:${C.mut}`,
+              barStyle:`width:3px;height:10px;border-radius:4px;flex:none;background:${r.seg==='辅助项'?C.faint:C.ink}` };
+            groups.push(seg);
+          }
+          seg.rows.push(row);
+        });
+        groups.forEach(g=>{
+          const n2 = g.rows.reduce((x,r2)=>x+r2.setBoxes.length,0);
+          g.meta = n2+' 组';
+        });
+        wMain += dMain; wAux += dAux; wTonn += dTonn;
+        const onDay = s.day===dayKey;
+        if(onDay) selDayLabel = d.wd+' '+d.date+'（'+wk.name+'）';
+        return {
+          wd:d.wd, date:d.date, title:d.title||'休息', groups,
+          isRest:d.rest, hasWork:!d.rest, col:DAYL[di],
+          meta: d.rest ? '' : '主项 '+dMain+' 组 · 辅项 '+dAux+' 组 · '+Math.round(dTonn).toLocaleString('en-US')+'kg',
+          colStyle:`flex:${d.rest?'0 0 64px':'1 1 0'};min-width:${d.rest?'64px':'194px'};display:flex;flex-direction:column;border-right:1px solid ${C.bd};background:${d.rest?'#FAFBFC':'#fff'};cursor:pointer;${onDay?'box-shadow:inset 0 0 0 2px '+C.ink:''}`,
+          headStyle:`flex:none;display:flex;flex-direction:column;gap:2px;padding:7px 8px;background:${d.rest?'#F4F6F8':C.tint};border-bottom:1px solid ${C.tintBd};min-height:${d.rest?'auto':'62px'}`,
+          headRowStyle: d.rest ? 'display:flex;flex-direction:column;align-items:flex-start;gap:1px' : 'display:flex;align-items:center;gap:6px',
+          colChipStyle: d.rest ? 'display:none' : `margin-left:auto;font-family:'IBM Plex Mono',monospace;font-size:10px;color:${C.faint};border:1px solid ${C.tintBd};border-radius:4px;padding:0 4px`,
+          pickDay:()=>this.setState({day:dayKey}),
+          addEx:(e)=>{ if(e&&e.stopPropagation) e.stopPropagation(); this.say('已在 '+wk.code+' '+d.wd+' 插入一个动作行'); }
+        };
+      });
+      return {
+        code:wk.code, name:wk.name, range:wk.range, days,
+        stat:'主项 '+wMain+' 组 · 辅项 '+wAux+' 组 · 总重 '+Math.round(wTonn).toLocaleString('en-US')+'kg',
+        headStyle:`display:flex;align-items:center;gap:10px;padding:9px 14px;background:#FAFBFC;border-bottom:1px solid ${C.bd};white-space:nowrap`,
+        curStyle: wk.cur ? `flex:none;font-family:'IBM Plex Mono','Noto Sans SC',monospace;font-size:11px;color:${C.ink}` : 'display:none'
+      };
+    });
+
+    // 选中行的动作上下文
+    const ctxRow = selRow ? selRow.r : W31[0].rows[0];
+    const ctxSets = ctxRow.vals.length;
+    const topLoad = ctxRow.kind==='KG' ? Math.max.apply(null, ctxRow.vals.map(Number)) : 0;
+    const lift1rm = ctxRow.lift ? sel[ctxRow.lift] : 0;
+    const est = ctxRow.kind==='KG' && topLoad ? e1rm(topLoad, +ctxRow.reps||1) : 0;
+    const pct = est && lift1rm ? Math.round(topLoad/est*100) : 0;
+    const exMetrics = [
+      {k:'e1RM · 后端滚动值', v: est ? est.toFixed(1) : '—', col:C.txt},
+      {k:'登记 1RM', v: lift1rm ? String(lift1rm) : '—', col:C.txt},
+      {k: topLoad ? topLoad+' ÷ e1RM' : '强度占比', v: pct ? pct+'%' : '—', col: pct>=95 ? C.bad : pct>=90 ? C.warn : C.ok}
+    ].map((m,i)=>({
+      k:m.k, v:m.v,
+      style:`display:flex;flex-direction:column;align-items:center;gap:4px;padding:11px 6px;${i<2?'border-right:1px solid '+C.line:''}`,
+      vStyle:`font-family:'IBM Plex Mono',monospace;font-size:20px;font-weight:700;line-height:1;color:${m.col}`
+    }));
+    const hist = HIST[ctxRow.name] || [];
+    const exHistory = hist.map(h=>({
+      date:h.d, sets:h.n+' 组',
+      rows: Array.from({length:h.n},(_,k)=>({
+        i:String(k+1), v:h.v, rpe:h.rpe,
+        vidStyle: h.vid[k] ? `color:${C.bad};font-size:10px` : 'color:#D6DAE0;font-size:10px'
+      }))
+    }));
+    const profile = PROF_KEYS.map((k,i)=>({k, v: sel.prof[i]}));
+
+    const curRpe = agg.rpeN ? agg.rpeSum/agg.rpeN : 0;
+    const prevRpe = prev.rpeN ? prev.rpeSum/prev.rpeN : 0;
+    const dNum = (v,u)=> v>0 ? '+'+v.toFixed(u) : v<0 ? v.toFixed(u) : '—';
+    const weekSum = [
+      ['计划总组数', agg.sets+' 组', dNum(agg.sets-prev.sets,0)],
+      ['主项容量', (agg.tonn/1000).toFixed(2)+' t', dNum((agg.tonn-prev.tonn)/1000,2)],
+      ['训练天数', agg.days+' 天', '—'],
+      ['辅助项平均 RPE', curRpe.toFixed(1), dNum(curRpe-prevRpe,1)]
+    ].map(([k,v,d])=>({
+      k, v, d,
+      dStyle:`font-family:'IBM Plex Mono',monospace;font-size:11px;width:38px;text-align:right;color:${d.indexOf('+')===0?C.ok:d.indexOf('-')===0?C.bad:C.faint}`
+    }));
+    const famDef = [['S','深蹲族','深蹲'],['B','卧推族','卧推'],['D','硬拉族','硬拉']];
+    const famN = famDef.map(([,,kw])=>W31.filter(d=>!d.rest&&d.title.indexOf(kw)>=0)
+      .reduce((x,d)=>x+d.rows.reduce((y,r)=>y+r.vals.length,0),0));
+    const famMax = Math.max.apply(null,famN)||1;
+    const famSum = famDef.map(([k,name],i)=>({
+      k, name, n:String(famN[i]),
+      barStyle:`display:block;width:${Math.round(famN[i]/famMax*100)}%;height:100%;border-radius:4px;background:${C.ink}`
+    }));
+    const overs = [];
+    W31.forEach(d=>d.rows.forEach(r=>{
+      if(r.kind==='KG' && r.lift){
+        const top = Math.max.apply(null, r.vals.map(Number));
+        const p = Math.round(top/sel[r.lift]*100);
+        if(p>=95) overs.push(d.wd+' '+r.name+' '+top+'kg 达登记 1RM 的 '+p+'%');
+      }
+    }));
+    const checks = [['ok','7 天结构完整，无空动作行。']]
+      .concat(overs.slice(0,2).map(t=>['warn',t+'，高于本周期上限 95%。']))
+      .concat([['warn','周三已休息；连续四天有主项，建议周五后再加一天休息。']])
+      .map(([lv,t])=>({t, dotStyle:`width:6px;height:6px;border-radius:50%;margin-top:6px;flex:none;background:${lv==='ok'?C.ok:C.warn}`}));
+
+    const tabDef = [['动作','ex',''],['消息','msg', myConv&&myConv.unN?String(myConv.unN):''],['汇总','sum','']];
+    const tabs = tabDef.map(([label,k,badge])=>({
+      label, badge,
+      pick:()=>this.setState(st=>{
+        if(k!=='msg') return {tab:k};
+        const ci = THREADS.map(t=>ATH[t.i].n).indexOf(sel.n);
+        return {tab:'msg', conv: ci>=0?ci:st.conv, read: ci>=0 && st.read.indexOf(ci)<0 ? st.read.concat([ci]) : st.read};
+      }),
+      style:`flex:1;height:28px;display:flex;align-items:center;justify-content:center;gap:5px;font-size:12px;cursor:pointer;border-bottom:2px solid ${s.tab===k?C.ink:'transparent'};color:${s.tab===k?C.txt:C.mut};font-weight:${s.tab===k?700:400}`,
+      badgeStyle: badge ? `min-width:15px;height:15px;padding:0 4px;border-radius:999px;background:${C.bad};color:#fff;font-family:'IBM Plex Mono',monospace;font-size:9px;font-weight:700;display:flex;align-items:center;justify-content:center` : 'display:none'
+    }));
+
+    const templates = [
+      '按计划完成，很好，下周继续加。',
+      '这组速度掉得太多，下周降 5% 重量。',
+      '视频收到了，我今晚逐组给你反馈。',
+      '这周先别硬顶，睡够再练。',
+      '距比赛还有 5 周，注意控体重。'
+    ].map((t,i)=>({
+      t, key:'⌥'+(i+1),
+      style:`display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:4px;cursor:pointer;font-size:12px;color:${C.sec};line-height:1.5`,
+      pick:()=>this.say('已填入输入框：'+t)
+    }));
+
+    // ── 动作库 ──
+    const catNav = [];
+    CAT_TREE.forEach(sec=>{
+      if(sec.g) catNav.push({isGroup:true, isItem:false, label:sec.g,
+        style:`padding:12px 10px 4px;font-family:'IBM Plex Mono','Noto Sans SC',monospace;font-size:10px;letter-spacing:.08em;color:${C.faint};white-space:nowrap`});
+      sec.items.forEach(([label,n])=>{
+        const on = s.cat===label;
+        catNav.push({isGroup:false, isItem:true, label, n:String(n),
+          style:`display:flex;align-items:center;justify-content:space-between;gap:8px;height:28px;padding:0 10px;border-radius:4px;cursor:pointer;white-space:nowrap;${on?'background:'+C.tint+';color:'+C.ink+';font-weight:600':'color:'+C.sec}`,
+          nStyle:`flex:none;font-family:'IBM Plex Mono',monospace;font-size:11px;color:${on?C.ink:C.faint}`,
+          pick:()=>this.setState({cat:label})});
+      });
+    });
+    const catTabDef = [['全部',CAT_TOTAL],['主项',4],['主项变式',115],['辅助',CAT_TOTAL-4-115]];
+    const catTabs = catTabDef.map(([label,n],i)=>({
+      label, n:String(n), pick:()=>this.setState({catTab:i}),
+      style:`height:26px;padding:0 12px;border-radius:999px;display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;white-space:nowrap;${s.catTab===i?'background:'+C.txt+';color:#fff;font-weight:600':'background:#fff;border:1px solid '+C.bd+';color:'+C.sec}`
+    }));
+    const kindStyle = (k)=>`flex:none;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:600;white-space:nowrap;${k==='主项'?'background:'+C.tint+';color:'+C.ink:k==='变式'?'background:#FDF6E7;color:'+C.warn:'background:#F1F3F5;color:'+C.mut}`;
+    const exRows = CAT_ROWS.map((r)=>{
+      if(r[1]===null) return {isSection:true, isRow:false, label:r[0],
+        style:`display:flex;align-items:center;height:28px;padding:0 16px;background:#FAFBFC;border-bottom:1px solid ${C.line};font-family:'IBM Plex Mono','Noto Sans SC',monospace;font-size:11px;color:${C.mut};white-space:nowrap`};
+      return {isSection:false, isRow:true, zh:r[0], en:r[1], kind:r[2], gear:r[3], muscle:r[4],
+        kindStyle:kindStyle(r[2]),
+        pick:()=>this.say('已打开「'+r[0]+'」的动作详情')};
+    });
+
+    // ── 训练视频 ──
+    const vidTabDef = [['全部',vidAll],['待审',vidPend],['已反馈',vidDone]];
+    const vidTabs = vidTabDef.map(([label,n],i)=>({
+      label, n:String(n), pick:()=>this.setState({vidTab:i}),
+      style:`height:26px;padding:0 12px;border-radius:999px;display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;white-space:nowrap;${s.vidTab===i?'background:'+C.txt+';color:#fff;font-weight:600':'background:#fff;border:1px solid '+C.bd+';color:'+C.sec}`
+    }));
+    // ── 训练视频：左列表（粘性日期分组）+ 右播放与反馈 ──
+    const vidFlat = [];
+    VIDS.forEach(g=>g.items.forEach(it=>vidFlat.push({d:g.d, wd:g.wd, it})));
+    const vidShow = (it)=> s.vidTab===0 || (s.vidTab===1&&it[5]==='待审') || (s.vidTab===2&&it[5]==='已反馈');
+    const vSelIdx = (()=>{
+      if(s.vid>=0 && s.vid<vidFlat.length && vidShow(vidFlat[s.vid].it)) return s.vid;
+      for(let i=0;i<vidFlat.length;i++) if(vidShow(vidFlat[i].it)) return i;
+      return 0;
+    })();
+    const tagStyle = (t)=>`flex:none;padding:2px 8px;border-radius:999px;font-size:10px;font-weight:600;white-space:nowrap;${t==='待审'?'background:#FDF6E7;color:'+C.warn:'background:rgba(16,113,90,.1);color:'+C.ok}`;
+    const vidGroups = VIDS.map(g=>{
+      const items = g.items.filter(vidShow);
+      return {
+        date:g.d, wd:g.wd, n:items.length+' 条',
+        headStyle:`position:sticky;top:0;z-index:1;display:flex;align-items:center;gap:8px;height:26px;padding:0 12px;background:#EFF1F4;border-top:1px solid ${C.bd};border-bottom:1px solid ${C.bd};white-space:nowrap`,
+        items: items.map(it=>{
+          const fi = vidFlat.map(v=>v.it).indexOf(it);
+          const on = fi===vSelIdx;
+          return {
+            name:it[0], head:it[0]+' '+it[2], meta:g.d+' · '+it[1]+' · RPE '+it[3], tag:it[5],
+            tagStyle:tagStyle(it[5]),
+            style:`display:flex;align-items:center;gap:10px;padding:9px 12px;border-bottom:1px solid ${C.line2};cursor:pointer;${on?'background:'+C.tint+';box-shadow:inset 3px 0 0 '+C.ink:'background:#fff'}`,
+            thumbStyle:`width:52px;height:38px;flex:none;border-radius:4px;background:${on?'#fff':'#F1F3F5'};border:1px solid ${on?C.tintBd:C.line};display:flex;align-items:center;justify-content:center`,
+            pick:()=>this.setState({vid:fi})
+          };
+        })
+      };
+    }).filter(g=>g.items.length);
+
+    const vCur = vidFlat[vSelIdx];
+    const speeds = [0.5,1,1.5,2].map(x=>({
+      label:x+'×',
+      style:`height:24px;padding:0 10px;border-radius:4px;display:flex;align-items:center;font-family:'IBM Plex Mono',monospace;font-size:11px;cursor:pointer;${s.speed===x?'background:#fff;color:'+C.txt+';font-weight:700':'color:rgba(255,255,255,.62)'}`,
+      pick:()=>this.setState({speed:x})
+    }));
+    const vMarks = [
+      ['00:04','起始位置手腕略后压', C.warn, 11],
+      ['00:12','骨盆先动 —— 腹压没顶住', C.bad, 32],
+      ['00:26','第 3 次速度掉了约 20%', C.warn, 70]
+    ].map(([t,txt,col,pos])=>({
+      t, txt,
+      tickStyle:`position:absolute;left:${pos}%;top:-3px;width:2px;height:10px;background:${col}`,
+      dotStyle:`width:6px;height:6px;border-radius:50%;flex:none;margin-top:5px;background:${col}`,
+      pick:()=>this.say('已跳到 '+t)
+    }));
+    const vStats = [
+      ['重量', vCur.it[2].split(' × ')[0], C.txt],
+      ['次数', vCur.it[2].split(' × ')[1], C.txt],
+      ['学员自评 RPE', vCur.it[3], +vCur.it[3]>=8.5 ? C.bad : C.warn],
+      ['相对上次', '+2.5 kg', C.ok],
+      ['文件', vCur.it[4], C.mut]
+    ].map(([k,v,col])=>({k, v, vStyle:`font-family:'IBM Plex Mono',monospace;font-size:13px;font-weight:600;color:${col}`}));
+
+    // ── 学员申请 ──
+    const REQ_DEF = [
+      {n:'王一诺', meta:'138****0050 · 07-22 21:30 · 邀请码 YLS72NJERE', extra:'自报 S 140 / B 92.5 / D 165 · 训练 2 年'},
+      {n:'周霖', meta:'139****2214 · 07-23 09:04 · 邀请码 YLS72NJERE', extra:'自报 S 120 / B 80 / D 150 · 训练 1 年'}
+    ];
+    const reqs = (s.reqs||[]).map(i=>REQ_DEF[i]).filter(Boolean).map((r,k)=>({
+      name:r.n, initial:r.n.slice(0,1), meta:r.meta, extra:r.extra,
+      accept:()=>{ this.setState(st=>({reqs:st.reqs.filter(x=>REQ_DEF[x].n!==r.n)})); this.say('已接受 '+r.n+'，可以开始为他排计划'); },
+      reject:()=>{ this.setState(st=>({reqs:st.reqs.filter(x=>REQ_DEF[x].n!==r.n)})); this.say('已拒绝 '+r.n+' 的申请'); }
+    }));
+
+    const isCat = s.screen==='cat', isVid = s.screen==='vid', isReq = s.screen==='req', isMsg = s.screen==='msg';
+    const crumbMap = { ov:'COACH / 总览 · 全部学员', plan:'COACH / 计划编写 · '+sel.n+' · 第 31 周',
+      msg:'COACH / 消息 · '+sel.n, cat:'COACH / 动作库', vid:'COACH / 训练视频 · '+sel.n, req:'COACH / 学员申请' };
+    // 独立消息屏用更宽的气泡
+    const msgGroups = threadGroups.map(g=>({label:g.label, msgs:g.msgs.map(m=>Object.assign({}, m, {
+      bubbleStyle:m.bubbleStyle.replace('max-width:252px','max-width:470px'),
+      cardStyle:m.cardStyle.replace('max-width:252px','max-width:470px')}))}));
+
+    return {
+      isOv, isPlan, isCat, isVid, isReq, isMsg, msgGroups, hasPanel: !isMsg,
+      speeds, vMarks, vStats,
+      vTitle: vCur.it[0]+' '+vCur.it[2],
+      vMeta: vCur.d+' '+vCur.wd+' · '+vCur.it[1]+' · RPE '+vCur.it[3],
+      vIdx: (vSelIdx+1)+' / '+vidFlat.length,
+      vTag: vCur.it[5], vTagStyle: tagStyle(vCur.it[5]),
+      vPrev:()=>this.setState({vid: vSelIdx>0?vSelIdx-1:vidFlat.length-1}),
+      vNext:()=>this.setState({vid: vSelIdx<vidFlat.length-1?vSelIdx+1:0}),
+      vMark:()=>this.say('已在 00:12 打点，反馈里会带时间戳'),
+      vSend:()=>this.say('反馈已发送给 '+sel.n+'，本条标记为已反馈'),
+      vGood:()=>this.say('已标记为优秀示范，加入示范库'),
+      vRedo:()=>this.say('已要求重做本组并附上打点'),
+      catNav, catTabs, exRows, vidTabs, vidGroups, reqs,
+      hasReq: reqs.length>0, noReq: reqs.length===0, reqN: String(reqs.length),
+      inviteCode:'YLS72NJERE',
+      vidCount: vidAll+' 条 · 近 '+VIDS.length+' 个训练日',
+      sayCopyCode:()=>this.say('邀请码已复制'),
+      sayNewEx:()=>this.say('新建动作：填写中英文名、分类、器械、肌群'),
+      crumb: crumbMap[s.screen] || 'COACH',
+      rows, nav, queue, segs, weeks, tabs,
+      exMetrics, exHistory, profile, weekSum, famSum, checks, templates, convs, threadGroups,
+      tabEx: s.tab==='ex', tabMsg: s.tab==='msg', tabSum: s.tab==='sum',
+      exName: ctxRow.name, exSets: ctxSets+' 组', exReps:'× '+ctxRow.reps+' 次',
+      exBest: hist.length ? hist[0].v.replace(/ ×.*/,'') : '—',
+      exBestMeta: hist.length ? ctxRow.reps+' 次最好成绩 · '+hist[0].d : '暂无训练记录',
+      exHistLabel: ctxSets+'×'+ctxRow.reps+' 历史 · 最近 '+hist.length+' 次',
+      profileOpen: s.profile, profileCaret: s.profile?'▾':'▸',
+      toggleProfile:()=>this.setState(st=>({profile:!st.profile})),
+      pendingN: pending.length, totalT, unreadTotal, catTotal:String(CAT_TOTAL),
+      weekCode:'W31', saveState:'草稿已自动保存',
+      cellRef: cellInfo.ref, cellLabel: cellInfo.label, cellValue: cellInfo.value,
+      selDayLabel, selRowName: selRow ? selRow.r.name : '未选中动作行',
+      selName: sel.n, selInitial: sel.n.slice(0,1),
+      selSub: sel.cls+' 级 · '+(sel.meet>0? '距赛 '+sel.meet+' 天' : '未报名')+' · 完成率 '+sel.adh+'%',
+      selAdvice: sel.advice,
+      draft:'周四硬拉先按 180 走，起始那组录一条给我。',
+      statusLeft: isPlan ? '单元格 '+cellInfo.ref+' · '+agg.sets+' 组 · '+agg.days+' 训练日'
+        : isCat ? '动作库 · '+s.cat
+        : isVid ? '训练视频 · '+sel.n
+        : isReq ? '学员申请 · '+reqs.length+' 待处理'
+        : '12 行 · 选中 '+sel.n,
+      statusRight: isPlan ? 'Tab 右移 · ↵ 下移 · ⌘D 向下填充 · ⌘↵ 更新计划'
+        : isCat ? '⌘K 搜动作 · ↵ 直达 · ⌘N 新建'
+        : isVid ? '空格播放 · ↵ 写反馈 · ⌥→ 下一条'
+        : isReq ? 'Y 接受 · N 拒绝 · ⌘C 复制邀请码'
+        : 'J / K 移动 · ↵ 打开编排器 · ⌘K 命令',
+      toast: s.toast,
+      goPlan:()=>this.setState({screen:'plan',tab:'ex'}),
+      goOv:()=>this.setState({screen:'ov'}),
+      clearSel:()=>this.setState({day:'',cell:''}),
+      nextUnread:()=>{ const c = convs.filter(x=>x.unN)[0]; if(c) c.pick(); else this.say('没有未读消息了'); },
+      sayCmd:()=>this.say('命令面板：输入学员名直达其计划'),
+      sayPasteWeek:()=>this.say('已把第 31 周整周复制到第 32 周'),
+      sayDupRow:()=>this.say('已复制「'+(selRow?selRow.r.name:'当前动作')+'」到下一行'),
+      sayAdd:()=>this.say('已插入动作行，光标停在「动作」列'),
+      sayRest:()=>this.say(selDayLabel+' 已设为休息日'),
+      sayClear:()=>this.say(selDayLabel+' 已清空'),
+      sayImport:()=>this.say('解析 .xlsx 中…识别到 4 个训练日'),
+      sayDefer:()=>this.say('学员整体顺延 1 天，已同步全部未完成周'),
+      sayPublish:()=>this.say('第 31 周计划已更新并推送给 '+sel.n),
+      saySend:()=>this.say('已发送给 '+sel.n),
+      sayQuoteCell:()=>this.say('已引用单元格 '+cellInfo.ref+'：'+cellInfo.label),
+      sayQuoteSet:()=>this.say('已引用 '+ctxRow.name+' 最近一次的第 1 组')
+    };
+  }
+}
+</script>
+</body>
+</html>

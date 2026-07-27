@@ -59,17 +59,18 @@ export function LoginScreen({ onLogin, onSampleMode }: Props) {
   }
 
   const field: React.CSSProperties = {
-    width: '100%', padding: '11px 13px', background: 'var(--surface-2)',
-    border: '1px solid var(--border)', borderRadius: 'var(--r-md)', color: '#fff',
+    width: '100%', padding: '11px 13px', background: 'var(--card-bg)',
+    border: '1px solid var(--bd)', borderRadius: 'var(--r-md)', color: 'var(--txt)',
     fontSize: 15, fontFamily: 'var(--font-sans)', outline: 'none', boxSizing: 'border-box',
   }
 
   return (
-    <div style={{ height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg)' }}>
-      <form onSubmit={submit} style={{ width: 360, padding: 32, background: 'var(--surface-1)', border: '1px solid var(--border)', borderRadius: 'var(--r-lg)' }}>
+    <div style={{ height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--page-bg)' }}>
+      <form onSubmit={submit} style={{ width: 360, padding: 32, background: 'var(--card-bg)', border: '1px solid var(--bd)', borderRadius: 'var(--r-lg)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
-          <span style={{ fontWeight: 900, fontSize: 22, letterSpacing: '-0.01em', color: '#fff' }}>MeetPR</span>
-          <span className="t-mono-label" style={{ color: 'var(--brand-red)' }}>COACH</span>
+          <span style={{ width: 28, height: 28, borderRadius: 'var(--r-sm)', display: 'grid', placeItems: 'center', fontFamily: 'var(--font-mono)', fontWeight: 700, fontSize: 13, color: 'var(--white)', background: 'var(--ink)' }}>M</span>
+          <span style={{ fontWeight: 700, fontSize: 15, color: 'var(--txt)' }}>MeetPR</span>
+          <span className="t-mono-label" style={{ color: 'var(--ink)' }}>COACH</span>
         </div>
         <div style={{ color: 'var(--fg-tertiary)', fontSize: 13, marginBottom: 24 }}>登录编写学员计划</div>
 
@@ -77,7 +78,7 @@ export function LoginScreen({ onLogin, onSampleMode }: Props) {
           <div role="status" style={{
             marginBottom: 20, padding: '10px 12px', borderRadius: 'var(--r-md)',
             border: '1px solid var(--border-strong)', background: 'var(--surface-2)',
-            color: 'var(--fg-secondary)', fontSize: 13, lineHeight: 1.6,
+            color: 'var(--sec)', fontSize: 13, lineHeight: 1.6,
           }}>
             {notice}
           </div>
@@ -85,9 +86,9 @@ export function LoginScreen({ onLogin, onSampleMode }: Props) {
 
         <label style={{ display: 'block', fontSize: 12, color: 'var(--fg-secondary)', marginBottom: 6 }}>手机号</label>
         <div style={{ ...field, marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8, padding: 0 }}>
-          <span style={{ padding: '11px 0 11px 13px', color: 'var(--fg-tertiary)', borderRight: '1px solid var(--border)', paddingRight: 10 }}>+86</span>
+          <span style={{ padding: '11px 0 11px 13px', color: 'var(--fg-tertiary)', borderRight: '1px solid var(--border)', paddingRight: 10, fontFamily: 'var(--font-mono)' }}>+86</span>
           <input
-            style={{ flex: 1, padding: '11px 13px 11px 0', background: 'transparent', border: 'none', color: '#fff', fontSize: 15, fontFamily: 'var(--font-sans)', outline: 'none' }}
+            style={{ flex: 1, padding: '11px 13px 11px 0', background: 'transparent', border: 'none', color: 'var(--txt)', fontSize: 15, fontFamily: 'var(--font-mono)', outline: 'none' }}
             value={phone} onChange={(e) => setPhone(e.target.value)} inputMode="tel" autoComplete="username" placeholder="手机号"
           />
         </div>
@@ -95,11 +96,11 @@ export function LoginScreen({ onLogin, onSampleMode }: Props) {
         <label style={{ display: 'block', fontSize: 12, color: 'var(--fg-secondary)', marginBottom: 6 }}>密码</label>
         <input style={field} type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" placeholder="密码" />
 
-        {err && <div style={{ color: 'var(--brand-red)', fontSize: 13, marginTop: 14 }}>{err}</div>}
+        {err && <div style={{ color: 'var(--bad)', fontSize: 13, marginTop: 14 }}>{err}</div>}
 
         <button type="submit" disabled={busy || !phone || !password} style={{
-          width: '100%', marginTop: 22, padding: '12px', background: busy ? 'var(--surface-3)' : '#fff',
-          color: '#000', border: 'none', borderRadius: 'var(--r-md)', fontWeight: 600, fontSize: 15,
+          width: '100%', marginTop: 22, padding: '12px', background: busy ? 'var(--tint)' : 'var(--ink)',
+          color: busy ? 'var(--mut)' : 'var(--white)', border: 'none', borderRadius: 'var(--r-md)', fontWeight: 600, fontSize: 13,
           cursor: busy ? 'default' : 'pointer', opacity: (!phone || !password) ? 0.5 : 1,
         }}>
           {busy ? '登录中…' : '登录'}

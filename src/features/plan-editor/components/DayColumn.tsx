@@ -58,7 +58,7 @@ function ShiftBadge({ day }: { day: DayCol }) {
 
 const baseInput: React.CSSProperties = {
   background: 'transparent', border: '1px solid transparent', borderRadius: 3,
-  color: '#fff', fontSize: 11, fontFamily: 'var(--font-sans)', outline: 'none',
+  color: 'var(--fg-primary)', fontSize: 11, fontFamily: 'var(--font-sans)', outline: 'none',
   padding: '1px 2px', boxSizing: 'border-box', fontVariantNumeric: 'tabular-nums',
 }
 
@@ -155,7 +155,7 @@ function TierHeader({ label, accent, width, summary }: { label: string; accent?:
       width, minWidth: 0, overflow: 'hidden', boxSizing: 'border-box', display: 'flex', alignItems: 'center', gap: 5,
       padding: '3px 8px', background: 'var(--surface-1)', borderTop: '1px solid var(--border)',
     }}>
-      <span style={{ width: 3, height: 8, borderRadius: 1, flex: 'none', background: accent ? 'var(--brand-red)' : 'var(--fg-tertiary)' }} />
+      <span style={{ width: 3, height: 8, borderRadius: 1, flex: 'none', background: accent ? 'var(--ink)' : 'var(--fg-tertiary)' }} />
       <span style={{
         fontFamily: 'var(--font-mono)', fontSize: 9, letterSpacing: '.08em', whiteSpace: 'nowrap',
         color: accent ? 'var(--fg-secondary)' : 'var(--fg-tertiary)',
@@ -181,7 +181,7 @@ function EditableStrength({ row, width, edit }: { row: ExerciseRow; width: numbe
   }
   const nextMode = row.mode === 'kg' ? 'rpe' : row.mode === 'rpe' ? 'bodyweight' : 'kg'
   const chip = row.mode === 'rpe' || row.mode === 'bodyweight'
-    ? { color: '#fff', background: 'var(--surface-3)' }
+    ? { color: 'var(--ink)', background: 'var(--ink-soft)' }
     : { color: 'var(--fg-tertiary)', background: 'transparent' }
   const issue = getBoundRowInputIssue(row)
   return (
@@ -335,7 +335,7 @@ export function DayColumn({ day, colW, selected, selectedRowId, onSelect, onReca
       <div className="dayhead" data-day-move-handle="" title={dayMoveTitle} onMouseDown={onDayMoveStart}
         style={{ display: 'flex', alignItems: 'baseline', gap: 7, padding: '5px 8px', background: 'var(--surface-1)', borderBottom: '1px solid var(--border)', whiteSpace: 'nowrap', overflow: 'hidden', cursor: dayMoveCursor, userSelect: 'none' }}>
         {!dayMoveDisabledHint && <span className="day-move-grip" aria-hidden="true">⠿</span>}
-        <span style={{ fontWeight: 700, fontSize: 12, color: '#fff' }}>{day.dowLabel}</span>
+        <span style={{ fontWeight: 700, fontSize: 12, color: 'var(--fg-primary)' }}>{day.dowLabel}</span>
         <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--fg-tertiary)' }}>{day.dateLabel}</span>
         <ShiftBadge day={day} />
         {selected && <button className="context-recall" onMouseDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); onRecallContext?.() }} title="显示撰写上下文">▤</button>}
@@ -367,8 +367,8 @@ export function DayColumn({ day, colW, selected, selectedRowId, onSelect, onReca
               onClick={(e) => e.stopPropagation()}
               style={{
                 display: 'flex', alignItems: 'stretch', borderTop: '1px solid var(--border)',
-                background: isSelectedRow ? 'rgba(255, 69, 69, 0.08)' : undefined,
-                boxShadow: isSelectedRow ? 'inset 3px 0 0 var(--brand-red)' : undefined,
+                background: isSelectedRow ? 'var(--ink-soft)' : undefined,
+                boxShadow: isSelectedRow ? 'inset 3px 0 0 var(--ink)' : undefined,
                 opacity: row.hasLogs ? 0.78 : 1,
               }}
             >
@@ -390,7 +390,7 @@ export function DayColumn({ day, colW, selected, selectedRowId, onSelect, onReca
                   onChange={(e) => onNameChange(row.id, e.target.value, e.currentTarget)}
                   onKeyDown={(e) => onNameKeyDown?.(row.id, e)}
                   onBlur={() => onNameBlur(row.id)}
-                  style={{ ...baseInput, flex: 1, minWidth: 0, color: '#fff', fontWeight: 500 }}
+                  style={{ ...baseInput, flex: 1, minWidth: 0, color: 'var(--fg-primary)', fontWeight: 500 }}
                 />
                 {row.ku && <span style={{ color: 'var(--green)', fontSize: 9, flex: 'none' }}>✓</span>}
                 {row.custom && <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--fg-tertiary)', fontSize: 8, flex: 'none', border: '1px solid var(--border-strong)', borderRadius: 3, padding: '0 3px' }}>定</span>}
@@ -446,7 +446,7 @@ export function DayColumn({ day, colW, selected, selectedRowId, onSelect, onReca
         const addRowEntry = (tier: 'main' | 'aux') => (
           <div className="popitem" data-add-tier={tier} onClick={(e) => { e.stopPropagation(); onAddRow(tier) }}
             style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 8px', borderTop: '1px dashed var(--border-strong)', color: 'var(--fg-tertiary)', cursor: 'pointer', fontSize: 11 }}>
-            <span style={{ color: 'var(--brand-red)', fontWeight: 700 }}>＋</span> 加动作
+            <span style={{ color: 'var(--ink)', fontWeight: 700 }}>＋</span> 加动作
           </div>
         )
         if (!rowTier) {

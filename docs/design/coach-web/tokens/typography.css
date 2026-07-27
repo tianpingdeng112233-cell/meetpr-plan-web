@@ -1,0 +1,24 @@
+/* MeetPR type tokens */
+:root {
+  --font-display: 'Archivo', 'Noto Sans SC', sans-serif;   /* headings & hero numerals, 800/900 */
+  --font-mono: 'IBM Plex Mono', 'Noto Sans SC', monospace; /* data, labels, timestamps */
+  --font-body: 'IBM Plex Sans', 'Noto Sans SC', sans-serif;
+
+  /* Integer size ladder — no fractional px */
+  --fs-10: 10px;  /* micro labels, table headers */
+  --fs-11: 11px;  /* captions, legends */
+  --fs-12: 12px;  /* secondary meta, mono labels */
+  --fs-13: 13px;  /* body small */
+  --fs-14: 14px;  /* body */
+  --fs-15: 15px;  /* emphasized body, status bar */
+  --fs-16: 16px;  /* buttons, list titles */
+  --fs-18: 18px;  /* exercise headers */
+  --fs-22: 22px;  /* card titles */
+  --fs-27: 27px;  /* celebration title */
+  --fs-30: 30px;  /* E1RM value */
+  --fs-34: 34px;  /* input values */
+  --fs-46: 46px;  /* review hero number */
+  --fs-54: 54px;  /* hero weight */
+
+  --ls-label: .05em; /* mono uppercase-ish labels */
+}

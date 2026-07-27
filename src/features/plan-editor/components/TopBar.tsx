@@ -76,12 +76,12 @@ function Dropdown({ open, options, currentId, onPick, onNew, newLabel, onRenameC
     <div style={{
       position: 'absolute', top: '100%', left: 0, marginTop: 6, minWidth: 200, zIndex: 80,
       background: 'var(--surface-2)', border: '1px solid var(--border-strong)', borderRadius: 10,
-      overflow: 'hidden', boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
+      overflow: 'hidden', boxShadow: 'var(--elev-modal)',
     }}>
       {options.map((o) => (
         <div key={o.id} className="popitem" onClick={(e) => { e.stopPropagation(); void onPick(o.id) }}
-          style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', color: o.id === currentId ? '#fff' : 'var(--fg-secondary)', fontWeight: o.id === currentId ? 600 : 400 }}>
-          {o.id === currentId && <span style={{ color: 'var(--brand-red)', fontSize: 10 }}>●</span>}
+          style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', color: o.id === currentId ? 'var(--fg-primary)' : 'var(--fg-secondary)', fontWeight: o.id === currentId ? 600 : 400 }}>
+          {o.id === currentId && <span style={{ color: 'var(--ink)', fontSize: 10 }}>●</span>}
           <span style={{ flex: 1, minWidth: 0 }}>
             {o.label}
             {o.sub && <span style={{ display: 'block', fontSize: 10, fontWeight: 400, color: 'var(--fg-tertiary)', fontFamily: 'var(--font-mono)' }}>{o.sub}</span>}
@@ -98,7 +98,7 @@ function Dropdown({ open, options, currentId, onPick, onNew, newLabel, onRenameC
       {onNew && (
         <div className="popitem" onClick={(e) => { e.stopPropagation(); onNew() }}
           style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '9px 12px', color: 'var(--fg-secondary)', borderTop: '1px solid var(--border)' }}>
-          <span style={{ color: '#fff' }}>＋</span> {newLabel ?? '新建'}
+          <span style={{ color: 'var(--ink)' }}>＋</span> {newLabel ?? '新建'}
         </div>
       )}
       {actions?.map((action) => (
@@ -187,10 +187,10 @@ export function TopBar(p: Props) {
   return (
     <div style={{
       display: 'flex', alignItems: 'center', gap: 14, height: 48, padding: '0 16px',
-      background: '#000', borderBottom: '1px solid var(--border)', flex: '0 0 auto', zIndex: 20,
+      background: 'var(--card-bg)', borderBottom: '1px solid var(--border)', flex: '0 0 auto', zIndex: 20,
     }}>
       <span style={{ fontWeight: 900, fontSize: 15, letterSpacing: '-0.01em' }}>MeetPR</span>
-      <span className="t-mono-label" style={{ fontSize: 10, letterSpacing: '.1em', color: 'var(--fg-tertiary)' }}>COACH / 计划编写</span>
+      <span className="t-mono-label" style={{ fontSize: 10, letterSpacing: '.1em', color: 'var(--fg-tertiary)' }}>COACH / 计划编排</span>
       <span style={{ width: 1, height: 18, background: 'var(--border)' }} />
 
       <span style={label}>学员</span>
@@ -303,8 +303,8 @@ export function TopBar(p: Props) {
         disabled={p.published || p.saving}
         title={p.published ? '已发布给学员；未打卡动作可通过「更新计划」调整' : undefined}
         style={{
-          background: p.published ? 'transparent' : '#fff', color: p.published ? 'var(--green)' : '#000',
-          border: p.published ? '1px solid var(--green)' : '1px solid #fff', borderRadius: 10, padding: '9px 18px',
+          background: p.published ? 'transparent' : 'var(--ink)', color: p.published ? 'var(--green)' : 'var(--white)',
+          border: p.published ? '1px solid var(--green)' : '1px solid var(--ink)', borderRadius: 10, padding: '9px 18px',
           fontFamily: 'var(--font-sans)', fontWeight: 600, fontSize: 13,
           cursor: (p.published || p.saving) ? 'default' : 'pointer', lineHeight: 1,
           opacity: p.published ? 0.75 : (p.saving ? 0.6 : 1),

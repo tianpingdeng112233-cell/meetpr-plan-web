@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { AuthUser, ChatConversation, ChatReadState, CoachBindRequest, CoachStudent, ExerciseResponse, PlanResponse, PlanWithChildren, StudentOnboardingProfile } from '../../api/types'
+import type { AuthUser, ChatConversation, ChatReadState, CoachBindRequest, CoachStudent, ExerciseResponse, PlanResponse, PlanWithChildren, StudentOnboardingProfile, StudentVideo } from '../../api/types'
 import {
   getCoachStudents, getStudentPlans, getPlan, publishPlan, createPlan, patchPlan, getStudentOnboarding,
   markImportedHistory, renameCoachStudent, deletePlan,
@@ -16,8 +16,8 @@ import { SamplePreviewBanner } from './SamplePreviewBanner'
 import type { Week } from '../plan-editor/types'
 import { planEndISO, todayISO } from '../plan-editor/components/PlanCalendarControls'
 import { BackfillHistoryDialog, CompletePlanDialog, DeletePlanDialog, NewPlanDialog } from './PlanDialogs'
-import { getBindRequests, refreshCoachStudents } from '../../api/coach'
-import { CoachRail, type CoachView } from './CoachRail'
+import { getBindRequests, getStudentVideos, refreshCoachStudents } from '../../api/coach'
+import { CoachShell, type CoachView } from './CoachShell'
 import { StudentBoard } from './StatsViews'
 import { VideosPage } from './VideosPage'
 import { RequestsPage } from './RequestsPage'
@@ -30,10 +30,15 @@ import MessagesPage from '../chat/MessagesPage'
 import { unreadTotal } from '../chat/chatModel'
 import { useVisiblePolling } from '../chat/useVisiblePolling'
 import { chatOutbox } from '../chat/chatOutbox'
+import { isStudentPendingNextWeek } from './pendingPlan'
+import { createKeyedRequestVersions } from './requestVersions'
 
 interface Props { onLogout: () => void | Promise<void>; me: AuthUser }
 type Loaded = { plan: PlanWithChildren; weeks: Week[]; weeksCount: number }
 const LAST_PLAN_PREFIX = 'mpw.lastPlan.'
+const sortedPlans = (list: PlanResponse[]) => [...list].sort((a, b) => (
+  new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
+))
 
 export function PlanWorkspace({ onLogout, me }: Props) {
   const [catalog, setCatalog] = useState<Catalog | null>(null)
@@ -50,6 +55,9 @@ export function PlanWorkspace({ onLogout, me }: Props) {
   const [chatActiveId, setChatActiveId] = useState<string | null>(null)
   const [chatDrafts, setChatDrafts] = useState<Record<string, string>>({})
   const [plans, setPlans] = useState<PlanResponse[]>([])
+  const [plansByStudent, setPlansByStudent] = useState<Record<string, PlanResponse[]>>({})
+  const [videosByStudent, setVideosByStudent] = useState<Record<string, StudentVideo[]>>({})
+  const [lastSyncedAt, setLastSyncedAt] = useState<Date | null>(null)
   const [planId, setPlanId] = useState<string>('')
   const [loaded, setLoaded] = useState<Loaded | null>(null)
   const [error, setError] = useState('')
@@ -69,6 +77,9 @@ export function PlanWorkspace({ onLogout, me }: Props) {
   // never pair one student's label with another student's editable plan.
   const loadGeneration = useRef(0)
   const inboxRequest = useRef(0)
+  const rosterBackgroundGeneration = useRef(0)
+  const planRequestVersions = useRef(createKeyedRequestVersions())
+  const videoRequestVersions = useRef(createKeyedRequestVersions())
   // Shared across per-student ExerciseIndex instances so in-session picks keep
   // influencing ordering after the coach switches students.
   const exerciseUsage = useRef(new Map<string, number>())
@@ -88,9 +99,34 @@ export function PlanWorkspace({ onLogout, me }: Props) {
   }, [viewSwitching])
 
   const errText = (e: unknown, fb: string) => (e instanceof ApiException ? `${fb}（${e.code}）` : fb)
-  const sortedPlans = (list: PlanResponse[]) => [...list].sort((a, b) => (
-    new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
-  ))
+  const updateStudentPlans = useCallback((
+    id: string,
+    update: (current: PlanResponse[]) => PlanResponse[],
+  ) => {
+    // A mutation response is newer authority than any list request that was
+    // already in flight for this student.
+    planRequestVersions.current.invalidate(id)
+    setPlans(update)
+    setPlansByStudent((prev) => ({
+      ...prev,
+      [id]: update(prev[id] ?? []),
+    }))
+  }, [])
+
+  const fetchStudentPlans = useCallback(async (id: string, canApply: () => boolean = () => true) => {
+    const version = planRequestVersions.current.issue(id)
+    const rows = sortedPlans(await getStudentPlans(id))
+    if (!canApply() || !planRequestVersions.current.isLatest(id, version)) return null
+    setPlansByStudent((prev) => ({ ...prev, [id]: rows }))
+    return rows
+  }, [])
+
+  const refreshStudentVideos = useCallback(async (id: string, canApply: () => boolean = () => true) => {
+    const version = videoRequestVersions.current.issue(id)
+    const rows = await getStudentVideos(id)
+    if (!canApply() || !videoRequestVersions.current.isLatest(id, version)) return
+    setVideosByStudent((prev) => ({ ...prev, [id]: rows }))
+  }, [])
 
   const loadPlan = useCallback(async (id: string, cat: Catalog, generation = ++loadGeneration.current) => {
     try {
@@ -112,32 +148,78 @@ export function PlanWorkspace({ onLogout, me }: Props) {
 
   const loadStudent = useCallback(async (id: string, cat: Catalog, exercises: ExerciseResponse[] = exerciseList) => {
     const generation = ++loadGeneration.current
+    // Invalidate any background fetch for this student before exposing the new
+    // selection, and remove both the current list and its cached mount in the
+    // same render. Until the foreground response wins, this student is unknown.
+    planRequestVersions.current.invalidate(id)
     setStudentId(id); setOnboarding(undefined); setLoaded(null); setPlanId('')
+    setPlans([])
+    setPlansByStudent((prev) => {
+      if (!Object.hasOwn(prev, id)) return prev
+      const next = { ...prev }
+      delete next[id]
+      return next
+    })
     try {
       const [list, onboarding] = await Promise.all([
-        getStudentPlans(id),
+        fetchStudentPlans(id),
         getStudentOnboarding(id).catch(() => null),
       ])
       if (generation !== loadGeneration.current) return false
       setOnboarding(onboarding)
       setIndex(new ExerciseIndex(exercises, { deadliftStyle: onboarding?.deadlift_style }, exerciseUsage.current))
-      const sorted = sortedPlans(list)
-      setPlans(sorted)
+      if (!list) return false
+      setPlans(list)
       const remembered = localStorage.getItem(`${LAST_PLAN_PREFIX}${id}`)
-      const initial = sorted.find((plan) => plan.id === remembered) ?? sorted[0]
+      const initial = list.find((plan) => plan.id === remembered) ?? list[0]
       if (initial) return await loadPlan(initial.id, cat, generation)
       return true
     } catch (e) {
       if (generation !== loadGeneration.current) return false
       throw e
     }
-  }, [exerciseList, loadPlan])
+  }, [exerciseList, fetchStudentPlans, loadPlan])
+
+  const loadRosterBackground = useCallback(async (roster: CoachStudent[], skipPlanStudentId?: string) => {
+    const generation = ++rosterBackgroundGeneration.current
+
+    // Keep this deliberately serial. These badges are secondary information
+    // and must not burst through the backend's per-minute request budget.
+    for (const student of roster) {
+      if (student.id === skipPlanStudentId) continue
+      try {
+        await fetchStudentPlans(
+          student.id,
+          () => generation === rosterBackgroundGeneration.current,
+        )
+        if (generation !== rosterBackgroundGeneration.current) return
+      } catch {
+        // A missing queue badge is preferable to taking down the workspace.
+      }
+    }
+
+    for (const student of roster) {
+      try {
+        await refreshStudentVideos(
+          student.id,
+          () => generation === rosterBackgroundGeneration.current,
+        )
+        if (generation !== rosterBackgroundGeneration.current) return
+      } catch {
+        // Leave this student absent: the aggregate stays hidden until every
+        // roster member has an authoritative video array.
+      }
+    }
+  }, [fetchStudentPlans, refreshStudentVideos])
 
   const refreshInbox = useCallback(async () => {
     const generation = inboxRequest.current
     try {
       const next = await listConversations()
-      if (generation === inboxRequest.current) setConversations(next)
+      if (generation === inboxRequest.current) {
+        setConversations(next)
+        setLastSyncedAt(new Date())
+      }
     } catch (caught) {
       if (isSessionExpired(caught)) setSessionDead(true)
     }
@@ -172,8 +254,10 @@ export function PlanWorkspace({ onLogout, me }: Props) {
     return () => chatOutbox.setErrorSink(null)
   }, [])
 
-  // boot: catalog + roster + first student + first plan
+  // boot: catalog + roster + first student + first plan. Roster-wide badge
+  // data is intentionally excluded from this critical path.
   useEffect(() => {
+    let alive = true;
     (async () => {
       try {
         const [ex, usage, st, requests] = await Promise.all([
@@ -185,25 +269,36 @@ export function PlanWorkspace({ onLogout, me }: Props) {
         exerciseUsage.current = new Map(usage.map((stat) => [stat.exercise_id, stat.plan_count]))
         const cat: Catalog = new Map(ex.map((e) => [e.id, { name: displayExerciseName(e.name), custom: e.created_by_coach_id != null }]))
         setExerciseList(ex); setCatalog(cat); setIndex(new ExerciseIndex(ex, {}, exerciseUsage.current)); setStudents(st); setBindRequests(requests)
-        if (st.length > 0) await Promise.all([
-          loadStudent(st[0].id, cat, ex),
-          refreshInbox(),
-        ])
+        if (st.length > 0) {
+          await loadStudent(st[0].id, cat, ex)
+          if (!alive) return
+          void refreshInbox()
+          void loadRosterBackground(st, st[0].id)
+        }
+        setLastSyncedAt(new Date())
       } catch (e) {
-        setError(errText(e, '无法连接后端'))
-      } finally { setBooting(false) }
+        if (alive) setError(errText(e, '无法连接后端'))
+      } finally {
+        if (alive) setBooting(false)
+      }
     })()
+    return () => {
+      alive = false
+      rosterBackgroundGeneration.current += 1
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   useVisiblePolling(async () => {
-    await Promise.all([
-      getBindRequests().then(setBindRequests).catch((caught: unknown) => {
-        if (isSessionExpired(caught)) setSessionDead(true)
-      }),
-      refreshInbox(),
-    ])
-  }, view === 'messages' ? 30_000 : 60_000, {
+    await getBindRequests().then(setBindRequests).catch((caught: unknown) => {
+      if (isSessionExpired(caught)) setSessionDead(true)
+    })
+  }, 60_000, {
+    enabled: !sessionDead,
+    immediate: false,
+  })
+
+  useVisiblePolling(refreshInbox, view === 'messages' ? 30_000 : 60_000, {
     enabled: !sessionDead && students.length > 0,
     immediate: false,
   })
@@ -221,9 +316,21 @@ export function PlanWorkspace({ onLogout, me }: Props) {
     }
   }
   const refreshStudentsAfterAccept = async () => {
-    const next = await refreshCoachStudents()
+    const previousIds = new Set(students.map((student) => student.id))
+    const [next, requests] = await Promise.all([
+      refreshCoachStudents().catch(() => null),
+      getBindRequests().catch(() => null),
+    ])
+    if (requests) setBindRequests(requests)
+    if (!next) return
     setStudents(next)
-    if (!studentId && next[0] && catalog) await loadStudent(next[0].id, catalog)
+    const firstStudentId = !studentId ? next[0]?.id : undefined
+    if (firstStudentId && catalog) await loadStudent(firstStudentId, catalog)
+    const addedStudents = next.filter((student) => !previousIds.has(student.id))
+    if (addedStudents.length > 0) {
+      void loadRosterBackground(next, firstStudentId ?? studentId)
+    }
+    setLastSyncedAt(new Date())
   }
   const switchPlan = async (id: string) => {
     if (!catalog || id === planId) return
@@ -247,7 +354,7 @@ export function PlanWorkspace({ onLogout, me }: Props) {
         plan_weeks: weeks, source: 'coach', kind: 'regular',
       })
       if (generation !== loadGeneration.current) return
-      setPlans((prev) => [created, ...prev])
+      updateStudentPlans(targetStudentId, (prev) => [created, ...prev])
       await loadPlan(created.id, catalog, generation)
       setNewPlanOpen(false)
     } catch (e) {
@@ -268,7 +375,7 @@ export function PlanWorkspace({ onLogout, me }: Props) {
       clearDraftMirror(deletedId)
       if (generation !== loadGeneration.current) return
       const remaining = sortedPlans(plans.filter((plan) => plan.id !== deletedId))
-      setPlans(remaining)
+      updateStudentPlans(studentId, () => remaining)
       setDeleteOpen(false)
       if (remaining[0]) {
         await loadPlan(remaining[0].id, catalog, generation)
@@ -307,7 +414,7 @@ export function PlanWorkspace({ onLogout, me }: Props) {
     setCompleteError('')
     try {
       const updated = await patchPlan(loaded.plan.id, { status: 'completed' })
-      setPlans((prev) => prev.map((plan) => plan.id === updated.id ? updated : plan))
+      updateStudentPlans(updated.trainee_id, (prev) => prev.map((plan) => plan.id === updated.id ? updated : plan))
       setLoaded((prev) => prev && prev.plan.id === updated.id
         ? { ...prev, plan: { ...prev.plan, ...updated } }
         : prev)
@@ -377,43 +484,27 @@ export function PlanWorkspace({ onLogout, me }: Props) {
     )
   }
   if (booting) return <Centered><span style={{ color: 'var(--fg-tertiary)' }}>加载中…</span></Centered>
-  if (students.length === 0) {
-    // No bound students yet — instead of a dead-end, drop the coach into the editor populated
-    // with a read-only sample plan so the layout is visible, with a persistent banner that
-    // marks it as a sample and surfaces the invite code (the real way to get a student).
-    // Omitting students/plans/onSave/onPublish keeps the editor in disconnected sample mode:
-    // switchers are static, save/import buttons hide, publish only toggles locally.
-    const sampleWeeks = buildSampleWeeks()
-    return (
-      <div className="coach-shell">
-        {sessionDead && <div className="chat-session-banner">登录已过期，请刷新页面重新登录</div>}
-        <CoachRail view={view} badges={{ requests: bindRequests.length, messages: unreadTotal(conversations) }} onChange={(next) => { void changeView(next) }} /><div className="coach-main">
-        {view === 'editor' && <div style={{ position: 'relative', height: '100vh' }}><PlanEditor
-          key="sample-preview"
-          initialWeeks={sampleWeeks}
-          weeksCount={sampleWeeks.length}
-          studentName="示例学员"
-          planName="示例计划"
-          exerciseIndex={index}
-          onLogout={onLogout}
-        />
-        <SamplePreviewBanner onRefresh={() => window.location.reload()} />
-        </div>}
-        {view === 'catalog' && <CatalogPage
-          exerciseList={exerciseList}
-          catalog={catalog}
-          index={index}
-          onCreateExercise={handleCreateExercise}
-          onUseExercise={() => { void changeView('editor') }}
-        />}
-        {view === 'requests' && <RequestsPage requests={bindRequests} onRequestsChanged={setBindRequests} onAccepted={refreshStudentsAfterAccept} />}
-        {(view === 'board' || view === 'videos' || view === 'messages') && <div className="empty-page">接受学员申请后即可{view === 'board' ? '查看学员看板' : view === 'videos' ? '查看训练视频' : '与学员聊天'}</div>}
-      </div></div>
-    )
-  }
 
+  const hasStudents = students.length > 0
+  const sampleWeeks = hasStudents ? [] : buildSampleWeeks()
   const studentName = students.find((s) => s.id === studentId)?.display_name ?? ''
   const studentOpts = students.map((s) => ({ id: s.id, label: s.display_name, tag: s.status === 'in_evaluation' ? '评估期' : undefined }))
+  const hasEveryPlanArray = students.every((student) => Object.hasOwn(plansByStudent, student.id))
+  const pendingStudents = hasEveryPlanArray
+    ? students.filter((student) => isStudentPendingNextWeek(plansByStudent[student.id]))
+    : null
+  const hasEveryVideoArray = students.every((student) => Object.hasOwn(videosByStudent, student.id))
+  const videoCount = hasEveryVideoArray
+    ? students.reduce((total, student) => (
+        total + videosByStudent[student.id].filter((video) => video.viewed_at == null).length
+      ), 0)
+    : null
+  const unreadCount = unreadTotal(conversations)
+  const pickPendingStudent = async (id: string) => {
+    if (view === 'editor' && leaveGuardRef.current && !(await leaveGuardRef.current())) return
+    await switchStudent(id)
+    if (view !== 'editor') setView('editor')
+  }
   // "M/D 起 · N 周" so same-named plans stay tellable-apart in the switcher.
   const fmtStart = (iso: string) => { const [, m, d] = iso.split('-'); return `${Number(m)}/${Number(d)}` }
   const statusTag = (status: PlanResponse['status']) => ({ draft: '草稿', published: '已发布', completed: '已完成', paused: '已暂停' })[status]
@@ -425,10 +516,37 @@ export function PlanWorkspace({ onLogout, me }: Props) {
   }))
 
   return (
-    <div className="coach-shell">
+    <CoachShell
+      view={view}
+      onChange={(next) => { void changeView(next) }}
+      me={me}
+      students={students}
+      studentId={studentId}
+      onboarding={onboarding}
+      exercises={exerciseList}
+      pendingStudents={pendingStudents}
+      unreadCount={unreadCount}
+      requestCount={bindRequests.length}
+      videoCount={videoCount}
+      onPickPending={(id) => { void pickPendingStudent(id) }}
+      lastSyncedAt={lastSyncedAt}
+    >
       {sessionDead && <div className="chat-session-banner">登录已过期，请刷新页面重新登录</div>}
-      <CoachRail view={view} badges={{ requests: bindRequests.length, messages: unreadTotal(conversations) }} onChange={(next) => { void changeView(next) }} /><div className="coach-main">
-    {view === 'editor' && <div ref={editorShellRef} style={{ position: 'relative', height: '100vh' }}>
+      {view === 'editor' && !hasStudents && (
+        <div style={{ position: 'relative', height: '100%' }}>
+          <PlanEditor
+            key="sample-preview"
+            initialWeeks={sampleWeeks}
+            weeksCount={sampleWeeks.length}
+            studentName="示例学员"
+            planName="示例计划"
+            exerciseIndex={index}
+            onLogout={onLogout}
+          />
+          <SamplePreviewBanner onRefresh={() => window.location.reload()} />
+        </div>
+      )}
+    {view === 'editor' && hasStudents && <div ref={editorShellRef} style={{ position: 'relative', height: '100%' }}>
       <PlanEditor
         key={planId || `empty-${studentId}`}
         initialWeeks={loaded?.weeks ?? []}
@@ -446,7 +564,7 @@ export function PlanWorkspace({ onLogout, me }: Props) {
           // Reflect the now-live status in the parent-owned list + loaded plan, so the plan
           // switcher's「草稿/已发布」tag can't contradict the editor — no UI shows「草稿」for a
           // plan the student is already seeing. (publishPlan returns the updated plan.)
-          setPlans((prev) => prev.map((p) => (p.id === updated.id ? updated : p)))
+          updateStudentPlans(updated.trainee_id, (prev) => prev.map((p) => (p.id === updated.id ? updated : p)))
           setLoaded((prev) => (prev && prev.plan.id === updated.id ? { ...prev, plan: { ...prev.plan, ...updated } } : prev))
         } : undefined}
         onSave={loaded ? async (weeks, importStart, markPastAsAssumedComplete, onProgress) => {
@@ -477,7 +595,7 @@ export function PlanWorkspace({ onLogout, me }: Props) {
             // The editor remains mounted after an import/date shift. Update the
             // parent-owned plan too, otherwise the next shift/undo would derive
             // from stale metadata even though the backend already accepted it.
-            setPlans((prev) => prev.map((plan) => (
+            updateStudentPlans(loaded.plan.trainee_id, (prev) => prev.map((plan) => (
               plan.id === loaded.plan.id ? { ...plan, ...calendar } : plan
             )))
             setLoaded((prev) => (
@@ -491,13 +609,13 @@ export function PlanWorkspace({ onLogout, me }: Props) {
         onRename={loaded ? async (name) => {
           const updated = await patchPlan(loaded.plan.id, { name })
           // Keep the switcher list + the loaded plan in sync so the new name shows everywhere.
-          setPlans((prev) => prev.map((p) => (p.id === updated.id ? updated : p)))
+          updateStudentPlans(updated.trainee_id, (prev) => prev.map((p) => (p.id === updated.id ? updated : p)))
           setLoaded((prev) => (prev && prev.plan.id === updated.id ? { ...prev, plan: { ...prev.plan, ...updated } } : prev))
         } : undefined}
         onChangeStartDate={loaded ? async (startDate) => {
           if (loaded.plan.status !== 'draft') throw new Error('PLAN_NOT_DRAFT')
           const updated = await patchPlan(loaded.plan.id, { start_date: startDate })
-          setPlans((prev) => prev.map((plan) => plan.id === updated.id ? updated : plan))
+          updateStudentPlans(updated.trainee_id, (prev) => prev.map((plan) => plan.id === updated.id ? updated : plan))
           setLoaded((prev) => prev && prev.plan.id === updated.id
             ? { ...prev, plan: { ...prev.plan, ...updated } }
             : prev)
@@ -505,7 +623,7 @@ export function PlanWorkspace({ onLogout, me }: Props) {
         onChangePlanWeeks={loaded ? async (planWeeks) => {
           if (loaded.plan.status !== 'draft') throw new Error('PLAN_NOT_DRAFT')
           await resizeServerPlanWeeks(loaded.plan.id, planWeeks)
-          setPlans((prev) => prev.map((plan) => plan.id === loaded.plan.id ? { ...plan, plan_weeks: planWeeks } : plan))
+          updateStudentPlans(loaded.plan.trainee_id, (prev) => prev.map((plan) => plan.id === loaded.plan.id ? { ...plan, plan_weeks: planWeeks } : plan))
           setLoaded((prev) => prev && prev.plan.id === loaded.plan.id
             ? {
                 ...prev,
@@ -592,25 +710,37 @@ export function PlanWorkspace({ onLogout, me }: Props) {
       onCreateExercise={handleCreateExercise}
       onUseExercise={() => { void changeView('editor') }}
     />}
-    {view === 'board' && <StudentBoard students={students} catalog={catalog} index={index} />}
-    {view === 'videos' && <VideosPage students={students} studentId={studentId} onStudent={(id) => { void switchStudent(id) }} />}
+    {view === 'board' && (hasStudents
+      ? <StudentBoard students={students} catalog={catalog} index={index} />
+      : <div className="empty-page">接受学员申请后即可查看学员总览</div>)}
+    {view === 'videos' && (hasStudents
+      ? <VideosPage
+          students={students}
+          studentId={studentId}
+          videos={videosByStudent[studentId] ?? []}
+          onRefreshVideos={refreshStudentVideos}
+          onStudent={(id) => { void switchStudent(id) }}
+        />
+      : <div className="empty-page">接受学员申请后即可查看训练视频</div>)}
     {view === 'requests' && <RequestsPage requests={bindRequests} onRequestsChanged={setBindRequests} onAccepted={refreshStudentsAfterAccept} />}
-    {view === 'messages' && <MessagesPage
-      me={me}
-      students={students}
-      conversations={conversations}
-      bindLostIds={bindLostIds}
-      sessionDead={sessionDead}
-      activeId={chatActiveId}
-      drafts={chatDrafts}
-      onActiveIdChange={setChatActiveId}
-      onDraftChange={updateChatDraft}
-      onConversationsChanged={applyConversations}
-      onReadStateApplied={applyReadState}
-      onBindLost={(conversationId) => setBindLostIds((prev) => new Set(prev).add(conversationId))}
-      onSessionExpired={() => setSessionDead(true)}
-    />}
-    </div></div>
+    {view === 'messages' && (hasStudents
+      ? <MessagesPage
+          me={me}
+          students={students}
+          conversations={conversations}
+          bindLostIds={bindLostIds}
+          sessionDead={sessionDead}
+          activeId={chatActiveId}
+          drafts={chatDrafts}
+          onActiveIdChange={setChatActiveId}
+          onDraftChange={updateChatDraft}
+          onConversationsChanged={applyConversations}
+          onReadStateApplied={applyReadState}
+          onBindLost={(conversationId) => setBindLostIds((prev) => new Set(prev).add(conversationId))}
+          onSessionExpired={() => setSessionDead(true)}
+        />
+      : <div className="empty-page">接受学员申请后即可与学员聊天</div>)}
+    </CoachShell>
   )
 }
 
@@ -622,5 +752,5 @@ function Centered({ children }: { children: React.ReactNode }) {
   )
 }
 const btn: React.CSSProperties = {
-  background: '#fff', color: '#000', border: 'none', borderRadius: 'var(--r-md)', padding: '9px 16px', fontWeight: 600, fontSize: 13, cursor: 'pointer',
+  background: 'var(--card-bg)', color: 'var(--txt)', border: '1px solid var(--bd)', borderRadius: 'var(--r-md)', padding: '9px 16px', fontWeight: 600, fontSize: 13, cursor: 'pointer',
 }

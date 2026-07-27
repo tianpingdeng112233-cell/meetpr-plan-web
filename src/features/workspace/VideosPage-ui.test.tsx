@@ -1,4 +1,4 @@
-import { act } from 'react'
+import { act, useCallback, useRef, useState } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { StudentVideo } from '../../api/types'
@@ -7,6 +7,7 @@ const api = vi.hoisted(() => ({ getStudentVideos: vi.fn(), getUploadUrl: vi.fn()
 vi.mock('../../api/coach', () => ({ getStudentVideos: api.getStudentVideos, getUploadUrl: api.getUploadUrl, postCoachFeedback: api.postCoachFeedback }))
 
 import { VideosPage } from './VideosPage'
+import { createKeyedRequestVersions } from './requestVersions'
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
@@ -20,6 +21,26 @@ async function settle(): Promise<void> { for (let index = 0; index < 4; index++)
 const click = (element: Element | null) => act(() => element?.dispatchEvent(new MouseEvent('click', { bubbles: true })))
 const input = (element: HTMLInputElement, value: string) => act(() => { const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set; setter?.call(element, value); element.dispatchEvent(new Event('input', { bubbles: true })) })
 
+function VideosHarness({ studentId }: { studentId: string }) {
+  const [rowsByStudent, setRowsByStudent] = useState<Record<string, StudentVideo[]>>({})
+  const requestVersions = useRef(createKeyedRequestVersions())
+  const refreshVideos = useCallback(async (id: string) => {
+    const version = requestVersions.current.issue(id)
+    const next = await api.getStudentVideos(id)
+    if (!requestVersions.current.isLatest(id, version)) return
+    setRowsByStudent((prev) => ({ ...prev, [id]: next }))
+  }, [])
+  return (
+    <VideosPage
+      students={[]}
+      studentId={studentId}
+      videos={rowsByStudent[studentId] ?? []}
+      onRefreshVideos={refreshVideos}
+      onStudent={vi.fn()}
+    />
+  )
+}
+
 describe('VideosPage modal interactions', () => {
   let host: HTMLDivElement
   let root: Root
@@ -31,7 +52,7 @@ describe('VideosPage modal interactions', () => {
     api.getStudentVideos.mockResolvedValue(videos)
     api.getUploadUrl.mockImplementation((id: string) => Promise.resolve({ url: `https://example.test/${id}`, expires_in: 60 }))
     api.postCoachFeedback.mockResolvedValue({})
-    await act(async () => { root.render(<VideosPage students={[]} studentId="student-1" onStudent={vi.fn()} />); await settle() })
+    await act(async () => { root.render(<VideosHarness studentId="student-1" />); await settle() })
   })
 
   afterEach(() => {
@@ -96,8 +117,8 @@ describe('VideosPage modal interactions', () => {
     let releaseStale = () => {}
     const stale: StudentVideo[] = [{ ...videos[0]!, id: 'stale-1', exercise_name: '上一个学员的深蹲' }]
     api.getStudentVideos.mockImplementationOnce(() => new Promise((resolve) => { releaseStale = () => resolve(stale) }))
-    await act(async () => { root.render(<VideosPage students={[]} studentId="student-2" onStudent={vi.fn()} />); await settle() })
-    await act(async () => { root.render(<VideosPage students={[]} studentId="student-3" onStudent={vi.fn()} />); await settle() })
+    await act(async () => { root.render(<VideosHarness studentId="student-2" />); await settle() })
+    await act(async () => { root.render(<VideosHarness studentId="student-3" />); await settle() })
     await act(async () => { releaseStale(); await settle() })
     expect(host.textContent).not.toContain('上一个学员的深蹲')
   })

@@ -11,6 +11,8 @@ export interface AuthUser {
   phone: string
   role: UserRole
   createdAt: string
+  /** Not returned by /auth/login; optional until the backend provides GET /me. */
+  display_name?: string | null
 }
 export interface LoginResponse {
   user: AuthUser

@@ -38,9 +38,9 @@ const secondaryButton: CSSProperties = {
 
 const primaryButton: CSSProperties = {
   ...secondaryButton,
-  borderColor: 'var(--fg-primary)',
-  background: 'var(--fg-primary)',
-  color: 'var(--bg)',
+  borderColor: 'var(--ink)',
+  background: 'var(--ink)',
+  color: 'var(--white)',
 }
 
 function Stepper({ value, onChange }: { value: number; onChange: (value: number) => void }) {
@@ -157,7 +157,7 @@ export function DeletePlanDialog({ open, name, weeks, trainingDays, deleting, er
         {error && <div role="alert" style={{ color: 'var(--brand-red)', fontSize: 12 }}>{error}</div>}
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 'var(--sp-sm)' }}>
           <button type="button" disabled={deleting} onClick={onClose} style={secondaryButton}>取消</button>
-          <button type="button" disabled={deleting} onClick={onDelete} style={{ ...primaryButton, background: 'var(--brand-red)', borderColor: 'var(--brand-red)', color: 'var(--fg-primary)', opacity: deleting ? 0.55 : 1 }}>
+          <button type="button" disabled={deleting} onClick={onDelete} style={{ ...primaryButton, background: 'var(--bad)', borderColor: 'var(--bad)', color: 'var(--white)', opacity: deleting ? 0.55 : 1 }}>
             {deleting ? '删除中…' : '删除计划'}
           </button>
         </div>
@@ -191,7 +191,7 @@ export function CompletePlanDialog({ open, name, weeks, completing, error, onClo
         {error && <div role="alert" style={{ color: 'var(--brand-red)', fontSize: 12 }}>{error}</div>}
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 'var(--sp-sm)' }}>
           <button type="button" disabled={completing} onClick={onClose} style={secondaryButton}>取消</button>
-          <button type="button" disabled={completing} onClick={onComplete} style={{ ...primaryButton, background: 'var(--green)', borderColor: 'var(--green)', color: 'var(--fg-primary)', opacity: completing ? 0.55 : 1 }}>
+          <button type="button" disabled={completing} onClick={onComplete} style={{ ...primaryButton, background: 'var(--green)', borderColor: 'var(--green)', color: 'var(--white)', opacity: completing ? 0.55 : 1 }}>
             {completing ? '处理中…' : '标记完成'}
           </button>
         </div>

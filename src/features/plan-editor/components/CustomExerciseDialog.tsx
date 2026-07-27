@@ -94,7 +94,7 @@ const input: React.CSSProperties = {
   borderRadius: 8,
   border: '1px solid var(--border-strong)',
   background: 'var(--surface-1)',
-  color: '#fff',
+  color: 'var(--fg-primary)',
   padding: '0 11px',
   font: 'inherit',
   outline: 'none',
@@ -139,7 +139,7 @@ export function CustomExerciseDialog({ open, initialName, saving, error, onClose
         zIndex: 120,
         display: 'grid',
         placeItems: 'center',
-        background: 'rgba(0,0,0,0.62)',
+        background: 'color-mix(in srgb, var(--txt) 42%, transparent)',
       }}
     >
       <form
@@ -155,14 +155,14 @@ export function CustomExerciseDialog({ open, initialName, saving, error, onClose
           borderRadius: 8,
           border: '1px solid var(--border-strong)',
           background: 'var(--surface-2)',
-          boxShadow: '0 18px 60px rgba(0,0,0,0.56)',
+          boxShadow: 'var(--elev-modal)',
           padding: 18,
           display: 'grid',
           gap: 14,
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <div style={{ fontSize: 16, fontWeight: 800, color: '#fff' }}>新建动作</div>
+          <div style={{ fontSize: 16, fontWeight: 800, color: 'var(--fg-primary)' }}>新建动作</div>
           <span style={{ color: 'var(--fg-tertiary)', fontFamily: 'var(--font-mono)', fontSize: 10 }}>CUSTOM</span>
         </div>
 
@@ -222,9 +222,9 @@ export function CustomExerciseDialog({ open, initialName, saving, error, onClose
             type="submit"
             disabled={!trimmed || saving}
             style={{
-              border: '1px solid #fff',
-              background: '#fff',
-              color: '#000',
+              border: '1px solid var(--ink)',
+              background: 'var(--ink)',
+              color: 'var(--white)',
               borderRadius: 8,
               padding: '9px 16px',
               fontWeight: 800,

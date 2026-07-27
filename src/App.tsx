@@ -39,7 +39,7 @@ export default function App() {
         />
         <button
           onClick={() => setView('login')}
-          style={{ position: 'absolute', left: 12, bottom: 12, zIndex: 70, background: 'var(--surface-2)', color: '#fff', border: '1px solid var(--border-strong)', borderRadius: 8, padding: '7px 12px', fontSize: 12, cursor: 'pointer' }}
+          style={{ position: 'absolute', left: 12, bottom: 12, zIndex: 70, background: 'var(--card-bg)', color: 'var(--txt)', border: '1px solid var(--bd)', borderRadius: 'var(--r-sm)', padding: '7px 12px', fontSize: 12, cursor: 'pointer' }}
         >
           ← 退出样例
         </button>

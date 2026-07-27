@@ -1702,7 +1702,7 @@ export function PlanEditor(props: PlanEditorProps) {
 
   return (
     <div ref={rootRef} style={{
-      position: 'relative', height: '100vh', display: 'flex', flexDirection: 'column',
+      position: 'relative', height: '100%', display: 'flex', flexDirection: 'column',
       overflow: 'hidden', background: 'var(--bg)', color: 'var(--fg-primary)',
       fontFamily: 'var(--font-sans)', fontSize: 13, WebkitFontSmoothing: 'antialiased',
     }}>
@@ -1787,13 +1787,13 @@ export function PlanEditor(props: PlanEditorProps) {
               {weeks.map((wk, weekIndex) => (
                 <div key={wk.num} className="weekband" data-wnum={wk.num} style={{ borderTop: '2px solid var(--border-strong)' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '7px 12px', background: 'var(--surface-1)', borderBottom: '1px solid var(--border)' }}>
-                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, letterSpacing: '.12em', color: 'var(--brand-red)', fontWeight: 700 }}>W{wk.num2}</span>
-                    <span style={{ fontWeight: 700, fontSize: 13, color: '#fff' }}>第 {wk.num} 周</span>
+                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, letterSpacing: '.12em', color: 'var(--ink)', fontWeight: 700 }}>W{wk.num2}</span>
+                    <span style={{ fontWeight: 700, fontSize: 13, color: 'var(--fg-primary)' }}>第 {wk.num} 周</span>
                     <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--fg-tertiary)', letterSpacing: '.02em' }}>{wk.range}</span>
                     <WeekCapacitySummary weekNumber={wk.num} {...weeklySummaries[weekIndex]} />
                     {wk.isCurrent && (
-                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '.08em', color: 'var(--brand-red)', textTransform: 'uppercase' }}>
-                        <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--brand-red)', animation: 'pulse 1.6s infinite' }} />当前周
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '.08em', color: 'var(--ink)', textTransform: 'uppercase' }}>
+                        <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--ink)', animation: 'pulse 1.6s infinite' }} />当前周
                       </span>
                     )}
                   </div>

@@ -1,7 +1,7 @@
 import { act, useEffect } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { AuthUser, ChatConversation, ChatMessage, ExerciseResponse, PlanWithChildren } from '../../api/types'
+import type { AuthUser, ChatConversation, ChatMessage, CoachBindRequest, ExerciseResponse, PlanResponse, PlanWithChildren, StudentVideo } from '../../api/types'
 import type { Week } from '../plan-editor/types'
 
 const api = vi.hoisted(() => ({
@@ -10,6 +10,11 @@ const api = vi.hoisted(() => ({
   getPlan: vi.fn(),
   getStudentOnboarding: vi.fn(),
   getBindRequests: vi.fn(),
+  getStudentVideos: vi.fn(),
+  getExerciseStats: vi.fn(),
+  refreshCoachStudents: vi.fn(),
+  acceptBindRequest: vi.fn(),
+  getInviteCodes: vi.fn(),
   listExercises: vi.fn(),
   getExerciseUsageStats: vi.fn(),
   listConversations: vi.fn(),
@@ -17,6 +22,8 @@ const api = vi.hoisted(() => ({
   markConversationRead: vi.fn(),
   sendTextMessage: vi.fn(),
   openConversation: vi.fn(),
+  getUploadUrl: vi.fn(),
+  postCoachFeedback: vi.fn(),
 }))
 
 vi.mock('../../api/plans', () => ({
@@ -38,7 +45,14 @@ vi.mock('../../api/exercises', () => ({
 }))
 vi.mock('../../api/coach', () => ({
   getBindRequests: api.getBindRequests,
-  refreshCoachStudents: vi.fn(),
+  getStudentVideos: api.getStudentVideos,
+  getExerciseStats: api.getExerciseStats,
+  refreshCoachStudents: api.refreshCoachStudents,
+  acceptBindRequest: api.acceptBindRequest,
+  getInviteCodes: api.getInviteCodes,
+  getUploadUrl: api.getUploadUrl,
+  postCoachFeedback: api.postCoachFeedback,
+  rejectBindRequest: vi.fn(),
 }))
 vi.mock('../../api/chat', () => ({
   listConversations: api.listConversations,
@@ -48,15 +62,30 @@ vi.mock('../../api/chat', () => ({
   openConversation: api.openConversation,
 }))
 vi.mock('../plan-editor/PlanEditor', () => ({
-  PlanEditor: ({ initialWeeks, onLeaveGuardChange }: {
+  PlanEditor: ({ initialWeeks, onLeaveGuardChange, students, currentStudentId, onSwitchStudent, plans }: {
     initialWeeks: Week[]
     onLeaveGuardChange?: (guard: (() => Promise<boolean>) | null) => void
+    students?: { id: string; label: string }[]
+    currentStudentId?: string
+    onSwitchStudent?: (id: string) => void
+    plans?: { id: string; label: string }[]
   }) => {
     useEffect(() => {
       onLeaveGuardChange?.(async () => true)
       return () => onLeaveGuardChange?.(null)
     }, [onLeaveGuardChange])
-    return <div data-testid="editor-note">{initialWeeks[0]?.days[0]?.rows[0]?.note}</div>
+    return (
+      <div>
+        <div data-testid="editor-note">{initialWeeks[0]?.days[0]?.rows[0]?.note}</div>
+        <div data-testid="current-student">{currentStudentId}</div>
+        <div data-testid="plan-options">{plans?.map((item) => item.label).join('|')}</div>
+        {students?.map((student) => (
+          <button key={student.id} data-testid={`switch-${student.id}`} onClick={() => onSwitchStudent?.(student.id)}>
+            {student.label}
+          </button>
+        ))}
+      </div>
+    )
   },
 }))
 vi.mock('../catalog/CatalogPage', () => ({
@@ -85,6 +114,20 @@ const chatMessage: ChatMessage = {
   id: 'chat-message', conversation_id: 'conversation', seq: 1, sender_id: 'student', kind: 'text', body: '新消息',
   attachment_id: null, image_url: null, image_expires_in: null, client_id: 'student-client', created_at: '2026-07-22T10:00:00Z',
 }
+const bindRequest: CoachBindRequest = {
+  id: 'request',
+  student_id: 'student-2',
+  display_name: '新学员',
+  submitted_at: '2026-07-27T10:00:00Z',
+  expired_at: '2026-08-03T10:00:00Z',
+  masked_phone: '139****0000',
+  invite_code: 'INVITE',
+  onboarding: {
+    completed: true,
+    upload_count: 0,
+    deadlift_style: null,
+  },
+}
 
 function plan(note: string): PlanWithChildren {
   return {
@@ -108,6 +151,51 @@ function plan(note: string): PlanWithChildren {
   }
 }
 
+function studentPlan({
+  id,
+  studentId,
+  name,
+  status = 'draft',
+  startDate = '2026-01-05',
+  endDate = '2026-01-11',
+}: {
+  id: string
+  studentId: string
+  name: string
+  status?: PlanResponse['status']
+  startDate?: string
+  endDate?: string
+}): PlanWithChildren {
+  return {
+    ...plan(name),
+    id,
+    trainee_id: studentId,
+    name,
+    status,
+    start_date: startDate,
+    end_date: endDate,
+    days: [],
+  }
+}
+
+function video(id: string, exerciseName: string, viewedAt: string | null = null): StudentVideo {
+  return {
+    id,
+    set_log_id: 'set-log',
+    plan_exercise_id: 'plan-exercise',
+    content_type: 'video/mp4',
+    size_bytes: 1024,
+    filename: `${id}.mp4`,
+    created_at: '2026-07-27T08:00:00Z',
+    logged_at: '2026-07-27T08:00:00Z',
+    exercise_name: exerciseName,
+    set_index: 1,
+    weight_kg: '100',
+    reps: 5,
+    viewed_at: viewedAt,
+  }
+}
+
 function clickButton(host: HTMLElement, label: string): void {
   const button = [...host.querySelectorAll('button')].find((item) => item.textContent?.includes(label))
   if (!button) throw new Error(`button not found: ${label}`)
@@ -115,7 +203,10 @@ function clickButton(host: HTMLElement, label: string): void {
 }
 
 async function settle(): Promise<void> {
-  for (let index = 0; index < 8; index++) await Promise.resolve()
+  // Workspace boot now includes roster-wide plan/video badge derivation in
+  // addition to the selected plan, so give the nested Promise.all chain enough
+  // microtask turns to settle even under the full suite's parallel load.
+  for (let index = 0; index < 24; index++) await Promise.resolve()
 }
 
 describe('PlanWorkspace editor remount', () => {
@@ -144,14 +235,27 @@ describe('PlanWorkspace editor remount', () => {
     api.getStudentPlans.mockResolvedValue([plan('加载时快照')])
     api.getStudentOnboarding.mockResolvedValue(null)
     api.getBindRequests.mockResolvedValue([])
+    api.getStudentVideos.mockResolvedValue([])
+    api.acceptBindRequest.mockResolvedValue({})
+    api.getInviteCodes.mockResolvedValue([])
+    api.getExerciseStats.mockResolvedValue({
+      rep_prs: [],
+      recent_sessions: [],
+      by_set_count: {},
+      e1rm: null,
+      one_rm_reference: null,
+    })
     api.listConversations.mockResolvedValue([])
     api.getMessages.mockResolvedValue({ messages: [chatMessage], meta: { other_last_read: null, has_more: false } })
     api.markConversationRead.mockResolvedValue({ my_last_read: { message_id: 'chat-message', seq: 1 }, unread_count: 0 })
+    api.getUploadUrl.mockResolvedValue({ url: 'https://example.test/video', expires_in: 60 })
+    api.postCoachFeedback.mockResolvedValue({})
   })
 
   afterEach(() => {
     act(() => root.unmount())
     host.remove()
+    vi.useRealTimers()
     vi.clearAllMocks()
     vi.restoreAllMocks()
   })
@@ -174,13 +278,13 @@ describe('PlanWorkspace editor remount', () => {
     expect(host.querySelector('[data-testid="editor-note"]')).toBeNull()
 
     await act(async () => {
-      clickButton(host, '计划编写')
+      clickButton(host, '计划编排')
       await settle()
     })
 
     expect(api.getPlan).toHaveBeenCalledTimes(2)
     expect(host.querySelector('[data-testid="editor-note"]')?.textContent).toBe('服务端最新备注')
-  })
+  }, 15_000)
 
   it('silently boots with catalog ordering when usage stats are unavailable', async () => {
     api.getExerciseUsageStats.mockRejectedValue(new Error('404'))
@@ -194,7 +298,157 @@ describe('PlanWorkspace editor remount', () => {
     expect(api.getExerciseUsageStats).toHaveBeenCalledTimes(1)
     expect(host.querySelector('[data-testid="editor-note"]')?.textContent).toBe('频次接口降级')
     expect(host.textContent).not.toContain('无法连接后端')
-  })
+  }, 15_000)
+
+  it('keeps the first student workspace usable when roster badge loading fails', async () => {
+    api.getCoachStudents.mockResolvedValue([
+      { id: 'student', display_name: '首位学员', status: 'active', evaluation: null },
+      { id: 'student-2', display_name: '后台失败学员', status: 'active', evaluation: null },
+    ])
+    api.getStudentPlans.mockImplementation((studentId: string) => (
+      studentId === 'student'
+        ? Promise.resolve([plan('首位学员仍可编辑')])
+        : Promise.reject(new Error('rate limited'))
+    ))
+    api.getStudentVideos.mockImplementation((studentId: string) => (
+      studentId === 'student'
+        ? Promise.resolve([])
+        : Promise.reject(new Error('video unavailable'))
+    ))
+    api.getPlan.mockResolvedValue(plan('首位学员仍可编辑'))
+
+    await act(async () => {
+      root.render(<PlanWorkspace onLogout={vi.fn()} me={me} />)
+      await settle()
+    })
+
+    expect(host.querySelector('[data-testid="editor-note"]')?.textContent).toBe('首位学员仍可编辑')
+    expect(host.textContent).not.toContain('无法连接后端')
+    expect(host.querySelector('.coach-statusbar')?.textContent).toContain('待排 —')
+    const videosTab = [...host.querySelectorAll('button')].find((item) => item.textContent?.includes('训练视频'))
+    expect(videosTab?.querySelector('.coach-nav-badge')).toBeNull()
+  }, 15_000)
+
+  it('切换学员时清空旧计划挂载，且较早的后台计划响应不能覆盖较新的结果', async () => {
+    const studentAPlan = studentPlan({
+      id: 'plan-a',
+      studentId: 'student-a',
+      name: '甲学员计划',
+      status: 'published',
+      startDate: '2026-08-03',
+      endDate: '2026-08-09',
+    })
+    const studentBPlan = studentPlan({
+      id: 'plan-b',
+      studentId: 'student-b',
+      name: '乙学员最新计划',
+      status: 'published',
+      startDate: '2026-08-03',
+      endDate: '2026-08-09',
+    })
+    let resolveBackgroundB!: (rows: PlanResponse[]) => void
+    let resolveForegroundB!: (rows: PlanResponse[]) => void
+    let studentBRequests = 0
+    api.getCoachStudents.mockResolvedValue([
+      { id: 'student-a', display_name: '甲学员', status: 'active', evaluation: null },
+      { id: 'student-b', display_name: '乙学员', status: 'active', evaluation: null },
+    ])
+    api.getStudentPlans.mockImplementation((id: string) => {
+      if (id === 'student-a') return Promise.resolve([studentAPlan])
+      studentBRequests += 1
+      return new Promise<PlanResponse[]>((resolve) => {
+        if (studentBRequests === 1) resolveBackgroundB = resolve
+        else resolveForegroundB = resolve
+      })
+    })
+    api.getPlan.mockImplementation((id: string) => Promise.resolve(id === 'plan-a' ? studentAPlan : studentBPlan))
+
+    await act(async () => {
+      root.render(<PlanWorkspace onLogout={vi.fn()} me={me} />)
+      await settle()
+    })
+    expect(host.querySelector('[data-testid="plan-options"]')?.textContent).toBe('甲学员计划')
+
+    await act(async () => {
+      host.querySelector<HTMLButtonElement>('[data-testid="switch-student-b"]')?.click()
+      await settle()
+    })
+    expect(host.querySelector('[data-testid="current-student"]')?.textContent).toBe('student-b')
+    expect(host.querySelector('[data-testid="plan-options"]')?.textContent).toBe('')
+
+    await act(async () => {
+      resolveForegroundB([studentBPlan])
+      await settle()
+    })
+    expect(host.querySelector('[data-testid="plan-options"]')?.textContent).toBe('乙学员最新计划')
+
+    await act(async () => {
+      resolveBackgroundB([])
+      await settle()
+    })
+    expect(host.querySelector('[data-testid="plan-options"]')?.textContent).toBe('乙学员最新计划')
+    expect(host.querySelector('.coach-statusbar')?.textContent).toContain('待排 0')
+  }, 15_000)
+
+  it('反馈刷新后的新视频不会被较早发出的后台响应覆盖', async () => {
+    const selectedPlan = studentPlan({ id: 'plan-a', studentId: 'student-a', name: '视频测试计划' })
+    const initialVideo = video('video-a', '刷新前视频')
+    const refreshedVideo = video('video-a', '反馈后最新视频')
+    const staleVideo = video('video-stale', '后台旧视频')
+    let resolveBackgroundVideo!: (rows: StudentVideo[]) => void
+    let studentAVideoRequests = 0
+    api.getCoachStudents.mockResolvedValue([
+      { id: 'student-a', display_name: '甲学员', status: 'active', evaluation: null },
+      { id: 'student-b', display_name: '乙学员', status: 'active', evaluation: null },
+    ])
+    api.getStudentPlans.mockImplementation((id: string) => (
+      Promise.resolve(id === 'student-a' ? [selectedPlan] : [])
+    ))
+    api.getPlan.mockResolvedValue(selectedPlan)
+    api.getStudentVideos.mockImplementation((id: string) => {
+      if (id === 'student-b') return Promise.resolve([])
+      studentAVideoRequests += 1
+      if (studentAVideoRequests === 1) {
+        return new Promise<StudentVideo[]>((resolve) => { resolveBackgroundVideo = resolve })
+      }
+      if (studentAVideoRequests === 2) return Promise.resolve([initialVideo])
+      return Promise.resolve([refreshedVideo])
+    })
+
+    await act(async () => {
+      root.render(<PlanWorkspace onLogout={vi.fn()} me={me} />)
+      await settle()
+    })
+    await act(async () => {
+      clickButton(host, '训练视频')
+      await settle()
+    })
+    expect(host.textContent).toContain('刷新前视频')
+
+    await act(async () => {
+      host.querySelector<HTMLButtonElement>('.video-tiles button')?.click()
+      await settle()
+    })
+    const feedback = host.querySelector<HTMLInputElement>('.video-feedback input')!
+    await act(async () => {
+      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set
+      setter?.call(feedback, '动作反馈')
+      feedback.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+    await act(async () => {
+      host.querySelector<HTMLButtonElement>('.video-feedback button')?.click()
+      await settle()
+    })
+    expect(api.postCoachFeedback).toHaveBeenCalledTimes(1)
+    expect(host.textContent).toContain('反馈后最新视频')
+
+    await act(async () => {
+      resolveBackgroundVideo([staleVideo])
+      await settle()
+    })
+    expect(host.textContent).toContain('反馈后最新视频')
+    expect(host.textContent).not.toContain('后台旧视频')
+  }, 15_000)
 
   it('零学员空态可进入消息页且不发聊天请求', async () => {
     api.getCoachStudents.mockResolvedValue([])
@@ -203,6 +457,10 @@ describe('PlanWorkspace editor remount', () => {
       root.render(<PlanWorkspace onLogout={vi.fn()} me={me} />)
       await settle()
     })
+    expect(host.querySelectorAll('.coach-nav-item')).toHaveLength(6)
+    expect([...host.querySelectorAll('.coach-nav-item')].map((item) => item.firstElementChild?.textContent)).toEqual([
+      '总览', '计划编排', '消息', '动作库', '训练视频', '学员申请',
+    ])
     expect(api.listConversations).not.toHaveBeenCalled()
 
     await act(async () => {
@@ -211,8 +469,64 @@ describe('PlanWorkspace editor remount', () => {
     })
 
     expect(host.querySelector('.empty-page')?.textContent).toBe('接受学员申请后即可与学员聊天')
+    expect(host.querySelector('.coach-context')).toBeNull()
     expect(api.listConversations).not.toHaveBeenCalled()
-  })
+  }, 15_000)
+
+  it('零学员时仍每 60 秒轮询学员申请', async () => {
+    vi.useFakeTimers()
+    Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' })
+    api.getCoachStudents.mockResolvedValue([])
+
+    await act(async () => {
+      root.render(<PlanWorkspace onLogout={vi.fn()} me={me} />)
+      await settle()
+    })
+    expect(api.getBindRequests).toHaveBeenCalledTimes(1)
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(60_000)
+      await settle()
+    })
+
+    expect(api.getBindRequests).toHaveBeenCalledTimes(2)
+    expect(api.listConversations).not.toHaveBeenCalled()
+  }, 15_000)
+
+  it('接受申请后立即刷新学员列表和申请计数', async () => {
+    api.getBindRequests
+      .mockResolvedValueOnce([bindRequest])
+      .mockResolvedValue([])
+    api.refreshCoachStudents.mockResolvedValue([
+      { id: 'student', display_name: '学员', status: 'active', evaluation: null },
+      { id: 'student-2', display_name: '新学员', status: 'active', evaluation: null },
+    ])
+    api.getStudentPlans.mockImplementation((studentId: string) => (
+      studentId === 'student' ? Promise.resolve([plan('接受申请')]) : Promise.resolve([])
+    ))
+    api.getPlan.mockResolvedValue(plan('接受申请'))
+
+    await act(async () => {
+      root.render(<PlanWorkspace onLogout={vi.fn()} me={me} />)
+      await settle()
+    })
+    const requestsTab = [...host.querySelectorAll('button')].find((item) => item.textContent?.includes('学员申请'))
+    expect(requestsTab?.querySelector('.coach-nav-badge')?.textContent).toBe('1')
+
+    await act(async () => {
+      clickButton(host, '学员申请')
+      await settle()
+    })
+    await act(async () => {
+      host.querySelector<HTMLButtonElement>('.request-row button.accept')?.click()
+      await settle()
+    })
+
+    expect(api.acceptBindRequest).toHaveBeenCalledWith('request')
+    expect(api.refreshCoachStudents).toHaveBeenCalledTimes(1)
+    expect(api.getBindRequests).toHaveBeenCalledTimes(2)
+    expect(requestsTab?.querySelector('.coach-nav-badge')).toBeNull()
+  }, 15_000)
 
   it('markRead 清零后丢弃更早采样的 inbox 响应，红点不复活', async () => {
     vi.spyOn(document, 'hasFocus').mockReturnValue(true)
@@ -244,6 +558,6 @@ describe('PlanWorkspace editor remount', () => {
       await settle()
     })
     const messagesTab = [...host.querySelectorAll('button')].find((item) => item.textContent?.includes('消息'))
-    expect(messagesTab?.querySelector('.coach-rail-badge')).toBeNull()
-  })
+    expect(messagesTab?.querySelector('.coach-nav-badge')).toBeNull()
+  }, 15_000)
 })

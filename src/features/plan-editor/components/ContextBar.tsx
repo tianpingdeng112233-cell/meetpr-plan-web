@@ -30,16 +30,16 @@ export function ContextBar(p: Props) {
     <div style={{
       display: p.visible ? 'flex' : 'none', alignItems: 'center', gap: 10, height: 40,
       padding: '0 16px', background: 'var(--surface-2)', borderBottom: '1px solid var(--border)',
-      boxShadow: 'inset 3px 0 0 var(--brand-red)', flex: '0 0 auto', zIndex: 18, fontSize: 12,
+      boxShadow: 'inset 3px 0 0 var(--ink)', flex: '0 0 auto', zIndex: 18, fontSize: 12,
     }}>
-      <span className="t-mono-label" style={{ fontSize: 10, letterSpacing: '.1em', color: 'var(--brand-red)' }}>SELECTED</span>
-      <b style={{ color: '#fff' }}>{p.dayLabel}</b>
+      <span className="t-mono-label" style={{ fontSize: 10, letterSpacing: '.1em', color: 'var(--ink)' }}>SELECTED</span>
+      <b style={{ color: 'var(--fg-primary)' }}>{p.dayLabel}</b>
       <span style={{ width: 1, height: 16, background: 'var(--border-strong)' }} />
       <span
         className={`ctxbtn${p.canCopyPrev ? '' : ' disabled'}`}
         onClick={p.onCopyPrev}
         title={!p.canCopyPrev ? p.copyDisabledHint : undefined}
-        style={{ ...btn, color: p.copyDone ? 'var(--green)' : '#fff', borderColor: p.copyDone ? 'var(--green)' : 'var(--border-strong)' }}
+        style={{ ...btn, color: p.copyDone ? 'var(--green)' : 'var(--fg-primary)', borderColor: p.copyDone ? 'var(--green)' : 'var(--border-strong)' }}
       >
         {p.copyLabel}
       </span>
@@ -49,16 +49,16 @@ export function ContextBar(p: Props) {
           <span
             className="ctxbtn"
             onClick={p.onCopyRow}
-            style={{ ...btn, color: p.rowCopyDone ? 'var(--green)' : '#fff', borderColor: p.rowCopyDone ? 'var(--green)' : 'var(--border-strong)' }}
+            style={{ ...btn, color: p.rowCopyDone ? 'var(--green)' : 'var(--fg-primary)', borderColor: p.rowCopyDone ? 'var(--green)' : 'var(--border-strong)' }}
           >
             {p.rowCopyDone ? '✓ 已复制动作' : '⎘ 复制动作'}
           </span>
         </>
       )}
       {p.hasRowClipboard && (
-        <span className="ctxbtn" onClick={p.onPasteRow} style={{ ...btn, color: '#fff' }}>粘贴动作</span>
+        <span className="ctxbtn" onClick={p.onPasteRow} style={{ ...btn, color: 'var(--fg-primary)' }}>粘贴动作</span>
       )}
-      <span className="ctxbtn" onClick={p.onAddRow} style={{ ...btn, color: '#fff' }}>＋ 加动作</span>
+      <span className="ctxbtn" onClick={p.onAddRow} style={{ ...btn, color: 'var(--fg-primary)' }}>＋ 加动作</span>
       {p.isRest ? (
         <span className="ctxbtn" onClick={p.onUnsetRest} style={{ ...btn, color: 'var(--green)', borderColor: 'var(--green)' }}>改为训练日</span>
       ) : (
