@@ -49,6 +49,7 @@ interface ReqOpts {
   method?: string
   body?: unknown
   auth?: boolean // attach Bearer (default true)
+  retryRateLimit?: boolean // default true; polling opts out so a 429 only skips one beat
 }
 
 async function raw(path: string, opts: ReqOpts): Promise<Response> {
@@ -83,6 +84,7 @@ function retryAfterMs(res: Response): number {
 // refresh isn't mistaken for an invalid token (which would wipe a good session mid-import).
 async function rawRetrying(path: string, opts: ReqOpts): Promise<Response> {
   let res = await raw(path, opts)
+  if (opts.retryRateLimit === false) return res
   for (let i = 0; res.status === 429 && i < MAX_RATE_LIMIT_RETRIES; i++) {
     await sleep(retryAfterMs(res))
     res = await raw(path, opts)
@@ -147,8 +149,9 @@ export async function request<T>(path: string, opts: ReqOpts = {}): Promise<T> {
 }
 
 export const api = {
-  get: <T>(p: string) => request<T>(p),
-  post: <T>(p: string, body?: unknown) => request<T>(p, { method: 'POST', body }),
+  get: <T>(p: string, opts: Pick<ReqOpts, 'retryRateLimit'> = {}) => request<T>(p, opts),
+  post: <T>(p: string, body?: unknown, opts: Pick<ReqOpts, 'retryRateLimit'> = {}) =>
+    request<T>(p, { ...opts, method: 'POST', body }),
   patch: <T>(p: string, body?: unknown) => request<T>(p, { method: 'PATCH', body }),
   del: <T>(p: string) => request<T>(p, { method: 'DELETE' }),
 }

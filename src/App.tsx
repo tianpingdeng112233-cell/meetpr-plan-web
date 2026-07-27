@@ -6,6 +6,7 @@ import { PlanEditor } from './features/plan-editor/PlanEditor'
 import { buildWeeks } from './features/plan-editor/sampleData'
 import { currentUser, logout } from './api/auth'
 import type { AuthUser } from './api/types'
+import { chatOutbox } from './features/chat/chatOutbox'
 
 type View = 'login' | 'workspace' | 'sample'
 
@@ -47,9 +48,9 @@ export default function App() {
   }
 
   if (view === 'workspace' && user) {
-    const onLogout = () => { logout(); setUser(null); setView('login') }
+    const onLogout = () => { chatOutbox.reset(); logout(); setUser(null); setView('login') }
     if (user.role === 'admin') return <AdminWorkspace onLogout={onLogout} />
-    if (user.role === 'coach') return <PlanWorkspace onLogout={onLogout} />
+    if (user.role === 'coach') return <PlanWorkspace onLogout={onLogout} me={user} />
     return null
   }
 

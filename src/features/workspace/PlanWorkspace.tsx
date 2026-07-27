@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { CoachBindRequest, CoachStudent, ExerciseResponse, PlanResponse, PlanWithChildren, StudentOnboardingProfile } from '../../api/types'
+import type { AuthUser, ChatConversation, ChatReadState, CoachBindRequest, CoachStudent, ExerciseResponse, PlanResponse, PlanWithChildren, StudentOnboardingProfile } from '../../api/types'
 import {
   getCoachStudents, getStudentPlans, getPlan, publishPlan, createPlan, patchPlan, getStudentOnboarding,
   markImportedHistory, renameCoachStudent, deletePlan,
@@ -24,12 +24,18 @@ import { RequestsPage } from './RequestsPage'
 import { CatalogPage } from '../catalog/CatalogPage'
 import { navigateCoachView } from './coachViewNavigation'
 import { clearDraftMirror } from '../plan-editor/draftMirror'
+import { listConversations } from '../../api/chat'
+import { isSessionExpired } from '../../api/errors'
+import MessagesPage from '../chat/MessagesPage'
+import { unreadTotal } from '../chat/chatModel'
+import { useVisiblePolling } from '../chat/useVisiblePolling'
+import { chatOutbox } from '../chat/chatOutbox'
 
-interface Props { onLogout: () => void | Promise<void> }
+interface Props { onLogout: () => void | Promise<void>; me: AuthUser }
 type Loaded = { plan: PlanWithChildren; weeks: Week[]; weeksCount: number }
 const LAST_PLAN_PREFIX = 'mpw.lastPlan.'
 
-export function PlanWorkspace({ onLogout }: Props) {
+export function PlanWorkspace({ onLogout, me }: Props) {
   const [catalog, setCatalog] = useState<Catalog | null>(null)
   const [exerciseList, setExerciseList] = useState<ExerciseResponse[]>([])
   const [index, setIndex] = useState<ExerciseIndex | null>(null)
@@ -38,6 +44,11 @@ export function PlanWorkspace({ onLogout }: Props) {
   const [onboarding, setOnboarding] = useState<StudentOnboardingProfile | null | undefined>(undefined)
   const [view, setView] = useState<CoachView>('editor')
   const [bindRequests, setBindRequests] = useState<CoachBindRequest[]>([])
+  const [conversations, setConversations] = useState<ChatConversation[] | null>(null)
+  const [sessionDead, setSessionDead] = useState(false)
+  const [bindLostIds, setBindLostIds] = useState<Set<string>>(() => new Set())
+  const [chatActiveId, setChatActiveId] = useState<string | null>(null)
+  const [chatDrafts, setChatDrafts] = useState<Record<string, string>>({})
   const [plans, setPlans] = useState<PlanResponse[]>([])
   const [planId, setPlanId] = useState<string>('')
   const [loaded, setLoaded] = useState<Loaded | null>(null)
@@ -57,6 +68,7 @@ export function PlanWorkspace({ onLogout }: Props) {
   // quickly. A single generation covers both levels so an old response can
   // never pair one student's label with another student's editable plan.
   const loadGeneration = useRef(0)
+  const inboxRequest = useRef(0)
   // Shared across per-student ExerciseIndex instances so in-session picks keep
   // influencing ordering after the coach switches students.
   const exerciseUsage = useRef(new Map<string, number>())
@@ -121,6 +133,45 @@ export function PlanWorkspace({ onLogout }: Props) {
     }
   }, [exerciseList, loadPlan])
 
+  const refreshInbox = useCallback(async () => {
+    const generation = inboxRequest.current
+    try {
+      const next = await listConversations()
+      if (generation === inboxRequest.current) setConversations(next)
+    } catch (caught) {
+      if (isSessionExpired(caught)) setSessionDead(true)
+    }
+  }, [])
+
+  const applyConversations = useCallback((update: (prev: ChatConversation[]) => ChatConversation[]) => {
+    inboxRequest.current += 1
+    setConversations((prev) => update(prev ?? []))
+  }, [])
+
+  const applyReadState = useCallback((conversationId: string, state: ChatReadState) => {
+    applyConversations((prev) => prev.map((conversation) => conversation.id === conversationId
+      ? { ...conversation, unread_count: state.unread_count, my_last_read: state.my_last_read }
+      : conversation))
+  }, [applyConversations])
+
+  const updateChatDraft = useCallback((conversationId: string, text: string) => {
+    setChatDrafts((prev) => {
+      if (prev[conversationId] === text) return prev
+      if (text === '') {
+        const { [conversationId]: _removed, ...rest } = prev
+        return rest
+      }
+      return { ...prev, [conversationId]: text }
+    })
+  }, [])
+
+  useEffect(() => {
+    chatOutbox.setErrorSink((caught) => {
+      if (isSessionExpired(caught)) setSessionDead(true)
+    })
+    return () => chatOutbox.setErrorSink(null)
+  }, [])
+
   // boot: catalog + roster + first student + first plan
   useEffect(() => {
     (async () => {
@@ -134,7 +185,10 @@ export function PlanWorkspace({ onLogout }: Props) {
         exerciseUsage.current = new Map(usage.map((stat) => [stat.exercise_id, stat.plan_count]))
         const cat: Catalog = new Map(ex.map((e) => [e.id, { name: displayExerciseName(e.name), custom: e.created_by_coach_id != null }]))
         setExerciseList(ex); setCatalog(cat); setIndex(new ExerciseIndex(ex, {}, exerciseUsage.current)); setStudents(st); setBindRequests(requests)
-        if (st.length > 0) await loadStudent(st[0].id, cat, ex)
+        if (st.length > 0) await Promise.all([
+          loadStudent(st[0].id, cat, ex),
+          refreshInbox(),
+        ])
       } catch (e) {
         setError(errText(e, '无法连接后端'))
       } finally { setBooting(false) }
@@ -142,10 +196,21 @@ export function PlanWorkspace({ onLogout }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  useVisiblePolling(async () => {
+    await Promise.all([
+      getBindRequests().then(setBindRequests).catch((caught: unknown) => {
+        if (isSessionExpired(caught)) setSessionDead(true)
+      }),
+      refreshInbox(),
+    ])
+  }, view === 'messages' ? 30_000 : 60_000, {
+    enabled: !sessionDead && students.length > 0,
+    immediate: false,
+  })
+
   useEffect(() => {
-    const id = window.setInterval(() => { void getBindRequests().then(setBindRequests).catch(() => undefined) }, 60_000)
-    return () => window.clearInterval(id)
-  }, [])
+    if (view === 'messages' && students.length > 0 && !sessionDead) void refreshInbox()
+  }, [refreshInbox, sessionDead, students.length, view])
 
   const switchStudent = async (id: string) => {
     if (!catalog || id === studentId) return
@@ -320,7 +385,9 @@ export function PlanWorkspace({ onLogout }: Props) {
     // switchers are static, save/import buttons hide, publish only toggles locally.
     const sampleWeeks = buildSampleWeeks()
     return (
-      <div className="coach-shell"><CoachRail view={view} pending={bindRequests.length} onChange={(next) => { void changeView(next) }} /><div className="coach-main">
+      <div className="coach-shell">
+        {sessionDead && <div className="chat-session-banner">登录已过期，请刷新页面重新登录</div>}
+        <CoachRail view={view} badges={{ requests: bindRequests.length, messages: unreadTotal(conversations) }} onChange={(next) => { void changeView(next) }} /><div className="coach-main">
         {view === 'editor' && <div style={{ position: 'relative', height: '100vh' }}><PlanEditor
           key="sample-preview"
           initialWeeks={sampleWeeks}
@@ -340,7 +407,7 @@ export function PlanWorkspace({ onLogout }: Props) {
           onUseExercise={() => { void changeView('editor') }}
         />}
         {view === 'requests' && <RequestsPage requests={bindRequests} onRequestsChanged={setBindRequests} onAccepted={refreshStudentsAfterAccept} />}
-        {(view === 'board' || view === 'videos') && <div className="empty-page">接受学员申请后即可查看{view === 'board' ? '学员看板' : '训练视频'}</div>}
+        {(view === 'board' || view === 'videos' || view === 'messages') && <div className="empty-page">接受学员申请后即可{view === 'board' ? '查看学员看板' : view === 'videos' ? '查看训练视频' : '与学员聊天'}</div>}
       </div></div>
     )
   }
@@ -358,7 +425,9 @@ export function PlanWorkspace({ onLogout }: Props) {
   }))
 
   return (
-    <div className="coach-shell"><CoachRail view={view} pending={bindRequests.length} onChange={(next) => { void changeView(next) }} /><div className="coach-main">
+    <div className="coach-shell">
+      {sessionDead && <div className="chat-session-banner">登录已过期，请刷新页面重新登录</div>}
+      <CoachRail view={view} badges={{ requests: bindRequests.length, messages: unreadTotal(conversations) }} onChange={(next) => { void changeView(next) }} /><div className="coach-main">
     {view === 'editor' && <div ref={editorShellRef} style={{ position: 'relative', height: '100vh' }}>
       <PlanEditor
         key={planId || `empty-${studentId}`}
@@ -526,6 +595,21 @@ export function PlanWorkspace({ onLogout }: Props) {
     {view === 'board' && <StudentBoard students={students} catalog={catalog} index={index} />}
     {view === 'videos' && <VideosPage students={students} studentId={studentId} onStudent={(id) => { void switchStudent(id) }} />}
     {view === 'requests' && <RequestsPage requests={bindRequests} onRequestsChanged={setBindRequests} onAccepted={refreshStudentsAfterAccept} />}
+    {view === 'messages' && <MessagesPage
+      me={me}
+      students={students}
+      conversations={conversations}
+      bindLostIds={bindLostIds}
+      sessionDead={sessionDead}
+      activeId={chatActiveId}
+      drafts={chatDrafts}
+      onActiveIdChange={setChatActiveId}
+      onDraftChange={updateChatDraft}
+      onConversationsChanged={applyConversations}
+      onReadStateApplied={applyReadState}
+      onBindLost={(conversationId) => setBindLostIds((prev) => new Set(prev).add(conversationId))}
+      onSessionExpired={() => setSessionDead(true)}
+    />}
     </div></div>
   )
 }

@@ -1,7 +1,7 @@
 import { act, useEffect } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { ExerciseResponse, PlanWithChildren } from '../../api/types'
+import type { AuthUser, ChatConversation, ChatMessage, ExerciseResponse, PlanWithChildren } from '../../api/types'
 import type { Week } from '../plan-editor/types'
 
 const api = vi.hoisted(() => ({
@@ -12,6 +12,11 @@ const api = vi.hoisted(() => ({
   getBindRequests: vi.fn(),
   listExercises: vi.fn(),
   getExerciseUsageStats: vi.fn(),
+  listConversations: vi.fn(),
+  getMessages: vi.fn(),
+  markConversationRead: vi.fn(),
+  sendTextMessage: vi.fn(),
+  openConversation: vi.fn(),
 }))
 
 vi.mock('../../api/plans', () => ({
@@ -34,6 +39,13 @@ vi.mock('../../api/exercises', () => ({
 vi.mock('../../api/coach', () => ({
   getBindRequests: api.getBindRequests,
   refreshCoachStudents: vi.fn(),
+}))
+vi.mock('../../api/chat', () => ({
+  listConversations: api.listConversations,
+  getMessages: api.getMessages,
+  markConversationRead: api.markConversationRead,
+  sendTextMessage: api.sendTextMessage,
+  openConversation: api.openConversation,
 }))
 vi.mock('../plan-editor/PlanEditor', () => ({
   PlanEditor: ({ initialWeeks, onLeaveGuardChange }: {
@@ -61,6 +73,17 @@ const exercise: ExerciseResponse = {
   id: 'exercise', name: '深蹲', name_en: null, exercise_type: 'main_lift', main_lift_family: 'squat',
   is_competition_lift: true, muscle_groups: [], equipment: [], movement_pattern: [],
   competition_stance: null, created_by_coach_id: null, created_at: '2026-01-01T00:00:00Z',
+}
+const me: AuthUser = { id: 'coach', phone: '+8613900000001', role: 'coach', createdAt: '2026-01-01T00:00:00Z' }
+const chatConversation = (unreadCount: number): ChatConversation => ({
+  id: 'conversation', other_party: { id: 'student', display_name: '学员' },
+  last_message: { id: 'chat-message', seq: 1, kind: 'text', preview: '新消息', created_at: '2026-07-22T10:00:00Z', sender_id: 'student' },
+  last_message_at: '2026-07-22T10:00:00Z', unread_count: unreadCount,
+  my_last_read: null, other_last_read: null,
+})
+const chatMessage: ChatMessage = {
+  id: 'chat-message', conversation_id: 'conversation', seq: 1, sender_id: 'student', kind: 'text', body: '新消息',
+  attachment_id: null, image_url: null, image_expires_in: null, client_id: 'student-client', created_at: '2026-07-22T10:00:00Z',
 }
 
 function plan(note: string): PlanWithChildren {
@@ -121,6 +144,9 @@ describe('PlanWorkspace editor remount', () => {
     api.getStudentPlans.mockResolvedValue([plan('加载时快照')])
     api.getStudentOnboarding.mockResolvedValue(null)
     api.getBindRequests.mockResolvedValue([])
+    api.listConversations.mockResolvedValue([])
+    api.getMessages.mockResolvedValue({ messages: [chatMessage], meta: { other_last_read: null, has_more: false } })
+    api.markConversationRead.mockResolvedValue({ my_last_read: { message_id: 'chat-message', seq: 1 }, unread_count: 0 })
   })
 
   afterEach(() => {
@@ -136,7 +162,7 @@ describe('PlanWorkspace editor remount', () => {
       .mockResolvedValueOnce(plan('服务端最新备注'))
 
     await act(async () => {
-      root.render(<PlanWorkspace onLogout={vi.fn()} />)
+      root.render(<PlanWorkspace onLogout={vi.fn()} me={me} />)
       await settle()
     })
     expect(host.querySelector('[data-testid="editor-note"]')?.textContent).toBe('加载时快照')
@@ -161,12 +187,63 @@ describe('PlanWorkspace editor remount', () => {
     api.getPlan.mockResolvedValue(plan('频次接口降级'))
 
     await act(async () => {
-      root.render(<PlanWorkspace onLogout={vi.fn()} />)
+      root.render(<PlanWorkspace onLogout={vi.fn()} me={me} />)
       await settle()
     })
 
     expect(api.getExerciseUsageStats).toHaveBeenCalledTimes(1)
     expect(host.querySelector('[data-testid="editor-note"]')?.textContent).toBe('频次接口降级')
     expect(host.textContent).not.toContain('无法连接后端')
+  })
+
+  it('零学员空态可进入消息页且不发聊天请求', async () => {
+    api.getCoachStudents.mockResolvedValue([])
+
+    await act(async () => {
+      root.render(<PlanWorkspace onLogout={vi.fn()} me={me} />)
+      await settle()
+    })
+    expect(api.listConversations).not.toHaveBeenCalled()
+
+    await act(async () => {
+      clickButton(host, '消息')
+      await settle()
+    })
+
+    expect(host.querySelector('.empty-page')?.textContent).toBe('接受学员申请后即可与学员聊天')
+    expect(api.listConversations).not.toHaveBeenCalled()
+  })
+
+  it('markRead 清零后丢弃更早采样的 inbox 响应，红点不复活', async () => {
+    vi.spyOn(document, 'hasFocus').mockReturnValue(true)
+    Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' })
+    let resolveStale!: (value: ChatConversation[]) => void
+    const stale = new Promise<ChatConversation[]>((resolve) => { resolveStale = resolve })
+    api.listConversations
+      .mockResolvedValueOnce([chatConversation(1)])
+      .mockReturnValueOnce(stale)
+      .mockResolvedValue([])
+    api.getPlan.mockResolvedValue(plan('聊天红点测试'))
+
+    await act(async () => {
+      root.render(<PlanWorkspace onLogout={vi.fn()} me={me} />)
+      await settle()
+    })
+    await act(async () => {
+      clickButton(host, '消息')
+      await settle()
+    })
+    await act(async () => {
+      host.querySelector<HTMLButtonElement>('.chat-row')?.click()
+      await settle()
+    })
+    expect(api.markConversationRead).toHaveBeenCalledWith('conversation', 'chat-message')
+
+    await act(async () => {
+      resolveStale([chatConversation(1)])
+      await settle()
+    })
+    const messagesTab = [...host.querySelectorAll('button')].find((item) => item.textContent?.includes('消息'))
+    expect(messagesTab?.querySelector('.coach-rail-badge')).toBeNull()
   })
 })
