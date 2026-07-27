@@ -12,6 +12,9 @@ const message = (seq: number): ChatMessage => ({
   attachment_id: null,
   image_url: null,
   image_expires_in: null,
+  set_ref: null,
+  video_url: null,
+  video_expires_in: null,
   client_id: `client-${seq}`,
   created_at: '2026-07-22T10:00:00.000Z',
 })

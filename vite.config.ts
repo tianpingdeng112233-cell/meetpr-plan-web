@@ -34,6 +34,7 @@ export default defineConfig(({ mode }) => ({
     },
   },
   test: {
+    cache: false,
     environment: 'jsdom',
     globals: true,
   },
