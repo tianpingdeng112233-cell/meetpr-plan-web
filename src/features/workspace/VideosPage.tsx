@@ -4,6 +4,7 @@ import { getUploadUrl, postCoachFeedback } from '../../api/coach'
 import { createVideoMarker, deleteVideoMarker, getVideoMarkers } from '../../api/markers'
 import type { CoachStudent, StudentVideo, VideoMarker, VideoMarkerLevel } from '../../api/types'
 import { kg } from './WorkspaceCommon'
+import { usePersistentCollapse } from './usePersistentCollapse'
 
 type VideoFilter = 'all' | 'pending' | 'reviewed'
 type MarkerAvailability = 'loading' | 'available' | 'error' | 'unavailable'
@@ -75,6 +76,7 @@ export function VideosPage({ students, studentId, videos, onRefreshVideos, onStu
   onRefreshVideos: (studentId: string) => Promise<void>
   onStudent: (id: string) => void
 }) {
+  const [masterCollapsed, toggleMaster] = usePersistentCollapse('meetpr:sidebar:videos')
   const [filter, setFilter] = useState<VideoFilter>('all')
   const [activeId, setActiveId] = useState<string | null>(null)
   const [videoSource, setVideoSource] = useState<{ videoId: string; url: string } | null>(null)
@@ -388,7 +390,7 @@ export function VideosPage({ students, studentId, videos, onRefreshVideos, onStu
 
   return (
     <main className="videos-page">
-      <aside className="videos-master">
+      <aside className={`videos-master${masterCollapsed ? ' collapsed' : ''}`}>
         <header className="videos-master-head">
           {students.length > 0 && (
             <select
@@ -403,6 +405,16 @@ export function VideosPage({ students, studentId, videos, onRefreshVideos, onStu
             </select>
           )}
           <span>{videos.length} 条 · 近 {trainingDays} 个训练日</span>
+          <button
+            type="button"
+            className="column-collapse-toggle"
+            aria-label={masterCollapsed ? '展开视频片段列表' : '收起视频片段列表'}
+            aria-expanded={!masterCollapsed}
+            title={masterCollapsed ? '展开视频片段列表' : '收起视频片段列表'}
+            onClick={toggleMaster}
+          >
+            {masterCollapsed ? '›' : '‹'}
+          </button>
         </header>
         <div className="video-filter-tabs" role="tablist" aria-label="视频状态">
           {([

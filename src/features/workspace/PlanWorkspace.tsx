@@ -569,6 +569,9 @@ export function PlanWorkspace({ onLogout, me }: Props) {
   const setLeaveGuard = useCallback((guard: (() => Promise<boolean>) | null) => {
     leaveGuardRef.current = guard
   }, [])
+  const confirmWorkspaceLeave = useCallback(async () => (
+    leaveGuardRef.current ? leaveGuardRef.current() : true
+  ), [])
 
   const changeView = async (nextView: CoachView) => {
     if (viewTransitioning.current || nextView === view) return
@@ -664,10 +667,7 @@ export function PlanWorkspace({ onLogout, me }: Props) {
       view={view}
       onChange={(next) => { void changeView(next) }}
       me={me}
-      students={students}
-      studentId={studentId}
-      onboarding={view === 'board' ? rosterDataByStudent[studentId]?.profile : onboarding}
-      exercises={exerciseList}
+      exerciseCount={exerciseList.length}
       pendingStudents={pendingStudents}
       pendingCount={rosterCounts.pending}
       unreadCount={unreadCount}
@@ -675,6 +675,8 @@ export function PlanWorkspace({ onLogout, me }: Props) {
       videoCount={videoCount}
       onPickPending={(id) => { void openStudentEditor(id) }}
       lastSyncedAt={lastSyncedAt}
+      onLogout={onLogout}
+      onConfirmLeave={confirmWorkspaceLeave}
     >
       {sessionDead && <div className="chat-session-banner">登录已过期，请刷新页面重新登录</div>}
       {view === 'editor' && !hasStudents && (
@@ -686,7 +688,7 @@ export function PlanWorkspace({ onLogout, me }: Props) {
             studentName="示例学员"
             planName="示例计划"
             exerciseIndex={index}
-            onLogout={onLogout}
+            onBackToBoard={() => { void changeView('board') }}
           />
           <SamplePreviewBanner onRefresh={() => window.location.reload()} />
         </div>
@@ -806,7 +808,7 @@ export function PlanWorkspace({ onLogout, me }: Props) {
         onBackfillHistory={loaded && loaded.plan.status !== 'draft' && loaded.plan.start_date < todayISO()
           ? () => { setBackfillError(''); setBackfillOpen(true) }
           : undefined}
-        onLogout={onLogout}
+        onBackToBoard={() => { void changeView('board') }}
         onLeaveGuardChange={setLeaveGuard}
         suspended={viewSwitching}
       />

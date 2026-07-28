@@ -3,6 +3,7 @@ import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ApiException } from '../../api/client'
 import type { StudentVideo, VideoMarker } from '../../api/types'
+import { installLocalStorageMock } from '../../test/localStorageMock'
 
 const api = vi.hoisted(() => ({
   getStudentVideos: vi.fn(),
@@ -133,6 +134,8 @@ describe('VideosPage master-detail interactions', () => {
   let mounted: boolean
 
   beforeEach(() => {
+    installLocalStorageMock()
+    window.localStorage.removeItem('meetpr:sidebar:videos')
     host = document.createElement('div')
     document.body.appendChild(host)
     root = createRoot(host)
@@ -162,6 +165,23 @@ describe('VideosPage master-detail interactions', () => {
     })
     mounted = true
   }
+
+  it('collapses the clip list and restores the saved state', async () => {
+    await renderHarness()
+    const toggle = host.querySelector<HTMLButtonElement>('[aria-label="收起视频片段列表"]')!
+
+    click(toggle)
+    expect(host.querySelector('.videos-master')?.classList.contains('collapsed')).toBe(true)
+    expect(toggle.getAttribute('aria-expanded')).toBe('false')
+    expect(window.localStorage.getItem('meetpr:sidebar:videos')).toBe('true')
+
+    act(() => root.unmount())
+    mounted = false
+    root = createRoot(host)
+    await renderHarness()
+    expect(host.querySelector('.videos-master')?.classList.contains('collapsed')).toBe(true)
+    expect(host.querySelector('[aria-label="展开视频片段列表"]')).not.toBeNull()
+  })
 
   it('renders true pending/reviewed counts and filters the master list', async () => {
     await renderHarness()

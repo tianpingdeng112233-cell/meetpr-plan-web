@@ -602,7 +602,8 @@ describe('PlanWorkspace editor remount', () => {
     })
 
     expect(host.querySelector('.empty-page')?.textContent).toBe('接受学员申请后即可与学员聊天')
-    expect(host.querySelector('.coach-context')).toBeNull()
+    expect(host.querySelector('.coach-shell-body')?.children).toHaveLength(2)
+    expect(host.querySelector('.coach-main')).not.toBeNull()
     expect(api.listConversations).not.toHaveBeenCalled()
   }, 15_000)
 

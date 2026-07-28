@@ -29,6 +29,7 @@ import {
 import { catchUpSince } from './chatSync'
 import { chatOutbox, type OutboxItem } from './chatOutbox'
 import { useClockTick, useVisiblePolling } from './useVisiblePolling'
+import { usePersistentCollapse } from '../workspace/usePersistentCollapse'
 
 const INTERACTION_WINDOW_MS = 120_000
 const MAX_MESSAGE_CHARS = 4000
@@ -85,6 +86,7 @@ export default function MessagesPage({
   onSessionExpired,
 }: MessagesPageProps) {
   const now = useClockTick(60_000)
+  const [sidebarCollapsed, toggleSidebar] = usePersistentCollapse('meetpr:sidebar:messages')
   const localSelection = useRef<{ conversationId: string; selectedStudentId: string } | null>(null)
   const activeFromList = activeId == null
     ? null
@@ -179,11 +181,21 @@ export default function MessagesPage({
   }
 
   return <main className="chat-page">
-    <aside className="chat-sidebar" aria-label="会话列表">
+    <aside className={`chat-sidebar${sidebarCollapsed ? ' collapsed' : ''}`} aria-label="会话列表">
       <header className="chat-panel-head chat-list-head">
         <b>会话</b>
         <button type="button" className="chat-next-unread" onClick={nextUnread}>
           下一条未读 <span>{totalUnread}</span>
+        </button>
+        <button
+          type="button"
+          className="column-collapse-toggle"
+          aria-label={sidebarCollapsed ? '展开会话列表' : '收起会话列表'}
+          aria-expanded={!sidebarCollapsed}
+          title={sidebarCollapsed ? '展开会话列表' : '收起会话列表'}
+          onClick={toggleSidebar}
+        >
+          {sidebarCollapsed ? '›' : '‹'}
         </button>
       </header>
       {openError && <div className="chat-open-error">{openError}</div>}

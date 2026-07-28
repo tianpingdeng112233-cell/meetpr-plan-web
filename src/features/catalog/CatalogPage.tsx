@@ -21,6 +21,7 @@ import {
   type CatalogCategory,
   type CatalogRefine,
 } from './catalogModel'
+import { usePersistentCollapse } from '../workspace/usePersistentCollapse'
 
 interface Props {
   exerciseList: ExerciseResponse[]
@@ -41,6 +42,7 @@ function directSearchIds(exercises: ExerciseResponse[], query: string): Set<stri
 }
 
 export function CatalogPage({ exerciseList, catalog, index, onCreateExercise, onUseExercise }: Props) {
+  const [categoriesCollapsed, toggleCategories] = usePersistentCollapse('meetpr:sidebar:catalog')
   const [query, setQuery] = useState('')
   const [category, setCategory] = useState<CatalogCategory>('all')
   const [refine, setRefine] = useState<CatalogRefine>('all')
@@ -159,7 +161,20 @@ export function CatalogPage({ exerciseList, catalog, index, onCreateExercise, on
 
   return <main className="data-page catalog-page">
     <div className="catalog-body">
-      <aside className="catalog-categories" aria-label="动作分类">
+      <aside className={`catalog-categories${categoriesCollapsed ? ' collapsed' : ''}`} aria-label="动作分类">
+        <header className="catalog-categories-head">
+          <span>分类</span>
+          <button
+            type="button"
+            className="column-collapse-toggle"
+            aria-label={categoriesCollapsed ? '展开动作分类' : '收起动作分类'}
+            aria-expanded={!categoriesCollapsed}
+            title={categoriesCollapsed ? '展开动作分类' : '收起动作分类'}
+            onClick={toggleCategories}
+          >
+            {categoriesCollapsed ? '›' : '‹'}
+          </button>
+        </header>
         <CategoryButton id="all" label="全部动作" count={facetCount('all', refine)} active={!trimmedQuery && category === 'all'} onChoose={chooseCategory} />
         <CategoryButton id="mine" label="我的自建" count={facetCount('mine', refine)} active={!trimmedQuery && category === 'mine'} onChoose={chooseCategory} />
         <div className="catalog-category-heading">比赛三项 · 按项</div>
