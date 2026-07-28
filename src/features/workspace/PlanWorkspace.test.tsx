@@ -9,6 +9,7 @@ const api = vi.hoisted(() => ({
   getStudentPlans: vi.fn(),
   getPlan: vi.fn(),
   publishPlan: vi.fn(),
+  patchPlan: vi.fn(),
   getStudentOnboarding: vi.fn(),
   getBindRequests: vi.fn(),
   getStudentVideos: vi.fn(),
@@ -39,7 +40,7 @@ vi.mock('../../api/plans', () => ({
   getStudentOnboarding: api.getStudentOnboarding,
   publishPlan: api.publishPlan,
   createPlan: vi.fn(),
-  patchPlan: vi.fn(),
+  patchPlan: api.patchPlan,
   markImportedHistory: vi.fn(),
   renameCoachStudent: vi.fn(),
   deletePlan: vi.fn(),
@@ -505,7 +506,7 @@ describe('PlanWorkspace editor remount', () => {
     const freshPlan = tonnagePlan('100')
     let resolveOldTonnage!: (value: PlanWithChildren) => void
     api.getStudentPlans.mockResolvedValue([summary])
-    api.publishPlan.mockResolvedValue(summary)
+    api.patchPlan.mockResolvedValue(summary)
     api.getPlan
       .mockResolvedValueOnce(oldPlan)
       .mockImplementationOnce(() => new Promise<PlanWithChildren>((resolve) => { resolveOldTonnage = resolve }))
@@ -515,8 +516,12 @@ describe('PlanWorkspace editor remount', () => {
       root.render(<PlanWorkspace onLogout={vi.fn()} me={me} />)
       await settle()
     })
+    // The plan is already published, so publish is no longer offered (#34); rename
+    // is the surviving plan mutation that funnels through updateStudentPlans and
+    // must invalidate the in-flight tonnage request.
     await act(async () => {
-      host.querySelector<HTMLButtonElement>('[data-testid="publish-plan"]')?.click()
+      const editorProps = api.captureEditorProps.mock.calls.at(-1)?.[0] as { onRename?: (name: string) => Promise<void> }
+      await editorProps.onRename!('当前计划（改名）')
       await settle()
     })
     await act(async () => {
