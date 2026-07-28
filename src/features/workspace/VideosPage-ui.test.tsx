@@ -151,6 +151,7 @@ describe('VideosPage master-detail interactions', () => {
     root = createRoot(host)
     mounted = false
     vi.spyOn(HTMLMediaElement.prototype, 'pause').mockImplementation(() => {})
+    vi.spyOn(HTMLMediaElement.prototype, 'play').mockResolvedValue()
     vi.spyOn(HTMLMediaElement.prototype, 'load').mockImplementation(() => {})
     api.getStudentVideos.mockResolvedValue(videos)
     api.getUploadUrl.mockImplementation((id: string) =>
@@ -399,6 +400,23 @@ describe('VideosPage master-detail interactions', () => {
     act(() => video.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true })))
     await act(settle)
     expect(host.querySelector('.video-detail-head')?.textContent).toContain('深蹲')
+  })
+
+  it('toggles playback with Space while exempting inputs and the focused video element', async () => {
+    await renderHarness()
+    const video = host.querySelector<HTMLVideoElement>('video')!
+    Object.defineProperty(video, 'paused', { value: true, configurable: true })
+
+    act(() => window.dispatchEvent(new KeyboardEvent('keydown', { key: ' ', bubbles: true })))
+    expect(HTMLMediaElement.prototype.play).toHaveBeenCalledTimes(1)
+
+    const feedback = host.querySelector<HTMLTextAreaElement>('.video-feedback textarea')!
+    feedback.focus()
+    act(() => feedback.dispatchEvent(new KeyboardEvent('keydown', { key: ' ', bubbles: true })))
+    expect(HTMLMediaElement.prototype.play).toHaveBeenCalledTimes(1)
+
+    act(() => video.dispatchEvent(new KeyboardEvent('keydown', { key: ' ', bubbles: true })))
+    expect(HTMLMediaElement.prototype.play).toHaveBeenCalledTimes(1)
   })
 
   it('releases the old media source synchronously on switch and again on unmount', async () => {

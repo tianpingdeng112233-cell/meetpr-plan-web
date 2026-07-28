@@ -44,6 +44,33 @@ function week(num = 31): Week {
   }
 }
 
+function keyboardWeek(): Week {
+  const first = {
+    ...row(),
+    id: 'squat-first',
+    boxes: [
+      { val: '150', empty: false },
+      { val: '145', empty: false },
+      { val: '140', empty: false },
+    ],
+  }
+  const second = {
+    ...row(),
+    id: 'squat-second',
+    name: '暂停深蹲',
+    boxes: [
+      { val: '130', empty: false },
+      { val: '125', empty: false },
+      { val: '120', empty: false },
+    ],
+  }
+  const base = week()
+  return {
+    ...base,
+    days: base.days.map((day) => day.dow === 0 ? { ...day, rows: [first, second] } : day),
+  }
+}
+
 function setInput(input: HTMLInputElement, value: string): void {
   Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(input, value)
   input.dispatchEvent(new Event('input', { bubbles: true }))
@@ -158,5 +185,114 @@ describe('plan editor cell selection UI', () => {
     expect(host.querySelector<HTMLInputElement>('[data-plan-cell="sets"] input')!.value).toBe(initialCount)
     const formulaValue = host.querySelector('.plan-formula-bar output')?.textContent ?? ''
     expect(formulaValue.startsWith(initialCount)).toBe(true)
+  })
+
+  it('moves through the Tab chain, wraps to the next row, and keeps Enter in the same column', async () => {
+    await act(async () => {
+      root.render(
+        <PlanEditor key="mutable" initialWeeks={[keyboardWeek()]} weeksCount={1} studentName="学员" planName="计划" />,
+      )
+    })
+    const firstName = host.querySelector<HTMLInputElement>('[data-rowid="squat-first"] [data-plan-cell="name"] input')!
+    await act(async () => { firstName.focus() })
+
+    for (const expected of ['sets', 'reps', 'intensity', 'intensity', 'intensity', 'name']) {
+      await act(async () => {
+        document.activeElement?.dispatchEvent(new KeyboardEvent('keydown', {
+          key: 'Tab',
+          bubbles: true,
+          cancelable: true,
+        }))
+        await new Promise((resolve) => window.setTimeout(resolve, 0))
+      })
+      expect(host.querySelector('.plan-cell-selected')?.getAttribute('data-plan-cell')).toBe(expected)
+    }
+    expect(host.querySelector('.plan-cell-selected')?.closest('[data-rowid]')?.getAttribute('data-rowid')).toBe('squat-second')
+
+    await act(async () => {
+      document.activeElement?.dispatchEvent(new KeyboardEvent('keydown', {
+        key: 'Tab',
+        shiftKey: true,
+        bubbles: true,
+        cancelable: true,
+      }))
+      await new Promise((resolve) => window.setTimeout(resolve, 0))
+    })
+    expect(host.querySelector('.plan-cell-selected')?.closest('[data-rowid]')?.getAttribute('data-rowid')).toBe('squat-first')
+    expect(host.querySelector('.plan-cell-selected')?.getAttribute('data-set-index')).toBe('2')
+
+    const firstStrength = host.querySelector<HTMLInputElement>('[data-rowid="squat-first"] [data-set-index="0"]')!
+    await act(async () => { firstStrength.focus() })
+    await act(async () => {
+      firstStrength.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }))
+      await new Promise((resolve) => window.setTimeout(resolve, 0))
+    })
+    expect(host.querySelector('.plan-cell-selected')?.closest('[data-rowid]')?.getAttribute('data-rowid')).toBe('squat-second')
+    expect(host.querySelector('.plan-cell-selected')?.getAttribute('data-set-index')).toBe('0')
+  })
+
+  it('commits a set-count draft through blur before Tab moves', async () => {
+    await act(async () => {
+      root.render(
+        <PlanEditor initialWeeks={[keyboardWeek()]} weeksCount={1} studentName="学员" planName="计划" />,
+      )
+    })
+    const setsInput = host.querySelector<HTMLInputElement>('[data-rowid="squat-first"] [data-plan-cell="sets"] input')!
+    await act(async () => { setsInput.focus() })
+    act(() => setInput(setsInput, ''))
+
+    await act(async () => {
+      setsInput.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true }))
+      await new Promise((resolve) => window.setTimeout(resolve, 0))
+    })
+    expect(host.querySelector<HTMLInputElement>('[data-rowid="squat-first"] [data-plan-cell="sets"] input')?.value).toBe('')
+    expect(host.querySelector('.plan-cell-selected')?.getAttribute('data-plan-cell')).toBe('reps')
+  })
+
+  it('fills the selected intensity downward with ⌘D and refuses the mutation in read-only plans', async () => {
+    await act(async () => {
+      root.render(
+        <PlanEditor initialWeeks={[keyboardWeek()]} weeksCount={1} studentName="学员" planName="计划" />,
+      )
+    })
+    const firstStrength = host.querySelector<HTMLInputElement>('[data-rowid="squat-first"] [data-set-index="0"]')!
+    await act(async () => { firstStrength.focus() })
+    await act(async () => {
+      firstStrength.dispatchEvent(new KeyboardEvent('keydown', {
+        key: 'd',
+        metaKey: true,
+        bubbles: true,
+        cancelable: true,
+      }))
+    })
+    expect([...host.querySelectorAll<HTMLInputElement>('[data-rowid="squat-first"] [data-set-index]')].map((input) => input.value))
+      .toEqual(['150', '150', '150'])
+
+    await act(async () => {
+      root.render(
+        <PlanEditor
+          key="read-only"
+          initialWeeks={[keyboardWeek()]}
+          weeksCount={1}
+          studentName="学员"
+          planName="计划"
+          readOnly
+        />,
+      )
+    })
+    const readOnlyFirst = host.querySelector<HTMLInputElement>('[data-rowid="squat-first"] [data-set-index="0"]')!
+    expect([...host.querySelectorAll<HTMLInputElement>('[data-rowid] input')].every((input) => input.disabled)).toBe(true)
+    const shortcut = new KeyboardEvent('keydown', {
+      key: 'd',
+      metaKey: true,
+      bubbles: true,
+      cancelable: true,
+    })
+    await act(async () => {
+      readOnlyFirst.dispatchEvent(shortcut)
+    })
+    expect(shortcut.defaultPrevented).toBe(true)
+    expect([...host.querySelectorAll<HTMLInputElement>('[data-rowid="squat-first"] [data-set-index]')].map((input) => input.value))
+      .toEqual(['150', '145', '140'])
   })
 })

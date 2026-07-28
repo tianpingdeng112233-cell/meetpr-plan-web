@@ -29,12 +29,15 @@ import {
 import { DraftMirrorBanner } from './components/DraftMirrorBanner'
 import { FormulaBar } from './components/FormulaBar'
 import {
+  movePlanCell,
+  planCellKey,
   resolvePlanCell,
   samePlanCell,
   type PlanCellField,
   type PlanCellSelection,
 } from './selectionModel'
 import { buildExerciseInfoTokens } from './exerciseInfo'
+import { useGlobalKeyboardHandler } from '../workspace/globalKeyboard'
 
 interface Sel { wnum: number; dow: number }
 interface PopState { visible: boolean; x: number; y: number; wnum: number; dow: number; rowId: string; query: string }
@@ -179,12 +182,6 @@ function isPastISODate(iso: string): boolean {
 type WeeksUpdate = Week[] | ((prev: Week[]) => Week[])
 interface DayClipboard { rest: boolean; rows: ExerciseRow[] }
 
-function isEditableTarget(target: EventTarget | null): boolean {
-  const el = target as HTMLElement | null
-  if (!el) return false
-  return el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement || el.isContentEditable
-}
-
 function cloneRow(row: ExerciseRow, prefix: string, index: number): ExerciseRow {
   return {
     ...row,
@@ -320,6 +317,7 @@ export function PlanEditor(props: PlanEditorProps) {
   const rowClipboardRef = useRef<ExerciseRow | null>(null)
   const clipboardKindRef = useRef<ClipboardKind | null>(null)
   const clipboardTextRef = useRef('')
+  const nameComposingRef = useRef(false)
   const suppressDayClickRef = useRef(false)
   const dayMoveCleanupRef = useRef<((updateVisual?: boolean) => void) | null>(null)
   const visibleWeekRef = useRef<number | null>(null)
@@ -972,6 +970,7 @@ export function PlanEditor(props: PlanEditorProps) {
     rowId: string,
     event: React.KeyboardEvent<HTMLInputElement>,
   ) => {
+    if (event.nativeEvent.isComposing || event.keyCode === 229 || nameComposingRef.current) return
     if (!pop.visible || pop.wnum !== wnum || pop.dow !== dow || pop.rowId !== rowId || !pop.query.trim()) return
     const hits = props.exerciseIndex?.search(pop.query) ?? []
     const selectableCount = hits.length + (props.onCreateExercise ? 1 : 0)
@@ -1169,41 +1168,135 @@ export function PlanEditor(props: PlanEditorProps) {
     setStatusText('已重做')
   }, [])
 
-  useEffect(() => {
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (suspendedRef.current) return
-      // Escape only clears the inspection selection — allowed even on
-      // read-only historical plans; everything below mutates and stays gated.
-      if (e.key === 'Escape') {
-        setCellSelection(null)
-        return
-      }
+  const moveCellSelection = (move: 'next' | 'previous' | 'up' | 'down') => {
+    const next = movePlanCell(latestWeeks.current, cellSelection, move)
+    if (!next) return
+    setSel({ wnum: next.weekNumber, dow: next.dow })
+    setSelectedRow({ wnum: next.weekNumber, dow: next.dow, rowId: next.rowId })
+    setCellSelection(next)
+    setPop((current) => ({ ...current, visible: false }))
+    window.setTimeout(() => {
+      const key = planCellKey(next)
+      const cell = [...(rootRef.current?.querySelectorAll<HTMLElement>('[data-plan-cell-key]') ?? [])]
+        .find((candidate) => candidate.dataset.planCellKey === key)
+      if (!cell) return
+      cell.scrollIntoView?.({ block: 'nearest', inline: 'nearest' })
       if (readOnly) return
-      const mod = e.metaKey || e.ctrlKey
-      if (!mod || isEditableTarget(e.target)) return
-      const key = e.key.toLowerCase()
-      if (key === 'c') {
-        e.preventDefault()
-        if (selectedRow) void copySelectedRow()
-        else void copySelectedDay()
-      } else if (key === 'v') {
-        e.preventDefault()
-        if (selectedRow || clipboardKindRef.current === 'row') void pasteSelectedRows()
-        else void pasteSelectedDay()
-      } else if (key === 'z' && e.shiftKey) {
-        e.preventDefault()
-        redoWeeks()
-      } else if (key === 'z') {
-        e.preventDefault()
-        undoWeeks()
-      } else if (key === 'y') {
-        e.preventDefault()
-        redoWeeks()
+      const focusTarget = cell instanceof HTMLInputElement
+        ? cell
+        : cell.querySelector<HTMLInputElement>('input:not(:disabled)')
+      focusTarget?.focus()
+    }, 0)
+  }
+
+  const fillSelectedIntensityDown = () => {
+    if (readOnly || cellSelection?.field !== 'intensity' || cellSelection.setIndex == null) return false
+    const resolved = resolvePlanCell(latestWeeks.current, cellSelection)
+    const source = resolved?.row.boxes[cellSelection.setIndex]
+    if (!resolved || !source || resolved.row.hasLogs || resolved.row.mode === 'bodyweight') return false
+    const sourceIndex = cellSelection.setIndex
+    setWeeksWithHistory((current) => current.map((week) => {
+      if (week.num !== cellSelection.weekNumber) return week
+      return {
+        ...week,
+        days: week.days.map((day) => {
+          if (day.dow !== cellSelection.dow) return day
+          return {
+            ...day,
+            rows: day.rows.map((row) => row.id !== cellSelection.rowId ? row : {
+              ...row,
+              boxes: row.boxes.map((box, index) => (
+                index > sourceIndex ? { ...source } : box
+              )),
+            }),
+          }
+        }),
       }
+    }))
+    setStatusText(`已向下填充 ${Math.max(0, resolved.row.boxes.length - sourceIndex - 1)} 格`)
+    return true
+  }
+
+  useGlobalKeyboardHandler(({ event: e, editable }) => {
+    if (suspendedRef.current) return false
+    const target = e.target instanceof HTMLElement ? e.target : null
+    const gridInput = !!target?.closest('[data-plan-cell-key]')
+
+    // Escape only clears the inspection selection — allowed even on
+    // read-only historical plans and while a selected grid input has focus.
+    if (e.key === 'Escape' && (!editable || gridInput)) {
+      setCellSelection(null)
+      return true
     }
-    window.addEventListener('keydown', onKeyDown)
-    return () => window.removeEventListener('keydown', onKeyDown)
-  }, [copySelectedDay, copySelectedRow, pasteSelectedDay, pasteSelectedRows, readOnly, redoWeeks, selectedRow, undoWeeks])
+
+    const mod = e.metaKey || e.ctrlKey
+    const key = e.key.toLowerCase()
+    if (mod && key === 'd' && !e.altKey && !e.shiftKey && (!editable || gridInput)) {
+      if (readOnly) {
+        e.preventDefault()
+        return true
+      }
+      if (fillSelectedIntensityDown()) {
+        e.preventDefault()
+        return true
+      }
+      return false
+    }
+
+    const navigation = !mod && !e.altKey && (
+      e.key === 'Tab'
+      || e.key === 'Enter'
+      || e.key === 'ArrowLeft'
+      || e.key === 'ArrowRight'
+      || e.key === 'ArrowUp'
+      || e.key === 'ArrowDown'
+    )
+    if (
+      pop.visible
+      && !!pop.query.trim()
+      && gridInput
+      && (e.key === 'Enter' || e.key === 'ArrowUp' || e.key === 'ArrowDown')
+    ) return false
+    if (navigation && (!editable || gridInput)) {
+      e.preventDefault()
+      // Blurring is the existing commit boundary for set-count drafts and name
+      // auto-binding. It also lets GuardedInput finish through its normal
+      // onChange/composition path before selection moves.
+      if (gridInput && document.activeElement instanceof HTMLElement) document.activeElement.blur()
+      if (e.key === 'Tab') moveCellSelection(e.shiftKey ? 'previous' : 'next')
+      else if (e.key === 'ArrowLeft') moveCellSelection('previous')
+      else if (e.key === 'ArrowRight') moveCellSelection('next')
+      else if (e.key === 'ArrowUp') moveCellSelection('up')
+      else moveCellSelection('down')
+      return true
+    }
+
+    if (readOnly || editable || !mod) return false
+    if (key === 'c') {
+      e.preventDefault()
+      if (selectedRow) void copySelectedRow()
+      else void copySelectedDay()
+      return true
+    } else if (key === 'v') {
+      e.preventDefault()
+      if (selectedRow || clipboardKindRef.current === 'row') void pasteSelectedRows()
+      else void pasteSelectedDay()
+      return true
+    } else if (key === 'z' && e.shiftKey) {
+      e.preventDefault()
+      redoWeeks()
+      return true
+    } else if (key === 'z') {
+      e.preventDefault()
+      undoWeeks()
+      return true
+    } else if (key === 'y') {
+      e.preventDefault()
+      redoWeeks()
+      return true
+    }
+    return false
+  }, 10)
 
   const blankRow = (): ExerciseRow => ({
     id: `n${Date.now()}-${Math.round(performance.now())}`,
@@ -1922,6 +2015,7 @@ export function PlanEditor(props: PlanEditorProps) {
                         selected={sel?.wnum === wk.num && sel?.dow === day.dow}
                         selectedRowId={selectedRow?.wnum === wk.num && selectedRow.dow === day.dow ? selectedRow.rowId : null}
                         cellSelection={cellSelection}
+                        readOnly={readOnly}
                         rowTier={rowTier}
                         onSelect={() => handleDayClick(wk.num, day.dow)}
                         onSelectRow={(rowId) => handleSelectRow(wk.num, day.dow, rowId)}
@@ -1935,6 +2029,8 @@ export function PlanEditor(props: PlanEditorProps) {
                         onNameFocus={(rowId, name, el) => handleNameFocus(wk.num, day.dow, rowId, name, el)}
                         onNameChange={(rowId, value, el) => handleNameChange(wk.num, day.dow, rowId, value, el)}
                         onNameKeyDown={(rowId, event) => handleNameKeyDown(wk.num, day.dow, rowId, event)}
+                        onNameCompositionStart={() => { nameComposingRef.current = true }}
+                        onNameCompositionEnd={() => { nameComposingRef.current = false }}
                         onNameBlur={(rowId) => handleNameBlur(wk.num, day.dow, rowId)}
                         onAddRow={(tier) => addRowToDay(wk.num, day.dow, tier)}
                         onEditRow={(rowId, updater) => editRow(wk.num, day.dow, rowId, updater)}

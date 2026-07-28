@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AuthUser } from '../../api/types'
 import { installLocalStorageMock } from '../../test/localStorageMock'
 import { CoachShell, type CoachView } from './CoachShell'
+import { useGlobalKeyboardHandler } from './globalKeyboard'
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
@@ -23,6 +24,11 @@ function ShellHarness({
   exerciseCount = 0,
   onLogout = () => undefined,
   onConfirmLeave,
+  commandStudents = [],
+  commandExercises = [],
+  onCommandStudent = () => undefined,
+  onCommandExercise = () => undefined,
+  onProbe,
 }: {
   initialView?: CoachView
   unreadCount?: number
@@ -31,6 +37,11 @@ function ShellHarness({
   exerciseCount?: number
   onLogout?: () => void | Promise<void>
   onConfirmLeave?: () => Promise<boolean>
+  commandStudents?: Array<{ id: string; label: string }>
+  commandExercises?: Array<{ id: string; label: string; secondary?: string }>
+  onCommandStudent?: (id: string) => void
+  onCommandExercise?: (id: string) => void
+  onProbe?: () => void
 }) {
   const [view, setView] = useState<CoachView>(initialView)
   return (
@@ -48,10 +59,24 @@ function ShellHarness({
       lastSyncedAt={new Date(2026, 6, 27, 9, 12)}
       onLogout={onLogout}
       onConfirmLeave={onConfirmLeave}
+      commandStudents={commandStudents}
+      commandExercises={commandExercises}
+      onCommandStudent={onCommandStudent}
+      onCommandExercise={onCommandExercise}
     >
       <div data-testid="content">{view}</div>
+      {onProbe && <KeyboardProbe onHit={onProbe} />}
     </CoachShell>
   )
+}
+
+function KeyboardProbe({ onHit }: { onHit: () => void }) {
+  useGlobalKeyboardHandler(({ event }) => {
+    if (event.key.toLowerCase() !== 'j') return false
+    onHit()
+    return true
+  }, 10)
+  return null
 }
 
 function navButton(host: HTMLElement, label: string): HTMLButtonElement {
@@ -195,5 +220,131 @@ describe('CoachShell', () => {
 
     expect(onConfirmLeave).toHaveBeenCalledTimes(1)
     expect(onLogout).toHaveBeenCalledTimes(1)
+  })
+
+  it('opens ⌘K, filters local commands, executes the active result, and closes with Escape', async () => {
+    const onCommandStudent = vi.fn()
+    const onCommandExercise = vi.fn()
+    await act(async () => {
+      root.render(
+        <ShellHarness
+          commandStudents={[{ id: 'student-2', label: '乙学员' }]}
+          commandExercises={[{ id: 'bench', label: '竞技卧推', secondary: 'Competition Bench Press' }]}
+          onCommandStudent={onCommandStudent}
+          onCommandExercise={onCommandExercise}
+        />,
+      )
+    })
+
+    await act(async () => {
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', metaKey: true, bubbles: true }))
+    })
+    expect(host.querySelector('[role="dialog"][aria-label="命令面板"]')).not.toBeNull()
+    const search = host.querySelector<HTMLInputElement>('[aria-label="搜索命令"]')!
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(search, '卧推')
+      search.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+    const options = [...host.querySelectorAll<HTMLElement>('[role="option"]')]
+    expect(options).toHaveLength(1)
+    expect(options[0].textContent).toContain('竞技卧推')
+
+    await act(async () => {
+      search.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
+    })
+    expect(onCommandExercise).toHaveBeenCalledWith('bench')
+    expect(host.querySelector('[role="dialog"][aria-label="命令面板"]')).toBeNull()
+
+    await act(async () => { host.querySelector<HTMLButtonElement>('.coach-search-shell')?.click() })
+    const studentSearch = host.querySelector<HTMLInputElement>('[aria-label="搜索命令"]')!
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(studentSearch, '乙学员')
+      studentSearch.dispatchEvent(new Event('input', { bubbles: true }))
+      studentSearch.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
+    })
+    expect(onCommandStudent).toHaveBeenCalledWith('student-2')
+
+    await act(async () => { host.querySelector<HTMLButtonElement>('.coach-search-shell')?.click() })
+    await act(async () => {
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }))
+    })
+    await act(async () => {
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
+    })
+    expect(host.querySelector('[data-testid="content"]')?.textContent).toBe('board')
+
+    await act(async () => { host.querySelector<HTMLButtonElement>('.coach-search-shell')?.click() })
+    await act(async () => {
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+    })
+    expect(host.querySelector('[role="dialog"][aria-label="命令面板"]')).toBeNull()
+  })
+
+  it('suspends screen shortcut registrations while the command palette is open', async () => {
+    const onProbe = vi.fn()
+    await act(async () => { root.render(<ShellHarness onProbe={onProbe} />) })
+    await act(async () => { host.querySelector<HTMLButtonElement>('.coach-search-shell')?.click() })
+    await act(async () => {
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'j', bubbles: true }))
+    })
+    expect(onProbe).not.toHaveBeenCalled()
+
+    await act(async () => {
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+    })
+    await act(async () => {
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'j', bubbles: true }))
+    })
+    expect(onProbe).toHaveBeenCalledTimes(1)
+  })
+
+  it('traps Tab inside the command palette and restores the search trigger after every close path', async () => {
+    await act(async () => { root.render(<ShellHarness />) })
+    const trigger = host.querySelector<HTMLButtonElement>('.coach-search-shell')!
+    const openPalette = async () => {
+      await act(async () => { trigger.click() })
+      await act(async () => { await new Promise((resolve) => window.setTimeout(resolve, 0)) })
+      return host.querySelector<HTMLInputElement>('[aria-label="搜索命令"]')!
+    }
+
+    const search = await openPalette()
+    expect(document.activeElement).toBe(search)
+    const options = [...host.querySelectorAll<HTMLButtonElement>('[role="option"]')]
+    const lastOption = options.at(-1)!
+    await act(async () => {
+      search.dispatchEvent(new KeyboardEvent('keydown', {
+        key: 'Tab',
+        shiftKey: true,
+        bubbles: true,
+        cancelable: true,
+      }))
+    })
+    expect(document.activeElement).toBe(lastOption)
+    await act(async () => {
+      lastOption.dispatchEvent(new KeyboardEvent('keydown', {
+        key: 'Tab',
+        bubbles: true,
+        cancelable: true,
+      }))
+    })
+    expect(document.activeElement).toBe(search)
+
+    await act(async () => {
+      search.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+    })
+    expect(document.activeElement).toBe(trigger)
+
+    await openPalette()
+    await act(async () => {
+      host.querySelector<HTMLButtonElement>('[role="option"]')?.click()
+    })
+    expect(document.activeElement).toBe(trigger)
+
+    await openPalette()
+    await act(async () => {
+      host.querySelector<HTMLElement>('.command-palette-layer')
+        ?.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }))
+    })
+    expect(document.activeElement).toBe(trigger)
   })
 })

@@ -307,7 +307,7 @@ describe('MessagesPage', () => {
     expect(openPlan).not.toHaveBeenCalled()
   })
 
-  it('草稿为空时点击快捷回复会填入完整文案并移除未实现的快捷键提示', async () => {
+  it('草稿为空时点击快捷回复会填入完整文案并显示已实现的快捷键提示', async () => {
     await act(async () => { root.render(<Harness initial={[conversation(0)]} />); await settle() })
     const quickReply = host.querySelector<HTMLButtonElement>('.chat-quick-reply')!
     const textarea = host.querySelector<HTMLTextAreaElement>('.chat-composer textarea')!
@@ -315,8 +315,7 @@ describe('MessagesPage', () => {
     await act(async () => { quickReply.click(); await settle() })
 
     expect(textarea.value).toBe('按计划完成，很好，下周继续加。')
-    expect(quickReply.querySelector('kbd')).toBeNull()
-    expect(quickReply.textContent).not.toContain('⌥1')
+    expect(quickReply.querySelector('kbd')?.textContent).toBe('⌥1')
     expect(chatApi.sendTextMessage).not.toHaveBeenCalled()
   })
 
@@ -330,6 +329,43 @@ describe('MessagesPage', () => {
 
     expect(textarea.value).toBe('已有草稿\n按计划完成，很好，下周继续加。')
     expect(chatApi.sendTextMessage).not.toHaveBeenCalled()
+  })
+
+  it('⌥1–5 复用点击语义并在输入框聚焦时豁免', async () => {
+    await act(async () => { root.render(<Harness initial={[conversation(0)]} />); await settle() })
+    const textarea = host.querySelector<HTMLTextAreaElement>('.chat-composer textarea')!
+
+    await act(async () => {
+      window.dispatchEvent(new KeyboardEvent('keydown', {
+        key: '™',
+        code: 'Digit2',
+        altKey: true,
+        bubbles: true,
+      }))
+    })
+    expect(textarea.value).toBe('这组速度掉得太多，下周降 5% 重量。')
+
+    textarea.focus()
+    await act(async () => {
+      textarea.dispatchEvent(new KeyboardEvent('keydown', {
+        key: '£',
+        code: 'Digit3',
+        altKey: true,
+        bubbles: true,
+      }))
+    })
+    expect(textarea.value).toBe('这组速度掉得太多，下周降 5% 重量。')
+
+    textarea.blur()
+    await act(async () => {
+      window.dispatchEvent(new KeyboardEvent('keydown', {
+        key: '∞',
+        code: 'Digit5',
+        altKey: true,
+        bubbles: true,
+      }))
+    })
+    expect(textarea.value).toBe('这组速度掉得太多，下周降 5% 重量。\n距比赛还有 5 周，注意控体重。')
   })
 
   it('快捷回复追加不会顶穿 4000 字上限，超限草稿也发不出去', async () => {

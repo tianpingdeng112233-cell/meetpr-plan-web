@@ -20,6 +20,8 @@ export interface PlanCellInfo {
   row: ExerciseRow
 }
 
+export type PlanCellMove = 'next' | 'previous' | 'up' | 'down'
+
 export function samePlanCell(
   left: PlanCellSelection | null,
   right: PlanCellSelection | null,
@@ -39,6 +41,60 @@ export function planCellKey(selection: PlanCellSelection): string {
     selection.field,
     selection.setIndex ?? '',
   ].join(':')
+}
+
+function rowSelections(
+  weekNumber: number,
+  dow: number,
+  row: ExerciseRow,
+): PlanCellSelection[] {
+  return [
+    { weekNumber, dow, rowId: row.id, field: 'name' },
+    { weekNumber, dow, rowId: row.id, field: 'sets' },
+    { weekNumber, dow, rowId: row.id, field: 'reps' },
+    ...row.boxes.map((_, setIndex): PlanCellSelection => ({
+      weekNumber,
+      dow,
+      rowId: row.id,
+      field: 'intensity',
+      setIndex,
+    })),
+  ]
+}
+
+export function listPlanCells(weeks: readonly Week[]): PlanCellSelection[] {
+  return weeks.flatMap((week) => week.days.flatMap((day) => (
+    day.rows.flatMap((row) => rowSelections(week.num, day.dow, row))
+  )))
+}
+
+function sameColumn(left: PlanCellSelection, right: PlanCellSelection): boolean {
+  return left.field === right.field
+    && (left.field !== 'intensity' || left.setIndex === right.setIndex)
+}
+
+/**
+ * Spreadsheet navigation over the stable selection model. Horizontal movement
+ * follows every concrete cell in row order; vertical movement keeps the same
+ * field/set column and skips rows that do not expose that intensity set.
+ */
+export function movePlanCell(
+  weeks: readonly Week[],
+  current: PlanCellSelection | null,
+  move: PlanCellMove,
+): PlanCellSelection | null {
+  const cells = listPlanCells(weeks)
+  if (cells.length === 0) return null
+  if (!current) return move === 'previous' || move === 'up' ? cells[cells.length - 1] : cells[0]
+  const index = cells.findIndex((cell) => samePlanCell(cell, current))
+  if (index < 0) return cells[0]
+  if (move === 'next') return cells[Math.min(cells.length - 1, index + 1)]
+  if (move === 'previous') return cells[Math.max(0, index - 1)]
+  const direction = move === 'down' ? 1 : -1
+  for (let candidate = index + direction; candidate >= 0 && candidate < cells.length; candidate += direction) {
+    if (sameColumn(cells[candidate], current)) return cells[candidate]
+  }
+  return cells[index]
 }
 
 function rowNumberInWeek(week: Week, dayIndex: number, rowIndex: number): number {

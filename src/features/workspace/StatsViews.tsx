@@ -23,6 +23,7 @@ import {
   type RosterTab,
 } from './rosterOverview'
 import { StudentPlanCapacityCard } from './StudentPlanCapacityCard'
+import { useGlobalKeyboardHandler } from './globalKeyboard'
 
 export function RmStrip({ detail, weight }: { detail: ExerciseStatsDetail; weight?: number | null }) {
   // Main lift = backend supplies a 登记 1RM reference (null for non-main lifts). Show the
@@ -85,6 +86,35 @@ export function RosterBoard({
     { id: 'pending', label: '待排', count: counts.pending },
     { id: 'attention', label: '需关注', count: counts.attention },
   ]
+
+  useGlobalKeyboardHandler(({ event, editable }) => {
+    if (
+      editable
+      || event.metaKey
+      || event.ctrlKey
+      || event.altKey
+      || event.shiftKey
+      || visibleRows.length === 0
+    ) return false
+    const key = event.key.toLowerCase()
+    const currentIndex = visibleRows.findIndex((row) => row.student.id === selectedStudentId)
+    if (key === 'j' || key === 'k') {
+      event.preventDefault()
+      const fallback = key === 'j' ? 0 : visibleRows.length - 1
+      const nextIndex = currentIndex < 0
+        ? fallback
+        : Math.max(0, Math.min(visibleRows.length - 1, currentIndex + (key === 'j' ? 1 : -1)))
+      const next = visibleRows[nextIndex]
+      if (next) onSelect(next.student.id)
+      return true
+    }
+    if (event.key === 'Enter' && currentIndex >= 0) {
+      event.preventDefault()
+      onOpen(visibleRows[currentIndex].student.id)
+      return true
+    }
+    return false
+  }, 10)
 
   return (
     <section className="roster-overview" aria-label="学员总览">

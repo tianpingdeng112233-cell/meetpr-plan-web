@@ -79,6 +79,31 @@ describe('PlanEditor exercise picker keyboard binding', () => {
     expect(index.search('测试推举')[0].id).toBe('press-2')
   })
 
+  it('does not use Enter to bind an exercise while an IME composition is active', () => {
+    const index = new ExerciseIndex([exercise('press-1', '测试推举一')])
+    act(() => root.render(
+      <PlanEditor initialWeeks={[week()]} weeksCount={1} studentName="学员" planName="计划" exerciseIndex={index}/>,
+    ))
+    const input = host.querySelector<HTMLInputElement>('[data-c="name"] input')!
+    act(() => { input.focus(); setInput(input, '测试推举') })
+    expect(host.querySelector('[role="option"][data-active="true"]')).not.toBeNull()
+
+    act(() => {
+      input.dispatchEvent(new CompositionEvent('compositionstart', { bubbles: true }))
+      input.dispatchEvent(new KeyboardEvent('keydown', {
+        key: 'Enter',
+        bubbles: true,
+        cancelable: true,
+        isComposing: true,
+      }))
+    })
+
+    expect(input.value).toBe('测试推举')
+    expect(host.querySelector('[data-popover]')).not.toBeNull()
+    expect(host.querySelector('[data-rowid="row"]')?.textContent).not.toContain('✓')
+    act(() => input.dispatchEvent(new CompositionEvent('compositionend', { bubbles: true })))
+  })
+
   it('uses exact alias resolution on blur before hiding the popover', async () => {
     vi.useFakeTimers()
     const index = new ExerciseIndex([exercise('squat', '低杠位深蹲')])
