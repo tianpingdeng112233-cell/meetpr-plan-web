@@ -192,4 +192,62 @@ describe('RosterBoard overview', () => {
     expect(host.querySelector('[data-student-id="b"] .roster-distance')?.textContent).toBe('—')
     expect(host.querySelector('[data-student-id="c"] .roster-distance')?.textContent).toBe('未报名')
   })
+
+  it('moves the selected row with J/K, opens it with Enter, and exempts focused inputs', async () => {
+    await renderBoard()
+
+    await act(async () => {
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'j', bubbles: true }))
+    })
+    expect(onSelect).toHaveBeenLastCalledWith('b')
+
+    await act(async () => {
+      root.render(
+        <>
+          <input aria-label="总览外部输入" />
+          <RosterBoard
+            students={students}
+            selectedStudentId="b"
+            dataByStudent={dataByStudent}
+            plansByStudent={{ a: [], b: [plan({})], c: [] }}
+            conversations={[conversation]}
+            onSelect={onSelect}
+            onOpen={onOpen}
+          />
+        </>,
+      )
+    })
+    await act(async () => {
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', bubbles: true }))
+    })
+    expect(onSelect).toHaveBeenLastCalledWith('a')
+    await act(async () => {
+      root.render(
+        <>
+          <input aria-label="总览外部输入" />
+          <RosterBoard
+            students={students}
+            selectedStudentId="a"
+            dataByStudent={dataByStudent}
+            plansByStudent={{ a: [], b: [plan({})], c: [] }}
+            conversations={[conversation]}
+            onSelect={onSelect}
+            onOpen={onOpen}
+          />
+        </>,
+      )
+    })
+    await act(async () => {
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
+    })
+    expect(onOpen).toHaveBeenCalledWith('a')
+
+    const input = host.querySelector<HTMLInputElement>('[aria-label="总览外部输入"]')!
+    input.focus()
+    const calls = onSelect.mock.calls.length
+    await act(async () => {
+      input.dispatchEvent(new KeyboardEvent('keydown', { key: 'j', bubbles: true }))
+    })
+    expect(onSelect).toHaveBeenCalledTimes(calls)
+  })
 })

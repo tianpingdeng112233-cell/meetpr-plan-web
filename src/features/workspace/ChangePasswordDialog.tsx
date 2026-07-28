@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import { ApiException } from '../../api/client'
 import { isSessionExpired } from '../../api/errors'
 import { changePassword, logout, setLoginNotice } from '../../api/auth'
+import { useGlobalKeyboardHandler } from './globalKeyboard'
 
 export const PASSWORD_CHANGED_NOTICE = '密码已修改，请用新密码登录。其他已登录的设备也需要重新登录。'
 
@@ -138,14 +139,12 @@ export function ChangePasswordDialog({ open, onClose, onSessionInvalidated, onBe
     firstFieldRef.current?.focus()
   }, [open])
 
-  useEffect(() => {
-    if (!open) return
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && !saving) onClose()
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [open, saving, onClose])
+  useGlobalKeyboardHandler(({ event }) => {
+    if (!open || saving || event.key !== 'Escape') return false
+    event.preventDefault()
+    onClose()
+    return true
+  }, 200)
 
   if (!open) return null
 

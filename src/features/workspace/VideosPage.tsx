@@ -5,6 +5,7 @@ import { createVideoMarker, deleteVideoMarker, getVideoMarkers } from '../../api
 import type { CoachStudent, StudentVideo, VideoMarker, VideoMarkerLevel } from '../../api/types'
 import { kg } from './WorkspaceCommon'
 import { usePersistentCollapse } from './usePersistentCollapse'
+import { useGlobalKeyboardHandler } from './globalKeyboard'
 
 type VideoFilter = 'all' | 'pending' | 'reviewed'
 type MarkerAvailability = 'loading' | 'available' | 'error' | 'unavailable'
@@ -250,34 +251,29 @@ export function VideosPage({ students, studentId, videos, onRefreshVideos, onStu
     if (next !== activeIndex) setActiveId(visibleVideos[next]?.id ?? null)
   }, [activeIndex, visibleVideos])
 
-  useEffect(() => {
-    const keydown = (event: KeyboardEvent) => {
-      if (event.defaultPrevented) return
-      const element = event.target instanceof HTMLElement ? event.target : null
-      const typing = !!element && (
-        element instanceof HTMLInputElement
-        || element instanceof HTMLTextAreaElement
-        || element instanceof HTMLSelectElement
-        || element.isContentEditable
-      )
+  useGlobalKeyboardHandler(({ event, editable, video }) => {
       if (event.key === 'Escape' && markerOpen) {
         event.preventDefault()
         setMarkerOpen(false)
         setMarkerError('')
-        return
+        return true
       }
-      if (typing || element instanceof HTMLVideoElement) return
+      if (editable || video || event.metaKey || event.ctrlKey || event.altKey) return false
       if (event.key === 'ArrowLeft') {
         event.preventDefault()
         move(-1)
+        return true
       } else if (event.key === 'ArrowRight') {
         event.preventDefault()
         move(1)
+        return true
+      } else if (event.key === ' ' || event.key === 'Spacebar') {
+        event.preventDefault()
+        togglePlayback()
+        return true
       }
-    }
-    window.addEventListener('keydown', keydown)
-    return () => window.removeEventListener('keydown', keydown)
-  }, [markerOpen, move])
+      return false
+  }, 10)
 
   useEffect(() => () => {
     if (sentTimer.current != null) window.clearTimeout(sentTimer.current)

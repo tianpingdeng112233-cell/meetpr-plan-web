@@ -22,6 +22,7 @@ import {
   type CatalogRefine,
 } from './catalogModel'
 import { usePersistentCollapse } from '../workspace/usePersistentCollapse'
+import { useGlobalKeyboardHandler } from '../workspace/globalKeyboard'
 
 interface Props {
   exerciseList: ExerciseResponse[]
@@ -29,6 +30,8 @@ interface Props {
   index: ExerciseIndex | null
   onCreateExercise: (input: CreateCustomExerciseInput) => Promise<{ id: string; name: string }>
   onUseExercise: (exercise: ExerciseResponse) => void
+  commandExerciseId?: string | null
+  onCommandExerciseHandled?: () => void
 }
 
 type DrawerMode = 'detail' | 'create' | null
@@ -41,7 +44,15 @@ function directSearchIds(exercises: ExerciseResponse[], query: string): Set<stri
   )).map((exercise) => exercise.id))
 }
 
-export function CatalogPage({ exerciseList, catalog, index, onCreateExercise, onUseExercise }: Props) {
+export function CatalogPage({
+  exerciseList,
+  catalog,
+  index,
+  onCreateExercise,
+  onUseExercise,
+  commandExerciseId,
+  onCommandExerciseHandled,
+}: Props) {
   const [categoriesCollapsed, toggleCategories] = usePersistentCollapse('meetpr:sidebar:catalog')
   const [query, setQuery] = useState('')
   const [category, setCategory] = useState<CatalogCategory>('all')
@@ -86,14 +97,12 @@ export function CatalogPage({ exerciseList, catalog, index, onCreateExercise, on
     return () => window.clearTimeout(id)
   }, [toast])
 
-  useEffect(() => {
-    if (!drawer) return
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape' && !creating) setDrawer(null)
-    }
-    window.addEventListener('keydown', onKeyDown)
-    return () => window.removeEventListener('keydown', onKeyDown)
-  }, [drawer, creating])
+  useGlobalKeyboardHandler(({ event }) => {
+    if (!drawer || creating || event.key !== 'Escape') return false
+    event.preventDefault()
+    setDrawer(null)
+    return true
+  }, 50)
 
   const facetCount = (nextCategory: CatalogCategory, nextRefine: CatalogRefine) => filterExercises(exerciseList, {
     category: nextCategory,
@@ -111,6 +120,14 @@ export function CatalogPage({ exerciseList, catalog, index, onCreateExercise, on
     setSelectedId(exercise.id)
     setDrawer('detail')
   }
+  useEffect(() => {
+    if (!commandExerciseId) return
+    const exercise = exerciseList.find((item) => item.id === commandExerciseId)
+    if (exercise) openDetail(exercise)
+    onCommandExerciseHandled?.()
+    // The command id is a one-shot instruction owned by the workspace.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [commandExerciseId, exerciseList])
   const openCreate = (prefill = '') => {
     setCreatePrefill(prefill.trim())
     setDrawer('create')

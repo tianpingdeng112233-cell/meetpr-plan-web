@@ -9,6 +9,7 @@ import {
 } from '../inputGuard'
 import { compactTonnage, summarizeDaySection, type DaySectionSummary } from '../weeklySummary'
 import {
+  planCellKey,
   samePlanCell,
   type PlanCellField,
   type PlanCellSelection,
@@ -26,6 +27,7 @@ interface Props {
   onSelectRow?: (rowId: string) => void
   onSelectCell?: (rowId: string, field: PlanCellField, setIndex?: number) => void
   onSetsDraftChange?: (rowId: string, draft: string | null) => void
+  readOnly?: boolean
   infoTokens?: (row: ExerciseRow) => readonly string[]
   dayMoveState?: 'source' | 'target' | 'invalid'
   dayMoveDisabledHint?: string | null
@@ -34,6 +36,8 @@ interface Props {
   onNameFocus: (rowId: string, name: string, el: HTMLElement) => void
   onNameChange: (rowId: string, value: string, el: HTMLElement) => void
   onNameKeyDown?: (rowId: string, event: React.KeyboardEvent<HTMLInputElement>) => void
+  onNameCompositionStart?: (rowId: string) => void
+  onNameCompositionEnd?: (rowId: string) => void
   onNameBlur: (rowId: string) => void
   onAddRow: (tier: 'main' | 'aux') => void
   /** Display tier resolver (catalog exercise_type based); absent = flat legacy list. */
@@ -181,12 +185,14 @@ function TierHeader({ label, accent, width, summary }: { label: string; accent?:
   )
 }
 
-function EditableStrength({ row, width, edit, selectedCell, selectCell }: {
+function EditableStrength({ row, width, edit, selectedCell, selectCell, cellKey, readOnly }: {
   row: ExerciseRow
   width: number
   edit: (u: (r: ExerciseRow) => ExerciseRow) => void
   selectedCell: (setIndex: number) => boolean
   selectCell: (setIndex: number) => void
+  cellKey: (setIndex: number) => string
+  readOnly?: boolean
 }) {
   if (row.aux) {
     return (
@@ -217,6 +223,7 @@ function EditableStrength({ row, width, edit, selectedCell, selectCell }: {
             className={`bodyweight-cell plan-cell${selectedCell(index) ? ' plan-cell-selected' : ''}`}
             data-plan-cell="intensity"
             data-set-index={index}
+            data-plan-cell-key={cellKey(index)}
             onClick={(event) => { stop(event); selectCell(index) }}
           >
             BW
@@ -231,9 +238,10 @@ function EditableStrength({ row, width, edit, selectedCell, selectCell }: {
             className={`${invalid ? 'guard-invalid ' : ''}plan-cell${selectedCell(i) ? ' plan-cell-selected' : ''}`}
             data-guard-field="strength" data-input-invalid={invalid ? 'true' : undefined}
             data-plan-cell="intensity" data-set-index={i}
+            data-plan-cell-key={cellKey(i)}
             aria-invalid={invalid || undefined}
             title={invalid ? (row.mode === 'rpe' ? INPUT_GUARD_REASONS.rpe : INPUT_GUARD_REASONS.kg) : undefined}
-            disabled={row.hasLogs}
+            disabled={readOnly || row.hasLogs}
             filter={filterStrengthInput}
             onFocus={() => selectCell(i)}
             onClick={(event) => { stop(event); selectCell(i) }}
@@ -266,6 +274,7 @@ export function DayColumn({
   onSelectRow,
   onSelectCell,
   onSetsDraftChange,
+  readOnly,
   infoTokens,
   dayMoveState,
   dayMoveDisabledHint,
@@ -274,6 +283,8 @@ export function DayColumn({
   onNameFocus,
   onNameChange,
   onNameKeyDown,
+  onNameCompositionStart,
+  onNameCompositionEnd,
   onNameBlur,
   onAddRow,
   rowTier,
@@ -442,6 +453,7 @@ export function DayColumn({
                   className={`gcell plan-cell${isCellSelected(row.id, 'name') ? ' plan-cell-selected' : ''}`}
                   data-c="name"
                   data-plan-cell="name"
+                  data-plan-cell-key={planCellKey({ weekNumber, dow: day.dow, rowId: row.id, field: 'name' })}
                   style={{ width: colW.name }}
                 >
                   <span
@@ -455,7 +467,7 @@ export function DayColumn({
                   </span>
                   <input
                     value={row.name} placeholder="输入动作…"
-                    disabled={row.hasLogs}
+                    disabled={readOnly || row.hasLogs}
                     onMouseDown={stop}
                     onClick={(event) => { stop(event); selectCell(row.id, 'name') }}
                     onFocus={(e) => {
@@ -464,6 +476,8 @@ export function DayColumn({
                     }}
                     onChange={(e) => onNameChange(row.id, e.target.value, e.currentTarget)}
                     onKeyDown={(e) => onNameKeyDown?.(row.id, e)}
+                    onCompositionStart={() => onNameCompositionStart?.(row.id)}
+                    onCompositionEnd={() => onNameCompositionEnd?.(row.id)}
                     onBlur={() => onNameBlur(row.id)}
                     style={{ ...baseInput, flex: 1, minWidth: 0, color: 'var(--txt)', fontWeight: 500 }}
                   />
@@ -481,9 +495,10 @@ export function DayColumn({
                   className={`gcell numeric-cell plan-cell${isCellSelected(row.id, 'sets') ? ' plan-cell-selected' : ''}`}
                   data-c="sets"
                   data-plan-cell="sets"
+                  data-plan-cell-key={planCellKey({ weekNumber, dow: day.dow, rowId: row.id, field: 'sets' })}
                   style={{ width: colW.sets }}
                 >
-                  <SetsInput count={row.boxes.length} disabled={row.hasLogs} aux={row.aux}
+                  <SetsInput count={row.boxes.length} disabled={readOnly || row.hasLogs} aux={row.aux}
                     onSelect={() => selectCell(row.id, 'sets')}
                     onDraftChange={(draft) => onSetsDraftChange?.(row.id, draft)}
                     onCommit={(n) => edit((r) => ({ ...r, boxes: setBoxesLen(r.boxes, n), aux: n > 0 ? false : r.aux }))} />
@@ -493,6 +508,7 @@ export function DayColumn({
                   className={`gcell numeric-cell plan-cell${isCellSelected(row.id, 'reps') ? ' plan-cell-selected' : ''}`}
                   data-c="reps"
                   data-plan-cell="reps"
+                  data-plan-cell-key={planCellKey({ weekNumber, dow: day.dow, rowId: row.id, field: 'reps' })}
                   style={{ width: colW.reps }}
                 >
                   <GuardedInput value={row.reps === '—' ? '' : row.reps} inputMode="text" placeholder="—"
@@ -500,7 +516,7 @@ export function DayColumn({
                     data-guard-field="reps" data-input-invalid={inputIssue?.invalidReps ? 'true' : undefined}
                     aria-invalid={inputIssue?.invalidReps || undefined}
                     title={inputIssue?.invalidReps ? INPUT_GUARD_REASONS.reps : undefined}
-                    disabled={row.hasLogs}
+                    disabled={readOnly || row.hasLogs}
                     filter={filterRepsInput}
                     onFocus={() => selectCell(row.id, 'reps')}
                     onClick={(event) => { stop(event); selectCell(row.id, 'reps') }}
@@ -516,11 +532,19 @@ export function DayColumn({
                   edit={edit}
                   selectedCell={(setIndex) => isCellSelected(row.id, 'intensity', setIndex)}
                   selectCell={(setIndex) => selectCell(row.id, 'intensity', setIndex)}
+                  cellKey={(setIndex) => planCellKey({
+                    weekNumber,
+                    dow: day.dow,
+                    rowId: row.id,
+                    field: 'intensity',
+                    setIndex,
+                  })}
+                  readOnly={readOnly}
                 />
 
                 <div className="gcell note-cell" data-c="note" style={{ width: colW.note }}>
                   <input value={row.note} inputMode="text" onClick={stop} placeholder=""
-                    disabled={row.hasLogs}
+                    disabled={readOnly || row.hasLogs}
                     onChange={(e) => edit((r) => ({ ...r, note: e.target.value }))}
                     style={{ ...baseInput, width: '100%', fontSize: 10, color: 'var(--txt)', paddingRight: 14 }} />
                   {!row.hasLogs && (

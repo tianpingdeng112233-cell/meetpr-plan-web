@@ -32,6 +32,7 @@ import { parseSetRefMessage, SetRefCard } from './setRef'
 import { useClockTick, useVisiblePolling } from './useVisiblePolling'
 import { usePersistentCollapse } from '../workspace/usePersistentCollapse'
 import { VideoModal } from '../workspace/VideoModal'
+import { useGlobalKeyboardHandler } from '../workspace/globalKeyboard'
 
 const INTERACTION_WINDOW_MS = 120_000
 const MAX_MESSAGE_CHARS = 4000
@@ -383,6 +384,10 @@ function ConversationThread({
   const readRequest = useRef(0)
   const invalidReadMessageIds = useRef(new Set<string>())
   const lastInteractionAt = useRef(Date.now())
+  useGlobalKeyboardHandler(() => {
+    lastInteractionAt.current = Date.now()
+    return false
+  }, -100)
   const reportedOutboxErrors = useRef(new Set<string>())
   const syncingOutbox = useRef(false)
   const imageRenewalAttempted = useRef(new Set<string>())
@@ -494,14 +499,12 @@ function ConversationThread({
       lastInteractionAt.current = Date.now()
     }
     window.addEventListener('pointerdown', interacted)
-    window.addEventListener('keydown', interacted)
     window.addEventListener('wheel', interacted)
     window.addEventListener('focus', interacted)
     document.addEventListener('scroll', interacted, true)
     return () => {
       alive.current = false
       window.removeEventListener('pointerdown', interacted)
-      window.removeEventListener('keydown', interacted)
       window.removeEventListener('wheel', interacted)
       window.removeEventListener('focus', interacted)
       document.removeEventListener('scroll', interacted, true)
@@ -843,6 +846,23 @@ function ChatComposer({ conversationId, initialDraft, disabled, onDraftChange }:
     // Programmatic writes bypass the textarea's maxLength, so clamp here too.
     changeDraft((current === '' ? reply : `${current}\n${reply}`).slice(0, MAX_MESSAGE_CHARS))
   }
+  useGlobalKeyboardHandler(({ event, editable }) => {
+    if (
+      disabled
+      || editable
+      || !event.altKey
+      || event.metaKey
+      || event.ctrlKey
+      || event.shiftKey
+    ) return false
+    const shortcut = /^(?:Digit|Numpad)([1-5])$/.exec(event.code)
+    const index = shortcut ? Number(shortcut[1]) - 1 : -1
+    const reply = QUICK_REPLIES[index]
+    if (!reply) return false
+    event.preventDefault()
+    applyQuickReply(reply)
+    return true
+  }, 10)
   const send = () => {
     const body = draftRef.current.trim()
     if (disabled || body === '' || body.length > MAX_MESSAGE_CHARS) return
@@ -864,7 +884,7 @@ function ChatComposer({ conversationId, initialDraft, disabled, onDraftChange }:
 
   return <form className="chat-composer" onSubmit={submit}>
     <div className="chat-quick-replies" aria-label="快捷回复">
-      {QUICK_REPLIES.map((reply) => <button
+      {QUICK_REPLIES.map((reply, index) => <button
         type="button"
         className="chat-quick-reply"
         key={reply}
@@ -872,6 +892,7 @@ function ChatComposer({ conversationId, initialDraft, disabled, onDraftChange }:
         onClick={() => applyQuickReply(reply)}
       >
         <span>{reply}</span>
+        <kbd>⌥{index + 1}</kbd>
       </button>)}
     </div>
     <div className="chat-composer-row">

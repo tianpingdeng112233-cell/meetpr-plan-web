@@ -1,7 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { AuthUser, CoachStudent } from '../../api/types'
 import { ChangePasswordDialog } from './ChangePasswordDialog'
+import {
+  CommandPalette,
+  type CommandExercise,
+  type CommandStudent,
+} from './CommandPalette'
 import { usePersistentCollapse } from './usePersistentCollapse'
+import { useGlobalKeyboardHandler } from './globalKeyboard'
 
 export type CoachView = 'board' | 'editor' | 'messages' | 'catalog' | 'videos' | 'requests'
 
@@ -16,14 +22,12 @@ const NAV_ITEMS: { id: CoachView; label: string; short: string }[] = [
   { id: 'requests', label: '学员申请', short: '申' },
 ]
 
-// Only shortcuts that actually work today may appear here; the full keyboard
-// layer (⌘K, J/K, Tab-grid…) lands on a later card and fills these back in.
 const VIEW_SHORTCUTS: Record<CoachView, string> = {
-  board: '',
-  editor: '⌘C 复制 · ⌘V 粘贴 · ⌘Z 撤销',
-  messages: '↵ 发送',
-  catalog: '',
-  videos: '⌘↵ 发送反馈',
+  board: 'J / K 移动 · ↵ 打开编排器 · ⌘K 命令',
+  editor: 'Tab / ⇧Tab 横移 · ↵ / ↑↓ 纵移 · ⌘D 向下填充 · ⌘C / ⌘V · ⌘Z',
+  messages: '⌥1–5 快捷回复 · ↵ 发送 · ⌘K 命令',
+  catalog: '⌘K 搜动作 / 跳转',
+  videos: '← / → 切换 · 空格 播放 / 暂停 · ⌘↵ 发送反馈',
   requests: '',
 }
 
@@ -51,6 +55,10 @@ export interface CoachShellProps {
   lastSyncedAt: Date | null
   onLogout: () => void | Promise<void>
   onConfirmLeave?: () => Promise<boolean>
+  commandStudents?: readonly CommandStudent[]
+  commandExercises?: readonly CommandExercise[]
+  onCommandStudent?: (studentId: string) => void | Promise<void>
+  onCommandExercise?: (exerciseId: string) => void | Promise<void>
 }
 
 export function CoachShell({
@@ -68,6 +76,10 @@ export function CoachShell({
   lastSyncedAt,
   onLogout,
   onConfirmLeave,
+  commandStudents = [],
+  commandExercises = [],
+  onCommandStudent = () => {},
+  onCommandExercise = () => {},
 }: CoachShellProps) {
   const badges = useMemo<Partial<Record<CoachView, Badge>>>(() => ({
     messages: { count: unreadCount, tone: 'danger' },
@@ -76,6 +88,8 @@ export function CoachShell({
     ...(videoCount == null ? {} : { videos: { count: videoCount, tone: 'muted' as const } }),
   }), [exerciseCount, requestCount, unreadCount, videoCount])
   const [toast, setToast] = useState('')
+  const [commandOpen, setCommandOpen] = useState(false)
+  const commandTriggerRef = useRef<HTMLButtonElement>(null)
 
   useEffect(() => {
     let timer = 0
@@ -100,6 +114,8 @@ export function CoachShell({
         me={me}
         onLogout={onLogout}
         onConfirmLeave={onConfirmLeave}
+        onOpenCommand={() => setCommandOpen(true)}
+        commandTriggerRef={commandTriggerRef}
       />
       <div className="coach-shell-body">
         <CoachNavigation
@@ -119,6 +135,16 @@ export function CoachShell({
         <span className="coach-statusbar-shortcuts">{VIEW_SHORTCUTS[view]}</span>
       </footer>
       {toast && <div className="coach-toast" role="status">{toast}</div>}
+      <CommandPalette
+        open={commandOpen}
+        students={commandStudents}
+        exercises={commandExercises}
+        onOpenChange={setCommandOpen}
+        onOpenStudent={onCommandStudent}
+        onOpenExercise={onCommandExercise}
+        onOpenView={onChange}
+        returnFocusRef={commandTriggerRef}
+      />
     </div>
   )
 }
@@ -128,11 +154,15 @@ function CoachTopBar({
   me,
   onLogout,
   onConfirmLeave,
+  onOpenCommand,
+  commandTriggerRef,
 }: {
   view: CoachView
   me: AuthUser
   onLogout: () => void | Promise<void>
   onConfirmLeave?: () => Promise<boolean>
+  onOpenCommand: () => void
+  commandTriggerRef: React.RefObject<HTMLButtonElement>
 }) {
   // Login has no display name today; switch to GET /me when the backend exposes it.
   const coachName = me.display_name?.trim() || '教'
@@ -147,6 +177,13 @@ function CoachTopBar({
     if (restoreFocus) avatarRef.current?.focus()
   }, [])
 
+  useGlobalKeyboardHandler(({ event }) => {
+    if (!menuOpen || event.key !== 'Escape') return false
+    event.preventDefault()
+    closeMenu(true)
+    return true
+  }, 100)
+
   useEffect(() => {
     if (!menuOpen) return
     menuRef.current?.querySelector<HTMLButtonElement>('[role="menuitem"]')?.focus()
@@ -156,17 +193,9 @@ function CoachTopBar({
         closeMenu(true)
       }
     }
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        event.preventDefault()
-        closeMenu(true)
-      }
-    }
     document.addEventListener('mousedown', onPointerDown)
-    window.addEventListener('keydown', onKeyDown)
     return () => {
       document.removeEventListener('mousedown', onPointerDown)
-      window.removeEventListener('keydown', onKeyDown)
     }
   }, [closeMenu, menuOpen])
 
@@ -194,9 +223,9 @@ function CoachTopBar({
     <header className="coach-topbar">
       <span className="coach-mark">M</span>
       <span className="coach-breadcrumb">COACH / {VIEW_CRUMBS[view]}</span>
-      <button className="coach-search-shell" type="button" aria-label="打开命令面板" disabled>
+      <button ref={commandTriggerRef} className="coach-search-shell" type="button" aria-label="打开命令面板" onClick={onOpenCommand}>
         <span className="coach-search-icon" aria-hidden="true" />
-        <span>跳转学员、动作、计划…</span>
+        <span>跳转学员、屏幕、动作…</span>
         <kbd>⌘K</kbd>
       </button>
       <div className="coach-account" ref={accountRef}>

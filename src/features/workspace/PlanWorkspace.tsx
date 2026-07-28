@@ -62,6 +62,7 @@ export function PlanWorkspace({ onLogout, me }: Props) {
   const [bindLostIds, setBindLostIds] = useState<Set<string>>(() => new Set())
   const [chatActiveId, setChatActiveId] = useState<string | null>(null)
   const [chatDrafts, setChatDrafts] = useState<Record<string, string>>({})
+  const [commandExerciseId, setCommandExerciseId] = useState<string | null>(null)
   const [plans, setPlans] = useState<PlanResponse[]>([])
   const [plansByStudent, setPlansByStudent] = useState<Record<string, PlanResponse[]>>({})
   const [rosterDataByStudent, setRosterDataByStudent] = useState<RosterDataByStudent>({})
@@ -601,8 +602,9 @@ export function PlanWorkspace({ onLogout, me }: Props) {
     leaveGuardRef.current ? leaveGuardRef.current() : true
   ), [])
 
-  const changeView = async (nextView: CoachView) => {
-    if (viewTransitioning.current || nextView === view) return
+  const changeView = async (nextView: CoachView): Promise<boolean> => {
+    if (nextView === view) return true
+    if (viewTransitioning.current) return false
     viewTransitioning.current = true
     // The guard's flush can take a while on big plans; blur + overlay (below)
     // close the window where the still-mounted editor could accept edits that
@@ -610,7 +612,7 @@ export function PlanWorkspace({ onLogout, me }: Props) {
     if (document.activeElement instanceof HTMLElement) document.activeElement.blur()
     setViewSwitching(true)
     try {
-      await navigateCoachView({
+      return await navigateCoachView({
         currentView: view,
         nextView,
         guardLeave: leaveGuardRef.current ?? undefined,
@@ -632,6 +634,7 @@ export function PlanWorkspace({ onLogout, me }: Props) {
       })
     } catch (e) {
       window.alert(errText(e, '重新加载计划失败，请检查网络后重试'))
+      return false
     } finally {
       viewTransitioning.current = false
       setViewSwitching(false)
@@ -680,6 +683,11 @@ export function PlanWorkspace({ onLogout, me }: Props) {
       setError(errText(e, '打开学员计划失败'))
     }
   }
+  const openExerciseFromCommand = async (id: string) => {
+    setCommandExerciseId(null)
+    const navigated = view === 'catalog' || await changeView('catalog')
+    if (navigated) setCommandExerciseId(id)
+  }
   // "M/D 起 · N 周" so same-named plans stay tellable-apart in the switcher.
   const fmtStart = (iso: string) => { const [, m, d] = iso.split('-'); return `${Number(m)}/${Number(d)}` }
   const statusTag = (status: PlanResponse['status']) => ({ draft: '草稿', published: '已发布', completed: '已完成', paused: '已暂停' })[status]
@@ -707,6 +715,14 @@ export function PlanWorkspace({ onLogout, me }: Props) {
       lastSyncedAt={lastSyncedAt}
       onLogout={onLogout}
       onConfirmLeave={confirmWorkspaceLeave}
+      commandStudents={students.map((student) => ({ id: student.id, label: student.display_name }))}
+      commandExercises={exerciseList.map((exercise) => ({
+        id: exercise.id,
+        label: catalog?.get(exercise.id)?.name ?? displayExerciseName(exercise.name),
+        secondary: exercise.name_en,
+      }))}
+      onCommandStudent={(id) => openStudentEditor(id)}
+      onCommandExercise={openExerciseFromCommand}
     >
       {sessionDead && <div className="chat-session-banner">登录已过期，请刷新页面重新登录</div>}
       {view === 'editor' && !hasStudents && (
@@ -893,6 +909,8 @@ export function PlanWorkspace({ onLogout, me }: Props) {
       index={index}
       onCreateExercise={handleCreateExercise}
       onUseExercise={() => { void changeView('editor') }}
+      commandExerciseId={commandExerciseId}
+      onCommandExerciseHandled={() => setCommandExerciseId(null)}
     />}
     {view === 'board' && (hasStudents
       ? <StudentBoard

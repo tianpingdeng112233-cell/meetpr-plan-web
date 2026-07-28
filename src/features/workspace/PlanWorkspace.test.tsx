@@ -33,6 +33,7 @@ const api = vi.hoisted(() => ({
   reconcilePlan: vi.fn(),
   reconcileImportedPlan: vi.fn(),
   resizeServerPlanWeeks: vi.fn(),
+  guardLeave: vi.fn(),
 }))
 
 vi.mock('../../api/plans', () => ({
@@ -97,7 +98,7 @@ vi.mock('../plan-editor/PlanEditor', () => ({
     const { initialWeeks, onLeaveGuardChange, students, currentStudentId, plans, onPublish } = props
     api.captureEditorProps(props)
     useEffect(() => {
-      onLeaveGuardChange?.(async () => true)
+      onLeaveGuardChange?.(() => api.guardLeave())
       return () => onLeaveGuardChange?.(null)
     }, [onLeaveGuardChange])
     return (
@@ -116,8 +117,17 @@ vi.mock('../plan-editor/PlanEditor', () => ({
   },
 }))
 vi.mock('../catalog/CatalogPage', () => ({
-  CatalogPage: ({ onUseExercise }: { onUseExercise: () => void }) => (
-    <button type="button" onClick={onUseExercise}>使用动作并返回编辑器</button>
+  CatalogPage: ({
+    onUseExercise,
+    commandExerciseId,
+  }: {
+    onUseExercise: () => void
+    commandExerciseId?: string | null
+  }) => (
+    <>
+      <button type="button" onClick={onUseExercise}>使用动作并返回编辑器</button>
+      <span data-testid="command-exercise">{commandExerciseId}</span>
+    </>
   ),
 }))
 
@@ -302,6 +312,7 @@ describe('PlanWorkspace editor remount', () => {
       weeks,
     }))
     api.resizeServerPlanWeeks.mockResolvedValue(undefined)
+    api.guardLeave.mockResolvedValue(true)
   })
 
   afterEach(() => {
@@ -336,6 +347,41 @@ describe('PlanWorkspace editor remount', () => {
 
     expect(api.getPlan).toHaveBeenCalledTimes(2)
     expect(host.querySelector('[data-testid="editor-note"]')?.textContent).toBe('服务端最新备注')
+  }, 15_000)
+
+  it('discards an exercise command when the editor leave guard cancels navigation', async () => {
+    api.getPlan.mockResolvedValue(plan('未保存编辑'))
+    api.guardLeave.mockResolvedValue(false)
+
+    await act(async () => {
+      root.render(<PlanWorkspace onLogout={vi.fn()} me={me} />)
+      await settle()
+    })
+    await act(async () => {
+      host.querySelector<HTMLButtonElement>('.coach-search-shell')?.click()
+      await new Promise((resolve) => window.setTimeout(resolve, 0))
+    })
+    const search = host.querySelector<HTMLInputElement>('[aria-label="搜索命令"]')!
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(search, '深蹲')
+      search.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+    expect(host.querySelectorAll('[role="option"]')).toHaveLength(1)
+    expect(host.querySelector('[role="option"]')?.textContent).toContain('深蹲')
+    await act(async () => {
+      search.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
+      await settle()
+    })
+
+    expect(api.guardLeave).toHaveBeenCalledTimes(1)
+    expect(host.querySelector('[data-testid="editor-note"]')).not.toBeNull()
+
+    api.guardLeave.mockResolvedValue(true)
+    await act(async () => {
+      clickButton(host, '动作库')
+      await settle()
+    })
+    expect(host.querySelector('[data-testid="command-exercise"]')?.textContent).toBe('')
   }, 15_000)
 
   it('loads one exercise-stats overview request per student during foreground and roster hydration', async () => {

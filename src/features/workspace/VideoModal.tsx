@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useGlobalKeyboardHandler } from './globalKeyboard'
 
 interface VideoModalNavigation {
   hasPrevious: boolean
@@ -35,37 +36,30 @@ export function VideoModal({
     if (videoRef.current) videoRef.current.playbackRate = rate
   }, [rate, url])
 
-  useEffect(() => {
-    const keydown = (event: KeyboardEvent) => {
-      if (event.defaultPrevented) return
+  useGlobalKeyboardHandler(({ event, editable, video }) => {
       const element = event.target instanceof HTMLElement ? event.target : null
-      const typing = !!element && (
-        element instanceof HTMLInputElement
-        || element instanceof HTMLTextAreaElement
-        || element.isContentEditable
-      )
       if (event.key === 'Escape') {
-        if (element && typing) {
+        if (element && editable) {
           element.blur()
-          return
+          return true
         }
         event.preventDefault()
         onClose()
-        return
+        return true
       }
-      if (!navigation || typing || element instanceof HTMLVideoElement) return
+      if (!navigation || editable || video) return false
       if (event.key === 'ArrowLeft') {
         event.preventDefault()
         navigation.onPrevious()
+        return true
       }
       if (event.key === 'ArrowRight') {
         event.preventDefault()
         navigation.onNext()
+        return true
       }
-    }
-    window.addEventListener('keydown', keydown)
-    return () => window.removeEventListener('keydown', keydown)
-  }, [navigation, onClose])
+      return false
+  }, 150)
 
   return <div className="video-modal" onMouseDown={onClose}>
     <div role="dialog" aria-modal="true" aria-label={title} onMouseDown={(event) => event.stopPropagation()}>

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { CreateCustomExerciseInput } from '../../../api/exercises'
 import type { Equipment, MovementPattern, MuscleGroup } from '../../../api/types'
+import { useGlobalKeyboardHandler } from '../../workspace/globalKeyboard'
 
 interface Props {
   open: boolean
@@ -118,14 +119,12 @@ export function CustomExerciseDialog({ open, initialName, saving, error, onClose
     window.setTimeout(() => nameRef.current?.focus(), 0)
   }, [initialName, open])
 
-  useEffect(() => {
-    if (!open) return
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && !saving) onClose()
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [onClose, open, saving])
+  useGlobalKeyboardHandler(({ event }) => {
+    if (!open || saving || event.key !== 'Escape') return false
+    event.preventDefault()
+    onClose()
+    return true
+  }, 200)
 
   if (!open) return null
   const trimmed = name.trim()
