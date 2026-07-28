@@ -2,6 +2,7 @@ import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ExerciseResponse } from '../../api/types'
+import { installLocalStorageMock } from '../../test/localStorageMock'
 import { ExerciseIndex } from '../plan-editor/exerciseIndex'
 import type { Catalog } from '../plan-editor/mapping'
 import { CatalogPage } from './CatalogPage'
@@ -57,6 +58,8 @@ describe('CatalogPage', () => {
   let catalog: Catalog
 
   beforeEach(() => {
+    installLocalStorageMock()
+    window.localStorage.removeItem('meetpr:sidebar:catalog')
     host = document.createElement('div')
     document.body.appendChild(host)
     root = createRoot(host)
@@ -67,6 +70,29 @@ describe('CatalogPage', () => {
     act(() => root.unmount())
     host.remove()
     vi.restoreAllMocks()
+  })
+
+  it('collapses the category tree and restores the saved state', () => {
+    const renderPage = () => root.render(<CatalogPage
+      exerciseList={exercises}
+      catalog={catalog}
+      index={new ExerciseIndex(exercises)}
+      onCreateExercise={vi.fn().mockResolvedValue({ id: 'unused', name: 'unused' })}
+      onUseExercise={vi.fn()}
+    />)
+    act(renderPage)
+    const toggle = host.querySelector<HTMLButtonElement>('[aria-label="收起动作分类"]')!
+
+    act(() => toggle.click())
+    expect(host.querySelector('.catalog-categories')?.classList.contains('collapsed')).toBe(true)
+    expect(toggle.getAttribute('aria-expanded')).toBe('false')
+    expect(window.localStorage.getItem('meetpr:sidebar:catalog')).toBe('true')
+
+    act(() => root.unmount())
+    root = createRoot(host)
+    act(renderPage)
+    expect(host.querySelector('.catalog-categories')?.classList.contains('collapsed')).toBe(true)
+    expect(host.querySelector('[aria-label="展开动作分类"]')).not.toBeNull()
   })
 
   it('combines category, type tab, and equipment filters with coherent live counts', () => {

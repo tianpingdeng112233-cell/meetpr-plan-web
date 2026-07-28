@@ -3,6 +3,7 @@ import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ApiException } from '../../api/client'
 import type { AuthUser, ChatConversation, ChatMessage, ChatReadState } from '../../api/types'
+import { installLocalStorageMock } from '../../test/localStorageMock'
 
 const chatApi = vi.hoisted(() => ({
   getMessages: vi.fn(),
@@ -111,6 +112,8 @@ describe('MessagesPage', () => {
   let root: Root
 
   beforeEach(() => {
+    installLocalStorageMock()
+    window.localStorage.removeItem('meetpr:sidebar:messages')
     vi.spyOn(document, 'hasFocus').mockReturnValue(true)
     Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' })
     host = document.createElement('div')
@@ -142,6 +145,22 @@ describe('MessagesPage', () => {
       else delete (HTMLElement.prototype as unknown as Record<string, unknown>)[name]
     }
     chatOutbox.reset()
+  })
+
+  it('折叠会话列并从 localStorage 恢复', async () => {
+    await act(async () => { root.render(<Harness />); await settle() })
+    const toggle = host.querySelector<HTMLButtonElement>('[aria-label="收起会话列表"]')!
+
+    act(() => toggle.click())
+    expect(host.querySelector('.chat-sidebar')?.classList.contains('collapsed')).toBe(true)
+    expect(toggle.getAttribute('aria-expanded')).toBe('false')
+    expect(window.localStorage.getItem('meetpr:sidebar:messages')).toBe('true')
+
+    act(() => root.unmount())
+    root = createRoot(host)
+    await act(async () => { root.render(<Harness />); await settle() })
+    expect(host.querySelector('.chat-sidebar')?.classList.contains('collapsed')).toBe(true)
+    expect(host.querySelector('[aria-label="展开会话列表"]')).not.toBeNull()
   })
 
   it('进入消息屏自动选中当前学员的会话，首屏没有新增消息也立即打已读并清红点', async () => {

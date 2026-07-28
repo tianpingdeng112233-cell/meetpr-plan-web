@@ -1,25 +1,19 @@
-import { useEffect, useMemo, useState } from 'react'
-import type {
-  AuthUser,
-  CoachStudent,
-  ExerciseResponse,
-  ExerciseStatsDetail,
-  StudentOnboardingProfile,
-} from '../../api/types'
-import { getExerciseStats } from '../../api/coach'
-import { kg, shortDate } from './WorkspaceCommon'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import type { AuthUser, CoachStudent } from '../../api/types'
+import { ChangePasswordDialog } from './ChangePasswordDialog'
+import { usePersistentCollapse } from './usePersistentCollapse'
 
 export type CoachView = 'board' | 'editor' | 'messages' | 'catalog' | 'videos' | 'requests'
 
 type Badge = { count: number; tone: 'danger' | 'muted' }
 
-const NAV_ITEMS: { id: CoachView; label: string }[] = [
-  { id: 'board', label: '总览' },
-  { id: 'editor', label: '计划编排' },
-  { id: 'messages', label: '消息' },
-  { id: 'catalog', label: '动作库' },
-  { id: 'videos', label: '训练视频' },
-  { id: 'requests', label: '学员申请' },
+const NAV_ITEMS: { id: CoachView; label: string; short: string }[] = [
+  { id: 'board', label: '总览', short: '总' },
+  { id: 'editor', label: '计划编排', short: '编' },
+  { id: 'messages', label: '消息', short: '消' },
+  { id: 'catalog', label: '动作库', short: '动' },
+  { id: 'videos', label: '训练视频', short: '视' },
+  { id: 'requests', label: '学员申请', short: '申' },
 ]
 
 // Only shortcuts that actually work today may appear here; the full keyboard
@@ -47,10 +41,7 @@ export interface CoachShellProps {
   view: CoachView
   onChange: (view: CoachView) => void
   me: AuthUser
-  students: CoachStudent[]
-  studentId: string
-  onboarding: StudentOnboardingProfile | null | undefined
-  exercises: ExerciseResponse[]
+  exerciseCount: number
   pendingStudents: CoachStudent[]
   pendingCount: number
   unreadCount: number
@@ -58,6 +49,8 @@ export interface CoachShellProps {
   videoCount: number | null
   onPickPending: (studentId: string) => void
   lastSyncedAt: Date | null
+  onLogout: () => void | Promise<void>
+  onConfirmLeave?: () => Promise<boolean>
 }
 
 export function CoachShell({
@@ -65,10 +58,7 @@ export function CoachShell({
   view,
   onChange,
   me,
-  students,
-  studentId,
-  onboarding,
-  exercises,
+  exerciseCount,
   pendingStudents,
   pendingCount,
   unreadCount,
@@ -76,9 +66,9 @@ export function CoachShell({
   videoCount,
   onPickPending,
   lastSyncedAt,
+  onLogout,
+  onConfirmLeave,
 }: CoachShellProps) {
-  const selectedStudent = students.find((student) => student.id === studentId) ?? null
-  const exerciseCount = exercises.length
   const badges = useMemo<Partial<Record<CoachView, Badge>>>(() => ({
     messages: { count: unreadCount, tone: 'danger' },
     requests: { count: requestCount, tone: 'danger' },
@@ -105,7 +95,12 @@ export function CoachShell({
 
   return (
     <div className="coach-shell">
-      <CoachTopBar view={view} me={me} />
+      <CoachTopBar
+        view={view}
+        me={me}
+        onLogout={onLogout}
+        onConfirmLeave={onConfirmLeave}
+      />
       <div className="coach-shell-body">
         <CoachNavigation
           view={view}
@@ -117,13 +112,6 @@ export function CoachShell({
           lastSyncedAt={lastSyncedAt}
         />
         <main className="coach-main">{children}</main>
-        {view !== 'messages' && (
-          <StudentContextPanel
-            student={selectedStudent}
-            onboarding={onboarding}
-            exercises={exercises}
-          />
-        )}
       </div>
       <footer className="coach-statusbar">
         <span>待排 {pendingCount}</span>
@@ -135,9 +123,73 @@ export function CoachShell({
   )
 }
 
-function CoachTopBar({ view, me }: { view: CoachView; me: AuthUser }) {
+function CoachTopBar({
+  view,
+  me,
+  onLogout,
+  onConfirmLeave,
+}: {
+  view: CoachView
+  me: AuthUser
+  onLogout: () => void | Promise<void>
+  onConfirmLeave?: () => Promise<boolean>
+}) {
   // Login has no display name today; switch to GET /me when the backend exposes it.
   const coachName = me.display_name?.trim() || '教'
+  const [menuOpen, setMenuOpen] = useState(false)
+  const [passwordOpen, setPasswordOpen] = useState(false)
+  const accountRef = useRef<HTMLDivElement>(null)
+  const avatarRef = useRef<HTMLButtonElement>(null)
+  const menuRef = useRef<HTMLDivElement>(null)
+
+  const closeMenu = useCallback((restoreFocus = false) => {
+    setMenuOpen(false)
+    if (restoreFocus) avatarRef.current?.focus()
+  }, [])
+
+  useEffect(() => {
+    if (!menuOpen) return
+    menuRef.current?.querySelector<HTMLButtonElement>('[role="menuitem"]')?.focus()
+    const onPointerDown = (event: MouseEvent) => {
+      if (!accountRef.current?.contains(event.target as Node)) {
+        event.preventDefault()
+        closeMenu(true)
+      }
+    }
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        closeMenu(true)
+      }
+    }
+    document.addEventListener('mousedown', onPointerDown)
+    window.addEventListener('keydown', onKeyDown)
+    return () => {
+      document.removeEventListener('mousedown', onPointerDown)
+      window.removeEventListener('keydown', onKeyDown)
+    }
+  }, [closeMenu, menuOpen])
+
+  const handleLogout = async () => {
+    closeMenu()
+    if (onConfirmLeave && !(await onConfirmLeave())) {
+      avatarRef.current?.focus()
+      return
+    }
+    await onLogout()
+  }
+
+  const handleMenuKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return
+    event.preventDefault()
+    const items = [...(menuRef.current?.querySelectorAll<HTMLButtonElement>('[role="menuitem"]') ?? [])]
+    if (items.length === 0) return
+    const currentIndex = items.indexOf(document.activeElement as HTMLButtonElement)
+    const direction = event.key === 'ArrowDown' ? 1 : -1
+    const nextIndex = (currentIndex + direction + items.length) % items.length
+    items[nextIndex]?.focus()
+  }
+
   return (
     <header className="coach-topbar">
       <span className="coach-mark">M</span>
@@ -147,7 +199,54 @@ function CoachTopBar({ view, me }: { view: CoachView; me: AuthUser }) {
         <span>跳转学员、动作、计划…</span>
         <kbd>⌘K</kbd>
       </button>
-      <span className="coach-avatar" title={coachName}>{coachName.slice(0, 1)}</span>
+      <div className="coach-account" ref={accountRef}>
+        <button
+          ref={avatarRef}
+          type="button"
+          className="coach-avatar"
+          title={coachName}
+          aria-label={`${coachName}账户菜单`}
+          aria-haspopup="menu"
+          aria-controls={menuOpen ? 'coach-account-menu' : undefined}
+          aria-expanded={menuOpen}
+          onClick={() => setMenuOpen((open) => !open)}
+        >
+          {coachName.slice(0, 1)}
+        </button>
+        {menuOpen && (
+          <div
+            ref={menuRef}
+            id="coach-account-menu"
+            className="coach-account-menu"
+            role="menu"
+            aria-label={`${coachName}账户菜单`}
+            onKeyDown={handleMenuKeyDown}
+          >
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                closeMenu()
+                setPasswordOpen(true)
+              }}
+            >
+              改密码
+            </button>
+            <button type="button" role="menuitem" onClick={() => { void handleLogout() }}>
+              退出
+            </button>
+          </div>
+        )}
+      </div>
+      <ChangePasswordDialog
+        open={passwordOpen}
+        onClose={() => setPasswordOpen(false)}
+        onSessionInvalidated={() => {
+          setPasswordOpen(false)
+          return onLogout()
+        }}
+        onBeforeSubmit={onConfirmLeave}
+      />
     </header>
   )
 }
@@ -170,37 +269,57 @@ function CoachNavigation({
   lastSyncedAt: Date | null
 }) {
   const week = weekRange(new Date())
+  const [collapsed, toggleCollapsed] = usePersistentCollapse('meetpr:sidebar:coach-shell')
   return (
-    <nav className="coach-navigation" aria-label="教练工作区">
-      <span className="coach-nav-heading">工作区</span>
+    <nav className={`coach-navigation${collapsed ? ' collapsed' : ''}`} aria-label="教练工作区">
+      <div className="coach-nav-head">
+        <span className="coach-nav-heading">工作区</span>
+        <button
+          type="button"
+          className="column-collapse-toggle"
+          aria-label={collapsed ? '展开工作区导航' : '收起工作区导航'}
+          aria-expanded={!collapsed}
+          title={collapsed ? '展开工作区导航' : '收起工作区导航'}
+          onClick={toggleCollapsed}
+        >
+          {collapsed ? '›' : '‹'}
+        </button>
+      </div>
       {NAV_ITEMS.map((item) => {
         const badge = badges[item.id]
+        const collapsedLabel = collapsedNavLabel(item.id, item.label, badge?.count ?? 0)
         return (
           <button
             key={item.id}
             type="button"
+            aria-label={collapsed ? collapsedLabel : undefined}
             aria-current={view === item.id ? 'page' : undefined}
             className={`coach-nav-item${view === item.id ? ' active' : ''}`}
             onClick={() => onChange(item.id)}
+            title={collapsed ? item.label : undefined}
           >
-            <span>{item.label}</span>
+            <span>{collapsed ? item.short : item.label}</span>
             {badge && badge.count > 0 && (
-              <span className={`coach-nav-badge ${badge.tone}`}>{badge.count}</span>
+              <span className={`coach-nav-badge ${badge.tone}`} aria-hidden={collapsed || undefined}>{badge.count}</span>
             )}
           </button>
         )
       })}
-      <span className="coach-nav-heading coach-queue-heading">待排队列 · {pendingCount}</span>
-      {pendingStudents.slice(0, 4).map((student) => (
-        <button
-          key={student.id}
-          type="button"
-          className="coach-queue-item"
-          onClick={() => onPickPending(student.id)}
-        >
-          {student.display_name}
-        </button>
-      ))}
+      {!collapsed && (
+        <>
+          <span className="coach-nav-heading coach-queue-heading">待排队列 · {pendingCount}</span>
+          {pendingStudents.slice(0, 4).map((student) => (
+            <button
+              key={student.id}
+              type="button"
+              className="coach-queue-item"
+              onClick={() => onPickPending(student.id)}
+            >
+              {student.display_name}
+            </button>
+          ))}
+        </>
+      )}
       <span className="coach-nav-footer">
         本周 {week}
         <br />
@@ -210,127 +329,13 @@ function CoachNavigation({
   )
 }
 
-function StudentContextPanel({
-  student,
-  onboarding,
-  exercises,
-}: {
-  student: CoachStudent | null
-  onboarding: StudentOnboardingProfile | null | undefined
-  exercises: ExerciseResponse[]
-}) {
-  const squat = useMemo(() => (
-    exercises.find((exercise) => exercise.main_lift_family === 'squat' && exercise.is_competition_lift)
-    ?? exercises.find((exercise) => exercise.main_lift_family === 'squat')
-    ?? null
-  ), [exercises])
-  const [detail, setDetail] = useState<ExerciseStatsDetail | null>(null)
-  const [loading, setLoading] = useState(false)
-
-  useEffect(() => {
-    let alive = true
-    setDetail(null)
-    setLoading(false)
-    if (!student || !squat) return () => { alive = false }
-    setLoading(true)
-    void getExerciseStats(student.id, squat.id)
-      .then((next) => { if (alive) setDetail(next) })
-      .catch(() => { if (alive) setDetail(null) })
-      .finally(() => { if (alive) setLoading(false) })
-    return () => { alive = false }
-  }, [squat, student])
-
-  const latestSession = detail?.recent_sessions[0]
-  const latestTopWeight = latestSession?.sets.reduce<number | null>((best, set) => {
-    const value = Number(set.weight_kg)
-    if (!Number.isFinite(value)) return best
-    return best == null || value > best ? value : best
-  }, null) ?? null
-  const e1rm = detail?.e1rm ? Number(detail.e1rm.value) : null
-  const topPercent = latestTopWeight != null && e1rm && Number.isFinite(e1rm)
-    ? Math.round(latestTopWeight / e1rm * 100)
-    : null
-  const meta = onboardingMeta(onboarding)
-
-  return (
-    <aside className="coach-context" aria-label="学员上下文">
-      <div className="coach-context-sticky">
-        <div className="coach-context-student">
-          <span className="coach-student-initial">{student?.display_name.slice(0, 1) || '—'}</span>
-          <span>
-            <b>{student?.display_name || '暂无学员'}</b>
-            <small>{meta}</small>
-          </span>
-        </div>
-        <div className="coach-context-tabs" role="tablist" aria-label="上下文">
-          <button type="button" role="tab" aria-selected="true">动作</button>
-          <button type="button" role="tab" aria-selected="false" disabled>消息</button>
-          <button type="button" role="tab" aria-selected="false" disabled>汇总</button>
-        </div>
-      </div>
-      <div className="coach-context-content">
-        <div className="coach-metric-strip">
-          <ContextMetric label="e1RM · 后端滚动值" value={detail?.e1rm ? kg(detail.e1rm.value) : '—'} />
-          <ContextMetric label="登记 1RM" value={kg(detail?.one_rm_reference)} />
-          <ContextMetric
-            label="最近顶组占比"
-            value={topPercent == null ? '—' : `${topPercent}%`}
-            tone={topPercent == null ? undefined : topPercent >= 95 ? 'bad' : topPercent >= 90 ? 'warn' : 'ok'}
-          />
-        </div>
-        <div className="coach-context-exercise">
-          <span>{squat?.name || '深蹲主项'}</span>
-          {latestSession && <small>{latestSession.sets.length} 组</small>}
-        </div>
-        <span className="coach-context-label">
-          最近训练历史{loading ? ' · 加载中' : detail ? ` · ${detail.recent_sessions.length} 次` : ''}
-        </span>
-        {!student && <div className="coach-context-empty">接受学员申请后显示训练上下文</div>}
-        {student && !loading && detail?.recent_sessions.length === 0 && (
-          <div className="coach-context-empty">暂无深蹲训练记录</div>
-        )}
-        {detail?.recent_sessions.slice(0, 4).map((session) => (
-          <section className="coach-history-card" key={session.date}>
-            <header>
-              <b>{shortDate(session.date)}</b>
-              <span>{session.sets.length} 组</span>
-            </header>
-            {session.sets.map((set) => (
-              <div className="coach-history-set" key={set.set_index}>
-                <span>{set.set_index}</span>
-                <b>{kg(set.weight_kg)}kg × {set.reps}</b>
-                <span>{set.rpe ? `RPE ${Number(set.rpe)}` : '—'}</span>
-                <span className={set.failed ? 'bad' : set.completed ? 'ok' : ''}>
-                  {set.failed ? '力竭' : set.completed ? '✓' : '—'}
-                </span>
-              </div>
-            ))}
-          </section>
-        ))}
-      </div>
-    </aside>
-  )
-}
-
-function ContextMetric({ label, value, tone }: { label: string; value: string; tone?: 'ok' | 'warn' | 'bad' }) {
-  return (
-    <span>
-      <b className={tone}>{value}</b>
-      <small>{label}</small>
-    </span>
-  )
-}
-
-function onboardingMeta(profile: StudentOnboardingProfile | null | undefined): string {
-  if (profile === undefined) return '资料加载中…'
-  if (!profile) return '暂无 onboarding 资料'
-  const weightClass = profile.target_weight_class?.trim()
-  const classLabel = weightClass
-    ? (weightClass.endsWith('级') ? weightClass : `${weightClass} 级`)
-    : null
-  const weight = profile.weight_kg ? `${kg(profile.weight_kg)}kg` : null
-  const training = profile.training_years != null ? `${profile.training_years} 年训练` : null
-  return [classLabel, weight, training].filter(Boolean).join(' · ') || '资料待补充'
+function collapsedNavLabel(view: CoachView, label: string, count: number): string {
+  if (count <= 0) return label
+  if (view === 'messages') return `${label}，${count} 条未读`
+  if (view === 'requests') return `${label}，${count} 条待处理`
+  if (view === 'catalog') return `${label}，${count} 个动作`
+  if (view === 'videos') return `${label}，${count} 条待复盘`
+  return label
 }
 
 function weekRange(date: Date): string {
