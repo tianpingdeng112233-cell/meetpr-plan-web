@@ -1322,6 +1322,8 @@ export function PlanEditor(props: PlanEditorProps) {
             '这份计划包含逐组不同的次数/备注/组间休息，网页编辑器还无法无损保存，为避免丢失这些设置已拒绝写入。'],
           PLAN_SET_SPEC_INCOMPLETE: ['有已绑定动作组次/强度不完整或无效 · 点「待核对」修正',
             '有已绑定动作的组次/强度没填全或值无效。点顶栏「待核对」查看原因并逐个修正后再保存。'],
+          PLAN_SAVE_TOO_LARGE: ['改动太大，已安全拒绝保存',
+            '这次改动超过单次原子保存上限。服务器没有写入任何部分，请缩小一次修改的范围后重试。'],
         }
         const [status, detail] = explain[error.code]
         setStatusText(status)
@@ -1494,6 +1496,8 @@ export function PlanEditor(props: PlanEditorProps) {
               '这份计划包含逐组不同的次数/备注/组间休息，网页编辑器还无法无损保存，为避免丢失这些设置已拒绝写入。'],
             PLAN_SET_SPEC_INCOMPLETE: ['有已绑定动作组次/强度不完整或无效 · 点「待核对」修正',
               '有已绑定动作的组次/强度没填全或值无效。点顶栏「待核对」查看原因并逐个修正后再更新。'],
+            PLAN_SAVE_TOO_LARGE: ['改动太大，已安全拒绝更新',
+              '这次改动超过单次原子保存上限。服务器没有写入任何部分，请缩小一次修改的范围后重试。'],
           }
           const [status, detail] = explain[error.code]
           setStatusText(status)
