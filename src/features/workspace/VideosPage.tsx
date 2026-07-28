@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { ApiException } from '../../api/client'
-import { getUploadUrl, postCoachFeedback } from '../../api/coach'
+import { getUploadUrl, patchCoachRpe, postCoachFeedback } from '../../api/coach'
 import { createVideoMarker, deleteVideoMarker, getVideoMarkers } from '../../api/markers'
 import type { CoachStudent, StudentVideo, VideoMarker, VideoMarkerLevel } from '../../api/types'
 import { kg } from './WorkspaceCommon'
@@ -15,6 +15,7 @@ const markerLevels: { value: VideoMarkerLevel; label: string }[] = [
   { value: 'warn', label: '注意' },
   { value: 'bad', label: '问题' },
 ]
+const coachRpeOptions = Array.from({ length: 11 }, (_, index) => 5 + index * 0.5)
 
 const videoDay = (video: Pick<StudentVideo, 'logged_at' | 'created_at'>) =>
   (video.logged_at ?? video.created_at).slice(0, 10)
@@ -88,6 +89,9 @@ export function VideosPage({ students, studentId, videos, onRefreshVideos, onStu
   const [feedback, setFeedback] = useState('')
   const [feedbackState, setFeedbackState] = useState<'idle' | 'sending' | 'sent'>('idle')
   const [feedbackError, setFeedbackError] = useState('')
+  const [coachRpe, setCoachRpe] = useState<string | null>(null)
+  const [coachRpeSaving, setCoachRpeSaving] = useState(false)
+  const [coachRpeError, setCoachRpeError] = useState('')
   const [markerAvailability, setMarkerAvailability] = useState<MarkerAvailability>('loading')
   const [markers, setMarkers] = useState<VideoMarker[]>([])
   const [markerOpen, setMarkerOpen] = useState(false)
@@ -101,6 +105,7 @@ export function VideosPage({ students, studentId, videos, onRefreshVideos, onStu
   const urlRequest = useRef(0)
   const markerRequest = useRef(0)
   const feedbackRequest = useRef(0)
+  const coachRpeRequest = useRef(0)
   const sentTimer = useRef<number>()
   const draftRef = useRef('')
   const activeVideoIdRef = useRef<string | null>(null)
@@ -123,6 +128,7 @@ export function VideosPage({ students, studentId, videos, onRefreshVideos, onStu
     urlRequest.current += 1
     markerRequest.current += 1
     feedbackRequest.current += 1
+    coachRpeRequest.current += 1
     void refreshVideos()
   }, [refreshVideos])
 
@@ -206,6 +212,18 @@ export function VideosPage({ students, studentId, videos, onRefreshVideos, onStu
         setMarkerAvailability(canDegrade ? 'unavailable' : 'error')
         setMarkers([])
       })
+  }, [active?.id])
+
+  // Reset only on video identity change. Same-video refreshes (e.g. the
+  // refreshVideos() a save triggers) must NOT bump the request counter, or
+  // they would invalidate an in-flight second save on the same video; for a
+  // given video the PATCH response is the authority on coach_rpe.
+  useEffect(() => {
+    coachRpeRequest.current += 1
+    setCoachRpe(active?.coach_rpe ?? null)
+    setCoachRpeSaving(false)
+    setCoachRpeError('')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active?.id])
 
   // The <video> is keyed by active video id, so switching swaps elements; we
@@ -342,6 +360,33 @@ export function VideosPage({ students, studentId, videos, onRefreshVideos, onStu
     }
   }
 
+  const saveCoachRpe = async (next: number | null) => {
+    if (!active?.set_log_id || coachRpeSaving) return
+    const videoId = active.id
+    const setLogId = active.set_log_id
+    const previous = coachRpe
+    const optimistic = next == null ? null : String(next)
+    const request = ++coachRpeRequest.current
+    setCoachRpe(optimistic)
+    setCoachRpeSaving(true)
+    setCoachRpeError('')
+    try {
+      const updated = await patchCoachRpe(setLogId, next)
+      if (request !== coachRpeRequest.current || activeVideoIdRef.current !== videoId) return
+      setCoachRpe(updated.coach_rpe)
+      void refreshVideos()
+    } catch {
+      if (request === coachRpeRequest.current && activeVideoIdRef.current === videoId) {
+        setCoachRpe(previous)
+        setCoachRpeError('RPE 校准失败，已恢复原值')
+      }
+    } finally {
+      if (request === coachRpeRequest.current && activeVideoIdRef.current === videoId) {
+        setCoachRpeSaving(false)
+      }
+    }
+  }
+
   const addMarker = async () => {
     if (!active || markerSaving) return
     const videoId = active.id
@@ -385,7 +430,6 @@ export function VideosPage({ students, studentId, videos, onRefreshVideos, onStu
   const detailMeta = active ? [
     dayLabel(videoDay(active)),
     setLabel(active.set_index),
-    `RPE ${active.rpe == null ? '—' : Number(active.rpe)}`,
   ].filter(Boolean).join(' · ') : ''
 
   return (
@@ -480,6 +524,43 @@ export function VideosPage({ students, studentId, videos, onRefreshVideos, onStu
                 {statusLabel(active)}
               </span>
               <small>{detailMeta}</small>
+              <span className={`video-rpe-calibration${coachRpe != null ? ' calibrated' : ''}`}>
+                <span className="video-student-rpe">
+                  学员自报 <b>{active.rpe == null ? '未填' : `@${Number(active.rpe)}`}</b>
+                </span>
+                {coachRpe != null && (
+                  <span className="video-coach-rpe">
+                    教练校准 <b>@{Number(coachRpe)}</b>
+                  </span>
+                )}
+                {active.set_log_id != null && (
+                  <>
+                    <select
+                      aria-label="教练校准 RPE"
+                      value={coachRpe == null ? '' : String(Number(coachRpe))}
+                      disabled={coachRpeSaving}
+                      onChange={(event) => void saveCoachRpe(Number(event.target.value))}
+                    >
+                      <option value="" disabled>校准 RPE</option>
+                      {coachRpeOptions.map((value) => (
+                        <option value={value} key={value}>RPE {value}</option>
+                      ))}
+                    </select>
+                    <button
+                      type="button"
+                      className="video-rpe-clear"
+                      disabled={coachRpe == null || coachRpeSaving}
+                      onClick={() => void saveCoachRpe(null)}
+                    >
+                      清除校准
+                    </button>
+                    {coachRpeSaving && <i className="video-rpe-saving">保存中…</i>}
+                    {coachRpeError && (
+                      <i className="video-rpe-error" role="alert">{coachRpeError}</i>
+                    )}
+                  </>
+                )}
+              </span>
               <span className="video-detail-nav">
                 <i>{activeIndex + 1} / {visibleVideos.length}</i>
                 <button
@@ -652,7 +733,7 @@ export function VideosPage({ students, studentId, videos, onRefreshVideos, onStu
                 <dl>
                   <div><dt>重量</dt><dd>{active.weight_kg == null ? '—' : `${kg(active.weight_kg)} kg`}</dd></div>
                   <div><dt>次数</dt><dd>{active.reps == null ? '—' : active.reps}</dd></div>
-                  <div><dt>学员自评 RPE</dt><dd>{active.rpe == null ? '—' : Number(active.rpe)}</dd></div>
+                  <div><dt>学员自报 RPE</dt><dd>{active.rpe == null ? '未填' : Number(active.rpe)}</dd></div>
                   <div><dt>文件大小</dt><dd>{size(active.size_bytes)}</dd></div>
                 </dl>
               </section>

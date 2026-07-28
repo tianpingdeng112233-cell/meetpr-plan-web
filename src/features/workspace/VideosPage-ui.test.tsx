@@ -9,6 +9,7 @@ const api = vi.hoisted(() => ({
   getStudentVideos: vi.fn(),
   getUploadUrl: vi.fn(),
   postCoachFeedback: vi.fn(),
+  patchCoachRpe: vi.fn(),
   getVideoMarkers: vi.fn(),
   createVideoMarker: vi.fn(),
   deleteVideoMarker: vi.fn(),
@@ -17,6 +18,7 @@ vi.mock('../../api/coach', () => ({
   getStudentVideos: api.getStudentVideos,
   getUploadUrl: api.getUploadUrl,
   postCoachFeedback: api.postCoachFeedback,
+  patchCoachRpe: api.patchCoachRpe,
 }))
 vi.mock('../../api/markers', () => ({
   getVideoMarkers: api.getVideoMarkers,
@@ -44,6 +46,7 @@ const videos: StudentVideo[] = [
     weight_kg: '125',
     reps: 4,
     rpe: '8.5',
+    coach_rpe: null,
     viewed_at: null,
   },
   {
@@ -60,6 +63,7 @@ const videos: StudentVideo[] = [
     weight_kg: null,
     reps: 5,
     rpe: '7.5',
+    coach_rpe: '9.0',
     viewed_at: '2026-07-18T09:00:00Z',
   },
   {
@@ -76,6 +80,7 @@ const videos: StudentVideo[] = [
     weight_kg: '150',
     reps: 3,
     rpe: null,
+    coach_rpe: null,
     viewed_at: null,
   },
 ]
@@ -104,6 +109,11 @@ const setTextarea = (element: HTMLTextAreaElement, value: string) => act(() => {
   const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')?.set
   setter?.call(element, value)
   element.dispatchEvent(new Event('input', { bubbles: true }))
+})
+const setSelect = (element: HTMLSelectElement, value: string) => act(() => {
+  const setter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value')?.set
+  setter?.call(element, value)
+  element.dispatchEvent(new Event('change', { bubbles: true }))
 })
 const buttonWithText = (host: HTMLElement, text: string) =>
   [...host.querySelectorAll('button')].find((button) => button.textContent?.includes(text)) ?? null
@@ -146,6 +156,11 @@ describe('VideosPage master-detail interactions', () => {
     api.getUploadUrl.mockImplementation((id: string) =>
       Promise.resolve({ url: `https://example.test/${id}`, expires_in: 60 }))
     api.postCoachFeedback.mockResolvedValue({})
+    api.patchCoachRpe.mockImplementation((setLogId: string, coachRpe: number | null) =>
+      Promise.resolve({
+        set_log_id: setLogId,
+        coach_rpe: coachRpe == null ? null : coachRpe.toFixed(1),
+      }))
     api.getVideoMarkers.mockResolvedValue([initialMarker])
     api.createVideoMarker.mockResolvedValue(initialMarker)
     api.deleteVideoMarker.mockResolvedValue(undefined)
@@ -210,6 +225,151 @@ describe('VideosPage master-detail interactions', () => {
     expect(groups[0]?.querySelector('.video-date-heading')?.textContent).toContain('2 条')
     expect(host.querySelector('.video-master-row')?.textContent).toContain('第 1 组')
     expect(host.querySelector('.video-detail-head')?.textContent).toContain('第 1 组')
+  })
+
+  it('renders the student-reported RPE and uses 未填 when it is absent', async () => {
+    await renderHarness()
+    expect(host.querySelector('.video-student-rpe')?.textContent).toContain('学员自报 @8.5')
+
+    click(host.querySelectorAll('.video-master-row')[2]!)
+    await act(settle)
+    expect(host.querySelector('.video-student-rpe')?.textContent).toContain('学员自报 未填')
+    expect(host.querySelector('.video-data-card')?.textContent).toContain('学员自报 RPE未填')
+  })
+
+  it('locks the calibration select to the full 5-10 half-step range', async () => {
+    await renderHarness()
+    const control = host.querySelector<HTMLSelectElement>('[aria-label="教练校准 RPE"]')!
+    const values = Array.from(control.querySelectorAll('option'))
+      .filter((option) => !option.disabled)
+      .map((option) => option.value)
+    expect(values).toEqual(['5', '5.5', '6', '6.5', '7', '7.5', '8', '8.5', '9', '9.5', '10'])
+  })
+
+  it('keeps a second same-video save alive when the first save\'s refresh lands mid-flight', async () => {
+    let releaseRefresh: (value: StudentVideo[]) => void = () => {}
+    let releasePatch: (value: { set_log_id: string; coach_rpe: string | null }) => void = () => {}
+    await renderHarness()
+
+    // First save resolves instantly, but its refreshVideos is held open.
+    api.getStudentVideos.mockImplementation(() =>
+      new Promise((resolve) => { releaseRefresh = resolve }))
+    const control = host.querySelector<HTMLSelectElement>('[aria-label="教练校准 RPE"]')!
+    setSelect(control, '8')
+    await act(settle)
+    expect(host.querySelector('.video-coach-rpe')?.textContent).toContain('教练校准 @8')
+
+    // Second save on the SAME video goes in-flight before the refresh returns.
+    api.patchCoachRpe.mockImplementation(() =>
+      new Promise((resolve) => { releasePatch = resolve }))
+    setSelect(host.querySelector<HTMLSelectElement>('[aria-label="教练校准 RPE"]')!, '9')
+    expect(host.querySelector('.video-coach-rpe')?.textContent).toContain('教练校准 @9')
+
+    // First save's refresh lands: same video id, coach_rpe now '8.0'. It must
+    // NOT cancel the in-flight second save or clobber its optimistic value.
+    await act(async () => {
+      releaseRefresh(videos.map((video) => video.set_log_id === 'log-1'
+        ? { ...video, coach_rpe: '8.0' }
+        : video))
+      await settle()
+    })
+    expect(host.querySelector('.video-coach-rpe')?.textContent).toContain('教练校准 @9')
+    expect(host.querySelector<HTMLSelectElement>('[aria-label="教练校准 RPE"]')?.disabled).toBe(true)
+
+    // Second save resolves and wins.
+    api.getStudentVideos.mockResolvedValue(videos)
+    await act(async () => {
+      releasePatch({ set_log_id: 'log-1', coach_rpe: '9.0' })
+      await settle()
+    })
+    expect(host.querySelector('.video-coach-rpe')?.textContent).toContain('教练校准 @9')
+    expect(host.querySelector<HTMLSelectElement>('[aria-label="教练校准 RPE"]')?.disabled).toBe(false)
+  })
+
+  it('optimistically saves a coach RPE calibration and keeps the confirmed state', async () => {
+    let release = (_value: { set_log_id: string; coach_rpe: string | null }) => {}
+    api.patchCoachRpe.mockImplementation(() =>
+      new Promise((resolve) => { release = resolve }))
+    await renderHarness()
+
+    const control = host.querySelector<HTMLSelectElement>('[aria-label="教练校准 RPE"]')!
+    setSelect(control, '9')
+    expect(api.patchCoachRpe).toHaveBeenCalledWith('log-1', 9)
+    expect(host.querySelector('.video-coach-rpe')?.textContent).toContain('教练校准 @9')
+    expect(host.querySelector('.video-rpe-calibration')?.classList.contains('calibrated')).toBe(true)
+    expect(control.disabled).toBe(true)
+
+    await act(async () => {
+      release({ set_log_id: 'log-1', coach_rpe: '9.0' })
+      await settle()
+    })
+    expect(host.querySelector('.video-coach-rpe')?.textContent).toContain('教练校准 @9')
+    expect(host.querySelector<HTMLSelectElement>('[aria-label="教练校准 RPE"]')?.disabled).toBe(false)
+  })
+
+  it('clears an existing coach calibration optimistically', async () => {
+    await renderHarness()
+    click(host.querySelector('[aria-label="下一条视频"]'))
+    await act(settle)
+    expect(host.querySelector('.video-coach-rpe')?.textContent).toContain('教练校准 @9')
+
+    click(buttonWithText(host, '清除校准'))
+    expect(api.patchCoachRpe).toHaveBeenCalledWith('log-2', null)
+    expect(host.querySelector('.video-coach-rpe')).toBeNull()
+    await act(settle)
+    expect(host.querySelector('.video-coach-rpe')).toBeNull()
+  })
+
+  it('rolls a failed calibration back and shows an error', async () => {
+    let reject = (_error: Error) => {}
+    api.patchCoachRpe.mockImplementation(() =>
+      new Promise((_resolve, rejectPromise) => { reject = rejectPromise }))
+    await renderHarness()
+    click(host.querySelector('[aria-label="下一条视频"]'))
+    await act(settle)
+
+    setSelect(host.querySelector<HTMLSelectElement>('[aria-label="教练校准 RPE"]')!, '8')
+    expect(host.querySelector('.video-coach-rpe')?.textContent).toContain('教练校准 @8')
+    await act(async () => {
+      reject(new Error('backend unavailable'))
+      await settle()
+    })
+
+    expect(host.querySelector('.video-coach-rpe')?.textContent).toContain('教练校准 @9')
+    expect(host.querySelector('.video-rpe-error')?.textContent).toBe('RPE 校准失败，已恢复原值')
+    expect(host.querySelector<HTMLSelectElement>('[aria-label="教练校准 RPE"]')?.value).toBe('9')
+  })
+
+  it('hides calibration controls when the video has no set log', async () => {
+    await renderHarness()
+    click(host.querySelectorAll('.video-master-row')[2]!)
+    await act(settle)
+
+    expect(host.querySelector('.video-student-rpe')?.textContent).toContain('学员自报 未填')
+    expect(host.querySelector('[aria-label="教练校准 RPE"]')).toBeNull()
+    expect(buttonWithText(host, '清除校准')).toBeNull()
+  })
+
+  it('resets calibration state on switch and ignores the previous video response', async () => {
+    let release = (_value: { set_log_id: string; coach_rpe: string | null }) => {}
+    api.patchCoachRpe.mockImplementation(() =>
+      new Promise((resolve) => { release = resolve }))
+    await renderHarness()
+
+    setSelect(host.querySelector<HTMLSelectElement>('[aria-label="教练校准 RPE"]')!, '6.5')
+    expect(host.querySelector('.video-coach-rpe')?.textContent).toContain('教练校准 @6.5')
+    click(host.querySelector('[aria-label="下一条视频"]'))
+    await act(settle)
+    expect(host.querySelector('.video-coach-rpe')?.textContent).toContain('教练校准 @9')
+    expect(host.querySelector<HTMLSelectElement>('[aria-label="教练校准 RPE"]')?.value).toBe('9')
+
+    await act(async () => {
+      release({ set_log_id: 'log-1', coach_rpe: '6.5' })
+      await settle()
+    })
+    expect(host.querySelector('.video-detail-head')?.textContent).toContain('卧推')
+    expect(host.querySelector('.video-coach-rpe')?.textContent).toContain('教练校准 @9')
+    expect(host.querySelector<HTMLSelectElement>('[aria-label="教练校准 RPE"]')?.value).toBe('9')
   })
 
   it('keeps boundary controls in place and isolates navigation keys from feedback', async () => {

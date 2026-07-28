@@ -15,5 +15,9 @@ export const getStudentVideos = (studentId: string) =>
   api.get<{ videos: StudentVideo[] }>(`/students/${studentId}/videos`).then((r) => r.videos)
 export const getUploadUrl = (id: string) => api.get<{ url: string; expires_in: number }>(`/uploads/${id}/url`)
 export const postCoachFeedback = (payload: CoachFeedbackPayload) => api.post<CoachFeedbackResponse>('/coach/feedback', payload)
+export const patchCoachRpe = (setLogId: string, coachRpe: number | null) =>
+  api.patch<{ set_log_id: string; coach_rpe: string | null }>(`/coach/set-logs/${setLogId}/coach-rpe`, {
+    coach_rpe: coachRpe,
+  })
 export const getInviteCodes = () => api.get<{ invite_codes: InviteCode[] }>('/coach/invite-codes').then((r) => r.invite_codes)
 export const refreshCoachStudents = () => api.get<{ students: CoachStudent[] }>('/coach/students').then((r) => r.students)
