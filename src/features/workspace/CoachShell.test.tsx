@@ -53,6 +53,7 @@ function ShellHarness({
       onboarding={null}
       exercises={exercises}
       pendingStudents={[]}
+      pendingCount={0}
       unreadCount={unreadCount}
       requestCount={requestCount}
       videoCount={videoCount}

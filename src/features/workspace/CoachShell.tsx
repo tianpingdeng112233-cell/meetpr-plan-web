@@ -51,7 +51,8 @@ export interface CoachShellProps {
   studentId: string
   onboarding: StudentOnboardingProfile | null | undefined
   exercises: ExerciseResponse[]
-  pendingStudents: CoachStudent[] | null
+  pendingStudents: CoachStudent[]
+  pendingCount: number
   unreadCount: number
   requestCount: number
   videoCount: number | null
@@ -69,6 +70,7 @@ export function CoachShell({
   onboarding,
   exercises,
   pendingStudents,
+  pendingCount,
   unreadCount,
   requestCount,
   videoCount,
@@ -76,8 +78,6 @@ export function CoachShell({
   lastSyncedAt,
 }: CoachShellProps) {
   const selectedStudent = students.find((student) => student.id === studentId) ?? null
-  const pendingRows = pendingStudents ?? []
-  const pendingCount = pendingStudents?.length
   const exerciseCount = exercises.length
   const badges = useMemo<Partial<Record<CoachView, Badge>>>(() => ({
     messages: { count: unreadCount, tone: 'danger' },
@@ -110,7 +110,7 @@ export function CoachShell({
         <CoachNavigation
           view={view}
           badges={badges}
-          pendingStudents={pendingRows}
+          pendingStudents={pendingStudents}
           pendingCount={pendingCount}
           onChange={onChange}
           onPickPending={onPickPending}
@@ -126,7 +126,7 @@ export function CoachShell({
         )}
       </div>
       <footer className="coach-statusbar">
-        <span>待排 {pendingCount ?? '—'}</span>
+        <span>待排 {pendingCount}</span>
         <span>未读 {unreadCount}</span>
         <span className="coach-statusbar-shortcuts">{VIEW_SHORTCUTS[view]}</span>
       </footer>
@@ -164,7 +164,7 @@ function CoachNavigation({
   view: CoachView
   badges: Partial<Record<CoachView, Badge>>
   pendingStudents: CoachStudent[]
-  pendingCount: number | undefined
+  pendingCount: number
   onChange: (view: CoachView) => void
   onPickPending: (studentId: string) => void
   lastSyncedAt: Date | null
@@ -190,7 +190,7 @@ function CoachNavigation({
           </button>
         )
       })}
-      <span className="coach-nav-heading coach-queue-heading">待排队列 · {pendingCount ?? '—'}</span>
+      <span className="coach-nav-heading coach-queue-heading">待排队列 · {pendingCount}</span>
       {pendingStudents.slice(0, 4).map((student) => (
         <button
           key={student.id}
