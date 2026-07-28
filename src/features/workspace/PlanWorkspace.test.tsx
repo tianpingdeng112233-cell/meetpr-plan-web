@@ -638,6 +638,8 @@ describe('PlanWorkspace editor remount', () => {
       clickButton(host, '学员申请')
       await settle()
     })
+    expect(host.querySelector('.requests-count')?.textContent).toBe('1 条')
+    expect(host.querySelector('.request-list')?.textContent).toContain('新学员')
     await act(async () => {
       host.querySelector<HTMLButtonElement>('.request-row button.accept')?.click()
       await settle()
@@ -646,6 +648,56 @@ describe('PlanWorkspace editor remount', () => {
     expect(api.acceptBindRequest).toHaveBeenCalledWith('request')
     expect(api.refreshCoachStudents).toHaveBeenCalledTimes(1)
     expect(api.getBindRequests).toHaveBeenCalledTimes(2)
+    expect(host.querySelector('.requests-count')?.textContent).toBe('0 条')
+    expect(host.querySelector('.request-list')?.textContent).not.toContain('新学员')
+    expect(requestsTab?.querySelector('.coach-nav-badge')).toBeNull()
+  }, 15_000)
+
+  it('接受申请后丢弃更早发出的轮询响应，申请卡片和角标不复活', async () => {
+    vi.useFakeTimers()
+    Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' })
+    let resolveStale!: (value: CoachBindRequest[]) => void
+    const stale = new Promise<CoachBindRequest[]>((resolve) => { resolveStale = resolve })
+    api.getBindRequests
+      .mockResolvedValueOnce([bindRequest])
+      .mockReturnValueOnce(stale)
+      .mockResolvedValue([])
+    api.refreshCoachStudents.mockResolvedValue([
+      { id: 'student', display_name: '学员', status: 'active', evaluation: null },
+      { id: 'student-2', display_name: '新学员', status: 'active', evaluation: null },
+    ])
+    api.getPlan.mockResolvedValue(plan('申请乱序测试'))
+
+    await act(async () => {
+      root.render(<PlanWorkspace onLogout={vi.fn()} me={me} />)
+      await settle()
+    })
+    const requestsTab = [...host.querySelectorAll('button')].find((item) => item.textContent?.includes('学员申请'))
+    await act(async () => {
+      clickButton(host, '学员申请')
+      await settle()
+    })
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(60_000)
+      await settle()
+    })
+    expect(api.getBindRequests).toHaveBeenCalledTimes(2)
+
+    await act(async () => {
+      host.querySelector<HTMLButtonElement>('.request-row button.accept')?.click()
+      await settle()
+    })
+    expect(api.getBindRequests).toHaveBeenCalledTimes(3)
+    expect(host.querySelector('.requests-count')?.textContent).toBe('0 条')
+    expect(requestsTab?.querySelector('.coach-nav-badge')).toBeNull()
+
+    await act(async () => {
+      resolveStale([bindRequest])
+      await settle()
+    })
+    expect(host.querySelector('.requests-count')?.textContent).toBe('0 条')
+    expect(host.querySelector('.request-list')?.textContent).not.toContain('新学员')
     expect(requestsTab?.querySelector('.coach-nav-badge')).toBeNull()
   }, 15_000)
 
