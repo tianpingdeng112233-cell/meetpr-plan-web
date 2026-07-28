@@ -11,6 +11,8 @@ export interface AuthUser {
   phone: string
   role: UserRole
   createdAt: string
+  /** Not returned by /auth/login; optional until the backend provides GET /me. */
+  display_name?: string | null
 }
 export interface LoginResponse {
   user: AuthUser
@@ -91,7 +93,23 @@ export interface StudentVideo {
   set_index?: number | null
   weight_kg?: string | null
   reps?: number | null
+  rpe?: string | null
   viewed_at?: string | null
+}
+export type VideoMarkerLevel = 'info' | 'warn' | 'bad'
+export interface VideoMarker {
+  id: string
+  video_id: string
+  coach_id: string
+  time_ms: number
+  level: VideoMarkerLevel
+  note: string
+  created_at: string
+}
+export interface CreateVideoMarkerPayload {
+  time_ms: number
+  level: VideoMarkerLevel
+  note: string
 }
 export interface CoachFeedbackPayload {
   student_id: string
@@ -145,6 +163,17 @@ export interface ChatConversation {
   other_last_read: ChatReadCursor | null
 }
 
+export interface ChatSetRefV1 {
+  v: 1
+  exercise_name: string
+  set_number: number
+  weight_kg: string | null
+  reps: number | null
+  rpe: string | null
+  day_date: string
+  set_log_id: string
+}
+
 export interface ChatMessage {
   id: string
   conversation_id: string
@@ -155,6 +184,9 @@ export interface ChatMessage {
   attachment_id: string | null
   image_url: string | null
   image_expires_in: number | null
+  set_ref: unknown | null
+  video_url: string | null
+  video_expires_in: number | null
   client_id: string
   created_at: string
 }

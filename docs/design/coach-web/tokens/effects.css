@@ -1,0 +1,24 @@
+/* MeetPR effects: shadows, gold CTA treatment, motion */
+:root {
+  /* Gold solid CTA (dark theme): top highlight + bottom shade + ambient gold */
+  --shadow-cta: inset 0 1.5px 0 rgba(255,255,255,.55), inset 0 -2px 3px rgba(120,60,0,.25), 0 8px 26px rgba(245,166,35,.38);
+  --shadow-card-light: 0 4px 18px rgba(17,24,39,.06);  /* light theme cards float on gray */
+  --shadow-modal: 0 30px 60px rgba(0,0,0,.5);
+  --glow-gold: 0 0 0 1px rgba(245,166,35,.5), 0 0 16px 2px rgba(245,166,35,.24);
+
+  /* Motion */
+  --ease-out: cubic-bezier(.2,.7,.2,1);
+  --ease-sheet: cubic-bezier(.2,.8,.2,1);
+  --dur-press: 120ms;   /* .pb press: scale(.97), opacity .9 */
+  --dur-fast: 200ms;
+  --dur-rise: 500ms;    /* staggered rise-in, ~40-90ms stagger */
+}
+
+@keyframes mp-sweep { 0% { transform: translateX(-160%) skewX(-12deg); } 30% { transform: translateX(340%) skewX(-12deg); } 100% { transform: translateX(340%) skewX(-12deg); } }
+.mp-shimmer { position: absolute; top: 0; bottom: 0; left: 0; width: 55%; background: linear-gradient(90deg, transparent, rgba(255,224,160,.42), transparent); transform: translateX(-160%) skewX(-12deg); animation: mp-sweep 4.5s ease-in-out infinite; pointer-events: none; }
+
+@keyframes mp-glow { 0%,100% { box-shadow: 0 0 0 1px rgba(245,166,35,.5), 0 0 16px 2px rgba(245,166,35,.24); } 50% { box-shadow: 0 0 0 1px rgba(245,166,35,.62), 0 0 23px 3px rgba(245,166,35,.32); } }
+.mp-glow { animation: mp-glow 4.2s ease-in-out infinite; }
+
+.mp-press { transition: transform var(--dur-press) ease, opacity var(--dur-press) ease; }
+.mp-press:active { transform: scale(.97); opacity: .9; }

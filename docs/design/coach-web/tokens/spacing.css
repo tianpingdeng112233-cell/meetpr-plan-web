@@ -1,0 +1,19 @@
+/* MeetPR spacing & radius tokens */
+:root {
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --page-x: 16px;      /* screen horizontal padding */
+
+  /* Radius scale — chip/control/card/modal + pill；另有 4px 微标记（进度条、色条），不单设 token */
+  --radius-chip: 10px;   /* small tiles, inset note boxes */
+  --radius-control: 12px;/* inner tables, list rows, keys, secondary buttons */
+  --radius-card: 16px;   /* cards & containers */
+  --radius-modal: 20px;  /* dialogs, bottom sheets */
+  --radius-pill: 999px;  /* CTAs, chips, tags */
+
+  --hit-min: 44px;       /* minimum touch target */
+}

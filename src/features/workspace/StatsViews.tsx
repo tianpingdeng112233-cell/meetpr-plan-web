@@ -1,10 +1,27 @@
 import { useEffect, useMemo, useState } from 'react'
 import { getExerciseStats, getExerciseStatsOverview } from '../../api/coach'
 import { getStudentOnboarding } from '../../api/plans'
-import type { CoachStudent, ExerciseStatsDetail, ExerciseStatsOverview, StudentOnboardingProfile } from '../../api/types'
+import type {
+  ChatConversation,
+  CoachStudent,
+  ExerciseStatsDetail,
+  ExerciseStatsOverview,
+  PlanResponse,
+  StudentOnboardingProfile,
+} from '../../api/types'
 import type { ExerciseIndex } from '../plan-editor/exerciseIndex'
 import type { Catalog } from '../plan-editor/mapping'
-import { PageTop, daysSince, kg, profileLine, relativeDays, shortDate } from './WorkspaceCommon'
+import { PageTop, kg, profileLine, shortDate } from './WorkspaceCommon'
+import { completionRateTone } from './metricThresholds'
+import {
+  deriveRosterCounts,
+  deriveRosterRows,
+  filterRosterRows,
+  type RosterDataByStudent,
+  type RosterCounts,
+  type RosterOverviewRow,
+  type RosterTab,
+} from './rosterOverview'
 import { StudentPlanCapacityCard } from './StudentPlanCapacityCard'
 
 export function RmStrip({ detail, weight }: { detail: ExerciseStatsDetail; weight?: number | null }) {
@@ -19,83 +36,145 @@ export function SessionDetail({ detail, limit = 6 }: { detail: ExerciseStatsDeta
   return <div className="sessions">{detail.recent_sessions.slice(0, limit).map((s) => <section className="session" key={s.date}><header><b>{shortDate(s.date)}</b><span>{s.sets.length} 组</span></header>{s.sets.map((set) => <div className="set-line" key={set.set_index}><span>{set.set_index}</span><b>{kg(set.weight_kg)}kg × {set.reps}</b><span>{set.rpe ? `@${Number(set.rpe)}` : '—'}</span>{set.assumed && <i>导</i>}{set.has_video && <button title="播放该组视频">▶</button>}<em className={set.failed ? 'failed' : ''}>{set.failed ? '力竭' : set.completed ? '✓' : '—'}</em></div>)}</section>)}</div>
 }
 
-// ── 全体花名册（扫视态）+ 分诊信号 ────────────────────────────────
-// 分诊阈值集中一处，可调；灯是纯前端 UX 启发式（派生自 last_trained_at），非训练算法。
-const ROSTER_TRIAGE = { normalMaxDays: 3, slowingMaxDays: 7 }
-type Triage = 'normal' | 'slowing' | 'dropped'
-const triageLabel: Record<Triage, string> = { normal: '正常（≤3 天）', slowing: '放缓（4–7 天）', dropped: '掉线（>7 天或无记录）' }
-function triageOf(lastTrainedAt: string | null | undefined): Triage {
-  const d = daysSince(lastTrainedAt)
-  if (d == null || d > ROSTER_TRIAGE.slowingMaxDays) return 'dropped'
-  if (d > ROSTER_TRIAGE.normalMaxDays) return 'slowing'
-  return 'normal'
+// ── 总览（mock 1:1 扫视表）──────────────────────────────────────
+export const ROSTER_GRID_COLUMNS = '150px 104px 116px 84px 78px 80px 1fr'
+
+export interface RosterBoardProps {
+  students: CoachStudent[]
+  selectedStudentId: string
+  dataByStudent: RosterDataByStudent
+  plansByStudent: Record<string, PlanResponse[]>
+  conversations: ChatConversation[] | null
+  rows?: readonly RosterOverviewRow[]
+  counts?: RosterCounts
+  onSelect: (studentId: string) => void
+  onOpen: (studentId: string) => void
 }
 
-interface RosterEntry { overview: ExerciseStatsOverview | null; profile: StudentOnboardingProfile | null; loaded: boolean }
-type SortKey = 'lastTrained' | 'completion'
+function profileMetric(profile: StudentOnboardingProfile | null | undefined): string {
+  const weightClass = profile?.target_weight_class?.trim() || '—'
+  const rawWeight = profile?.weight_kg == null ? null : Number(profile.weight_kg)
+  const weight = rawWeight != null && Number.isFinite(rawWeight) ? rawWeight.toFixed(1) : '—'
+  return `${weightClass} · ${weight}`
+}
 
-function RosterBoard({ students, onOpen }: { students: CoachStudent[]; onOpen: (id: string) => void }) {
-  const [entries, setEntries] = useState<Record<string, RosterEntry>>({})
-  const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 }>({ key: 'lastTrained', dir: -1 })
-  useEffect(() => {
-    let alive = true
-    setEntries({})
-    // Fan out one lightweight read per student; each fails independently so one
-    // bad student never blanks the whole roster. Coaches have single-digit rosters.
-    students.forEach((s) => {
-      void Promise.all([
-        getExerciseStatsOverview(s.id).catch(() => null),
-        getStudentOnboarding(s.id).catch(() => null),
-      ]).then(([overview, profile]) => {
-        if (alive) setEntries((prev) => ({ ...prev, [s.id]: { overview, profile, loaded: true } }))
-      })
-    })
-    return () => { alive = false }
-  }, [students])
+export function RosterBoard({
+  students,
+  selectedStudentId,
+  dataByStudent,
+  plansByStudent,
+  conversations,
+  rows: suppliedRows,
+  counts: suppliedCounts,
+  onSelect,
+  onOpen,
+}: RosterBoardProps) {
+  const [tab, setTab] = useState<RosterTab>('all')
+  const derivedRows = useMemo(() => deriveRosterRows({
+    students,
+    dataByStudent,
+    plansByStudent,
+    conversations,
+  }), [conversations, dataByStudent, plansByStudent, students])
+  const rows = suppliedRows ?? derivedRows
+  const derivedCounts = useMemo(() => deriveRosterCounts(rows), [rows])
+  const counts = suppliedCounts ?? derivedCounts
+  const visibleRows = useMemo(() => filterRosterRows(rows, tab), [rows, tab])
+  const tabs: { id: RosterTab; label: string; count: number }[] = [
+    { id: 'all', label: '全部学员', count: counts.all },
+    { id: 'pending', label: '待排', count: counts.pending },
+    { id: 'attention', label: '需关注', count: counts.attention },
+  ]
 
-  const metric = (key: SortKey, e?: RosterEntry) => {
-    const o = e?.overview
-    if (key === 'lastTrained') { const d = daysSince(o?.last_trained_at); return d == null ? Number.MAX_SAFE_INTEGER : d }
-    return o ? o.recent_4w.completion_rate : -1
-  }
-  const rows = useMemo(
-    () => [...students].sort((a, b) => (metric(sort.key, entries[a.id]) - metric(sort.key, entries[b.id])) * sort.dir),
-    [students, entries, sort],
+  return (
+    <section className="roster-overview" aria-label="学员总览">
+      <div className="roster-segments" role="tablist" aria-label="学员筛选">
+        {tabs.map((item) => (
+          <button
+            key={item.id}
+            type="button"
+            role="tab"
+            aria-selected={tab === item.id}
+            className={tab === item.id ? 'active' : ''}
+            onClick={() => setTab(item.id)}
+          >
+            {item.label}<span>{item.count}</span>
+          </button>
+        ))}
+      </div>
+      <div
+        className="roster-overview-grid roster-overview-head"
+        style={{ gridTemplateColumns: ROSTER_GRID_COLUMNS }}
+        data-grid-columns={ROSTER_GRID_COLUMNS}
+      >
+        <span>学员</span>
+        <span>级别 / 体重</span>
+        <span>完成率</span>
+        <span>周总量</span>
+        <span>RPE</span>
+        <span>距赛</span>
+        <span>下周计划</span>
+      </div>
+      <div className="roster-overview-scroll">
+        {visibleRows.map((row) => {
+          const selected = row.student.id === selectedStudentId
+          const completionTone = completionRateTone(row.completionPercent)
+          const completion = row.completionPercent == null ? '—' : `${row.completionPercent}%`
+          const tonnage = typeof row.data.weekTonnageKg === 'number'
+            ? (row.data.weekTonnageKg / 1000).toFixed(1)
+            : null
+          const distance = row.isRegistered === false
+            ? '未报名'
+            : row.isRegistered === null || row.competitionDays == null ? '—' : `${row.competitionDays} 天`
+          return (
+            <div
+              key={row.student.id}
+              className={`roster-overview-grid roster-overview-row${selected ? ' selected' : ''}`}
+              style={{ gridTemplateColumns: ROSTER_GRID_COLUMNS }}
+              data-grid-columns={ROSTER_GRID_COLUMNS}
+              data-student-id={row.student.id}
+              onClick={() => onSelect(row.student.id)}
+              onDoubleClick={() => onOpen(row.student.id)}
+            >
+              <span className="roster-overview-student">
+                <kbd>{row.ordinal}</kbd>
+                <b>{row.student.display_name}</b>
+                {row.unreadCount > 0 && <i aria-label={`${row.unreadCount} 条未读`} />}
+              </span>
+              <span className="roster-overview-profile">{profileMetric(row.data.profile)}</span>
+              <span className={`roster-completion ${completionTone}`}>
+                <i><em style={{ width: `${row.completionPercent == null ? 0 : Math.max(0, Math.min(100, row.completionPercent))}%` }} /></i>
+                <b>{completion}</b>
+              </span>
+              <span className="roster-number">{tonnage ?? '—'}{tonnage != null && <small>t</small>}</span>
+              {/* No roster-level RPE aggregate exists yet; keep the shared thresholds ready for the backend field. */}
+              <span className="roster-number roster-rpe">—</span>
+              <span className="roster-number roster-distance">{distance}</span>
+              <span className="roster-plan-cell">
+                <span className={`roster-plan-badge ${row.pending == null ? 'unknown' : row.pending ? 'pending' : 'planned'}`}>
+                  {row.pending == null ? '—' : row.pending ? '待排' : '已排'}
+                </span>
+                {row.redFlag && <span className="roster-red-flag">{row.redFlag}</span>}
+                {row.pending === true && (
+                  <button
+                    type="button"
+                    className="roster-write"
+                    onClick={(event) => {
+                      event.stopPropagation()
+                      onOpen(row.student.id)
+                    }}
+                  >
+                    排下周 ↵
+                  </button>
+                )}
+              </span>
+            </div>
+          )
+        })}
+        {visibleRows.length === 0 && <div className="roster-overview-empty">暂无符合条件的学员</div>}
+      </div>
+    </section>
   )
-  const onSort = (key: SortKey) => setSort((s) => (s.key === key ? { key, dir: (s.dir === 1 ? -1 : 1) as 1 | -1 } : { key, dir: key === 'lastTrained' ? -1 : 1 }))
-  const arrow = (key: SortKey) => (sort.key === key ? (sort.dir === -1 ? ' ↓' : ' ↑') : '')
-  const loadedCount = students.filter((s) => entries[s.id]?.loaded).length
-
-  return <main className="data-page">
-    <header className="page-top"><span className="page-eyebrow">COACH / 学员看板</span><span className="page-divider" /><span className="page-label">全体 {students.length} 名</span><span className="page-spacer" /><span className="page-status">● 已载入 {loadedCount}/{students.length}</span></header>
-    <div className="roster-wrap"><table className="roster-table">
-      <thead><tr>
-        <th className="roster-dot-col" aria-label="状态" />
-        <th>学员</th>
-        <th className="roster-sortable" onClick={() => onSort('lastTrained')}>最近训练{arrow('lastTrained')}</th>
-        <th>近 4 周出勤</th>
-        <th className="roster-sortable" onClick={() => onSort('completion')}>完成率{arrow('completion')}</th>
-        <th>深蹲</th><th>卧推</th><th>硬拉</th>
-        <th>标记</th>
-      </tr></thead>
-      <tbody>{rows.map((s) => {
-        const e = entries[s.id], o = e?.overview, p = e?.profile
-        const t = triageOf(o?.last_trained_at)
-        const injured = !!(p?.injury_notes || (p?.injury_areas && p.injury_areas.length > 0))
-        const planned = o?.recent_4w.total_planned_days ?? 0
-        const rate = o ? Math.round(o.recent_4w.completion_rate * 100) : null
-        return <tr key={s.id} className="roster-row" onClick={() => onOpen(s.id)}>
-          <td><span className={`roster-dot ${e?.loaded ? t : 'loading'}`} title={e?.loaded ? triageLabel[t] : '载入中'} /></td>
-          <td className="roster-name">{s.display_name}{s.status === 'in_evaluation' && <span className="roster-tag">评估中</span>}</td>
-          <td>{!e?.loaded ? '…' : relativeDays(o?.last_trained_at)}</td>
-          <td>{o ? <span className="roster-attend"><b>{o.recent_4w.trained_days}/{planned}</b><i><em style={{ width: `${planned ? Math.min(100, o.recent_4w.trained_days / planned * 100) : 0}%` }} /></i></span> : '—'}</td>
-          <td>{rate == null ? '—' : `${rate}%`}</td>
-          <td>{kg(o?.one_rm.squat)}</td><td>{kg(o?.one_rm.bench)}</td><td>{kg(o?.one_rm.deadlift)}</td>
-          <td className="roster-flags">{p?.is_competing && <span title={`备赛${p.competition_date ? ' ' + shortDate(p.competition_date) : ''}`}>🏆</span>}{injured && <span title={p?.injury_notes || '有伤病记录'}>🩹</span>}</td>
-        </tr>
-      })}</tbody>
-    </table></div>
-  </main>
 }
 
 // ── 单人档案（下钻态，原 StudentBoard 主体不变）───────────────────
@@ -135,13 +214,6 @@ export function StudentDetail({ students, studentId, onStudent, onBack, catalog,
   </main>
 }
 
-export function StudentBoard({ students, catalog, index }: {
-  students: CoachStudent[]
-  catalog?: Catalog | null
-  index?: ExerciseIndex | null
-}) {
-  const [detailId, setDetailId] = useState<string | null>(null)
-  if (detailId && students.some((s) => s.id === detailId))
-    return <StudentDetail students={students} studentId={detailId} onStudent={setDetailId} onBack={() => setDetailId(null)} catalog={catalog} index={index} />
-  return <RosterBoard students={students} onOpen={setDetailId} />
+export function StudentBoard(props: RosterBoardProps) {
+  return <RosterBoard {...props} />
 }

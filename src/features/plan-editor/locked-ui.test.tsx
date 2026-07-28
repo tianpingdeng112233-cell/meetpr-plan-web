@@ -225,7 +225,7 @@ describe('exercise history lock UI', () => {
     act(() => day.dispatchEvent(new MouseEvent('click', { bubbles: true })))
     const remove = day.querySelector<HTMLElement>('[data-rowid="editable"] .rowdel')!
     act(() => remove.dispatchEvent(new MouseEvent('click', { bubbles: true })))
-    act(() => elementByText(host, '＋ 加动作').dispatchEvent(new MouseEvent('click', { bubbles: true })))
+    act(() => host.querySelector<HTMLElement>('[data-add-tier]')!.dispatchEvent(new MouseEvent('click', { bubbles: true })))
 
     const ids = [...host.querySelectorAll<HTMLElement>('.weekband[data-wnum="1"] [data-rowid]')]
       .map((element) => element.dataset.rowid)

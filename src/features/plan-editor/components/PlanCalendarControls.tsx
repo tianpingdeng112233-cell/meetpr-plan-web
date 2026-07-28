@@ -47,7 +47,7 @@ const dateInput: CSSProperties = {
   color: 'var(--fg-primary)',
   padding: '0 11px',
   font: 'inherit',
-  colorScheme: 'dark',
+  colorScheme: 'light',
   outline: 'none',
 }
 
@@ -73,9 +73,9 @@ export function WeekdayDateSelector({ value, onChange, compact = false, disabled
               ...chip,
               minWidth: compact ? 34 : chip.minWidth,
               padding: compact ? '0 8px' : chip.padding,
-              borderColor: selected === index ? 'var(--brand-red)' : 'var(--border-strong)',
-              boxShadow: selected === index ? 'inset 0 0 0 1px var(--brand-red)' : undefined,
-              color: selected === index ? 'var(--fg-primary)' : 'var(--fg-secondary)',
+              borderColor: selected === index ? 'var(--ink)' : 'var(--border-strong)',
+              boxShadow: selected === index ? 'inset 0 0 0 1px var(--ink)' : undefined,
+              color: selected === index ? 'var(--ink)' : 'var(--fg-secondary)',
               opacity: disabled ? 0.45 : 1,
               cursor: disabled ? 'default' : 'pointer',
             }}

@@ -24,7 +24,7 @@ export function ExercisePopover({ visible, x, y, index, query, activeIndex, onAc
     <div data-popover="" onMouseDown={(e) => e.preventDefault()} style={{
       position: 'absolute', zIndex: 60, width: 248, left: x, top: y,
       background: 'var(--surface-2)', border: '1px solid var(--border-strong)',
-      borderRadius: 10, overflow: 'hidden', fontSize: 12, boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
+      borderRadius: 10, overflow: 'hidden', fontSize: 12, boxShadow: 'var(--elev-modal)',
     }}>
       <div style={{ maxHeight: 236, overflowY: 'auto' }}>
         {hits.map((h, hitIndex) => (
@@ -32,7 +32,7 @@ export function ExercisePopover({ visible, x, y, index, query, activeIndex, onAc
             data-active={activeIndex === hitIndex ? 'true' : undefined}
             onMouseEnter={() => onActiveIndexChange(hitIndex)}
             onMouseDown={(e) => { e.preventDefault(); onPick(h) }}
-            style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 11px', color: '#fff', background: activeIndex === hitIndex ? 'var(--surface-3)' : undefined }}>
+            style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 11px', color: 'var(--fg-primary)', background: activeIndex === hitIndex ? 'var(--ink-soft)' : undefined }}>
             <span style={{ flex: 1 }}>{h.name}</span>
             {h.via && h.via !== h.name && <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--fg-tertiary)' }}>别名「{h.via}」</span>}
           </div>
@@ -45,7 +45,7 @@ export function ExercisePopover({ visible, x, y, index, query, activeIndex, onAc
           onMouseEnter={() => onActiveIndexChange(hits.length)}
           onMouseDown={(e) => { e.preventDefault(); onCreateCustom(query.trim()) }}
           style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '8px 11px', color: 'var(--fg-secondary)', borderTop: '1px solid var(--border)', background: activeIndex === hits.length ? 'var(--surface-3)' : undefined }}>
-          <span style={{ color: '#fff' }}>＋</span> 创建自定义「{query.trim()}」
+          <span style={{ color: 'var(--ink)' }}>＋</span> 创建自定义「{query.trim()}」
         </div>
       )}
     </div>
