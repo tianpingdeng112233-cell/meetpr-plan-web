@@ -151,6 +151,18 @@ export class ExerciseIndex {
     } : null
   }
 
+  /** Metadata needed by the editor's inline history/e1RM information row. */
+  infoMetadataById(id: string): {
+    mainLiftFamily: ExerciseResponse['main_lift_family']
+    isCompetitionLift: boolean
+  } | null {
+    const exercise = this.byId.get(id)
+    return exercise ? {
+      mainLiftFamily: exercise.main_lift_family,
+      isCompetitionLift: exercise.is_competition_lift,
+    } : null
+  }
+
   withAdded(e: ExerciseResponse): ExerciseIndex {
     return new ExerciseIndex(
       this.catalog.some((item) => item.id === e.id) ? this.catalog : [...this.catalog, e],

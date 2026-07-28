@@ -17,10 +17,10 @@ function savedTime(iso: string): string {
 const action: React.CSSProperties = {
   minHeight: 28,
   padding: '4px 11px',
-  border: '1px solid var(--border-strong)',
+  border: '1px solid var(--bd)',
   borderRadius: 'var(--r-md)',
-  color: 'var(--fg-primary)',
-  background: 'var(--surface-3)',
+  color: 'var(--txt)',
+  background: 'var(--tint)',
   font: '600 12px var(--font-sans)',
   cursor: 'pointer',
 }
@@ -37,15 +37,15 @@ export function DraftMirrorBanner({ savedAt, onRestore, onDiscard }: Props) {
       gap: 'var(--sp-sm)',
       flex: '0 0 auto',
       zIndex: 17,
-      color: 'var(--fg-secondary)',
-      background: 'var(--amber-soft)',
-      borderBottom: '1px solid var(--border-strong)',
-      boxShadow: 'inset 3px 0 0 var(--amber)',
+      color: 'var(--sec)',
+      background: 'var(--warn-soft)',
+      borderBottom: '1px solid var(--bd)',
+      boxShadow: 'inset 3px 0 0 var(--warn)',
       fontSize: 12,
     }}>
-      <span style={{ color: 'var(--amber)', fontWeight: 700 }}>本地草稿</span>
+      <span style={{ color: 'var(--warn)', fontWeight: 700 }}>本地草稿</span>
       <span style={{ flex: 1 }}>检测到 {savedTime(savedAt)} 的未保存本地草稿</span>
-      <button type="button" onClick={onRestore} style={{ ...action, borderColor: 'var(--amber)' }}>恢复</button>
+      <button type="button" onClick={onRestore} style={{ ...action, borderColor: 'var(--warn)' }}>恢复</button>
       <button type="button" onClick={onDiscard} style={action}>丢弃</button>
     </div>
   )

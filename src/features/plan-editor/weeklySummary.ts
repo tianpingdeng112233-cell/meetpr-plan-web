@@ -69,7 +69,7 @@ export function summarizeDaySection(rows: readonly ExerciseRow[]): DaySectionSum
 
 /** Coaches think in kg (David 2026-07-18): always kg, never tons. */
 export function compactTonnage(kg: number): string {
-  return `${kg.toLocaleString('zh-CN', { maximumFractionDigits: 1 })}kg`
+  return `${kg.toLocaleString('zh-CN', { maximumFractionDigits: 1 })} kg`
 }
 
 /**

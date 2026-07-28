@@ -48,10 +48,10 @@ interface Props {
 
 const pill: React.CSSProperties = {
   height: 28, boxSizing: 'border-box', display: 'inline-flex', alignItems: 'center', gap: 7, padding: '4px 9px',
-  border: '1px solid var(--border)', borderRadius: 8, background: 'var(--surface-1)',
+  border: '1px solid var(--bd)', borderRadius: 'var(--r-sm)', background: 'var(--card-bg)',
   fontWeight: 600, fontSize: 12, cursor: 'pointer', position: 'relative', whiteSpace: 'nowrap', flex: 'none',
 }
-const caret: React.CSSProperties = { color: 'var(--fg-tertiary)', fontSize: 9 }
+const caret: React.CSSProperties = { color: 'var(--mut)', fontSize: 9 }
 
 export interface DropdownAction { label: string; tone: 'danger' | 'success' | 'neutral'; icon: string; onClick: () => void | Promise<void> }
 
@@ -74,35 +74,35 @@ function Dropdown({ open, anchor, onClose, options, currentId, onPick, onNew, ne
       />
       <div style={{
         position: 'fixed', top: rect.bottom + 6, left: rect.left, minWidth: 200, zIndex: 80,
-        background: 'var(--surface-2)', border: '1px solid var(--border-strong)', borderRadius: 10,
+        background: 'var(--card-bg)', border: '1px solid var(--bd)', borderRadius: 'var(--r-sm)',
         overflow: 'hidden', boxShadow: 'var(--elev-modal)',
       }}>
         {options.map((o) => (
           <div key={o.id} className="popitem" onClick={(e) => { e.stopPropagation(); void onPick(o.id) }}
-            style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', color: o.id === currentId ? 'var(--fg-primary)' : 'var(--fg-secondary)', fontWeight: o.id === currentId ? 600 : 400 }}>
+            style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', color: o.id === currentId ? 'var(--txt)' : 'var(--sec)', fontWeight: o.id === currentId ? 600 : 400 }}>
             {o.id === currentId && <span style={{ color: 'var(--ink)', fontSize: 10 }}>●</span>}
             <span style={{ flex: 1, minWidth: 0 }}>
               {o.label}
-              {o.sub && <span style={{ display: 'block', fontSize: 10, fontWeight: 400, color: 'var(--fg-tertiary)', fontFamily: 'var(--font-mono)' }}>{o.sub}</span>}
+              {o.sub && <span style={{ display: 'block', fontSize: 10, fontWeight: 400, color: 'var(--mut)', fontFamily: 'var(--font-mono)' }}>{o.sub}</span>}
             </span>
-            {o.tag && <span style={{ fontSize: 10, color: 'var(--fg-tertiary)', flex: 'none' }}>{o.tag}</span>}
+            {o.tag && <span style={{ fontSize: 10, color: 'var(--mut)', flex: 'none' }}>{o.tag}</span>}
           </div>
         ))}
         {onRenameCurrent && (
           <div className="popitem" onClick={(e) => { e.stopPropagation(); onRenameCurrent() }}
-            style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '9px 12px', color: 'var(--fg-secondary)', borderTop: '1px solid var(--border)' }}>
+            style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '9px 12px', color: 'var(--sec)', borderTop: '1px solid var(--line)' }}>
             <span>✎</span> {renameLabel ?? '重命名当前计划'}
           </div>
         )}
         {onNew && (
           <div className="popitem" onClick={(e) => { e.stopPropagation(); onNew() }}
-            style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '9px 12px', color: 'var(--fg-secondary)', borderTop: '1px solid var(--border)' }}>
+            style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '9px 12px', color: 'var(--sec)', borderTop: '1px solid var(--line)' }}>
             <span style={{ color: 'var(--ink)' }}>＋</span> {newLabel ?? '新建'}
           </div>
         )}
         {actions?.map((action) => (
           <div key={action.label} className="popitem" onClick={(e) => { e.stopPropagation(); void action.onClick() }}
-            style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '9px 12px', color: action.tone === 'danger' ? 'var(--brand-red)' : action.tone === 'success' ? 'var(--green)' : 'var(--fg-secondary)', borderTop: '1px solid var(--border)', fontWeight: 600 }}>
+            style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '9px 12px', color: action.tone === 'danger' ? 'var(--bad)' : action.tone === 'success' ? 'var(--ok)' : 'var(--sec)', borderTop: '1px solid var(--line)', fontWeight: 600 }}>
             {action.icon} {action.label}
           </div>
         ))}
@@ -129,7 +129,7 @@ function StartDateControl({ startDate, locked, lockedHint, saving, onApply }: {
       <button type="button" disabled={disabled}
         title={locked ? lockedHint ?? '已发布计划的周期与日期不可修改' : undefined}
         onClick={() => { setDraft(startDate); setOpen((value) => !value) }} style={{
-          background: 'transparent', color: disabled ? 'var(--fg-disabled)' : 'var(--fg-secondary)', border: '1px solid var(--border-strong)',
+          background: 'transparent', color: disabled ? 'var(--faint)' : 'var(--sec)', border: '1px solid var(--bd)',
           height: 28, boxSizing: 'border-box', borderRadius: 'var(--r-md)', padding: '0 10px', fontFamily: 'var(--font-sans)', fontWeight: 600, fontSize: 12,
           cursor: disabled ? 'not-allowed' : 'pointer', lineHeight: 1,
         }}>
@@ -140,18 +140,18 @@ function StartDateControl({ startDate, locked, lockedHint, saving, onApply }: {
           <span onClick={() => setOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 70 }} />
           <span style={{
             position: 'absolute', top: '100%', right: 0, marginTop: 7, zIndex: 80, width: 340, boxSizing: 'border-box',
-            display: 'grid', gap: 'var(--sp-md)', padding: 'var(--sp-base)', background: 'var(--surface-2)', border: '1px solid var(--border-strong)',
+            display: 'grid', gap: 'var(--sp-md)', padding: 'var(--sp-base)', background: 'var(--panel-bg)', border: '1px solid var(--bd)',
             borderRadius: 'var(--r-md)', boxShadow: 'var(--elev-modal)',
           }}>
-            <span style={{ color: 'var(--fg-tertiary)', fontSize: 12, fontWeight: 600 }}>开始日期（= Day 1）</span>
+            <span style={{ color: 'var(--mut)', fontSize: 12, fontWeight: 600 }}>开始日期（= Day 1）</span>
             <WeekdayDateSelector value={draft} onChange={setDraft} compact />
-            <span style={{ color: 'var(--fg-tertiary)', fontSize: 11 }}>快捷选周几（选中即跳到今天起最近的该周几）</span>
+            <span style={{ color: 'var(--mut)', fontSize: 11 }}>快捷选周几（选中即跳到今天起最近的该周几）</span>
             <span style={{ display: 'flex', justifyContent: 'flex-end', gap: 'var(--sp-sm)' }}>
-              <button type="button" onClick={() => setDraft((value) => shiftISODate(value, 1))} style={{ ...smallButton, color: 'var(--fg-secondary)' }}>后移 1 天</button>
+              <button type="button" onClick={() => setDraft((value) => shiftISODate(value, 1))} style={{ ...smallButton, color: 'var(--sec)' }}>后移 1 天</button>
               <button type="button" disabled={applying || draft === startDate} onClick={() => {
                 setApplying(true)
                 void onApply(draft).then(() => setOpen(false)).catch(() => undefined).finally(() => setApplying(false))
-              }} style={{ ...smallButton, background: 'var(--fg-primary)', color: 'var(--bg)', borderColor: 'var(--fg-primary)', opacity: (applying || draft === startDate) ? 0.5 : 1 }}>
+              }} style={{ ...smallButton, background: 'var(--txt)', color: 'var(--page-bg)', borderColor: 'var(--txt)', opacity: (applying || draft === startDate) ? 0.5 : 1 }}>
                 {applying ? '应用中…' : '应用'}
               </button>
             </span>
@@ -165,7 +165,7 @@ function StartDateControl({ startDate, locked, lockedHint, saving, onApply }: {
 const smallButton: React.CSSProperties = {
   minHeight: 32,
   padding: '0 12px',
-  border: '1px solid var(--border-strong)',
+  border: '1px solid var(--bd)',
   borderRadius: 'var(--r-md)',
   background: 'transparent',
   fontFamily: 'var(--font-sans)',
@@ -232,7 +232,7 @@ export function TopBar(p: Props) {
                 ? [{ label: '补记过去训练', tone: 'neutral' as const, icon: '↺', onClick: () => { close(); return p.onBackfillHistory!() } }]
                 : []),
               ...(p.currentPlanStatus === 'draft' && p.onDeleteCurrentDraft
-                ? [{ label: '删除当前草稿', tone: 'danger' as const, icon: '🗑', onClick: () => { close(); return p.onDeleteCurrentDraft!() } }]
+                ? [{ label: '删除当前草稿', tone: 'danger' as const, icon: '删', onClick: () => { close(); return p.onDeleteCurrentDraft!() } }]
                 : []),
             ]} />
         )}
@@ -241,8 +241,8 @@ export function TopBar(p: Props) {
       {(p.totalShiftDays ?? 0) > 0 && (
         <span data-plan-shift-notice="" style={{
           display: 'inline-flex', alignItems: 'center', padding: '5px 10px',
-          background: 'var(--amber-soft)', color: 'var(--amber)', border: '1px solid var(--amber)',
-          borderRadius: 999, fontSize: 11, fontWeight: 600, lineHeight: 1, whiteSpace: 'nowrap',
+          background: 'var(--warn-soft)', color: 'var(--warn)', border: '1px solid var(--warn)',
+          borderRadius: 'var(--r-sm)', fontSize: 11, fontWeight: 600, lineHeight: 1, whiteSpace: 'nowrap',
         }}>
           学员已整体顺延 {p.totalShiftDays} 天
         </span>
@@ -250,8 +250,8 @@ export function TopBar(p: Props) {
       <span className="plan-context-spacer" />
       {p.onNewExercise && (
         <button onClick={p.onNewExercise} disabled={p.saving} style={{
-          background: 'transparent', color: 'var(--fg-secondary)', border: '1px solid var(--border-strong)',
-          height: 28, borderRadius: 8, padding: '0 10px', fontFamily: 'var(--font-sans)', fontWeight: 600, fontSize: 12,
+          background: 'transparent', color: 'var(--sec)', border: '1px solid var(--bd)',
+          height: 28, borderRadius: 'var(--r-sm)', padding: '0 10px', fontFamily: 'var(--font-sans)', fontWeight: 600, fontSize: 12,
           cursor: p.saving ? 'default' : 'pointer', lineHeight: 1, opacity: p.saving ? 0.6 : 1,
         }}>
           ＋ 动作
@@ -271,8 +271,8 @@ export function TopBar(p: Props) {
             }}
           />
           <button onClick={() => fileRef.current?.click()} disabled={p.saving} style={{
-            background: 'transparent', color: 'var(--fg-secondary)', border: '1px solid var(--border-strong)',
-            height: 28, borderRadius: 8, padding: '0 10px', fontFamily: 'var(--font-sans)', fontWeight: 600, fontSize: 12,
+            background: 'transparent', color: 'var(--sec)', border: '1px solid var(--bd)',
+            height: 28, borderRadius: 'var(--r-sm)', padding: '0 10px', fontFamily: 'var(--font-sans)', fontWeight: 600, fontSize: 12,
             cursor: p.saving ? 'default' : 'pointer', lineHeight: 1, opacity: p.saving ? 0.6 : 1,
           }}>
             导入 .xlsx
@@ -285,16 +285,16 @@ export function TopBar(p: Props) {
       {(p.issueCount ?? 0) > 0 && (
         <button onClick={p.onJumpIssue} title={p.issueHint} style={{
           height: 28, display: 'inline-flex', alignItems: 'center', gap: 6, padding: '0 9px',
-          background: 'var(--amber-soft)', color: 'var(--amber)', border: '1px solid var(--amber)',
-          borderRadius: 999, fontSize: 11, fontWeight: 600, cursor: 'pointer', lineHeight: 1,
+          background: 'var(--warn-soft)', color: 'var(--warn)', border: '1px solid var(--warn)',
+          borderRadius: 'var(--r-sm)', fontSize: 11, fontWeight: 600, cursor: 'pointer', lineHeight: 1,
         }}>
-          ⚠ {p.issueCount} 处待核对
+          ! {p.issueCount} 处待核对
         </button>
       )}
       {p.onSave && (
         <button onClick={p.onSave} disabled={p.saving} style={{
-          background: 'transparent', color: 'var(--fg-secondary)', border: '1px solid var(--border-strong)',
-          height: 28, borderRadius: 8, padding: '0 10px', fontFamily: 'var(--font-sans)', fontWeight: 600, fontSize: 12,
+          background: 'transparent', color: 'var(--sec)', border: '1px solid var(--bd)',
+          height: 28, borderRadius: 'var(--r-sm)', padding: '0 10px', fontFamily: 'var(--font-sans)', fontWeight: 600, fontSize: 12,
           cursor: p.saving ? 'default' : 'pointer', lineHeight: 1, opacity: p.saving ? 0.6 : 1,
         }}>
           {p.saving ? '保存中…' : (p.published ? '更新计划' : '保存草稿')}
@@ -305,8 +305,8 @@ export function TopBar(p: Props) {
         disabled={p.readOnly || p.published || p.saving}
         title={p.readOnly ? '已完成或暂停的历史计划只能查看' : p.published ? '已发布给学员；未打卡动作可通过「更新计划」调整' : undefined}
         style={{
-          background: p.published ? 'transparent' : 'var(--ink)', color: p.published ? 'var(--green)' : 'var(--white)',
-          height: 28, border: p.published ? '1px solid var(--green)' : '1px solid var(--ink)', borderRadius: 8, padding: '0 12px',
+          background: p.published ? 'transparent' : 'var(--ink)', color: p.published ? 'var(--ok)' : 'var(--white)',
+          height: 28, border: p.published ? '1px solid var(--ok)' : '1px solid var(--ink)', borderRadius: 'var(--r-sm)', padding: '0 12px',
           fontFamily: 'var(--font-sans)', fontWeight: 600, fontSize: 12,
           cursor: (p.readOnly || p.published || p.saving) ? 'default' : 'pointer', lineHeight: 1,
           opacity: p.readOnly ? 0.55 : p.published ? 0.75 : (p.saving ? 0.6 : 1),

@@ -29,9 +29,9 @@ const chip: CSSProperties = {
   height: 32,
   padding: '0 10px',
   borderRadius: 'var(--r-md)',
-  border: '1px solid var(--border-strong)',
-  background: 'var(--surface-1)',
-  color: 'var(--fg-secondary)',
+  border: '1px solid var(--bd)',
+  background: 'var(--card-bg)',
+  color: 'var(--sec)',
   fontFamily: 'var(--font-sans)',
   fontSize: 12,
   fontWeight: 600,
@@ -42,9 +42,9 @@ const dateInput: CSSProperties = {
   height: 38,
   boxSizing: 'border-box',
   borderRadius: 'var(--r-md)',
-  border: '1px solid var(--border-strong)',
-  background: 'var(--surface-1)',
-  color: 'var(--fg-primary)',
+  border: '1px solid var(--bd)',
+  background: 'var(--card-bg)',
+  color: 'var(--txt)',
   padding: '0 11px',
   font: 'inherit',
   colorScheme: 'light',
@@ -73,9 +73,9 @@ export function WeekdayDateSelector({ value, onChange, compact = false, disabled
               ...chip,
               minWidth: compact ? 34 : chip.minWidth,
               padding: compact ? '0 8px' : chip.padding,
-              borderColor: selected === index ? 'var(--ink)' : 'var(--border-strong)',
+              borderColor: selected === index ? 'var(--ink)' : 'var(--bd)',
               boxShadow: selected === index ? 'inset 0 0 0 1px var(--ink)' : undefined,
-              color: selected === index ? 'var(--ink)' : 'var(--fg-secondary)',
+              color: selected === index ? 'var(--ink)' : 'var(--sec)',
               opacity: disabled ? 0.45 : 1,
               cursor: disabled ? 'default' : 'pointer',
             }}
@@ -98,7 +98,7 @@ export function WeekdayDateSelector({ value, onChange, compact = false, disabled
 }
 
 export const calendarFieldLabel: CSSProperties = {
-  color: 'var(--fg-tertiary)',
+  color: 'var(--mut)',
   fontSize: 12,
   fontWeight: 600,
 }

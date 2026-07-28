@@ -30,6 +30,9 @@ const api = vi.hoisted(() => ({
   getVideoMarkers: vi.fn(),
   createVideoMarker: vi.fn(),
   deleteVideoMarker: vi.fn(),
+  reconcilePlan: vi.fn(),
+  reconcileImportedPlan: vi.fn(),
+  resizeServerPlanWeeks: vi.fn(),
 }))
 
 vi.mock('../../api/plans', () => ({
@@ -72,6 +75,11 @@ vi.mock('../../api/chat', () => ({
   markConversationRead: api.markConversationRead,
   sendTextMessage: api.sendTextMessage,
   openConversation: api.openConversation,
+}))
+vi.mock('../plan-editor/reconcile', () => ({
+  reconcilePlan: api.reconcilePlan,
+  reconcileImportedPlan: api.reconcileImportedPlan,
+  resizeServerPlanWeeks: api.resizeServerPlanWeeks,
 }))
 vi.mock('../plan-editor/PlanEditor', () => ({
   PlanEditor: (props: {
@@ -283,6 +291,17 @@ describe('PlanWorkspace editor remount', () => {
     api.getVideoMarkers.mockResolvedValue([])
     api.createVideoMarker.mockResolvedValue({})
     api.deleteVideoMarker.mockResolvedValue(undefined)
+    api.reconcilePlan.mockImplementation(async (_id: string, weeks: Week[]) => ({
+      changedDays: 1,
+      skippedRows: 0,
+      weeks,
+    }))
+    api.reconcileImportedPlan.mockImplementation(async (_id: string, weeks: Week[]) => ({
+      changedDays: 1,
+      skippedRows: 0,
+      weeks,
+    }))
+    api.resizeServerPlanWeeks.mockResolvedValue(undefined)
   })
 
   afterEach(() => {
@@ -317,6 +336,18 @@ describe('PlanWorkspace editor remount', () => {
 
     expect(api.getPlan).toHaveBeenCalledTimes(2)
     expect(host.querySelector('[data-testid="editor-note"]')?.textContent).toBe('服务端最新备注')
+  }, 15_000)
+
+  it('loads one exercise-stats overview request per student during foreground and roster hydration', async () => {
+    api.getPlan.mockResolvedValue(plan('概览请求去重'))
+
+    await act(async () => {
+      root.render(<PlanWorkspace onLogout={vi.fn()} me={me} />)
+      await settle()
+    })
+
+    expect(api.getExerciseStatsOverview).toHaveBeenCalledTimes(1)
+    expect(api.getExerciseStatsOverview).toHaveBeenCalledWith('student')
   }, 15_000)
 
   it('silently boots with catalog ordering when usage stats are unavailable', async () => {
@@ -515,8 +546,12 @@ describe('PlanWorkspace editor remount', () => {
       root.render(<PlanWorkspace onLogout={vi.fn()} me={me} />)
       await settle()
     })
+    const editorProps = api.captureEditorProps.mock.calls.at(-1)?.[0] as {
+      initialWeeks: Week[]
+      onSave?: (weeks: Week[]) => Promise<unknown>
+    }
     await act(async () => {
-      host.querySelector<HTMLButtonElement>('[data-testid="publish-plan"]')?.click()
+      await editorProps.onSave?.(editorProps.initialWeeks)
       await settle()
     })
     await act(async () => {
