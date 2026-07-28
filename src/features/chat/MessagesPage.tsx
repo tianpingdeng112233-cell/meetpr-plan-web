@@ -28,8 +28,10 @@ import {
 } from './chatModel'
 import { catchUpSince } from './chatSync'
 import { chatOutbox, type OutboxItem } from './chatOutbox'
+import { parseSetRefMessage, SetRefCard } from './setRef'
 import { useClockTick, useVisiblePolling } from './useVisiblePolling'
 import { usePersistentCollapse } from '../workspace/usePersistentCollapse'
+import { VideoModal } from '../workspace/VideoModal'
 
 const INTERACTION_WINDOW_MS = 120_000
 const MAX_MESSAGE_CHARS = 4000
@@ -386,7 +388,26 @@ function ConversationThread({
   const imageRenewalAttempted = useRef(new Set<string>())
   const lastImageRenewalAt = useRef(0)
   const [unavailableImageIds, setUnavailableImageIds] = useState<Set<string>>(() => new Set())
+  const videoUrlIssuedAt = useRef(new Map<string, { url: string; issuedAt: number }>())
+  const videoRenewalAttempted = useRef(new Map<string, string>())
+  const [unavailableVideoIds, setUnavailableVideoIds] = useState<Set<string>>(() => new Set())
+  const [renewingVideoIds, setRenewingVideoIds] = useState<Set<string>>(() => new Set())
+  const [playingVideoId, setPlayingVideoId] = useState<string | null>(null)
   const [, setOutboxRevision] = useState(0)
+
+  const recordVideoUrls = (incoming: ChatMessage[], force = false) => {
+    const receivedAt = Date.now()
+    for (const message of incoming) {
+      if (!message.video_url) {
+        videoUrlIssuedAt.current.delete(message.id)
+        continue
+      }
+      const current = videoUrlIssuedAt.current.get(message.id)
+      if (force || current?.url !== message.video_url) {
+        videoUrlIssuedAt.current.set(message.id, { url: message.video_url, issuedAt: receivedAt })
+      }
+    }
+  }
 
   const commitSnapshot = (update: (current: ChatConversation) => ChatConversation) => {
     const current = snapshotRef.current
@@ -566,6 +587,7 @@ function ConversationThread({
   }, [messages])
 
   const mergePage = (pageMessages: ChatMessage[], otherLastRead: ChatReadCursor | null, scrollToBottom: boolean) => {
+    recordVideoUrls(pageMessages)
     const next = mergeMessages(messagesRef.current, pageMessages)
     commitMessages(next)
     chatOutbox.reconcile(conversation.id, pageMessages, me.id)
@@ -624,6 +646,7 @@ function ConversationThread({
       // history page is in flight, and a pre-request height would fold that growth into the
       // anchor delta and shove the coach down by it.
       const oldHeight = scrollRef.current?.scrollHeight ?? 0
+      recordVideoUrls(page.messages)
       const next = mergeMessages(messagesRef.current, page.messages)
       commitMessages(next)
       chatOutbox.reconcile(conversation.id, page.messages, me.id)
@@ -662,12 +685,75 @@ function ConversationThread({
     }
   }
 
+  const renewVideo = async (message: ChatMessage) => {
+    if (!message.video_url) return null
+    if (videoRenewalAttempted.current.get(message.id) === message.video_url) {
+      setUnavailableVideoIds((prev) => new Set(prev).add(message.id))
+      return null
+    }
+    videoRenewalAttempted.current.set(message.id, message.video_url)
+    setRenewingVideoIds((prev) => new Set(prev).add(message.id))
+    try {
+      const page = await getMessages(conversation.id, {
+        mode: 'before',
+        seq: message.seq + 1,
+        limit: 1,
+      })
+      const renewed = page.messages.find((candidate) => candidate.seq === message.seq)
+      if (!renewed) {
+        videoUrlIssuedAt.current.delete(message.id)
+        videoRenewalAttempted.current.delete(message.id)
+        commitMessages(messagesRef.current.filter((candidate) => candidate.seq !== message.seq))
+        // Only dismiss the modal if it is still showing THIS message: renewal A can resolve
+        // after the coach has closed A and opened B, and B must not be yanked shut by it.
+        setPlayingVideoId((current) => (current === message.id ? null : current))
+        return null
+      }
+      recordVideoUrls([renewed], true)
+      mergePage([renewed], page.meta.other_last_read, false)
+      if (!renewed.video_url) throw new Error('CHAT_VIDEO_UNAVAILABLE')
+      setUnavailableVideoIds((prev) => {
+        const next = new Set(prev)
+        next.delete(message.id)
+        return next
+      })
+      return renewed
+    } catch (caught) {
+      if (alive.current) setUnavailableVideoIds((prev) => new Set(prev).add(message.id))
+      handleError(caught)
+      return null
+    } finally {
+      if (alive.current) setRenewingVideoIds((prev) => {
+        const next = new Set(prev)
+        next.delete(message.id)
+        return next
+      })
+    }
+  }
+
+  const videoIsStale = (message: ChatMessage) => {
+    if (!message.video_url) return false
+    const issued = videoUrlIssuedAt.current.get(message.id)
+    if (!issued || issued.url !== message.video_url) return true
+    const ttlSeconds = message.video_expires_in ?? 900
+    return Date.now() - issued.issuedAt >= ttlSeconds * 1000
+  }
+
+  const openVideo = (message: ChatMessage) => {
+    setPlayingVideoId(message.id)
+    if (videoIsStale(message)) void renewVideo(message)
+  }
+
   const receipt = messages ? readReceiptFor(messages, me.id, snapshot.other_last_read) : null
   const pendingItems = chatOutbox.itemsFor(conversation.id)
   const messageGroups = messages ? groupMessagesByDay(messages, now) : []
   const todayKey = localDayKey(now)
   const lastMessageGroupIsToday = messageGroups.at(-1)?.key === todayKey
   const pendingSharesLastMessageGroup = !error && lastMessageGroupIsToday
+  const playingMessage = playingVideoId === null
+    ? null
+    : messages?.find((message) => message.id === playingVideoId) ?? null
+  const playingSetRef = playingMessage ? parseSetRefMessage(playingMessage) : null
   return <>
     <div className="chat-thread" ref={scrollRef} aria-busy={messages === null && !error}>
       {hasMoreHistory && <button className="chat-more" disabled={loadingHistory} onClick={() => { void loadHistory() }}>
@@ -686,6 +772,7 @@ function ConversationThread({
           receipt={receipt?.messageId === message.id ? receipt.status : null}
           imageUnavailable={unavailableImageIds.has(message.id)}
           onImageError={() => { void renewImage(message) }}
+          onPlayVideo={() => openVideo(message)}
         />)}
         {index === messageGroups.length - 1 && pendingSharesLastMessageGroup
           && pendingItems.map((item) => <PendingBubble key={item.clientId} item={item} />)}
@@ -703,6 +790,23 @@ function ConversationThread({
       onDraftChange={onDraftChange}
     />
     {bindLost && <em className="chat-blocked">该学员已不在你的名下，无法继续发送</em>}
+    {playingMessage && playingSetRef && <VideoModal
+      key={playingMessage.video_url ?? playingMessage.id}
+      title={`${playingSetRef.setRef.exercise_name} · 第 ${playingSetRef.setRef.set_number} 组`}
+      detail={[
+        `${playingSetRef.setRef.weight_kg ?? '-'}kg × ${playingSetRef.setRef.reps ?? '-'}`,
+        playingSetRef.setRef.rpe === null ? null : `RPE ${playingSetRef.setRef.rpe}`,
+        playingSetRef.setRef.day_date,
+      ].filter(Boolean).join(' · ')}
+      url={renewingVideoIds.has(playingMessage.id) || unavailableVideoIds.has(playingMessage.id)
+        ? ''
+        : playingMessage.video_url ?? ''}
+      loadingText={unavailableVideoIds.has(playingMessage.id)
+        ? '视频暂不可用'
+        : '正在续签播放链接…'}
+      onClose={() => setPlayingVideoId(null)}
+      onPlaybackError={() => { void renewVideo(playingMessage) }}
+    />}
   </>
 }
 
@@ -791,13 +895,14 @@ function ChatComposer({ conversationId, initialDraft, disabled, onDraftChange }:
   </form>
 }
 
-function ChatBubble({ message, mine, senderLabel, receipt, imageUnavailable, onImageError }: {
+function ChatBubble({ message, mine, senderLabel, receipt, imageUnavailable, onImageError, onPlayVideo }: {
   message: ChatMessage
   mine: boolean
   senderLabel: string
   receipt: '已送达' | '已读' | null
   imageUnavailable: boolean
   onImageError: () => void
+  onPlayVideo: () => void
 }) {
   return <div className={`chat-message${mine ? ' mine' : ''}`}>
     <div className="chat-message-meta">
@@ -805,7 +910,7 @@ function ChatBubble({ message, mine, senderLabel, receipt, imageUnavailable, onI
       <time>{chatClockTime(message.created_at)}</time>
     </div>
     <div className={`chat-bubble${mine ? ' mine' : ''}`}>
-      {renderMessageBody(message, onImageError, imageUnavailable)}
+      {renderMessageBody(message, onImageError, imageUnavailable, onPlayVideo)}
     </div>
     {receipt && <small className="chat-receipt">{receipt}</small>}
   </div>
@@ -856,10 +961,23 @@ function groupMessagesByDay(messages: ChatMessage[], now: number): {
   return groups
 }
 
-export function renderMessageBody(message: ChatMessage, onImageError?: () => void, imageUnavailable = false) {
+export function renderMessageBody(
+  message: ChatMessage,
+  onImageError?: () => void,
+  imageUnavailable = false,
+  onPlayVideo?: () => void,
+) {
   switch (message.kind) {
-    case 'text':
-      return <p>{message.body}</p>
+    case 'text': {
+      const parsed = parseSetRefMessage(message)
+      return parsed
+        ? <SetRefCard
+            parsed={parsed}
+            hasVideo={message.video_url !== null}
+            onPlayVideo={onPlayVideo}
+          />
+        : <p>{message.body}</p>
+    }
     case 'image':
       return message.image_url && !imageUnavailable
         ? <img src={message.image_url} loading="lazy" alt="聊天图片" onError={onImageError} />

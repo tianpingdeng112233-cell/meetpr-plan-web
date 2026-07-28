@@ -125,7 +125,9 @@ const chatConversation = (unreadCount: number): ChatConversation => ({
 })
 const chatMessage: ChatMessage = {
   id: 'chat-message', conversation_id: 'conversation', seq: 1, sender_id: 'student', kind: 'text', body: '新消息',
-  attachment_id: null, image_url: null, image_expires_in: null, client_id: 'student-client', created_at: '2026-07-22T10:00:00Z',
+  attachment_id: null, image_url: null, image_expires_in: null,
+  set_ref: null, video_url: null, video_expires_in: null,
+  client_id: 'student-client', created_at: '2026-07-22T10:00:00Z',
 }
 const bindRequest: CoachBindRequest = {
   id: 'request',

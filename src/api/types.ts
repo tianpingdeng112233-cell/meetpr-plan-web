@@ -163,6 +163,17 @@ export interface ChatConversation {
   other_last_read: ChatReadCursor | null
 }
 
+export interface ChatSetRefV1 {
+  v: 1
+  exercise_name: string
+  set_number: number
+  weight_kg: string | null
+  reps: number | null
+  rpe: string | null
+  day_date: string
+  set_log_id: string
+}
+
 export interface ChatMessage {
   id: string
   conversation_id: string
@@ -173,6 +184,9 @@ export interface ChatMessage {
   attachment_id: string | null
   image_url: string | null
   image_expires_in: number | null
+  set_ref: unknown | null
+  video_url: string | null
+  video_expires_in: number | null
   client_id: string
   created_at: string
 }

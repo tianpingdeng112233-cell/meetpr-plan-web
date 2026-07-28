@@ -21,6 +21,7 @@ vi.mock('../../api/chat', () => ({
 
 import MessagesPage from './MessagesPage'
 import { chatOutbox } from './chatOutbox'
+import { setRefFirstLine } from './setRef'
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
@@ -41,7 +42,23 @@ const conversation = (unread = 1, overrides: Partial<ChatConversation> = {}): Ch
 const message = (overrides: Partial<ChatMessage> = {}): ChatMessage => ({
   id: 'message-1', conversation_id: 'conversation', seq: 1, sender_id: 'student', kind: 'text',
   body: '请看一下动作', attachment_id: null, image_url: null, image_expires_in: null,
+  set_ref: null, video_url: null, video_expires_in: null,
   client_id: 'student-client', created_at: '2026-07-22T10:00:00.000Z', ...overrides,
+})
+const setRef = {
+  v: 1 as const,
+  exercise_name: '低杠位深蹲',
+  set_number: 1,
+  weight_kg: '100',
+  reps: 5,
+  rpe: '8.5',
+  day_date: '2026-07-27',
+  set_log_id: '70000000-0000-4000-8000-000000000001',
+}
+const setCardMessage = (overrides: Partial<ChatMessage> = {}) => message({
+  set_ref: setRef,
+  body: setRefFirstLine(setRef),
+  ...overrides,
 })
 
 function Harness({
@@ -537,6 +554,42 @@ describe('MessagesPage', () => {
     expect(host.textContent).toContain('当前版本暂不支持的消息类型')
   })
 
+  it('v2 组卡夹在普通消息中时仅该条按纯文本降级', async () => {
+    chatApi.getMessages.mockResolvedValue({
+      messages: [
+        message({ id: 'm-1', seq: 1, body: '前一条普通消息' }),
+        message({
+          id: 'm-2',
+          seq: 2,
+          set_ref: { v: 2, future: true },
+          body: '[训练分享] 未来版本的纯文本降级',
+        }),
+        message({ id: 'm-3', seq: 3, body: '后一条普通消息' }),
+      ],
+      meta: { other_last_read: null, has_more: false },
+    })
+    await act(async () => { root.render(<Harness initial={[conversation(0)]} />); await settle() })
+    await act(async () => { host.querySelector<HTMLButtonElement>('.chat-row')?.click(); await settle() })
+
+    expect(host.textContent).toContain('前一条普通消息')
+    expect(host.textContent).toContain('[训练分享] 未来版本的纯文本降级')
+    expect(host.textContent).toContain('后一条普通消息')
+    expect(host.querySelector('.set-ref-card')).toBeNull()
+  })
+
+  it('首行不匹配时整条 body 按纯文本显示', async () => {
+    const body = `${setRefFirstLine(setRef).replace('第1组', '第2组')}\n这是备注`
+    chatApi.getMessages.mockResolvedValue({
+      messages: [setCardMessage({ body })],
+      meta: { other_last_read: null, has_more: false },
+    })
+    await act(async () => { root.render(<Harness initial={[conversation(0)]} />); await settle() })
+    await act(async () => { host.querySelector<HTMLButtonElement>('.chat-row')?.click(); await settle() })
+
+    expect(host.querySelector('.set-ref-card')).toBeNull()
+    expect(host.querySelector('.chat-bubble p')?.textContent).toBe(body)
+  })
+
   it('未加载与零会话使用不同空态', async () => {
     await act(async () => { root.render(<Harness key="loading" initial={null} />) })
     expect(host.textContent).toContain('加载中…')
@@ -614,5 +667,128 @@ describe('MessagesPage', () => {
 
     expect(chatApi.getMessages).toHaveBeenLastCalledWith('conversation', { mode: 'before', seq: 2, limit: 1 })
     expect(host.querySelector<HTMLImageElement>('.chat-bubble img')?.src).toBe('https://new.example/image.jpg')
+  })
+
+  it('组卡仅在 video_url 非空时显示播放入口，并打开无前后导航的既有视频弹窗', async () => {
+    chatApi.getMessages.mockResolvedValue({
+      messages: [
+        setCardMessage({
+          id: 'with-video',
+          seq: 1,
+          video_url: 'https://old.example/video.mp4',
+          video_expires_in: 900,
+        }),
+        setCardMessage({ id: 'without-video', seq: 2 }),
+      ],
+      meta: { other_last_read: null, has_more: false },
+    })
+    await act(async () => { root.render(<Harness initial={[conversation(0)]} />); await settle() })
+    await act(async () => { host.querySelector<HTMLButtonElement>('.chat-row')?.click(); await settle() })
+
+    expect(host.querySelectorAll('.set-ref-card')).toHaveLength(2)
+    expect(host.querySelectorAll('.set-ref-play')).toHaveLength(1)
+    await act(async () => { host.querySelector<HTMLButtonElement>('.set-ref-play')?.click(); await settle() })
+    expect(host.querySelector<HTMLVideoElement>('.video-modal video')?.src)
+      .toBe('https://old.example/video.mp4')
+    expect(host.querySelector('.video-nav')).toBeNull()
+  })
+
+  it('打开超过 expires_in 的组卡视频前，用 before_seq=seq+1&limit=1 单条续签', async () => {
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(1_000_000)
+    chatApi.getMessages
+      .mockResolvedValueOnce({
+        messages: [setCardMessage({
+          video_url: 'https://old.example/video.mp4',
+          video_expires_in: 900,
+        })],
+        meta: { other_last_read: null, has_more: false },
+      })
+      .mockResolvedValueOnce({
+        messages: [setCardMessage({
+          video_url: 'https://new.example/video.mp4',
+          video_expires_in: 900,
+        })],
+        meta: { other_last_read: null, has_more: false },
+      })
+    await act(async () => { root.render(<Harness initial={[conversation(0)]} />); await settle() })
+    await act(async () => { host.querySelector<HTMLButtonElement>('.chat-row')?.click(); await settle() })
+    clock.mockReturnValue(1_901_000)
+    await act(async () => { host.querySelector<HTMLButtonElement>('.set-ref-play')?.click(); await settle() })
+
+    expect(chatApi.getMessages).toHaveBeenLastCalledWith(
+      'conversation',
+      { mode: 'before', seq: 2, limit: 1 },
+    )
+    expect(host.querySelector<HTMLVideoElement>('.video-modal video')?.src)
+      .toBe('https://new.example/video.mp4')
+  })
+
+  it('视频播放错误只对该消息走单条续签并替换弹窗 URL', async () => {
+    chatApi.getMessages
+      .mockResolvedValueOnce({
+        messages: [setCardMessage({
+          video_url: 'https://old.example/video.mp4',
+          video_expires_in: 900,
+        })],
+        meta: { other_last_read: null, has_more: false },
+      })
+      .mockResolvedValueOnce({
+        messages: [setCardMessage({
+          video_url: 'https://new.example/video.mp4',
+          video_expires_in: 900,
+        })],
+        meta: { other_last_read: null, has_more: false },
+      })
+    await act(async () => { root.render(<Harness initial={[conversation(0)]} />); await settle() })
+    await act(async () => { host.querySelector<HTMLButtonElement>('.chat-row')?.click(); await settle() })
+    await act(async () => { host.querySelector<HTMLButtonElement>('.set-ref-play')?.click(); await settle() })
+    const video = host.querySelector<HTMLVideoElement>('.video-modal video')!
+    await act(async () => { video.dispatchEvent(new Event('error')); await settle() })
+
+    expect(chatApi.getMessages).toHaveBeenLastCalledWith(
+      'conversation',
+      { mode: 'before', seq: 2, limit: 1 },
+    )
+    expect(host.querySelector<HTMLVideoElement>('.video-modal video')?.src)
+      .toBe('https://new.example/video.mp4')
+  })
+
+  it.each([
+    { name: '空响应', renewalMessages: [] },
+    {
+      name: '只返回相邻消息',
+      renewalMessages: [message({ id: 'adjacent', seq: 1, body: '仍可见的相邻消息' })],
+    },
+  ])('视频续签$name找不到目标 seq 时删除本地消息并关闭弹窗', async ({ renewalMessages }) => {
+    const target = setCardMessage({
+      id: 'target-video',
+      seq: 2,
+      video_url: 'https://old.example/video.mp4',
+      video_expires_in: 900,
+    })
+    const adjacent = message({ id: 'adjacent', seq: 1, body: '仍可见的相邻消息' })
+    chatApi.getMessages
+      .mockResolvedValueOnce({
+        messages: [adjacent, target],
+        meta: { other_last_read: null, has_more: false },
+      })
+      .mockResolvedValueOnce({
+        messages: renewalMessages,
+        meta: { other_last_read: null, has_more: false },
+      })
+
+    await act(async () => { root.render(<Harness initial={[conversation(0)]} />); await settle() })
+    await act(async () => { host.querySelector<HTMLButtonElement>('.chat-row')?.click(); await settle() })
+    await act(async () => { host.querySelector<HTMLButtonElement>('.set-ref-play')?.click(); await settle() })
+    const video = host.querySelector<HTMLVideoElement>('.video-modal video')!
+    await act(async () => { video.dispatchEvent(new Event('error')); await settle() })
+
+    expect(chatApi.getMessages).toHaveBeenLastCalledWith(
+      'conversation',
+      { mode: 'before', seq: 3, limit: 1 },
+    )
+    expect(host.querySelector('.video-modal')).toBeNull()
+    expect(host.querySelector('.set-ref-card')).toBeNull()
+    expect(host.textContent).toContain('仍可见的相邻消息')
   })
 })
