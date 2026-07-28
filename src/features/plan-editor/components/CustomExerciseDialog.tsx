@@ -88,13 +88,13 @@ function guessFields(rawName: string): Pick<CreateCustomExerciseInput, 'muscleGr
 }
 
 const fieldWrap: React.CSSProperties = { display: 'grid', gap: 7 }
-const label: React.CSSProperties = { color: 'var(--fg-tertiary)', fontSize: 12, fontWeight: 600 }
+const label: React.CSSProperties = { color: 'var(--mut)', fontSize: 12, fontWeight: 600 }
 const input: React.CSSProperties = {
   height: 40,
-  borderRadius: 8,
-  border: '1px solid var(--border-strong)',
-  background: 'var(--surface-1)',
-  color: 'var(--fg-primary)',
+  borderRadius: 'var(--r-sm)',
+  border: '1px solid var(--bd)',
+  background: 'var(--card-bg)',
+  color: 'var(--txt)',
   padding: '0 11px',
   font: 'inherit',
   outline: 'none',
@@ -152,9 +152,9 @@ export function CustomExerciseDialog({ open, initialName, saving, error, onClose
         style={{
           width: 420,
           maxWidth: 'calc(100vw - 32px)',
-          borderRadius: 8,
-          border: '1px solid var(--border-strong)',
-          background: 'var(--surface-2)',
+          borderRadius: 'var(--r-sm)',
+          border: '1px solid var(--bd)',
+          background: 'var(--panel-bg)',
           boxShadow: 'var(--elev-modal)',
           padding: 18,
           display: 'grid',
@@ -162,8 +162,8 @@ export function CustomExerciseDialog({ open, initialName, saving, error, onClose
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <div style={{ fontSize: 16, fontWeight: 800, color: 'var(--fg-primary)' }}>新建动作</div>
-          <span style={{ color: 'var(--fg-tertiary)', fontFamily: 'var(--font-mono)', fontSize: 10 }}>CUSTOM</span>
+          <div style={{ fontSize: 16, fontWeight: 800, color: 'var(--txt)' }}>新建动作</div>
+          <span style={{ color: 'var(--mut)', fontFamily: 'var(--font-mono)', fontSize: 10 }}>CUSTOM</span>
         </div>
 
         <label style={fieldWrap}>
@@ -199,7 +199,7 @@ export function CustomExerciseDialog({ open, initialName, saving, error, onClose
           </select>
         </label>
 
-        {error && <div style={{ color: 'var(--brand-red)', fontSize: 12, fontWeight: 600 }}>{error}</div>}
+        {error && <div style={{ color: 'var(--bad)', fontSize: 12, fontWeight: 600 }}>{error}</div>}
 
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, paddingTop: 2 }}>
           <button
@@ -207,10 +207,10 @@ export function CustomExerciseDialog({ open, initialName, saving, error, onClose
             onClick={onClose}
             disabled={saving}
             style={{
-              border: '1px solid var(--border-strong)',
+              border: '1px solid var(--bd)',
               background: 'transparent',
-              color: 'var(--fg-secondary)',
-              borderRadius: 8,
+              color: 'var(--sec)',
+              borderRadius: 'var(--r-sm)',
               padding: '9px 14px',
               fontWeight: 700,
               cursor: saving ? 'default' : 'pointer',
@@ -225,7 +225,7 @@ export function CustomExerciseDialog({ open, initialName, saving, error, onClose
               border: '1px solid var(--ink)',
               background: 'var(--ink)',
               color: 'var(--white)',
-              borderRadius: 8,
+              borderRadius: 'var(--r-sm)',
               padding: '9px 16px',
               fontWeight: 800,
               cursor: !trimmed || saving ? 'default' : 'pointer',

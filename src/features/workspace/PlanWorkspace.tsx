@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { AuthUser, ChatConversation, ChatReadState, CoachBindRequest, CoachStudent, ExerciseResponse, PlanResponse, PlanWithChildren, StudentOnboardingProfile, StudentVideo } from '../../api/types'
+import type { AuthUser, ChatConversation, ChatReadState, CoachBindRequest, CoachStudent, ExerciseResponse, ExerciseStatsOverview, PlanResponse, PlanWithChildren, StudentOnboardingProfile, StudentVideo } from '../../api/types'
 import {
   getCoachStudents, getStudentPlans, getPlan, publishPlan, createPlan, patchPlan, getStudentOnboarding,
   markImportedHistory, renameCoachStudent, deletePlan,
@@ -90,6 +90,10 @@ export function PlanWorkspace({ onLogout, me }: Props) {
   const planRequestVersions = useRef(createKeyedRequestVersions())
   const videoRequestVersions = useRef(createKeyedRequestVersions())
   const rosterDataRequestVersions = useRef(createKeyedRequestVersions())
+  const rosterOverviewRequests = useRef(new Map<string, {
+    version: number
+    promise: Promise<ExerciseStatsOverview | null>
+  }>())
   const bindRequestVersions = useRef(createKeyedRequestVersions())
   const plansByStudentRef = useRef<Record<string, PlanResponse[]>>({})
   const rosterDataByStudentRef = useRef<RosterDataByStudent>({})
@@ -158,10 +162,23 @@ export function PlanWorkspace({ onLogout, me }: Props) {
     id: string,
     canApply: () => boolean = () => true,
   ) => {
+    if (Object.hasOwn(rosterDataByStudentRef.current[id] ?? {}, 'overview')) return
     const key = `overview:${id}`
-    const version = rosterDataRequestVersions.current.issue(key)
-    const overview = await getExerciseStatsOverview(id).catch(() => null)
-    if (!canApply() || !rosterDataRequestVersions.current.isLatest(key, version)) return
+    let request = rosterOverviewRequests.current.get(id)
+    if (!request) {
+      const version = rosterDataRequestVersions.current.issue(key)
+      const promise = getExerciseStatsOverview(id).catch(() => null)
+      request = { version, promise }
+      rosterOverviewRequests.current.set(id, request)
+      void promise.finally(() => {
+        if (rosterOverviewRequests.current.get(id) === request) {
+          rosterOverviewRequests.current.delete(id)
+        }
+      })
+    }
+    const overview = await request.promise
+    if (!canApply() || !rosterDataRequestVersions.current.isLatest(key, request.version)) return
+    if (Object.hasOwn(rosterDataByStudentRef.current[id] ?? {}, 'overview')) return
     updateRosterData(id, { overview })
   }, [updateRosterData])
 
@@ -265,6 +282,9 @@ export function PlanWorkspace({ onLogout, me }: Props) {
       const [list, onboarding] = await Promise.all([
         fetchStudentPlans(id),
         fetchRosterProfile(id),
+        Object.hasOwn(rosterDataByStudentRef.current[id] ?? {}, 'overview')
+          ? Promise.resolve()
+          : fetchRosterOverview(id),
       ])
       if (generation !== loadGeneration.current) return false
       setOnboarding(onboarding)
@@ -279,7 +299,7 @@ export function PlanWorkspace({ onLogout, me }: Props) {
       if (generation !== loadGeneration.current) return false
       throw e
     }
-  }, [exerciseList, fetchRosterProfile, fetchStudentPlans, loadPlan])
+  }, [exerciseList, fetchRosterOverview, fetchRosterProfile, fetchStudentPlans, loadPlan])
 
   const loadRosterBackground = useCallback(async (roster: CoachStudent[], skipPlanStudentId?: string) => {
     const generation = ++rosterBackgroundGeneration.current
@@ -300,10 +320,18 @@ export function PlanWorkspace({ onLogout, me }: Props) {
       }
       if (generation !== rosterBackgroundGeneration.current) return
 
-      await fetchRosterOverview(
-        student.id,
-        () => generation === rosterBackgroundGeneration.current,
-      )
+      // Foreground loading and roster hydration share this cache. A background
+      // pass must neither wait on nor duplicate an in-flight overview, and a
+      // completed null result still counts as authoritative for this pass.
+      if (
+        !Object.hasOwn(rosterDataByStudentRef.current[student.id] ?? {}, 'overview')
+        && !rosterOverviewRequests.current.has(student.id)
+      ) {
+        await fetchRosterOverview(
+          student.id,
+          () => generation === rosterBackgroundGeneration.current,
+        )
+      }
       if (generation !== rosterBackgroundGeneration.current) return
 
       if (!Object.hasOwn(rosterDataByStudentRef.current[student.id] ?? {}, 'profile')) {
@@ -703,6 +731,7 @@ export function PlanWorkspace({ onLogout, me }: Props) {
         studentName={studentName}
         studentId={studentId}
         onboardingProfile={onboarding}
+        exerciseStatsOverview={rosterDataByStudent[studentId]?.overview}
         planName={loaded?.plan.name ?? '（暂无计划）'}
         planStartDate={loaded?.plan.start_date}
         planStatus={loaded?.plan.status}

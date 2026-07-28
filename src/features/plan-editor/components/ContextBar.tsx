@@ -17,47 +17,36 @@ interface Props {
   onClose: () => void
 }
 
-const btn: React.CSSProperties = {
-  display: 'inline-flex', alignItems: 'center', gap: 6, padding: '5px 11px',
-  border: '1px solid var(--border-strong)', borderRadius: 8,
-}
-
 export function ContextBar(p: Props) {
   return (
-    <div style={{
-      display: p.visible ? 'flex' : 'none', alignItems: 'center', gap: 10, height: 40,
-      padding: '0 16px', background: 'var(--surface-2)', borderBottom: '1px solid var(--border)',
-      boxShadow: 'inset 3px 0 0 var(--ink)', flex: '0 0 auto', zIndex: 18, fontSize: 12,
-    }}>
-      <span className="t-mono-label" style={{ fontSize: 10, letterSpacing: '.1em', color: 'var(--ink)' }}>SELECTED</span>
-      <b style={{ color: 'var(--fg-primary)' }}>{p.dayLabel}</b>
-      <span style={{ width: 1, height: 16, background: 'var(--border-strong)' }} />
+    <div className="selected-context-bar" data-selected-context="" hidden={!p.visible}>
+      <span className="t-mono-label">SELECTED</span>
+      <b>{p.dayLabel}</b>
       <span
-        className={`ctxbtn${p.canCopyPrev ? '' : ' disabled'}`}
+        className={`ctxbtn${p.copyDone ? ' success' : ''}${p.canCopyPrev ? '' : ' disabled'}`}
         onClick={p.onCopyPrev}
         title={!p.canCopyPrev ? p.copyDisabledHint : undefined}
-        style={{ ...btn, color: p.copyDone ? 'var(--green)' : 'var(--fg-primary)', borderColor: p.copyDone ? 'var(--green)' : 'var(--border-strong)' }}
       >
         {p.copyLabel}
       </span>
+      <span className="selected-context-divider" />
       {p.selectedRowLabel && (
-        <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--fg-tertiary)' }}>{p.selectedRowLabel}</span>
+        <span className="selected-row-label">{p.selectedRowLabel}</span>
       )}
       {p.hasRowClipboard && (
-        <span className="ctxbtn" onClick={p.onPasteRow} style={{ ...btn, color: 'var(--fg-primary)' }}>粘贴动作</span>
+        <span className="ctxbtn" onClick={p.onPasteRow}>粘贴动作</span>
       )}
       {p.isRest ? (
-        <span className="ctxbtn" onClick={p.onUnsetRest} style={{ ...btn, color: 'var(--green)', borderColor: 'var(--green)' }}>改为训练日</span>
+        <span className="ctxbtn success" onClick={p.onUnsetRest}>改为训练日</span>
       ) : (
         <>
           <span className={`ctxbtn${p.hasLockedRows ? ' disabled' : ''}`} onClick={p.onSetRest}
-            title={p.hasLockedRows ? '该日含学员已打卡动作,不能转为休息日' : undefined}
-            style={{ ...btn, color: 'var(--fg-secondary)' }}>设为休息</span>
-          <span className="ctxbtn" onClick={p.onClearDay} style={{ ...btn, color: 'var(--fg-secondary)' }}>清空本日</span>
+            title={p.hasLockedRows ? '该日含学员已打卡动作,不能转为休息日' : undefined}>设为休息</span>
+          <span className="ctxbtn danger" onClick={p.onClearDay}>清空本日</span>
         </>
       )}
-      <span style={{ flex: 1 }} />
-      <span onClick={p.onClose} style={{ cursor: 'pointer', color: 'var(--fg-tertiary)', fontSize: 12, padding: '4px 8px' }}>✕ 取消选择</span>
+      <span className="selected-context-spacer" />
+      <span className="selected-context-close" onClick={p.onClose}>✕ 取消选择</span>
     </div>
   )
 }

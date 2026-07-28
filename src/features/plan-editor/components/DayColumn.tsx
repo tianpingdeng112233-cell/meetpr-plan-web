@@ -8,15 +8,25 @@ import {
   INPUT_GUARD_REASONS,
 } from '../inputGuard'
 import { compactTonnage, summarizeDaySection, type DaySectionSummary } from '../weeklySummary'
+import {
+  samePlanCell,
+  type PlanCellField,
+  type PlanCellSelection,
+} from '../selectionModel'
 
 interface Props {
+  weekNumber?: number
+  columnLetter?: string
   day: DayCol
   colW: ColWidths
   selected: boolean
   selectedRowId?: string | null
+  cellSelection?: PlanCellSelection | null
   onSelect: () => void
-  onRecallContext?: () => void
   onSelectRow?: (rowId: string) => void
+  onSelectCell?: (rowId: string, field: PlanCellField, setIndex?: number) => void
+  onSetsDraftChange?: (rowId: string, draft: string | null) => void
+  infoTokens?: (row: ExerciseRow) => readonly string[]
   dayMoveState?: 'source' | 'target' | 'invalid'
   dayMoveDisabledHint?: string | null
   onDayMoveStart?: (e: React.MouseEvent) => void
@@ -35,7 +45,7 @@ interface Props {
 
 const head: React.CSSProperties = {
   fontFamily: 'var(--font-mono)', fontSize: 9, letterSpacing: '.06em',
-  color: 'var(--fg-tertiary)', textTransform: 'uppercase',
+  color: 'var(--mut)', textTransform: 'uppercase',
 }
 const stop = (e: React.MouseEvent) => e.stopPropagation()
 
@@ -47,7 +57,7 @@ function ShiftBadge({ day }: { day: DayCol }) {
       title={`原定日期：${day.shiftBadge.originalDate}；顺延天数：${day.shiftBadge.days} 天`}
       style={{
         display: 'inline-flex', alignItems: 'center', flex: 'none', padding: '1px 4px',
-        border: '1px solid var(--amber)', borderRadius: 999, color: 'var(--amber)',
+        border: '1px solid var(--warn)', borderRadius: 'var(--r-sm)', color: 'var(--warn)',
         fontSize: 8, fontWeight: 600, lineHeight: 1.2, cursor: 'help',
       }}
     >
@@ -58,7 +68,7 @@ function ShiftBadge({ day }: { day: DayCol }) {
 
 const baseInput: React.CSSProperties = {
   background: 'transparent', border: '1px solid transparent', borderRadius: 3,
-  color: 'var(--fg-primary)', fontSize: 11, fontFamily: 'var(--font-sans)', outline: 'none',
+  color: 'var(--txt)', fontSize: 11, fontFamily: 'var(--font-sans)', outline: 'none',
   padding: '1px 2px', boxSizing: 'border-box', fontVariantNumeric: 'tabular-nums',
 }
 
@@ -118,11 +128,13 @@ function GuardedInput({ value, filter, onValue, ...rest }: {
  *  field is a valid transient edit state (shown blank) that commits to 0 sets on
  *  blur, instead of snapping back to the current count. Non-empty edits still
  *  commit live so the per-set boxes track the count as the coach types. */
-function SetsInput({ count, disabled, aux, onCommit }: {
+function SetsInput({ count, disabled, aux, onCommit, onSelect, onDraftChange }: {
   count: number
   disabled?: boolean
   aux: boolean
   onCommit: (n: number) => void
+  onSelect?: () => void
+  onDraftChange?: (draft: string | null) => void
 }) {
   const [draft, setDraft] = useState<string | null>(null)
   const value = draft ?? (count > 0 ? String(count) : '')
@@ -130,18 +142,25 @@ function SetsInput({ count, disabled, aux, onCommit }: {
   return (
     <input
       value={value} inputMode="numeric" disabled={disabled} placeholder={aux ? '—' : ''}
-      onClick={stop}
+      onFocus={() => onSelect?.()}
+      onClick={(event) => { stop(event); onSelect?.() }}
       onChange={(e) => {
         const raw = e.target.value.replace(/[^0-9]/g, '')
         setDraft(raw)
+        onDraftChange?.(raw)
         // Empty is a transient edit state (deferred to blur → 0); non-empty commits
         // live so the weight boxes appear/disappear as the count is typed.
         if (raw !== '') onCommit(clamp(raw))
       }}
       onBlur={() => {
         if (draft === null) return
-        onCommit(draft.trim() === '' ? 0 : clamp(draft))
+        // Non-empty values already committed live on change; re-committing the
+        // same count here would push a duplicate undo record (undo would need
+        // two presses). Blur only needs to land the deferred empty→0 case.
+        const next = draft.trim() === '' ? 0 : clamp(draft)
+        if (next !== count) onCommit(next)
         setDraft(null)
+        onDraftChange?.(null)
       }}
       style={{ ...baseInput, width: '100%', textAlign: 'center', color: 'var(--txt)', fontFamily: 'var(--font-mono)', fontWeight: 500 }}
     />
@@ -151,38 +170,32 @@ function SetsInput({ count, disabled, aux, onCommit }: {
 /** Section divider between the main-lift block and the accessory block. */
 function TierHeader({ label, accent, width, summary }: { label: string; accent?: boolean; width: number; summary: DaySectionSummary }) {
   return (
-    <div className="tierhead" style={{
-      width, minWidth: 0, overflow: 'hidden', boxSizing: 'border-box', display: 'flex', alignItems: 'center', gap: 5,
-      padding: '3px 8px', background: 'var(--surface-1)', borderTop: '1px solid var(--border)',
-    }}>
-      <span style={{ width: 3, height: 8, borderRadius: 1, flex: 'none', background: accent ? 'var(--ink)' : 'var(--fg-tertiary)' }} />
-      <span style={{
-        fontFamily: 'var(--font-mono)', fontSize: 9, letterSpacing: '.08em', whiteSpace: 'nowrap',
-        color: accent ? 'var(--fg-secondary)' : 'var(--fg-tertiary)',
-      }}>{label}</span>
-      <span className="tierhead-summary" aria-label={`${summary.sets} 组${summary.tonnage > 0 ? ` · 总重 ${compactTonnage(summary.tonnage)}` : ''}`} style={{
-        minWidth: 0, marginLeft: 'auto', display: 'flex', justifyContent: 'flex-end', overflow: 'hidden',
-        color: 'var(--txt)', fontFamily: 'var(--font-mono)', fontSize: 9, fontWeight: 500, whiteSpace: 'nowrap',
-      }}>
-        <span style={{ flex: 'none' }}>{summary.sets} 组</span>
-        {summary.tonnage > 0 && <span className="tierhead-tonnage" style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}> · 总重 {compactTonnage(summary.tonnage)}</span>}
+    <div className={`tierhead${accent ? ' main' : ' aux'}`} style={{ width }}>
+      <span className="tierhead-bar" />
+      <span className="tierhead-label">{label}</span>
+      <span className="tierhead-summary" aria-label={`${summary.sets} 组${summary.tonnage > 0 ? ` · 总重 ${compactTonnage(summary.tonnage)}` : ''}`}>
+        <span>{summary.sets} 组</span>
+        {summary.tonnage > 0 && <span className="tierhead-tonnage"> · 总重 {compactTonnage(summary.tonnage)}</span>}
       </span>
     </div>
   )
 }
 
-function EditableStrength({ row, width, edit }: { row: ExerciseRow; width: number; edit: (u: (r: ExerciseRow) => ExerciseRow) => void }) {
+function EditableStrength({ row, width, edit, selectedCell, selectCell }: {
+  row: ExerciseRow
+  width: number
+  edit: (u: (r: ExerciseRow) => ExerciseRow) => void
+  selectedCell: (setIndex: number) => boolean
+  selectCell: (setIndex: number) => void
+}) {
   if (row.aux) {
     return (
       <div className="gcell" data-c="int" style={{ width, padding: '4px 5px', display: 'flex', alignItems: 'center' }}>
-        <span style={{ color: 'var(--fg-tertiary)', fontSize: 11 }}>—</span>
+        <span style={{ color: 'var(--mut)', fontSize: 11 }}>—</span>
       </div>
     )
   }
   const nextMode = row.mode === 'kg' ? 'rpe' : row.mode === 'rpe' ? 'bodyweight' : 'kg'
-  const chip = row.mode === 'rpe' || row.mode === 'bodyweight'
-    ? { color: 'var(--ink)', background: 'var(--ink-soft)' }
-    : { color: 'var(--fg-tertiary)', background: 'transparent' }
   const issue = getBoundRowInputIssue(row)
   return (
     <div className="gcell intcell" data-c="int" style={{
@@ -190,55 +203,112 @@ function EditableStrength({ row, width, edit }: { row: ExerciseRow; width: numbe
       flexWrap: 'wrap', alignItems: 'center', alignContent: 'center',
     }}>
       <span
+        className={`mode-badge ${row.mode}`}
         title={row.hasLogs ? '学员已打卡,此行及其组不可修改' : '切换 KG / RPE / 自重'}
         onClick={(e) => { stop(e); if (!row.hasLogs) edit((r) => ({ ...r, mode: nextMode })) }}
-        style={{
-          display: 'inline-flex', alignItems: 'center', fontFamily: 'var(--font-mono)', fontSize: 9,
-          letterSpacing: '.04em', border: '1px solid var(--border-strong)', borderRadius: 3,
-          padding: '1px 4px', margin: '0 5px 3px 0', cursor: row.hasLogs ? 'default' : 'pointer',
-          userSelect: 'none', opacity: row.hasLogs ? 0.55 : 1, ...chip,
-        }}
+        style={{ cursor: row.hasLogs ? 'default' : 'pointer', opacity: row.hasLogs ? 0.55 : 1 }}
       >
         {row.mode === 'rpe' ? 'RPE' : row.mode === 'bodyweight' ? '自重' : 'KG'}
       </span>
       {row.mode === 'bodyweight' && row.boxes.length > 0 && (
-        <span style={{ color: 'var(--fg-secondary)', fontSize: 11, margin: '0 4px 3px 0' }}>每组自重</span>
+        row.boxes.map((_, index) => (
+          <span
+            key={index}
+            className={`bodyweight-cell plan-cell${selectedCell(index) ? ' plan-cell-selected' : ''}`}
+            data-plan-cell="intensity"
+            data-set-index={index}
+            onClick={(event) => { stop(event); selectCell(index) }}
+          >
+            BW
+          </span>
+        ))
       )}
       {row.mode !== 'bodyweight' && row.boxes.map((b, i) => {
         const invalid = issue?.invalidStrengthIndexes.includes(i) ?? false
         return (
           <GuardedInput
-            key={i} value={b.empty ? '' : b.val} inputMode="decimal" onClick={stop}
-            className={invalid ? 'guard-invalid' : undefined}
+            key={i} value={b.empty ? '' : b.val} inputMode="decimal"
+            className={`${invalid ? 'guard-invalid ' : ''}plan-cell${selectedCell(i) ? ' plan-cell-selected' : ''}`}
             data-guard-field="strength" data-input-invalid={invalid ? 'true' : undefined}
+            data-plan-cell="intensity" data-set-index={i}
             aria-invalid={invalid || undefined}
             title={invalid ? (row.mode === 'rpe' ? INPUT_GUARD_REASONS.rpe : INPUT_GUARD_REASONS.kg) : undefined}
             disabled={row.hasLogs}
             filter={filterStrengthInput}
+            onFocus={() => selectCell(i)}
+            onClick={(event) => { stop(event); selectCell(i) }}
             onValue={(value) => {
               edit((r) => ({ ...r, boxes: r.boxes.map((x, j) => j === i ? { val: value, empty: value === '' } : x) }))
             }}
             style={{
               ...baseInput, width: 36, height: 19, textAlign: 'center', margin: '0 4px 3px 0',
               color: 'var(--txt)', fontFamily: 'var(--font-mono)', fontWeight: 500,
-              border: '1px solid var(--border-strong)', background: b.empty ? 'transparent' : 'var(--surface-2)',
+              border: '1px solid var(--bd)', background: b.empty ? 'transparent' : 'var(--panel-bg)',
               opacity: row.hasLogs ? 0.55 : 1,
             }}
           />
         )
       })}
-      {row.boxes.length === 0 && <span style={{ color: 'var(--fg-tertiary)', fontSize: 10 }}>填组数→</span>}
+      {row.boxes.length === 0 && <span style={{ color: 'var(--mut)', fontSize: 10 }}>填组数→</span>}
     </div>
   )
 }
 
-export function DayColumn({ day, colW, selected, selectedRowId, onSelect, onRecallContext, onSelectRow, dayMoveState, dayMoveDisabledHint, onDayMoveStart, onResizeStart, onNameFocus, onNameChange, onNameKeyDown, onNameBlur, onAddRow, rowTier, onEditRow, onReorderRow, onDeleteRow }: Props) {
+export function DayColumn({
+  weekNumber = 0,
+  columnLetter,
+  day,
+  colW,
+  selected,
+  selectedRowId,
+  cellSelection,
+  onSelect,
+  onSelectRow,
+  onSelectCell,
+  onSetsDraftChange,
+  infoTokens,
+  dayMoveState,
+  dayMoveDisabledHint,
+  onDayMoveStart,
+  onResizeStart,
+  onNameFocus,
+  onNameChange,
+  onNameKeyDown,
+  onNameBlur,
+  onAddRow,
+  rowTier,
+  onEditRow,
+  onReorderRow,
+  onDeleteRow,
+}: Props) {
   const [dragRowId, setDragRowId] = useState<string | null>(null)
   const [dropTarget, setDropTarget] = useState<{ rowId: string; position: 'before' | 'after' } | null>(null)
   const dragDisabled = day.rows.some((row) => row.hasLogs)
   const dayMoveClass = dayMoveState ? ` day-move-${dayMoveState}` : ''
   const dayMoveTitle = dayMoveDisabledHint ?? '拖动搬到本周其他日期 / 点击选中日'
   const dayMoveCursor = dayMoveDisabledHint ? 'not-allowed' : 'grab'
+  const resolveTier = (row: ExerciseRow) => rowTier?.(row) ?? (row.isMain ? 'main' : 'aux')
+  const mainRowsForDay = day.rows.filter((row) => resolveTier(row) === 'main')
+  const auxRowsForDay = day.rows.filter((row) => resolveTier(row) === 'aux')
+  const mainDaySummary = summarizeDaySection(mainRowsForDay)
+  const auxDaySummary = summarizeDaySection(auxRowsForDay)
+  const dayTonnage = mainDaySummary.tonnage + auxDaySummary.tonnage
+  const firstMainName = mainRowsForDay[0]?.name ?? ''
+  const dayTheme = firstMainName.includes('深蹲')
+    ? '深蹲日'
+    : firstMainName.includes('卧推')
+      ? '卧推日'
+      : firstMainName.includes('硬拉')
+        ? '硬拉日'
+        : '训练日'
+  const dayMeta = `主项 ${mainDaySummary.sets} 组 · 辅项 ${auxDaySummary.sets} 组 · 总重 ${compactTonnage(dayTonnage)}`
+  const isCellSelected = (rowId: string, field: PlanCellField, setIndex?: number) => samePlanCell(
+    cellSelection ?? null,
+    { weekNumber, dow: day.dow, rowId, field, setIndex },
+  )
+  const selectCell = (rowId: string, field: PlanCellField, setIndex?: number) => {
+    onSelectCell?.(rowId, field, setIndex)
+  }
 
   const startRowDrag = (e: React.MouseEvent, rowId: string) => {
     if (e.button !== 0 || dragDisabled) return
@@ -308,19 +378,15 @@ export function DayColumn({ day, colW, selected, selectedRowId, onSelect, onReca
 
   if (day.rest) {
     return (
-      <div className={`day restday${selected ? ' sel' : ''}${dayMoveClass}`} data-dow={day.dow} onClick={onSelect} style={{
-        flex: '0 0 auto', width: 48, borderRight: '1px solid var(--border)',
-        background: 'var(--surface-1)', display: 'flex', flexDirection: 'column', cursor: 'pointer',
-      }}>
+      <div className={`day restday${selected ? ' sel' : ''}${dayMoveClass}`} data-dow={day.dow} onClick={onSelect}>
         <div className="dayhead" data-day-move-handle="" title={dayMoveTitle} onMouseDown={onDayMoveStart}
-          style={{ padding: '4px 2px', textAlign: 'center', color: 'var(--sec)', borderBottom: '1px solid var(--border)', cursor: dayMoveCursor, userSelect: 'none' }}>
-          <span style={{ display: 'block', color: 'var(--txt)', fontSize: 10, fontWeight: 600 }}>{!dayMoveDisabledHint && <span className="day-move-grip" aria-hidden="true">⠿ </span>}{day.dowLabel}</span>
-          <span style={{ display: 'block', marginTop: 1, fontFamily: 'var(--font-mono)', fontSize: 8, fontWeight: 500 }}>{day.dateLabel}</span>
+          style={{ cursor: dayMoveCursor }}>
+          <span className="dayhead-primary">{!dayMoveDisabledHint && <span className="day-move-grip" aria-hidden="true">⋮ </span>}{day.dowLabel}</span>
+          <span className="dayhead-date">{day.dateLabel}</span>
           <ShiftBadge day={day} />
-          {selected && <button className="context-recall" onMouseDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); onRecallContext?.() }} title="显示撰写上下文">▤</button>}
         </div>
-        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '18px 0' }}>
-          <span style={{ writingMode: 'vertical-rl', letterSpacing: 5, color: 'var(--txt)', fontSize: 12 }}>休息</span>
+        <div className="restday-body">
+          <span>休息</span>
         </div>
       </div>
     )
@@ -331,19 +397,22 @@ export function DayColumn({ day, colW, selected, selectedRowId, onSelect, onReca
   const dividers = COLS.map((k) => { acc += colW[k]; return { col: k, left: acc } })
 
   return (
-    <div className={`day${selected ? ' sel' : ''}${dayMoveClass}`} data-dow={day.dow} onClick={onSelect}
-      style={{ position: 'relative', flex: '0 0 auto', borderRight: '1px solid var(--border)', cursor: 'pointer' }}>
+    <div className={`day${selected ? ' sel' : ''}${dayMoveClass}`} data-dow={day.dow} onClick={onSelect}>
       <div className="dayhead" data-day-move-handle="" title={dayMoveTitle} onMouseDown={onDayMoveStart}
-        style={{ display: 'flex', alignItems: 'baseline', gap: 7, padding: '5px 8px', background: 'var(--surface-1)', borderBottom: '1px solid var(--border)', whiteSpace: 'nowrap', overflow: 'hidden', cursor: dayMoveCursor, userSelect: 'none' }}>
-        {!dayMoveDisabledHint && <span className="day-move-grip" aria-hidden="true">⠿</span>}
-        <span style={{ fontWeight: 700, fontSize: 12, color: 'var(--fg-primary)' }}>{day.dowLabel}</span>
-        <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--sec)' }}>{day.dateLabel}</span>
-        <ShiftBadge day={day} />
-        {selected && <button className="context-recall" onMouseDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); onRecallContext?.() }} title="显示撰写上下文">▤</button>}
+        style={{ cursor: dayMoveCursor }}>
+        <span className="dayhead-line">
+          {!dayMoveDisabledHint && <span className="day-move-grip" aria-hidden="true">⋮</span>}
+          <span className="dayhead-primary">{day.dowLabel}</span>
+          <span className="dayhead-date">{day.dateLabel}</span>
+          <ShiftBadge day={day} />
+          {columnLetter && <kbd className="day-column-key">{columnLetter}</kbd>}
+        </span>
+        <span className="dayhead-theme">{dayTheme}</span>
+        <span className="dayhead-meta">{dayMeta}</span>
       </div>
 
       <div className="daygrid" style={{ width: total, fontVariantNumeric: 'tabular-nums' }}>
-        <div className="gridhead" style={{ display: 'flex', alignItems: 'stretch', background: 'var(--surface-1)', borderBottom: '1px solid var(--border)' }}>
+        <div className="gridhead" style={{ display: 'flex', alignItems: 'stretch', background: 'var(--card-bg)', borderBottom: '1px solid var(--line)' }}>
           <div className="gcell" data-c="name" style={{ width: colW.name, padding: '4px 6px', ...head }}>动作</div>
           <div className="gcell" data-c="sets" style={{ width: colW.sets, padding: '4px 4px', textAlign: 'center', ...head }}>组</div>
           <div className="gcell" data-c="reps" style={{ width: colW.reps, padding: '4px 4px', textAlign: 'center', ...head }}>次</div>
@@ -357,96 +426,122 @@ export function DayColumn({ day, colW, selected, selectedRowId, onSelect, onReca
           const inputIssue = getBoundRowInputIssue(row)
           const isSelectedRow = selectedRowId === row.id
           const dropPosition = dropTarget?.rowId === row.id ? dropTarget.position : null
+          const tokens = infoTokens?.(row) ?? []
           return (
             <div
               key={row.id}
               data-rowid={row.id}
               data-locked={row.hasLogs ? 'true' : 'false'}
               data-drag-disabled={dragDisabled ? 'true' : 'false'}
-              className={`exrow${row.aux ? ' aux' : ''}${row.hasLogs ? ' locked' : ''}${isSelectedRow ? ' row-sel' : ''}${dragRowId === row.id ? ' row-dragging' : ''}${dropPosition ? ` row-drop-${dropPosition}` : ''}`}
+              className={`exrow${resolveTier(row) === 'aux' ? ' aux' : ''}${row.hasLogs ? ' locked' : ''}${isSelectedRow ? ' row-sel' : ''}${dragRowId === row.id ? ' row-dragging' : ''}${dropPosition ? ` row-drop-${dropPosition}` : ''}`}
               onMouseDownCapture={(e) => { if (e.button === 0) onSelectRow?.(row.id) }}
               onClick={(e) => e.stopPropagation()}
-              style={{
-                display: 'flex', alignItems: 'stretch', borderTop: '1px solid var(--border)',
-                background: isSelectedRow ? 'var(--ink-soft)' : undefined,
-                boxShadow: isSelectedRow ? 'inset 3px 0 0 var(--ink)' : undefined,
-                opacity: row.hasLogs ? 0.78 : 1,
-              }}
             >
-              <div className="gcell" data-c="name" style={{ width: colW.name, padding: '4px 4px', display: 'flex', alignItems: 'center', gap: 2, overflow: 'hidden' }}>
-                <span
-                  className="rowdrag"
-                  title={dragDisabled ? '该日含学员已打卡动作，整天不可拖排' : '拖动调整顺序 / 点击选中动作'}
-                  onMouseDown={(e) => startRowDrag(e, row.id)}
-                  onClick={(e) => { e.stopPropagation(); onSelectRow?.(row.id) }}
-                  style={{ cursor: dragDisabled ? 'not-allowed' : undefined, opacity: dragDisabled ? 0.45 : undefined }}
+              <div className="exercise-row-main">
+                <div
+                  className={`gcell plan-cell${isCellSelected(row.id, 'name') ? ' plan-cell-selected' : ''}`}
+                  data-c="name"
+                  data-plan-cell="name"
+                  style={{ width: colW.name }}
                 >
-                  ⋮
-                </span>
-                <input
-                  value={row.name} placeholder="输入动作…"
-                  disabled={row.hasLogs}
-                  onMouseDown={stop} onClick={stop}
-                  onFocus={(e) => onNameFocus(row.id, row.name, e.currentTarget)}
-                  onChange={(e) => onNameChange(row.id, e.target.value, e.currentTarget)}
-                  onKeyDown={(e) => onNameKeyDown?.(row.id, e)}
-                  onBlur={() => onNameBlur(row.id)}
-                  style={{ ...baseInput, flex: 1, minWidth: 0, color: 'var(--fg-primary)', fontWeight: 500 }}
+                  <span
+                    className="rowdrag"
+                    title={dragDisabled ? '该日含学员已打卡动作，整天不可拖排' : '拖动调整顺序 / 点击选中动作'}
+                    onMouseDown={(e) => startRowDrag(e, row.id)}
+                    onClick={(e) => { e.stopPropagation(); onSelectRow?.(row.id) }}
+                    style={{ cursor: dragDisabled ? 'not-allowed' : undefined, opacity: dragDisabled ? 0.45 : undefined }}
+                  >
+                    ⋮
+                  </span>
+                  <input
+                    value={row.name} placeholder="输入动作…"
+                    disabled={row.hasLogs}
+                    onMouseDown={stop}
+                    onClick={(event) => { stop(event); selectCell(row.id, 'name') }}
+                    onFocus={(e) => {
+                      selectCell(row.id, 'name')
+                      onNameFocus(row.id, row.name, e.currentTarget)
+                    }}
+                    onChange={(e) => onNameChange(row.id, e.target.value, e.currentTarget)}
+                    onKeyDown={(e) => onNameKeyDown?.(row.id, e)}
+                    onBlur={() => onNameBlur(row.id)}
+                    style={{ ...baseInput, flex: 1, minWidth: 0, color: 'var(--txt)', fontWeight: 500 }}
+                  />
+                  {row.ku && <span className="row-mark bound">✓</span>}
+                  {row.custom && <span className="row-mark custom">定</span>}
+                  {row.hasLogs && (
+                    <span className="row-mark locked" title={row.conflictMessage ?? '学员已打卡,此行及其组不可修改'}>锁</span>
+                  )}
+                  {row.conflictMessage && <span className="row-mark conflict" title={row.conflictMessage}>!</span>}
+                </div>
+
+                {/* 组 — editable on aux rows too: a zero-set (note-driven) row can't publish, so
+                    typing a count here is how the coach turns it into a real tracked exercise. */}
+                <div
+                  className={`gcell numeric-cell plan-cell${isCellSelected(row.id, 'sets') ? ' plan-cell-selected' : ''}`}
+                  data-c="sets"
+                  data-plan-cell="sets"
+                  style={{ width: colW.sets }}
+                >
+                  <SetsInput count={row.boxes.length} disabled={row.hasLogs} aux={row.aux}
+                    onSelect={() => selectCell(row.id, 'sets')}
+                    onDraftChange={(draft) => onSetsDraftChange?.(row.id, draft)}
+                    onCommit={(n) => edit((r) => ({ ...r, boxes: setBoxesLen(r.boxes, n), aux: n > 0 ? false : r.aux }))} />
+                </div>
+
+                <div
+                  className={`gcell numeric-cell plan-cell${isCellSelected(row.id, 'reps') ? ' plan-cell-selected' : ''}`}
+                  data-c="reps"
+                  data-plan-cell="reps"
+                  style={{ width: colW.reps }}
+                >
+                  <GuardedInput value={row.reps === '—' ? '' : row.reps} inputMode="text" placeholder="—"
+                    className={inputIssue?.invalidReps ? 'guard-invalid' : undefined}
+                    data-guard-field="reps" data-input-invalid={inputIssue?.invalidReps ? 'true' : undefined}
+                    aria-invalid={inputIssue?.invalidReps || undefined}
+                    title={inputIssue?.invalidReps ? INPUT_GUARD_REASONS.reps : undefined}
+                    disabled={row.hasLogs}
+                    filter={filterRepsInput}
+                    onFocus={() => selectCell(row.id, 'reps')}
+                    onClick={(event) => { stop(event); selectCell(row.id, 'reps') }}
+                    onValue={(value) => {
+                      edit((r) => ({ ...r, reps: value === '' ? '—' : value }))
+                    }}
+                    style={{ ...baseInput, width: '100%', textAlign: 'center', color: 'var(--txt)', fontFamily: 'var(--font-mono)', fontWeight: 500 }} />
+                </div>
+
+                <EditableStrength
+                  row={row}
+                  width={colW.int}
+                  edit={edit}
+                  selectedCell={(setIndex) => isCellSelected(row.id, 'intensity', setIndex)}
+                  selectCell={(setIndex) => selectCell(row.id, 'intensity', setIndex)}
                 />
-                {row.ku && <span style={{ color: 'var(--green)', fontSize: 9, flex: 'none' }}>✓</span>}
-                {row.custom && <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--fg-tertiary)', fontSize: 8, flex: 'none', border: '1px solid var(--border-strong)', borderRadius: 3, padding: '0 3px' }}>定</span>}
-                {row.hasLogs && (
-                  <span title={row.conflictMessage ?? '学员已打卡,此行及其组不可修改'}
-                    style={{ fontSize: 9, flex: 'none', cursor: 'help' }}>🔒</span>
-                )}
-                {row.conflictMessage && <span title={row.conflictMessage} style={{ color: 'var(--amber)', fontSize: 9, cursor: 'help' }}>⚠</span>}
-              </div>
 
-              {/* 组 — editable on aux rows too: a zero-set (note-driven) row can't publish, so
-                  typing a count here is how the coach turns it into a real tracked exercise. */}
-              <div className="gcell" data-c="sets" style={{ width: colW.sets, padding: '4px 2px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <SetsInput count={row.boxes.length} disabled={row.hasLogs} aux={row.aux}
-                  onCommit={(n) => edit((r) => ({ ...r, boxes: setBoxesLen(r.boxes, n), aux: n > 0 ? false : r.aux }))} />
+                <div className="gcell note-cell" data-c="note" style={{ width: colW.note }}>
+                  <input value={row.note} inputMode="text" onClick={stop} placeholder=""
+                    disabled={row.hasLogs}
+                    onChange={(e) => edit((r) => ({ ...r, note: e.target.value }))}
+                    style={{ ...baseInput, width: '100%', fontSize: 10, color: 'var(--txt)', paddingRight: 14 }} />
+                  {!row.hasLogs && (
+                    <span className="rowdel" title="删除这一行"
+                      onClick={(e) => { e.stopPropagation(); onDeleteRow(row.id) }}>✕</span>
+                  )}
+                </div>
               </div>
-
-              {/* 次 */}
-              <div className="gcell" data-c="reps" style={{ width: colW.reps, padding: '4px 2px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <GuardedInput value={row.reps === '—' ? '' : row.reps} inputMode="text" onClick={stop} placeholder="—"
-                  className={inputIssue?.invalidReps ? 'guard-invalid' : undefined}
-                  data-guard-field="reps" data-input-invalid={inputIssue?.invalidReps ? 'true' : undefined}
-                  aria-invalid={inputIssue?.invalidReps || undefined}
-                  title={inputIssue?.invalidReps ? INPUT_GUARD_REASONS.reps : undefined}
-                  disabled={row.hasLogs}
-                  filter={filterRepsInput}
-                  onValue={(value) => {
-                    edit((r) => ({ ...r, reps: value === '' ? '—' : value }))
-                  }}
-                  style={{ ...baseInput, width: '100%', textAlign: 'center', color: 'var(--txt)', fontFamily: 'var(--font-mono)', fontWeight: 500 }} />
-              </div>
-
-              <EditableStrength row={row} width={colW.int} edit={edit} />
-
-              <div className="gcell" data-c="note" style={{ width: colW.note, padding: '4px 2px', display: 'flex', alignItems: 'center', position: 'relative' }}>
-                <input value={row.note} inputMode="text" onClick={stop} placeholder=""
-                  disabled={row.hasLogs}
-                  onChange={(e) => edit((r) => ({ ...r, note: e.target.value }))}
-                  style={{ ...baseInput, width: '100%', fontSize: 10, color: 'var(--txt)', paddingRight: 14 }} />
-                {!row.hasLogs && (
-                  <span className="rowdel" title="删除这一行"
-                    onClick={(e) => { e.stopPropagation(); onDeleteRow(row.id) }}
-                    style={{
-                      position: 'absolute', right: 2, top: '50%', transform: 'translateY(-50%)',
-                      width: 14, height: 14, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      borderRadius: 4, fontSize: 10, color: 'var(--fg-tertiary)', cursor: 'pointer',
-                    }}>✕</span>
-                )}
-              </div>
+              {tokens.length > 0 && (
+                <div className="exercise-info-tokens" data-exercise-info-tokens="">
+                  {tokens.map((token, index) => (
+                    <span className="exercise-info-token" key={`${token}-${index}`} data-exercise-info-token="">{token}</span>
+                  ))}
+                </div>
+              )}
             </div>
           )
         }
         const addRowEntry = (tier: 'main' | 'aux') => (
           <div className="popitem" data-add-tier={tier} onClick={(e) => { e.stopPropagation(); onAddRow(tier) }}
-            style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 8px', borderTop: '1px dashed var(--border-strong)', color: 'var(--fg-tertiary)', cursor: 'pointer', fontSize: 11 }}>
+            style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 8px', borderTop: '1px dashed var(--bd)', color: 'var(--mut)', cursor: 'pointer', fontSize: 11 }}>
             <span style={{ color: 'var(--ink)', fontWeight: 700 }}>＋</span> 加动作
           </div>
         )

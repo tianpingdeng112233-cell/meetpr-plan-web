@@ -25,10 +25,10 @@ export function Toolbar({ weeksCount, calendarLocked = false, calendarLockedHint
   return (
     <div className="plan-toolbar" style={{
       display: 'flex', flexWrap: 'nowrap', whiteSpace: 'nowrap', alignItems: 'center', gap: 14, height: 38, padding: '0 16px',
-      background: 'var(--surface-1)', borderBottom: '1px solid var(--border)',
+      background: 'var(--card-bg)', borderBottom: '1px solid var(--line)',
       flex: '0 0 auto', zIndex: 19, fontSize: 12,
     }}>
-      <span className="t-mono-label" style={{ fontSize: 10, letterSpacing: '.1em', color: 'var(--fg-tertiary)' }}>MESOCYCLE</span>
+      <span className="t-mono-label" style={{ fontSize: 10, letterSpacing: '.1em', color: 'var(--mut)' }}>MESOCYCLE</span>
       <span style={{ position: 'relative' }}>
         <button
           type="button"
@@ -38,25 +38,25 @@ export function Toolbar({ weeksCount, calendarLocked = false, calendarLockedHint
           style={{
             display: 'inline-flex', alignItems: 'center', gap: 7, padding: '4px 8px',
             border: '1px solid transparent', borderRadius: 'var(--r-md)', background: 'transparent',
-            color: (!canResize || calendarLocked) ? 'var(--fg-disabled)' : 'var(--fg-primary)',
+            color: (!canResize || calendarLocked) ? 'var(--faint)' : 'var(--txt)',
             fontFamily: 'var(--font-sans)', fontSize: 12, fontWeight: 600,
             cursor: (!canResize || calendarLocked) ? 'default' : 'pointer',
           }}
         >
-          {weeksCount} 周 · 周期化 <span style={{ color: 'var(--fg-tertiary)', fontSize: 9 }}>▼</span>
+          {weeksCount} 周 · 周期化 <span style={{ color: 'var(--mut)', fontSize: 9 }}>▼</span>
         </button>
         {weeksOpen && !calendarLocked && (
           <>
             <span onClick={() => setWeeksOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 70 }} />
             <span style={{
               position: 'absolute', top: '100%', left: 0, marginTop: 6, zIndex: 80, minWidth: 310,
-              display: 'grid', gap: 'var(--sp-md)', padding: 'var(--sp-md)', background: 'var(--surface-2)',
-              border: '1px solid var(--border-strong)', borderRadius: 'var(--r-md)', boxShadow: 'var(--elev-modal)',
+              display: 'grid', gap: 'var(--sp-md)', padding: 'var(--sp-md)', background: 'var(--panel-bg)',
+              border: '1px solid var(--bd)', borderRadius: 'var(--r-md)', boxShadow: 'var(--elev-modal)',
             }}>
               <span style={{ display: 'flex', alignItems: 'center' }}>
-                <span style={{ display: 'inline-flex', border: '1px solid var(--border-strong)', borderRadius: 'var(--r-md)', overflow: 'hidden' }}>
+                <span style={{ display: 'inline-flex', border: '1px solid var(--bd)', borderRadius: 'var(--r-md)', overflow: 'hidden' }}>
                   <button type="button" aria-label="减少一周" disabled={draftWeeks <= 1} onClick={() => setDraftWeeks((value) => Math.max(1, value - 1))} style={stepButton}>－</button>
-                  <span style={{ minWidth: 70, display: 'grid', placeItems: 'center', borderInline: '1px solid var(--border)', fontFamily: 'var(--font-mono)', fontWeight: 700 }}>{draftWeeks} 周</span>
+                  <span style={{ minWidth: 70, display: 'grid', placeItems: 'center', borderInline: '1px solid var(--line)', fontFamily: 'var(--font-mono)', fontWeight: 700 }}>{draftWeeks} 周</span>
                   <button type="button" aria-label="增加一周" disabled={draftWeeks >= 52} onClick={() => setDraftWeeks((value) => Math.min(52, value + 1))} style={stepButton}>＋</button>
                 </span>
                 <span style={{ flex: 1 }} />
@@ -74,7 +74,7 @@ export function Toolbar({ weeksCount, calendarLocked = false, calendarLockedHint
                 </button>
               </span>
               {removal && removal.days > 0 && (
-                <span role="alert" style={{ padding: '9px 10px', border: '1px solid var(--amber)', borderRadius: 'var(--r-md)', background: 'var(--amber-soft)', color: 'var(--amber)', lineHeight: 1.5 }}>
+                <span role="alert" style={{ padding: '9px 10px', border: '1px solid var(--warn)', borderRadius: 'var(--r-md)', background: 'var(--warn-soft)', color: 'var(--warn)', lineHeight: 1.5 }}>
                   减到 {draftWeeks} 周将删除 W{draftWeeks + 1}–W{weeksCount} 的 {removal.days} 个训练日（{removal.exercises} 个动作），保存后不可恢复。
                 </span>
               )}
@@ -82,35 +82,35 @@ export function Toolbar({ weeksCount, calendarLocked = false, calendarLockedHint
           </>
         )}
       </span>
-      <span style={{ width: 1, height: 16, background: 'var(--border)' }} />
-      <span style={{ color: 'var(--fg-tertiary)' }}>可见</span>
-      <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--ink)', fontWeight: 600, letterSpacing: '.04em' }}>
+      <span style={{ width: 1, height: 16, background: 'var(--line)' }} />
+      <span style={{ color: 'var(--mut)' }}>可见</span>
+      <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--ink)', fontWeight: 500, letterSpacing: '.04em' }}>
         {curWeekLabel}
       </span>
       <span style={{ flex: 1 }} />
-      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, color: 'var(--fg-tertiary)' }}>
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, color: 'var(--mut)' }}>
         <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '.08em', textTransform: 'uppercase' }}>缩放</span>
-        <b style={{ color: 'var(--fg-secondary)', fontFamily: 'var(--font-mono)', minWidth: 34, display: 'inline-block' }}>{zoomLabel}</b>
+        <b style={{ color: 'var(--sec)', fontFamily: 'var(--font-mono)', fontWeight: 500, minWidth: 34, display: 'inline-block' }}>{zoomLabel}</b>
       </span>
-      <span className="t-hint" style={{ color: 'var(--fg-tertiary)', fontSize: 11 }}>Ctrl+滚轮缩放 · 中键拖动平移</span>
+      <span className="t-hint" style={{ color: 'var(--mut)', fontSize: 11 }}>Ctrl+滚轮缩放 · 中键拖动平移</span>
       {canJump && (
         <>
-          <span style={{ width: 1, height: 16, background: 'var(--border)' }} />
+          <span style={{ width: 1, height: 16, background: 'var(--line)' }} />
           <span onClick={() => { setWeeksOpen(false); setJumpOpen((value) => !value) }} style={{
             display: 'inline-flex', alignItems: 'center', gap: 7, padding: '4px 10px', position: 'relative',
-            border: '1px solid var(--border)', borderRadius: 8, cursor: 'pointer', color: 'var(--fg-secondary)',
+            border: '1px solid var(--bd)', borderRadius: 'var(--r-sm)', cursor: 'pointer', color: 'var(--sec)',
           }}>
-            跳到周 <span style={{ color: 'var(--fg-tertiary)', fontSize: 9 }}>▼</span>
+            跳到周 <span style={{ color: 'var(--mut)', fontSize: 9 }}>▼</span>
             {jumpOpen && (
               <span style={{
                 position: 'absolute', top: '100%', right: 0, marginTop: 6, zIndex: 80, padding: 4,
                 display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 2, width: 176,
-                background: 'var(--surface-2)', border: '1px solid var(--border-strong)', borderRadius: 10,
+                background: 'var(--card-bg)', border: '1px solid var(--bd)', borderRadius: 'var(--r-sm)',
                 boxShadow: 'var(--elev-modal)',
               }}>
                 {weekNums!.map((n) => (
                   <span key={n} className="popitem" onClick={(e) => { e.stopPropagation(); setJumpOpen(false); onJumpWeek!(n) }}
-                    style={{ padding: '6px 0', textAlign: 'center', borderRadius: 6, fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--fg-secondary)' }}>
+                    style={{ padding: '6px 0', textAlign: 'center', borderRadius: 'var(--r-sm)', fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--sec)' }}>
                     W{String(n).padStart(2, '0')}
                   </span>
                 ))}
@@ -129,8 +129,8 @@ const stepButton: React.CSSProperties = {
   height: 32,
   padding: 0,
   border: 0,
-  background: 'var(--surface-1)',
-  color: 'var(--fg-secondary)',
+  background: 'var(--card-bg)',
+  color: 'var(--sec)',
   font: 'inherit',
   fontWeight: 700,
   cursor: 'pointer',
@@ -139,10 +139,10 @@ const stepButton: React.CSSProperties = {
 const applyButton: React.CSSProperties = {
   height: 32,
   padding: '0 13px',
-  border: '1px solid var(--fg-primary)',
+  border: '1px solid var(--txt)',
   borderRadius: 'var(--r-md)',
-  background: 'var(--fg-primary)',
-  color: 'var(--bg)',
+  background: 'var(--txt)',
+  color: 'var(--page-bg)',
   font: 'inherit',
   fontWeight: 700,
   cursor: 'pointer',

@@ -11,8 +11,7 @@ import { ExercisePopover } from './components/ExercisePopover'
 import { CustomExerciseDialog } from './components/CustomExerciseDialog'
 import type { ExerciseIndex, ExerciseHit } from './exerciseIndex'
 import type { CreateCustomExerciseInput } from '../../api/exercises'
-import type { PlanStatus, StudentOnboardingProfile } from '../../api/types'
-import { WritingContextPanel } from './components/WritingContextPanel'
+import type { ExerciseStatsOverview, PlanStatus, StudentOnboardingProfile } from '../../api/types'
 import type { ParsedWeek } from './import'
 import {
   LockedRowMutationError, ReconcileConflict, ReconciliationError, type SaveResult,
@@ -28,10 +27,19 @@ import {
   loadDraftMirror, saveDraftMirror, type DraftMirror, type DraftMirrorContent,
 } from './draftMirror'
 import { DraftMirrorBanner } from './components/DraftMirrorBanner'
+import { FormulaBar } from './components/FormulaBar'
+import {
+  resolvePlanCell,
+  samePlanCell,
+  type PlanCellField,
+  type PlanCellSelection,
+} from './selectionModel'
+import { buildExerciseInfoTokens } from './exerciseInfo'
 
 interface Sel { wnum: number; dow: number }
 interface PopState { visible: boolean; x: number; y: number; wnum: number; dow: number; rowId: string; query: string }
 interface RowTarget { wnum: number; dow: number; rowId: string }
+interface FormulaCellDraft { selection: PlanCellSelection; rawValue: string }
 interface CreateExerciseState { open: boolean; initialName: string; bindTarget: RowTarget | null }
 type ClipboardKind = 'day' | 'row'
 interface DayMoveVisual {
@@ -42,7 +50,7 @@ interface DayMoveVisual {
   targetValid: boolean
 }
 
-const COPY_LABEL = '⎘ 复制上周计划到本周'
+const COPY_LABEL = '复制上周计划到本周'
 const DAY_MOVE_THRESHOLD = 5
 
 interface Switcher { id: string; label: string; tag?: string }
@@ -53,6 +61,8 @@ export interface PlanEditorProps {
   studentName: string
   studentId?: string
   onboardingProfile?: StudentOnboardingProfile | null
+  /** Already-cached one-request overview; the editor never fans out per exercise. */
+  exerciseStatsOverview?: ExerciseStatsOverview | null
   planName: string
   initialPublished?: boolean
   planStatus?: PlanStatus
@@ -262,7 +272,8 @@ export function PlanEditor(props: PlanEditorProps) {
   const [colW, setColW] = useState<ColWidths[]>(() => Array.from({ length: 7 }, () => ({ ...COL_DEFAULTS })))
   const [sel, setSel] = useState<Sel | null>(null)
   const [selectedRow, setSelectedRow] = useState<RowTarget | null>(null)
-  const [dismissedContextDays, setDismissedContextDays] = useState<Set<string>>(() => new Set())
+  const [cellSelection, setCellSelection] = useState<PlanCellSelection | null>(null)
+  const [formulaCellDraft, setFormulaCellDraft] = useState<FormulaCellDraft | null>(null)
   const [zoom, setZoom] = useState(100)
   // Authoritative published state, initialized from the backend plan status. Monotonic:
   // set true on a real publish and never cleared — there is no backend unpublish, so 发布后不可撤回.
@@ -311,8 +322,15 @@ export function PlanEditor(props: PlanEditorProps) {
   const clipboardTextRef = useRef('')
   const suppressDayClickRef = useRef(false)
   const dayMoveCleanupRef = useRef<((updateVisual?: boolean) => void) | null>(null)
+  const visibleWeekRef = useRef<number | null>(null)
 
   useEffect(() => () => dayMoveCleanupRef.current?.(false), [])
+
+  useEffect(() => {
+    setFormulaCellDraft((current) => (
+      current && samePlanCell(current.selection, cellSelection) ? current : null
+    ))
+  }, [cellSelection])
 
   useEffect(() => {
     // Parent metadata is authoritative after loading/saving. Do not overwrite a
@@ -441,6 +459,25 @@ export function PlanEditor(props: PlanEditorProps) {
   // Re-apply zoom whenever widths / data / zoom change (after DOM commit).
   useLayoutEffect(() => { applyZoom() }, [colW, weeks, zoom, applyZoom])
 
+  const setVisibleWeek = useCallback((weekNumber: number) => {
+    setCurWeekLabel(weekLabel(weekNumber))
+    if (visibleWeekRef.current === weekNumber) return
+    visibleWeekRef.current = weekNumber
+
+    // The toolbar exposes one anchored "visible week" (the last band crossing
+    // the scroller top). Once that anchor changes, selections from another
+    // week are cleared so day/row/cell context and the formula bar cannot keep
+    // describing a week that the toolbar no longer identifies as visible.
+    setSel((current) => current?.wnum === weekNumber ? current : null)
+    setSelectedRow((current) => current?.wnum === weekNumber ? current : null)
+    setCellSelection((current) => current?.weekNumber === weekNumber ? current : null)
+    setPop((current) => (
+      current.visible && current.wnum !== weekNumber
+        ? { ...current, visible: false }
+        : current
+    ))
+  }, [])
+
   // ---- current-week indicator ----
   const updateCur = useCallback(() => {
     const sc = scrollerRef.current
@@ -450,8 +487,8 @@ export function PlanEditor(props: PlanEditorProps) {
     sc.querySelectorAll<HTMLElement>('.weekband').forEach((b) => {
       if (b.getBoundingClientRect().top - top <= 12) cur = b.dataset.wnum ?? null
     })
-    if (cur) setCurWeekLabel(weekLabel(Number(cur)))
-  }, [])
+    if (cur) setVisibleWeek(Number(cur))
+  }, [setVisibleWeek])
 
   // ---- initial fit + scroll to current week ----
   useEffect(() => {
@@ -552,6 +589,7 @@ export function PlanEditor(props: PlanEditorProps) {
   const handleSelect = (wnum: number, dow: number) => {
     setSel({ wnum, dow })
     setSelectedRow(null)
+    setCellSelection(null)
     setPop((p) => ({ ...p, visible: false }))
   }
   const handleDayClick = (wnum: number, dow: number) => {
@@ -678,7 +716,39 @@ export function PlanEditor(props: PlanEditorProps) {
   const handleSelectRow = (wnum: number, dow: number, rowId: string) => {
     setSel({ wnum, dow })
     setSelectedRow({ wnum, dow, rowId })
+    setCellSelection((current) => (
+      current?.weekNumber === wnum && current.dow === dow && current.rowId === rowId
+        ? current
+        : null
+    ))
     setPop((p) => ({ ...p, visible: false }))
+  }
+  const handleSelectCell = (
+    wnum: number,
+    dow: number,
+    rowId: string,
+    field: PlanCellField,
+    setIndex?: number,
+  ) => {
+    const selection = { weekNumber: wnum, dow, rowId, field, setIndex }
+    setSel({ wnum, dow })
+    setSelectedRow({ wnum, dow, rowId })
+    setCellSelection(selection)
+    setFormulaCellDraft((current) => (
+      current && samePlanCell(current.selection, selection) ? current : null
+    ))
+  }
+  const handleSetsDraftChange = (
+    wnum: number,
+    dow: number,
+    rowId: string,
+    rawValue: string | null,
+  ) => {
+    const selection: PlanCellSelection = { weekNumber: wnum, dow, rowId, field: 'sets' }
+    setFormulaCellDraft((current) => {
+      if (rawValue !== null) return { selection, rawValue }
+      return current && samePlanCell(current.selection, selection) ? null : current
+    })
   }
 
   const positionPopAt = (el: HTMLElement, wnum: number, dow: number, rowId: string, query: string) => {
@@ -777,6 +847,9 @@ export function PlanEditor(props: PlanEditorProps) {
     }))
     setPop((p) => (p.rowId === rowId ? { ...p, visible: false } : p))
     setSelectedRow((row) => (row?.wnum === wnum && row.dow === dow && row.rowId === rowId ? null : row))
+    setCellSelection((cell) => (
+      cell?.weekNumber === wnum && cell.dow === dow && cell.rowId === rowId ? null : cell
+    ))
   }
   /** Display tier for a row: catalog exercise_type is authoritative (main lift +
    *  variations vs accessories); unbound/unknown rows fall back to is_main_lift. */
@@ -808,6 +881,19 @@ export function PlanEditor(props: PlanEditorProps) {
     }
     return derived
   }, [props.exerciseIndex, weeks])
+
+  const exerciseInfoForRow = useCallback((weekIndex: number, row: ExerciseRow) => (
+    buildExerciseInfoTokens({
+      weeks,
+      weekIndex,
+      row,
+      metadata: row.exerciseId
+        ? props.exerciseIndex?.infoMetadataById(row.exerciseId) ?? null
+        : null,
+      onboarding: props.onboardingProfile,
+      statsOverview: props.exerciseStatsOverview,
+    })
+  ), [props.exerciseIndex, props.exerciseStatsOverview, props.onboardingProfile, weeks])
 
   const reorderRow = (
     wnum: number,
@@ -1085,7 +1171,14 @@ export function PlanEditor(props: PlanEditorProps) {
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if (readOnly || suspendedRef.current) return
+      if (suspendedRef.current) return
+      // Escape only clears the inspection selection — allowed even on
+      // read-only historical plans; everything below mutates and stays gated.
+      if (e.key === 'Escape') {
+        setCellSelection(null)
+        return
+      }
+      if (readOnly) return
       const mod = e.metaKey || e.ctrlKey
       if (!mod || isEditableTarget(e.target)) return
       const key = e.key.toLowerCase()
@@ -1138,6 +1231,7 @@ export function PlanEditor(props: PlanEditorProps) {
     }))
     setSel({ wnum, dow })
     setSelectedRow({ wnum, dow, rowId: row.id })
+    setCellSelection({ weekNumber: wnum, dow, rowId: row.id, field: 'name' })
   }
   const handleClearDay = () => {
     patchSelDay((d) => {
@@ -1150,12 +1244,14 @@ export function PlanEditor(props: PlanEditorProps) {
     }
     })
     setSelectedRow(null)
+    setCellSelection(null)
   }
   const handleSetRest = () => {
     patchSelDay((d) => d.rows.some((row) => row.hasLogs)
       ? d
       : { ...d, rest: true, rows: [], releasedSortOrders: [] })
     setSelectedRow(null)
+    setCellSelection(null)
   }
   const handleUnsetRest = () => patchSelDay((d) => ({ ...d, rest: false }))
 
@@ -1456,6 +1552,7 @@ export function PlanEditor(props: PlanEditorProps) {
     if (!sc || !band) return
     const br = band.getBoundingClientRect(), sr = sc.getBoundingClientRect()
     sc.scrollTop += (br.top - sr.top) - 6
+    setVisibleWeek(num)
   }
 
   const handleSave = async () => {
@@ -1690,10 +1787,19 @@ export function PlanEditor(props: PlanEditorProps) {
       .some((day) => day.rows.some((row) => row.hasLogs)) ?? false
   })()
   const selectedRowForBar = selectedRowValue()
+  const selectedCellInfo = useMemo(() => {
+    const resolved = resolvePlanCell(weeks, cellSelection)
+    if (
+      !resolved
+      || !formulaCellDraft
+      || !samePlanCell(resolved.selection, formulaCellDraft.selection)
+    ) return resolved
+    return {
+      ...resolved,
+      value: formulaCellDraft.rawValue === '' ? '/' : `${formulaCellDraft.rawValue} 组`,
+    }
+  }, [cellSelection, formulaCellDraft, weeks])
   const selectedRowLabel = selectedRowForBar ? `当前行 · ${selectedRowForBar.name.trim() || '未命名动作'}` : ''
-  const selectedDayValue = sel ? weeks.find((week) => week.num === sel.wnum)?.days.find((day) => day.dow === sel.dow) ?? null : null
-  const selectedDayKey = sel ? `${sel.wnum}:${sel.dow}` : ''
-  const recallContext = () => setDismissedContextDays((prev) => { const next = new Set(prev); next.delete(selectedDayKey); return next })
   const moveStateForDay = (wnum: number, dow: number): 'source' | 'target' | 'invalid' | undefined => {
     if (!dayMoveVisual) return undefined
     if (dayMoveVisual.fromWnum === wnum && dayMoveVisual.fromDow === dow) return 'source'
@@ -1704,9 +1810,9 @@ export function PlanEditor(props: PlanEditorProps) {
   }
 
   return (
-    <div ref={rootRef} style={{
+    <div ref={rootRef} className="plan-editor" style={{
       position: 'relative', height: '100%', display: 'flex', flexDirection: 'column',
-      overflow: 'hidden', background: 'var(--bg)', color: 'var(--fg-primary)',
+      overflow: 'hidden', background: 'var(--page-bg)', color: 'var(--txt)',
       fontFamily: 'var(--font-sans)', fontSize: 13, WebkitFontSmoothing: 'antialiased',
     }}>
       <TopBar
@@ -1776,41 +1882,52 @@ export function PlanEditor(props: PlanEditorProps) {
         onSetRest={handleSetRest}
         onUnsetRest={handleUnsetRest}
         onClearDay={handleClearDay}
-        onClose={() => { setSel(null); setSelectedRow(null); setPop((p) => ({ ...p, visible: false })) }}
+        onClose={() => {
+          setSel(null)
+          setSelectedRow(null)
+          setCellSelection(null)
+          setPop((p) => ({ ...p, visible: false }))
+        }}
       />
+      <FormulaBar cell={selectedCellInfo} />
 
-      <div className="scroller" ref={scrollerRef} aria-readonly={readOnly || undefined} style={{ flex: 1, overflow: 'auto', position: 'relative', background: 'var(--bg)' }}>
-        {readOnly && <div role="status" style={{ position: 'sticky', top: 0, zIndex: 12, padding: '8px 16px', background: 'var(--surface-2)', borderBottom: '1px solid var(--border)', color: 'var(--fg-secondary)', fontSize: 12 }}>历史计划只读：可以查看，但不会保存任何修改</div>}
+      <div className="scroller" ref={scrollerRef} aria-readonly={readOnly || undefined} style={{ flex: 1, overflow: 'auto', position: 'relative', background: 'var(--page-bg)' }}>
+        {readOnly && <div role="status" style={{ position: 'sticky', top: 0, zIndex: 12, padding: '8px 16px', background: 'var(--panel-bg)', borderBottom: '1px solid var(--bd)', color: 'var(--sec)', fontSize: 12 }}>历史计划只读：可以查看，但不会保存任何修改</div>}
         <div style={{ pointerEvents: readOnly ? 'none' : undefined }}>
-        <div style={{ textAlign: 'center', color: 'var(--fg-tertiary)', fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '.1em', padding: 7, textTransform: 'uppercase' }}>▲ 计划开始 · W01</div>
+        <div style={{ textAlign: 'center', color: 'var(--mut)', fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '.1em', padding: 7, textTransform: 'uppercase' }}>▲ 计划开始 · W01</div>
         <div ref={sizerRef}>
           <div ref={zoomwrapRef} style={{ transformOrigin: '0 0', width: 'max-content' }}>
             <div ref={weeksRef}>
               {weeks.map((wk, weekIndex) => (
-                <div key={wk.num} className="weekband" data-wnum={wk.num} style={{ borderTop: '2px solid var(--border-strong)' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '7px 12px', background: 'var(--surface-1)', borderBottom: '1px solid var(--border)' }}>
-                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, letterSpacing: '.12em', color: 'var(--ink)', fontWeight: 700 }}>W{wk.num2}</span>
-                    <span style={{ fontWeight: 700, fontSize: 13, color: 'var(--fg-primary)' }}>第 {wk.num} 周</span>
-                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--fg-tertiary)', letterSpacing: '.02em' }}>{wk.range}</span>
+                <div key={wk.num} className="weekband" data-wnum={wk.num}>
+                  <div className="weekband-head">
+                    <kbd>W{wk.num2}</kbd>
+                    <span className="weekband-name">第 {wk.num} 周</span>
+                    <span className="weekband-range">{wk.range}</span>
                     <WeekCapacitySummary weekNumber={wk.num} {...weeklySummaries[weekIndex]} />
                     {wk.isCurrent && (
-                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '.08em', color: 'var(--ink)', textTransform: 'uppercase' }}>
-                        <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--ink)', animation: 'pulse 1.6s infinite' }} />当前周
+                      <span className="weekband-current">
+                        <span />当前周
                       </span>
                     )}
                   </div>
                   <div className="weekrow" data-weekrow="" style={{ display: 'flex', alignItems: 'stretch' }}>
-                    {wk.days.map((day) => (
+                    {wk.days.map((day, dayIndex) => (
                       <DayColumn
                         key={day.dow}
+                        weekNumber={wk.num}
+                        columnLetter={String.fromCharCode(65 + dayIndex)}
                         day={day}
                         colW={colW[day.dow]}
                         selected={sel?.wnum === wk.num && sel?.dow === day.dow}
                         selectedRowId={selectedRow?.wnum === wk.num && selectedRow.dow === day.dow ? selectedRow.rowId : null}
+                        cellSelection={cellSelection}
                         rowTier={rowTier}
                         onSelect={() => handleDayClick(wk.num, day.dow)}
-                        onRecallContext={recallContext}
                         onSelectRow={(rowId) => handleSelectRow(wk.num, day.dow, rowId)}
+                        onSelectCell={(rowId, field, setIndex) => handleSelectCell(wk.num, day.dow, rowId, field, setIndex)}
+                        onSetsDraftChange={(rowId, draft) => handleSetsDraftChange(wk.num, day.dow, rowId, draft)}
+                        infoTokens={(row) => exerciseInfoForRow(weekIndex, row)}
                         dayMoveState={moveStateForDay(wk.num, day.dow)}
                         dayMoveDisabledHint={dayMoveDisabledReason(day, dayMoveLocked)}
                         onDayMoveStart={(e) => handleDayMoveStart(wk.num, day, e)}
@@ -1831,15 +1948,9 @@ export function PlanEditor(props: PlanEditorProps) {
             </div>
           </div>
         </div>
-        <div style={{ textAlign: 'center', color: 'var(--fg-tertiary)', fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '.1em', padding: '10px 7px 20px', textTransform: 'uppercase' }}>▼ 共 {weeks.length} 周</div>
+        <div style={{ textAlign: 'center', color: 'var(--mut)', fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '.1em', padding: '10px 7px 20px', textTransform: 'uppercase' }}>▼ 共 {weeks.length} 周</div>
         </div>
       </div>
-
-      {selectedDayValue && props.studentId && !dismissedContextDays.has(selectedDayKey) && (
-        <WritingContextPanel studentId={props.studentId} studentName={studentName} profile={props.onboardingProfile}
-          day={selectedDayValue} row={selectedRowForBar}
-          onClose={() => setDismissedContextDays((prev) => new Set(prev).add(selectedDayKey))} />
-      )}
 
       <ExercisePopover
         visible={pop.visible} x={pop.x} y={pop.y}
