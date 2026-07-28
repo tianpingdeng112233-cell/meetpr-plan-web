@@ -94,6 +94,7 @@ export interface StudentVideo {
   weight_kg?: string | null
   reps?: number | null
   rpe?: string | null
+  coach_rpe?: string | null
   viewed_at?: string | null
 }
 export type VideoMarkerLevel = 'info' | 'warn' | 'bad'

@@ -866,6 +866,53 @@ textarea {
   font: 11px var(--font-mono);
   text-overflow: ellipsis;
 }
+.video-rpe-calibration {
+  min-width: 0;
+  flex: 0 1 auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--sec);
+  font: 10px var(--font-mono);
+  white-space: nowrap;
+}
+.video-student-rpe b,
+.video-coach-rpe b { font-weight: 700; }
+.video-rpe-calibration.calibrated .video-student-rpe { color: var(--faint); }
+.video-coach-rpe {
+  padding: 3px 6px;
+  border: 1px solid var(--tint-bd);
+  border-radius: var(--r-sm);
+  color: var(--ink);
+  background: var(--tint);
+}
+.video-rpe-calibration select,
+.video-rpe-clear {
+  height: 24px;
+  border: 1px solid var(--bd);
+  border-radius: var(--r-sm);
+  color: var(--sec);
+  background: var(--card-bg);
+  font: 10px var(--font-mono);
+}
+.video-rpe-calibration select {
+  width: 82px;
+  padding: 0 5px;
+  outline: none;
+  cursor: pointer;
+}
+.video-rpe-calibration select:focus { border-color: var(--ink); }
+.video-rpe-clear {
+  padding: 0 6px;
+  cursor: pointer;
+}
+.video-rpe-clear:hover:not(:disabled) { border-color: var(--tint-bd); color: var(--ink); background: var(--tint); }
+.video-rpe-calibration select:disabled,
+.video-rpe-clear:disabled { color: var(--faint); background: var(--panel-bg); cursor: default; }
+.video-rpe-saving,
+.video-rpe-error { overflow: hidden; font-style: normal; text-overflow: ellipsis; }
+.video-rpe-saving { color: var(--mut); }
+.video-rpe-error { color: var(--bad); }
 .video-detail-nav {
   margin-left: auto;
   flex: 0 0 auto;
