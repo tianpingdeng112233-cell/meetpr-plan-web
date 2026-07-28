@@ -188,8 +188,25 @@ export function StudentDetail({ students, studentId, onStudent, onBack, catalog,
 }) {
   const [overview, setOverview] = useState<ExerciseStatsOverview | null>(null), [profile, setProfile] = useState<StudentOnboardingProfile | null>(null)
   const [exerciseId, setExerciseId] = useState(''), [detail, setDetail] = useState<ExerciseStatsDetail | null>(null), [query, setQuery] = useState('')
-  useEffect(() => { setOverview(null); setProfile(null); setExerciseId(''); setDetail(null); if (!studentId) return; void Promise.all([getExerciseStatsOverview(studentId), getStudentOnboarding(studentId)]).then(([o, p]) => { setOverview(o); setProfile(p); setExerciseId(o.exercises[0]?.exercise_id ?? '') }) }, [studentId])
-  useEffect(() => { setDetail(null); if (studentId && exerciseId) void getExerciseStats(studentId, exerciseId).then(setDetail) }, [studentId, exerciseId])
+  useEffect(() => {
+    let current = true
+    setOverview(null); setProfile(null); setExerciseId(''); setDetail(null)
+    if (!studentId) return () => { current = false }
+    void Promise.all([getExerciseStatsOverview(studentId), getStudentOnboarding(studentId)])
+      .then(([o, p]) => {
+        if (!current) return
+        setOverview(o); setProfile(p); setExerciseId(o.exercises[0]?.exercise_id ?? '')
+      })
+    return () => { current = false }
+  }, [studentId])
+  useEffect(() => {
+    let current = true
+    setDetail(null)
+    if (studentId && exerciseId) void getExerciseStats(studentId, exerciseId).then((next) => {
+      if (current) setDetail(next)
+    })
+    return () => { current = false }
+  }, [studentId, exerciseId])
   const exercises = useMemo(() => overview?.exercises.filter((e) => e.name.toLowerCase().includes(query.toLowerCase())) ?? [], [overview, query])
   return <main className="data-page"><PageTop title="学员看板" students={students} studentId={studentId} onStudent={onStudent} onBack={onBack} tail={<span className="page-status">● 最近训练 {shortDate(overview?.last_trained_at)}</span>} />
     <div className="overview-cards"><article><h3>登记 1RM</h3><div className="rm-three"><span><b>{kg(overview?.one_rm.squat)}</b><small>深蹲</small></span><span><b>{kg(overview?.one_rm.bench)}</b><small>卧推</small></span><span><b>{kg(overview?.one_rm.deadlift)}</b><small>硬拉</small></span></div></article><article><h3>画像</h3><p>{profile ? profileLine(profile) : '加载中…'}</p><p>{profile?.is_competing ? `备赛 ${shortDate(profile.competition_date)} · ${profile.target_weight_class ?? '未填级别'}` : '暂无备赛计划'} · {profile?.injury_notes || '无伤病备注'}</p></article><article><h3>近 4 周</h3><p>出勤 {overview?.recent_4w.trained_days ?? '—'} / {overview?.recent_4w.total_planned_days ?? '—'} 天</p><p>完成率 {overview ? Math.round(overview.recent_4w.completion_rate * 100) : '—'}%</p></article><StudentPlanCapacityCard studentId={studentId} catalog={catalog} index={index} /></div>

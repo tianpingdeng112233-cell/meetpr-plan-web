@@ -10,6 +10,7 @@ interface Props {
   studentName: string
   planName: string
   published: boolean
+  readOnly?: boolean
   statusText: string
   onPublish: () => void
   // optional switchers (connected mode)
@@ -301,17 +302,17 @@ export function TopBar(p: Props) {
       )}
       <button
         onClick={p.onPublish}
-        disabled={p.published || p.saving}
-        title={p.published ? '已发布给学员；未打卡动作可通过「更新计划」调整' : undefined}
+        disabled={p.readOnly || p.published || p.saving}
+        title={p.readOnly ? '已完成或暂停的历史计划只能查看' : p.published ? '已发布给学员；未打卡动作可通过「更新计划」调整' : undefined}
         style={{
           background: p.published ? 'transparent' : 'var(--ink)', color: p.published ? 'var(--green)' : 'var(--white)',
           height: 28, border: p.published ? '1px solid var(--green)' : '1px solid var(--ink)', borderRadius: 8, padding: '0 12px',
           fontFamily: 'var(--font-sans)', fontWeight: 600, fontSize: 12,
-          cursor: (p.published || p.saving) ? 'default' : 'pointer', lineHeight: 1,
-          opacity: p.published ? 0.75 : (p.saving ? 0.6 : 1),
+          cursor: (p.readOnly || p.published || p.saving) ? 'default' : 'pointer', lineHeight: 1,
+          opacity: p.readOnly ? 0.55 : p.published ? 0.75 : (p.saving ? 0.6 : 1),
         }}
       >
-        {p.published ? '已发布 · 不可撤回' : '发布给学员'}
+        {p.readOnly ? '历史计划 · 只读' : p.published ? '已发布 · 不可撤回' : '发布给学员'}
       </button>
       {p.published && <span className="plan-published-badge">已发布</span>}
       <span className="plan-autosave-status" role="status">

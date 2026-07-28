@@ -262,4 +262,22 @@ describe('whole-day column dragging', () => {
     expect(savedWeeks[0].days[0]).toMatchObject({ rest: true, rows: [] })
     expect(savedWeeks[0].days[3].rows[0].id).toBe('bench')
   })
+
+  it('renders completed plans as read-only and never autosaves or flushes them', async () => {
+    vi.useFakeTimers()
+    const onSave = vi.fn(async (weeks: Week[]) => ({ changedDays: 0, skippedRows: 0, weeks }))
+    act(() => root?.render(
+      <PlanEditor initialWeeks={[week(1, { 0: [row('squat')] })]} weeksCount={1}
+        studentName="学员" planName="历史计划" planStatus="completed" onSave={onSave} />,
+    ))
+
+    expect(host.querySelector('.scroller')?.getAttribute('aria-readonly')).toBe('true')
+    expect(host.textContent).toContain('历史计划只读：可以查看，但不会保存任何修改')
+    expect(host.textContent).not.toContain('保存到云端')
+    await act(async () => { await vi.advanceTimersByTimeAsync(3000) })
+    act(() => root?.unmount())
+    root = null
+
+    expect(onSave).not.toHaveBeenCalled()
+  })
 })

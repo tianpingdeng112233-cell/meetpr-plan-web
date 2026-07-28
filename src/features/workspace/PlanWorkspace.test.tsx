@@ -24,6 +24,7 @@ const api = vi.hoisted(() => ({
   markConversationRead: vi.fn(),
   sendTextMessage: vi.fn(),
   openConversation: vi.fn(),
+  captureEditorProps: vi.fn(),
   getUploadUrl: vi.fn(),
   postCoachFeedback: vi.fn(),
   getVideoMarkers: vi.fn(),
@@ -73,8 +74,11 @@ vi.mock('../../api/chat', () => ({
   openConversation: api.openConversation,
 }))
 vi.mock('../plan-editor/PlanEditor', () => ({
-  PlanEditor: ({ initialWeeks, onLeaveGuardChange, students, currentStudentId, onSwitchStudent, plans, onPublish }: {
+  PlanEditor: (props: {
     initialWeeks: Week[]
+    readOnly?: boolean
+    onSave?: unknown
+    onRename?: unknown
     onLeaveGuardChange?: (guard: (() => Promise<boolean>) | null) => void
     students?: { id: string; label: string }[]
     currentStudentId?: string
@@ -82,6 +86,8 @@ vi.mock('../plan-editor/PlanEditor', () => ({
     plans?: { id: string; label: string }[]
     onPublish?: () => Promise<void>
   }) => {
+    const { initialWeeks, onLeaveGuardChange, students, currentStudentId, plans, onPublish } = props
+    api.captureEditorProps(props)
     useEffect(() => {
       onLeaveGuardChange?.(async () => true)
       return () => onLeaveGuardChange?.(null)
@@ -93,7 +99,7 @@ vi.mock('../plan-editor/PlanEditor', () => ({
         <div data-testid="plan-options">{plans?.map((item) => item.label).join('|')}</div>
         {onPublish && <button data-testid="publish-plan" onClick={() => { void onPublish() }}>发布计划</button>}
         {students?.map((student) => (
-          <button key={student.id} data-testid={`switch-${student.id}`} onClick={() => onSwitchStudent?.(student.id)}>
+          <button key={student.id} data-testid={`switch-${student.id}`} onClick={() => props.onSwitchStudent?.(student.id)}>
             {student.label}
           </button>
         ))}
@@ -144,11 +150,11 @@ const bindRequest: CoachBindRequest = {
   },
 }
 
-function plan(note: string): PlanWithChildren {
+function plan(note: string, status: PlanWithChildren['status'] = 'draft'): PlanWithChildren {
   return {
     id: 'plan', coach_id: 'coach', trainee_id: 'student', name: '计划',
     start_date: '2026-01-05', end_date: '2026-01-11', plan_weeks: 1,
-    source: 'coach', source_template_id: null, status: 'draft', kind: 'regular',
+    source: 'coach', source_template_id: null, status, kind: 'regular',
     created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z',
     total_shift_days: 0, latest_shift_created_at: null,
     days: [{
@@ -748,4 +754,21 @@ describe('PlanWorkspace editor remount', () => {
     const messagesTab = [...host.querySelectorAll('button')].find((item) => item.textContent?.includes('消息'))
     expect(messagesTab?.querySelector('.coach-nav-badge')).toBeNull()
   }, 15_000)
+
+  it('does not pass any write callbacks to a completed historical plan', async () => {
+    const completed = plan('历史快照', 'completed')
+    api.getStudentPlans.mockResolvedValue([completed])
+    api.getPlan.mockResolvedValue(completed)
+
+    await act(async () => {
+      root.render(<PlanWorkspace onLogout={vi.fn()} me={me} />)
+      await settle()
+    })
+
+    const props = api.captureEditorProps.mock.calls.at(-1)?.[0]
+    expect(props).toMatchObject({ readOnly: true })
+    expect(props.onSave).toBeUndefined()
+    expect(props.onRename).toBeUndefined()
+    expect(props.onPublish).toBeUndefined()
+  })
 })
