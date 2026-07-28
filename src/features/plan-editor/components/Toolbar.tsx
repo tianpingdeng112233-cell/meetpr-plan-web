@@ -84,7 +84,7 @@ export function Toolbar({ weeksCount, calendarLocked = false, calendarLockedHint
       </span>
       <span style={{ width: 1, height: 16, background: 'var(--border)' }} />
       <span style={{ color: 'var(--fg-tertiary)' }}>可见</span>
-      <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--brand-red)', fontWeight: 600, letterSpacing: '.04em' }}>
+      <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--ink)', fontWeight: 600, letterSpacing: '.04em' }}>
         {curWeekLabel}
       </span>
       <span style={{ flex: 1 }} />

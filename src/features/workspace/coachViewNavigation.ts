@@ -1,4 +1,4 @@
-import type { CoachView } from './CoachRail'
+import type { CoachView } from './CoachShell'
 
 interface CoachViewNavigation {
   currentView: CoachView
@@ -9,7 +9,7 @@ interface CoachViewNavigation {
 }
 
 /**
- * Keep rail navigation ordered around editor persistence:
+ * Keep workspace navigation ordered around editor persistence:
  * leave guard first, then (when returning) a fresh server snapshot, then commit.
  */
 export async function navigateCoachView({

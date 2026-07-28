@@ -87,8 +87,8 @@ export interface PlanEditorProps {
   onMarkComplete?: () => void | Promise<void>
   /** Backfill the current plan's past, unlogged sessions as assumed-complete（补记历史）. */
   onBackfillHistory?: () => void | Promise<void>
-  onLogout?: () => void | Promise<void>
-  /** Registers the same guarded-leave path used by the editor's own plan/student/logout controls. */
+  onBackToBoard?: () => void | Promise<void>
+  /** Registers the guarded-leave path used by workspace navigation and account controls. */
   onLeaveGuardChange?: (guard: (() => Promise<boolean>) | null) => void
   /** While true (guarded view switch in flight) global shortcuts must not mutate weeks. */
   suspended?: boolean
@@ -277,7 +277,6 @@ export function PlanEditor(props: PlanEditorProps) {
     ? props.planStatus !== 'draft' && props.planStatus !== 'published'
     : false
   const [copyDone, setCopyDone] = useState(false)
-  const [rowCopyDone, setRowCopyDone] = useState(false)
   const [hasRowClipboard, setHasRowClipboard] = useState(false)
   const [curWeekLabel, setCurWeekLabel] = useState('—')
   const [pop, setPop] = useState<PopState>({ visible: false, x: 0, y: 0, wnum: 0, dow: 0, rowId: '', query: '' })
@@ -980,8 +979,6 @@ export function PlanEditor(props: PlanEditorProps) {
     clipboardTextRef.current = text
     setHasRowClipboard(true)
     try { await navigator.clipboard?.writeText(text) } catch { /* internal clipboard still works */ }
-    setRowCopyDone(true)
-    window.setTimeout(() => setRowCopyDone(false), 1300)
     setStatusText(`已复制动作「${row.name.trim() || '未命名'}」`)
   }, [selectedRowValue])
 
@@ -1136,7 +1133,6 @@ export function PlanEditor(props: PlanEditorProps) {
     setSel({ wnum, dow })
     setSelectedRow({ wnum, dow, rowId: row.id })
   }
-  const handleAddRow = () => { if (sel) addRowToDay(sel.wnum, sel.dow) }
   const handleClearDay = () => {
     patchSelDay((d) => {
     const released = new Set(d.releasedSortOrders ?? [])
@@ -1702,7 +1698,7 @@ export function PlanEditor(props: PlanEditorProps) {
 
   return (
     <div ref={rootRef} style={{
-      position: 'relative', height: '100vh', display: 'flex', flexDirection: 'column',
+      position: 'relative', height: '100%', display: 'flex', flexDirection: 'column',
       overflow: 'hidden', background: 'var(--bg)', color: 'var(--fg-primary)',
       fontFamily: 'var(--font-sans)', fontSize: 13, WebkitFontSmoothing: 'antialiased',
     }}>
@@ -1710,8 +1706,8 @@ export function PlanEditor(props: PlanEditorProps) {
         studentName={studentName} planName={planName} published={published} statusText={statusText} onPublish={handlePublish}
         students={props.students} currentStudentId={props.currentStudentId} onSwitchStudent={guardLeaveId(props.onSwitchStudent)}
         plans={props.plans} currentPlanId={props.currentPlanId} onSwitchPlan={guardLeaveId(props.onSwitchPlan)}
-        onNewPlan={guardLeave(props.onNewPlan)} onLogout={guardLeave(props.onLogout)}
-        onSessionInvalidated={props.onLogout} onConfirmLeave={confirmLeave}
+        onNewPlan={guardLeave(props.onNewPlan)}
+        onBackToBoard={props.onBackToBoard}
         currentPlanStatus={published ? 'published' : props.planStatus ?? 'draft'}
         onDeleteCurrentDraft={guardLeave(props.onDeleteCurrentDraft)}
         onMarkComplete={props.onMarkComplete}
@@ -1767,12 +1763,9 @@ export function PlanEditor(props: PlanEditorProps) {
         copyLabel={copyDone ? '✓ 已复制上周' : COPY_LABEL}
         copyDone={copyDone}
         selectedRowLabel={selectedRowLabel}
-        rowCopyDone={rowCopyDone}
         hasRowClipboard={hasRowClipboard}
         onCopyPrev={handleCopyPrev}
-        onCopyRow={copySelectedRow}
         onPasteRow={pasteSelectedRows}
-        onAddRow={handleAddRow}
         onSetRest={handleSetRest}
         onUnsetRest={handleUnsetRest}
         onClearDay={handleClearDay}
@@ -1787,13 +1780,13 @@ export function PlanEditor(props: PlanEditorProps) {
               {weeks.map((wk, weekIndex) => (
                 <div key={wk.num} className="weekband" data-wnum={wk.num} style={{ borderTop: '2px solid var(--border-strong)' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '7px 12px', background: 'var(--surface-1)', borderBottom: '1px solid var(--border)' }}>
-                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, letterSpacing: '.12em', color: 'var(--brand-red)', fontWeight: 700 }}>W{wk.num2}</span>
-                    <span style={{ fontWeight: 700, fontSize: 13, color: '#fff' }}>第 {wk.num} 周</span>
+                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, letterSpacing: '.12em', color: 'var(--ink)', fontWeight: 700 }}>W{wk.num2}</span>
+                    <span style={{ fontWeight: 700, fontSize: 13, color: 'var(--fg-primary)' }}>第 {wk.num} 周</span>
                     <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--fg-tertiary)', letterSpacing: '.02em' }}>{wk.range}</span>
                     <WeekCapacitySummary weekNumber={wk.num} {...weeklySummaries[weekIndex]} />
                     {wk.isCurrent && (
-                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '.08em', color: 'var(--brand-red)', textTransform: 'uppercase' }}>
-                        <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--brand-red)', animation: 'pulse 1.6s infinite' }} />当前周
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '.08em', color: 'var(--ink)', textTransform: 'uppercase' }}>
+                        <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--ink)', animation: 'pulse 1.6s infinite' }} />当前周
                       </span>
                     )}
                   </div>

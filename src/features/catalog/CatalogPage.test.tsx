@@ -2,6 +2,7 @@ import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ExerciseResponse } from '../../api/types'
+import { installLocalStorageMock } from '../../test/localStorageMock'
 import { ExerciseIndex } from '../plan-editor/exerciseIndex'
 import type { Catalog } from '../plan-editor/mapping'
 import { CatalogPage } from './CatalogPage'
@@ -46,12 +47,19 @@ function setInput(input: HTMLInputElement, value: string) {
   act(() => input.dispatchEvent(new Event('input', { bubbles: true })))
 }
 
+function setSelect(select: HTMLSelectElement, value: string) {
+  Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value')?.set?.call(select, value)
+  act(() => select.dispatchEvent(new Event('change', { bubbles: true })))
+}
+
 describe('CatalogPage', () => {
   let host: HTMLDivElement
   let root: Root
   let catalog: Catalog
 
   beforeEach(() => {
+    installLocalStorageMock()
+    window.localStorage.removeItem('meetpr:sidebar:catalog')
     host = document.createElement('div')
     document.body.appendChild(host)
     root = createRoot(host)
@@ -64,7 +72,30 @@ describe('CatalogPage', () => {
     vi.restoreAllMocks()
   })
 
-  it('switches contextual chips and lets search pierce the selected muscle category', () => {
+  it('collapses the category tree and restores the saved state', () => {
+    const renderPage = () => root.render(<CatalogPage
+      exerciseList={exercises}
+      catalog={catalog}
+      index={new ExerciseIndex(exercises)}
+      onCreateExercise={vi.fn().mockResolvedValue({ id: 'unused', name: 'unused' })}
+      onUseExercise={vi.fn()}
+    />)
+    act(renderPage)
+    const toggle = host.querySelector<HTMLButtonElement>('[aria-label="收起动作分类"]')!
+
+    act(() => toggle.click())
+    expect(host.querySelector('.catalog-categories')?.classList.contains('collapsed')).toBe(true)
+    expect(toggle.getAttribute('aria-expanded')).toBe('false')
+    expect(window.localStorage.getItem('meetpr:sidebar:catalog')).toBe('true')
+
+    act(() => root.unmount())
+    root = createRoot(host)
+    act(renderPage)
+    expect(host.querySelector('.catalog-categories')?.classList.contains('collapsed')).toBe(true)
+    expect(host.querySelector('[aria-label="展开动作分类"]')).not.toBeNull()
+  })
+
+  it('combines category, type tab, and equipment filters with coherent live counts', () => {
     act(() => root.render(<CatalogPage
       exerciseList={exercises}
       catalog={catalog}
@@ -73,18 +104,34 @@ describe('CatalogPage', () => {
       onUseExercise={vi.fn()}
     />))
 
-    expect(host.querySelector('.catalog-refine')?.textContent).toContain('分类')
-    clickButton(host, '深蹲族')
-    expect(host.querySelector('.catalog-refine')?.textContent).toContain('细分')
+    expect(host.querySelector('.catalog-result-count')?.textContent).toBe('5 个动作')
     clickButton(host, '股四头')
-    expect(host.querySelector('.catalog-refine')).toBeNull()
-    expect(host.querySelector('.catalog-table')?.textContent).toContain('保加利亚分腿蹲')
+    clickButton(host, '辅助')
+    setSelect(host.querySelector<HTMLSelectElement>('[aria-label="按器械筛选"]')!, 'dumbbell')
 
+    const tableText = host.querySelector('.catalog-table-wrap')?.textContent
+    expect(tableText).toContain('保加利亚分腿蹲')
+    expect(tableText).not.toContain('史密斯箭步蹲')
+    expect(host.querySelector('.catalog-result-count')?.textContent).toBe('1 个动作')
+    expect(host.querySelector('.catalog-category.active')?.textContent).toBe('股四头1')
+    expect(host.querySelector('.catalog-refine button.active')?.textContent).toBe('辅助1')
+    expect([...host.querySelectorAll('.catalog-category')].find((button) => button.textContent?.startsWith('全部动作'))?.textContent).toBe('全部动作1')
+  })
+
+  it('keeps full-library search piercing the selected category', () => {
+    act(() => root.render(<CatalogPage
+      exerciseList={exercises}
+      catalog={catalog}
+      index={new ExerciseIndex(exercises)}
+      onCreateExercise={vi.fn().mockResolvedValue({ id: 'unused', name: 'unused' })}
+      onUseExercise={vi.fn()}
+    />))
+
+    clickButton(host, '股四头')
     setInput(host.querySelector<HTMLInputElement>('[aria-label="搜索动作库"]')!, '卧推')
-    expect(host.querySelector('.catalog-refine')).toBeNull()
     expect(host.querySelector('.catalog-table')?.textContent).toContain('竞技卧推')
     expect(host.querySelector('.catalog-table')?.textContent).not.toContain('保加利亚分腿蹲')
-    expect(host.querySelector('.catalog-result-count')?.textContent).toContain('全库直达')
+    expect(host.querySelector('.catalog-result-count')?.textContent).toBe('1 个动作')
   })
 
   it('keeps custom edit/delete disabled and submits guessed multi-field create input', async () => {

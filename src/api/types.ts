@@ -11,6 +11,8 @@ export interface AuthUser {
   phone: string
   role: UserRole
   createdAt: string
+  /** Not returned by /auth/login; optional until the backend provides GET /me. */
+  display_name?: string | null
 }
 export interface LoginResponse {
   user: AuthUser
@@ -91,7 +93,23 @@ export interface StudentVideo {
   set_index?: number | null
   weight_kg?: string | null
   reps?: number | null
+  rpe?: string | null
   viewed_at?: string | null
+}
+export type VideoMarkerLevel = 'info' | 'warn' | 'bad'
+export interface VideoMarker {
+  id: string
+  video_id: string
+  coach_id: string
+  time_ms: number
+  level: VideoMarkerLevel
+  note: string
+  created_at: string
+}
+export interface CreateVideoMarkerPayload {
+  time_ms: number
+  level: VideoMarkerLevel
+  note: string
 }
 export interface CoachFeedbackPayload {
   student_id: string

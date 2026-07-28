@@ -54,7 +54,7 @@ export function SamplePreviewBanner({ onRefresh }: Props) {
     <div style={card}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
         <span style={dot} />
-        <span style={{ fontWeight: 700, fontSize: 13, color: '#fff' }}>示例预览 · 该教练账号暂无绑定学员</span>
+        <span style={{ fontWeight: 700, fontSize: 13, color: 'var(--fg-primary)' }}>示例预览 · 该教练账号暂无绑定学员</span>
         <span style={{ flex: 1 }} />
         <button onClick={() => setOpen(false)} style={xBtn} title="收起">✕</button>
       </div>
@@ -89,11 +89,11 @@ function grouped(code: string): string {
   return code.length === 10 ? `${code.slice(0, 5)} ${code.slice(5)}` : code
 }
 
-const dot: React.CSSProperties = { width: 7, height: 7, borderRadius: '50%', background: 'var(--brand-red)', flex: '0 0 auto' }
+const dot: React.CSSProperties = { width: 7, height: 7, borderRadius: '50%', background: 'var(--ink)', flex: '0 0 auto' }
 const card: React.CSSProperties = {
   position: 'absolute', top: 100, left: '50%', transform: 'translateX(-50%)', zIndex: 50,
   width: 'min(560px, calc(100% - 32px))', background: 'var(--surface-2)',
-  border: '1px solid var(--border-strong)', borderRadius: 14, boxShadow: '0 12px 40px rgba(0,0,0,0.5)',
+  border: '1px solid var(--border-strong)', borderRadius: 14, boxShadow: 'var(--elev-modal)',
   padding: '14px 16px',
 }
 const chip: React.CSSProperties = {
@@ -101,7 +101,7 @@ const chip: React.CSSProperties = {
   display: 'inline-flex', alignItems: 'center', gap: 7, background: 'var(--surface-2)',
   border: '1px solid var(--border-strong)', borderRadius: 999, padding: '7px 14px',
   color: 'var(--fg-secondary)', fontSize: 12, fontWeight: 600, cursor: 'pointer',
-  boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
+  boxShadow: 'var(--elev-modal)',
 }
 const inviteBox: React.CSSProperties = {
   display: 'flex', alignItems: 'center', gap: 12, padding: '10px 12px', marginBottom: 12,
@@ -109,10 +109,10 @@ const inviteBox: React.CSSProperties = {
 }
 const label: React.CSSProperties = { fontSize: 11, color: 'var(--fg-tertiary)', flex: '0 0 auto' }
 const codeText: React.CSSProperties = {
-  flex: 1, fontFamily: 'var(--font-mono)', fontSize: 18, fontWeight: 700, letterSpacing: '0.14em', color: '#fff',
+  flex: 1, fontFamily: 'var(--font-mono)', fontSize: 18, fontWeight: 700, letterSpacing: '0.14em', color: 'var(--fg-primary)',
 }
 const smallBtn: React.CSSProperties = {
-  flex: '0 0 auto', background: '#fff', color: '#000', border: 'none', borderRadius: 8,
+  flex: '0 0 auto', background: 'var(--ink)', color: 'var(--white)', border: 'none', borderRadius: 8,
   padding: '6px 12px', fontWeight: 600, fontSize: 12, cursor: 'pointer',
 }
 const refreshBtn: React.CSSProperties = {

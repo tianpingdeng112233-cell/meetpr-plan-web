@@ -1,0 +1,122 @@
+/* MeetPR color tokens — 与 MeetPR 学员端.dc.html 完全一致（唯一标准）
+ * 暗色是默认主题；亮色通过在祖先元素加 .theme-light 覆盖。
+ * 组件里只用 var()，不要写死颜色。
+ */
+:root {
+  /* 表面：deep < base < inset < stack < card < elevated < key < raised */
+  --bg-deep: #050506;
+  --bg-base: #0A0A0C;
+  --bg-inset: #101014;
+  --bg-stack: #121217;
+  --surface-card: #141416;
+  --surface-elevated: #161618;
+  --surface-key: #1C1C20;
+  --surface-raised: #232327;
+
+  /* 描边 */
+  --border-hairline: #17171A;
+  --border-subtle: #1E1E22;
+  --border-default: #262629;
+  --border-strong: #2E2E32;
+
+  /* 文字阶梯 */
+  --text-primary: #EDEDED;
+  --text-secondary: #C8C8CC;
+  --text-tertiary: #A1A1A6;
+  --text-muted: #8A8A90;
+  --text-faint: #8A8A90;
+  --text-dim: #8A8A90;
+  --text-disabled: #55555C;
+  --text-ghost: #3E3E44;
+
+  /* 品牌金 */
+  --gold-cta: #FFB800;
+  --gold-500: #F5A623;
+  --gold-400: #FBBF3E;
+  --gold-200: #FFE28E;
+  --gold-rgb: 245, 166, 35;
+  --gold-text: #F5A623;      /* 金色用作文字时 */
+  --ink-on-gold: #141414;
+  --gold-gradient: linear-gradient(90deg, #E08F0F, #FFC93C); /* 进度条：左橙右黄 */
+
+  /* 语义 */
+  --success: #5E9E78;
+  --success-soft: #9FC7AE;
+  --success-rgb: 94, 158, 120;
+  --danger: #E5484D;
+  --danger-rgb: 229, 72, 77;
+  --danger-muted: #C88888;  /* 失败组数值：静音红 */
+  --danger-fill: #C0343A;   /* 白字计数徽章的底色 */
+  --chart-line: #DCE3EA;
+
+  /* 主 CTA */
+  --cta-bg: var(--gold-cta);
+  --cta-text: var(--ink-on-gold);
+  --cta-fill: #111827; /* 选中态深蓝黑板，两个主题同色 */
+
+  /* 别名 */
+  --text-body: var(--text-secondary);
+  --text-heading: var(--text-primary);
+  --accent: var(--gold-500);
+
+  /* 样机外壳（App 内不用） */
+  --bezel: #1C1C1E;
+  --bezel-edge: #2A2A2D;
+  --desk-1: #1A1A1E;
+  --desk-2: #050506;
+}
+
+.theme-light {
+  --bg-deep: #EDEEF1;
+  --bg-base: #F5F6F8;        /* 切忌纯白，浅灰才能托出白卡 */
+  --bg-inset: #FAFAFB;
+  --bg-stack: #EEF0F3;
+  --surface-card: #FFFFFF;
+  --surface-elevated: #FFFFFF;
+  --surface-key: #F3F4F6;
+  --surface-raised: #EEF0F3;
+
+  --border-hairline: #E9EBEE;
+  --border-subtle: #E5E7EB;
+  --border-default: #E5E7EB;
+  --border-strong: #D1D5DB;
+
+  --text-primary: #111827;   /* 深蓝黑，不是纯黑 */
+  --text-secondary: #4B5563;
+  --text-tertiary: #5C6371;
+  --text-muted: #5C6371;
+  --text-faint: #5C6371;  /* 亮色下 4.5:1 是地板，tertiary 以下共用一个灰 */
+  --text-dim: #5C6371;
+  --text-disabled: #9CA3AF;
+  --text-ghost: #D1D5DB;
+
+  --gold-cta: #B45309;
+  --gold-500: #D97706;       /* 白底上降明度提饱和，保证对比度达标 */
+  --gold-400: #F59E0B;
+  --gold-200: #FEF3C7;
+  --gold-rgb: 217, 119, 6;
+  --gold-text: #9A4A06;      /* 白底上金字要更深才够 4.5:1 */
+  --ink-on-gold: #FFFFFF;
+  --gold-gradient: linear-gradient(90deg, #D97706, #F5B93C);
+
+  --success: #15803D;
+  --success-soft: #15803D;
+  --success-rgb: 21, 128, 61;
+  --danger: #E5484D;
+  --danger-rgb: 229, 72, 77;
+  --danger-muted: #A33B40;  /* 白底上加深，保证 ≥4.5:1 */
+  --danger-fill: #C0343A;
+  --chart-line: #9AA4B0;
+
+  /* 亮色主 CTA 是深蓝黑胶囊 + 白字，不是金色 —— 金色在白底会漂 */
+  --cta-bg: #111827;
+  --cta-text: #FFFFFF;
+
+  --desk-1: #E9E9EE;
+  --desk-2: #D2D2D9;
+}
+
+/* 半透明底统一用 rgb 变量，切主题自动跟随：
+ *   background: rgba(var(--gold-rgb), .12);
+ *   border: 1px solid rgba(var(--danger-rgb), .4);
+ */
