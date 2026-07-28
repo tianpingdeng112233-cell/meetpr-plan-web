@@ -21,6 +21,9 @@ const message = (seq: number, senderId = 'student', overrides: Partial<ChatMessa
   attachment_id: null,
   image_url: null,
   image_expires_in: null,
+  set_ref: null,
+  video_url: null,
+  video_expires_in: null,
   client_id: `client-${seq}`,
   created_at: '2026-07-22T10:00:00.000Z',
   ...overrides,
@@ -70,6 +73,16 @@ describe('chat message model', () => {
     expect(unreadTotal(null)).toBe(0)
     expect(unreadTotal([conversation(2), conversation(3)])).toBe(5)
     expect(conversationPreview(conversation(0))).toBe('还没有消息')
+    const setRefConversation = conversation(0)
+    setRefConversation.last_message = {
+      id: 'set-ref',
+      seq: 1,
+      kind: 'text',
+      preview: '[训练分享]',
+      created_at: '2026-07-27T10:00:00.000Z',
+      sender_id: 'student',
+    }
+    expect(conversationPreview(setRefConversation)).toBe('[训练分享]')
   })
 })
 

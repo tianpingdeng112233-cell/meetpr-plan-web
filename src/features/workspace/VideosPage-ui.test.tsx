@@ -77,6 +77,39 @@ describe('VideosPage modal interactions', () => {
     expect(host.querySelector('.video-modal header')?.textContent).toContain('深蹲 · 第 1 组')
   })
 
+  it('renews the signed URL once after a playback error and replaces the video URL', async () => {
+    api.getUploadUrl
+      .mockResolvedValueOnce({ url: 'https://example.test/old', expires_in: 60 })
+      .mockResolvedValueOnce({ url: 'https://example.test/renewed', expires_in: 60 })
+    click(host.querySelector('.video-tiles button'))
+    await act(settle)
+    const video = host.querySelector<HTMLVideoElement>('.video-modal video')!
+    expect(video.src).toBe('https://example.test/old')
+
+    await act(async () => { video.dispatchEvent(new Event('error')); await settle() })
+
+    expect(api.getUploadUrl).toHaveBeenCalledTimes(2)
+    expect(api.getUploadUrl).toHaveBeenNthCalledWith(2, 'video-1')
+    expect(host.querySelector<HTMLVideoElement>('.video-modal video')?.src)
+      .toBe('https://example.test/renewed')
+  })
+
+  it('shows the renewal failure copy when signing after a playback error fails', async () => {
+    api.getUploadUrl
+      .mockResolvedValueOnce({ url: 'https://example.test/old', expires_in: 60 })
+      .mockRejectedValueOnce(new Error('signing failed'))
+    click(host.querySelector('.video-tiles button'))
+    await act(settle)
+    const video = host.querySelector<HTMLVideoElement>('.video-modal video')!
+
+    await act(async () => { video.dispatchEvent(new Event('error')); await settle() })
+
+    expect(api.getUploadUrl).toHaveBeenCalledTimes(2)
+    expect(api.getUploadUrl).toHaveBeenNthCalledWith(2, 'video-1')
+    expect(host.querySelector('.video-loading')?.textContent)
+      .toBe('视频链接已过期，续签失败')
+  })
+
   it('does not wipe a draft rewritten while the previous send was still in flight', async () => {
     let release = () => {}
     api.postCoachFeedback.mockImplementation(() => new Promise<void>((resolve) => { release = () => resolve() }))

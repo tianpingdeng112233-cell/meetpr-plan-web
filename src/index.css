@@ -341,6 +341,20 @@ body {
 .chat-bubble p { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.45; }
 .chat-bubble time { margin-top: 5px; display: block; color: color-mix(in srgb,currentColor 78%,transparent); font: 10px var(--font-mono); text-align: right; }
 .chat-bubble img { display: block; max-width: min(360px,100%); max-height: 360px; border-radius: 8px; object-fit: cover; }
+.set-ref-card { width: min(390px,70vw); overflow: hidden; }
+.set-ref-card>header { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.set-ref-kicker { color: color-mix(in srgb,currentColor 72%,transparent); font: 700 10px var(--font-mono); letter-spacing: .09em; }
+.set-ref-card>header time { margin: 0; color: color-mix(in srgb,currentColor 72%,transparent); font: 10px var(--font-mono); }
+.set-ref-heading { margin-top: 8px; display: flex; align-items: baseline; justify-content: space-between; gap: 18px; }
+.set-ref-heading b { min-width: 0; overflow-wrap: anywhere; font-size: 15px; }
+.set-ref-heading span { flex: 0 0 auto; color: color-mix(in srgb,currentColor 78%,transparent); font: 11px var(--font-mono); }
+.set-ref-metrics { margin-top: 10px; padding: 10px 12px; border: 1px solid color-mix(in srgb,currentColor 15%,transparent); border-radius: 8px; display: flex; align-items: baseline; justify-content: space-between; gap: 16px; background: color-mix(in srgb,currentColor 4%,transparent); }
+.set-ref-metrics strong { font: 700 20px var(--font-mono); }
+.set-ref-metrics strong i { padding: 0 5px; font-style: normal; font-weight: 400; opacity: .58; }
+.set-ref-metrics>span { flex: 0 0 auto; font: 700 11px var(--font-mono); }
+.set-ref-play { width: 100%; margin-top: 9px; padding: 8px 11px; border: 1px solid color-mix(in srgb,currentColor 22%,transparent); border-radius: 7px; color: inherit; background: color-mix(in srgb,currentColor 7%,transparent); font-weight: 700; text-align: left; cursor: pointer; }
+.set-ref-play span { margin-right: 7px; }
+.set-ref-note { margin-top: 10px !important; padding-top: 9px; border-top: 1px solid color-mix(in srgb,currentColor 14%,transparent); }
 .chat-receipt { margin-top: 3px; color: var(--fg-tertiary); font: 10px var(--font-mono); }
 .chat-send-state { margin-top: 3px; display: inline-flex; align-items: center; gap: 7px; color: var(--fg-tertiary); font: 10px var(--font-mono); }
 .chat-send-state.failed { color: var(--brand-red); }
