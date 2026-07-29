@@ -12,6 +12,14 @@ import {
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
+/** Fixtures are addressed by name — index-based lookup silently re-points at a
+ *  different case whenever the shared file grows an entry. */
+const validFixture = (name: string) => {
+  const found = fixtures.valid.find((fixture) => fixture.name === name)
+  if (!found) throw new Error(`missing golden fixture: ${name}`)
+  return found
+}
+
 const message = (setRef: unknown, body: string): ChatMessage => ({
   id: 'message',
   conversation_id: 'conversation',
@@ -54,8 +62,13 @@ describe('set_ref v1 shared golden fixtures', () => {
   // stay tolerant of fields it predates (see isChatSetRefV1).
   it.each(fixtures.invalid.filter((f) => f.scope !== 'write-only'))(
     '$name 的非法形状只会降级',
-    ({ patch }) => {
-      const candidate = { ...fixtures.valid[0]!.set_ref, ...patch }
+    (fixture) => {
+      const omitted = new Set(('omit' in fixture ? fixture.omit : []) as string[])
+      const patch = ('patch' in fixture ? fixture.patch : {}) as Record<string, unknown>
+      const candidate = Object.fromEntries(
+        Object.entries({ ...validFixture('logged-full').set_ref, ...patch })
+          .filter(([field]) => !omitted.has(field)),
+      )
       expect(isChatSetRefV1(candidate)).toBe(false)
       expect(parseSetRefMessage(message(candidate, '保留整条纯文本'))).toBeNull()
     },
@@ -67,7 +80,7 @@ describe('set_ref v1 shared golden fixtures', () => {
     'reps_max',
     'plan_set_id',
   ] as const)('缺少必现字段 %s 时只会降级', (field) => {
-    const candidate: Record<string, unknown> = { ...fixtures.valid[0]!.set_ref }
+    const candidate: Record<string, unknown> = { ...validFixture('logged-full').set_ref }
     delete candidate[field]
     expect(isChatSetRefV1(candidate)).toBe(false)
     expect(parseSetRefMessage(message(candidate, '保留整条纯文本'))).toBeNull()
@@ -77,7 +90,7 @@ describe('set_ref v1 shared golden fixtures', () => {
     '$name 按 Unicode code point 执行 120 字边界',
     ({ unit, repeat, valid }) => {
       const candidate = {
-        ...fixtures.valid[0]!.set_ref,
+        ...validFixture('logged-full').set_ref,
         exercise_name: unit.repeat(repeat),
       }
       expect(isChatSetRefV1(candidate)).toBe(valid)
@@ -109,14 +122,14 @@ describe('set_ref v1 shared golden fixtures', () => {
   })
 
   it('纯首行渲染卡片时没有备注区', () => {
-    const fixture = fixtures.valid[0]!
+    const fixture = validFixture('logged-full')
     const parsed = parseSetRefMessage(message(fixture.set_ref, fixture.first_line))
     act(() => root.render(<SetRefCard parsed={parsed!} hasVideo={false} sentAt="21:38" />))
     expect(host.querySelector('.set-ref-note')).toBeNull()
   })
 
   it('显式空备注保留语义但不渲染备注区', () => {
-    const fixture = fixtures.valid[0]!
+    const fixture = validFixture('logged-full')
     const parsed = parseSetRefMessage(message(fixture.set_ref, `${fixture.first_line}\n`))
     expect(parsed?.note).toBe('')
     act(() => root.render(<SetRefCard parsed={parsed!} hasVideo={false} sentAt="21:38" />))
@@ -124,7 +137,7 @@ describe('set_ref v1 shared golden fixtures', () => {
   })
 
   it('首行后的自由备注渲染为卡内嵌套气泡', () => {
-    const fixture = fixtures.valid[0]!
+    const fixture = validFixture('logged-full')
     const note = '请看看下放速度\n最后一下有点前倾'
     const parsed = parseSetRefMessage(message(
       fixture.set_ref,
@@ -138,7 +151,7 @@ describe('set_ref v1 shared golden fixtures', () => {
 })
 
 describe('set_ref body consistency and notes', () => {
-  const fixture = fixtures.valid[4]!
+  const fixture = validFixture('logged-full')
   const setRef = fixture.set_ref
   const firstLine = fixture.first_line
 
@@ -155,11 +168,14 @@ describe('set_ref body consistency and notes', () => {
   })
 
   it('机械首行不匹配时拒绝卡片解析', () => {
-    const tampered = firstLine.replace('第2组', '第3组')
+    const tampered = firstLine.replace(
+      `第${fixture.set_ref.set_number}组`,
+      `第${fixture.set_ref.set_number + 1}组`,
+    )
     expect(parseSetRefMessage(message(setRef, `${tampered}\n请看看动作`))).toBeNull()
   })
   it('未知字段不影响卡片渲染(读侧宽容,防陈旧 bundle 整片降级)', () => {
-    const fixture = fixtures.valid[0]!
+    const fixture = validFixture('logged-full')
     const candidate = { ...fixture.set_ref, future_field_we_do_not_know: 'x' }
     expect(isChatSetRefV1(candidate)).toBe(true)
     expect(parseSetRefMessage(message(candidate, fixture.first_line))).not.toBeNull()
