@@ -2106,7 +2106,11 @@ textarea {
   background: var(--panel-bg);
 }
 .day:not(.restday):hover { background: var(--panel-bg); }
-.day.sel { box-shadow: inset 0 0 0 2px var(--ink); z-index: 2; }
+/* Selected-day frame uses outline, not an inset shadow: `.dayhead` + `.daygrid`
+   fill the column edge to edge with opaque backgrounds and paint over any inset
+   shadow on `.day`, so the ring was rendering zero visible pixels. Outlines are
+   painted after descendants, so this survives. */
+.day.sel { outline: 2px solid var(--ink); outline-offset: -2px; z-index: 2; }
 .day.day-move-source { opacity: .48; }
 .day.day-move-target { background: var(--ink-soft) !important; box-shadow: inset 0 0 0 3px var(--ink) !important; }
 .day.day-move-invalid { background: var(--bad-soft) !important; box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--bad) 42%, transparent) !important; }
@@ -2153,6 +2157,20 @@ textarea {
 .dayhead:hover { background: var(--tint) !important; }
 .day.day-move-target>.dayhead { background: var(--ink-soft) !important; }
 .day.day-move-invalid>.dayhead { background: var(--bad-soft) !important; }
+/* Selected day: ink header on top of the outline. Every other head already sits
+   on tint, so the selected one has to go a step darker to read as picked. The
+   day-move rules above keep their !important, so drag feedback still wins. */
+.day.sel>.dayhead, .day.sel>.dayhead:hover { background: var(--ink) !important; border-bottom-color: var(--ink); }
+.day.sel>.dayhead,
+.day.sel>.dayhead .dayhead-primary,
+.day.sel>.dayhead .dayhead-date,
+.day.sel>.dayhead .dayhead-theme,
+.day.sel>.dayhead .dayhead-meta,
+.day.sel>.dayhead .day-move-grip,
+.day.sel>.dayhead:hover .day-move-grip { color: var(--card-bg); }
+.day.sel>.dayhead .day-column-key { border-color: transparent; color: var(--ink); background: var(--card-bg); }
+/* ShiftBadge carries inline styles, so the dark head needs !important to win. */
+.day.sel>.dayhead [data-shift-badge] { border-color: var(--card-bg) !important; color: var(--card-bg) !important; }
 .daygrid { color: var(--txt); background: var(--card-bg); }
 .gridhead { background: var(--tint) !important; border-bottom-color: var(--tint-bd) !important; }
 .gridhead .gcell { color: var(--mut) !important; font-weight: 500; }
@@ -2272,6 +2290,14 @@ textarea {
   transition: background .12s, box-shadow .12s, opacity .12s;
 }
 .exrow.locked { opacity: .78; }
+/* Browsers dispatch no mouse events at all on disabled form controls, so a click
+   on a locked (`hasLogs`) or read-only row never reached `.exrow`'s capture-phase
+   mousedown — the whole day stayed unselectable. Dropping them out of hit testing
+   lets the click land on the cell wrapper and select the row/day as usual. */
+.day input:disabled,
+.day button:disabled,
+.day select:disabled,
+.day textarea:disabled { pointer-events: none; }
 .exrow::before,
 .exrow::after {
   content: '';
