@@ -1,4 +1,24 @@
 {
+  "normalization": {
+    "cases": [
+      {
+        "field": "weight_kg",
+        "input": "100.00",
+        "canonical": "100"
+      },
+      {
+        "field": "rpe",
+        "input": "8.0",
+        "canonical": "8"
+      },
+      {
+        "field": "weight_kg",
+        "input": "0.29",
+        "canonical": "0.29"
+      }
+    ]
+  },
+  "invalid_names": ["含 的名", "含 的名"],
   "valid": [
     {
       "name": "logged-all-null",
@@ -184,30 +204,22 @@
   "invalid": [
     {
       "name": "missing-source",
-      "omit": [
-        "source"
-      ],
+      "omit": ["source"],
       "scope": "both"
     },
     {
       "name": "missing-set-total",
-      "omit": [
-        "set_total"
-      ],
+      "omit": ["set_total"],
       "scope": "both"
     },
     {
       "name": "missing-reps-max",
-      "omit": [
-        "reps_max"
-      ],
+      "omit": ["reps_max"],
       "scope": "both"
     },
     {
       "name": "missing-plan-set-id",
-      "omit": [
-        "plan_set_id"
-      ],
+      "omit": ["plan_set_id"],
       "scope": "both"
     },
     {
