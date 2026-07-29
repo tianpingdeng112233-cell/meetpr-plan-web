@@ -47,13 +47,17 @@ const message = (overrides: Partial<ChatMessage> = {}): ChatMessage => ({
 })
 const setRef = {
   v: 1 as const,
+  source: 'logged' as const,
   exercise_name: '低杠位深蹲',
   set_number: 1,
+  set_total: 3,
   weight_kg: '100',
   reps: 5,
+  reps_max: null,
   rpe: '8.5',
   day_date: '2026-07-27',
   set_log_id: '70000000-0000-4000-8000-000000000001',
+  plan_set_id: null,
 }
 const setCardMessage = (overrides: Partial<ChatMessage> = {}) => message({
   set_ref: setRef,

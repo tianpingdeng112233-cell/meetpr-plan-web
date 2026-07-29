@@ -29,6 +29,7 @@ const message = (setRef: unknown, body: string): ChatMessage => ({
   created_at: '2026-07-27T10:00:00.000Z',
 })
 
+
 describe('set_ref v1 shared golden fixtures', () => {
   let host: HTMLDivElement
   let root: Root
@@ -49,8 +50,10 @@ describe('set_ref v1 shared golden fixtures', () => {
     expect(setRefFirstLine(candidate as ChatSetRefV1)).toBe(expected)
   })
 
-  it.each(fixtures.invalid.filter(({ name }) => name !== 'unknown-field'))(
-    '$name 的已知字段非法时只会降级',
+  // `write-only` cases are the server's `.strict()` contract; the read side must
+  // stay tolerant of fields it predates (see isChatSetRefV1).
+  it.each(fixtures.invalid.filter((f) => f.scope !== 'write-only'))(
+    '$name 的非法形状只会降级',
     ({ patch }) => {
       const candidate = { ...fixtures.valid[0]!.set_ref, ...patch }
       expect(isChatSetRefV1(candidate)).toBe(false)
@@ -58,16 +61,16 @@ describe('set_ref v1 shared golden fixtures', () => {
     },
   )
 
-  it('忽略合法 v1 携带的未知字段并正常渲染卡片', () => {
-    const fixture = fixtures.valid[0]!
-    const unknownPatch = fixtures.invalid.find(({ name }) => name === 'unknown-field')!.patch
-    const candidate = { ...fixture.set_ref, ...unknownPatch }
-    expect(isChatSetRefV1(candidate)).toBe(true)
-
-    const parsed = parseSetRefMessage(message(candidate, fixture.first_line))
-    expect(parsed).not.toBeNull()
-    act(() => root.render(<SetRefCard parsed={parsed!} hasVideo={false} />))
-    expect(host.querySelector('.set-ref-heading b')?.textContent).toBe(candidate.exercise_name)
+  it.each([
+    'source',
+    'set_total',
+    'reps_max',
+    'plan_set_id',
+  ] as const)('缺少必现字段 %s 时只会降级', (field) => {
+    const candidate: Record<string, unknown> = { ...fixtures.valid[0]!.set_ref }
+    delete candidate[field]
+    expect(isChatSetRefV1(candidate)).toBe(false)
+    expect(parseSetRefMessage(message(candidate, '保留整条纯文本'))).toBeNull()
   })
 
   it.each(fixtures.exercise_name_code_point_boundaries)(
@@ -85,22 +88,30 @@ describe('set_ref v1 shared golden fixtures', () => {
     expect(isChatSetRefV1(candidate)).toBe(true)
     const parsed = parseSetRefMessage(message(candidate, firstLine))
     expect(parsed).not.toBeNull()
-    act(() => root.render(<SetRefCard parsed={parsed!} hasVideo={false} />))
+    act(() => root.render(<SetRefCard parsed={parsed!} hasVideo={false} sentAt="21:38" />))
 
     const setRef = candidate as ChatSetRefV1
     expect(host.querySelector('.set-ref-heading b')?.textContent).toBe(setRef.exercise_name)
-    expect(host.querySelector('.set-ref-heading span')?.textContent).toBe(`第 ${setRef.set_number} 组`)
-    expect(host.querySelector('.set-ref-metrics strong')?.textContent)
-      .toBe(`${setRef.weight_kg === null ? '-kg' : `${setRef.weight_kg}kg`}×${setRef.reps ?? '-'}`)
-    expect(host.querySelector('.set-ref-metrics>span')?.textContent ?? null)
-      .toBe(setRef.rpe === null ? null : `RPE ${setRef.rpe}`)
-    expect(host.querySelector('.set-ref-card>header time')?.textContent).toBe(setRef.day_date)
+    expect(host.querySelector('.set-ref-heading span')?.textContent).toBe(
+      `第 ${setRef.set_number} 组${setRef.set_total === null ? '' : ` / ${setRef.set_total}`}`,
+    )
+    expect(host.querySelector('.set-ref-kicker')?.textContent).toBe(
+      setRef.source === 'logged' ? '学员记录的一组' : '学员今天的计划',
+    )
+    expect(host.querySelector('.set-ref-load>span')?.textContent).toBe('WEIGHT × REPS')
+    expect(host.querySelector('.set-ref-load strong')?.textContent)
+      .toBe(`${setRef.weight_kg ?? '-'}kg×${setRef.reps ?? '-'}${setRef.reps_max === null
+        ? ''
+        : `-${setRef.reps_max}`}`)
+    expect(host.querySelector('.set-ref-rpe>span')?.textContent).toBe('RPE')
+    expect(host.querySelector('.set-ref-rpe strong')?.textContent).toBe(setRef.rpe ?? '—')
+    expect(host.querySelector('.set-ref-card>header time')?.textContent).toBe('21:38')
   })
 
   it('纯首行渲染卡片时没有备注区', () => {
     const fixture = fixtures.valid[0]!
     const parsed = parseSetRefMessage(message(fixture.set_ref, fixture.first_line))
-    act(() => root.render(<SetRefCard parsed={parsed!} hasVideo={false} />))
+    act(() => root.render(<SetRefCard parsed={parsed!} hasVideo={false} sentAt="21:38" />))
     expect(host.querySelector('.set-ref-note')).toBeNull()
   })
 
@@ -108,20 +119,22 @@ describe('set_ref v1 shared golden fixtures', () => {
     const fixture = fixtures.valid[0]!
     const parsed = parseSetRefMessage(message(fixture.set_ref, `${fixture.first_line}\n`))
     expect(parsed?.note).toBe('')
-    act(() => root.render(<SetRefCard parsed={parsed!} hasVideo={false} />))
+    act(() => root.render(<SetRefCard parsed={parsed!} hasVideo={false} sentAt="21:38" />))
     expect(host.querySelector('.set-ref-note')).toBeNull()
   })
 
-  it('首行后的自由备注渲染在卡片下方', () => {
+  it('首行后的自由备注渲染为卡内嵌套气泡', () => {
     const fixture = fixtures.valid[0]!
     const note = '请看看下放速度\n最后一下有点前倾'
     const parsed = parseSetRefMessage(message(
       fixture.set_ref,
       `${fixture.first_line}\n${note}`,
     ))
-    act(() => root.render(<SetRefCard parsed={parsed!} hasVideo={false} />))
+    act(() => root.render(<SetRefCard parsed={parsed!} hasVideo={false} sentAt="21:38" />))
     expect(host.querySelector('.set-ref-note')?.textContent).toBe(note)
+    expect(host.querySelector('.set-ref-card>.set-ref-note')).not.toBeNull()
   })
+
 })
 
 describe('set_ref body consistency and notes', () => {
@@ -145,4 +158,12 @@ describe('set_ref body consistency and notes', () => {
     const tampered = firstLine.replace('第2组', '第3组')
     expect(parseSetRefMessage(message(setRef, `${tampered}\n请看看动作`))).toBeNull()
   })
+  it('未知字段不影响卡片渲染(读侧宽容,防陈旧 bundle 整片降级)', () => {
+    const fixture = fixtures.valid[0]!
+    const candidate = { ...fixture.set_ref, future_field_we_do_not_know: 'x' }
+    expect(isChatSetRefV1(candidate)).toBe(true)
+    expect(parseSetRefMessage(message(candidate, fixture.first_line))).not.toBeNull()
+  })
+
+
 })

@@ -795,9 +795,16 @@ function ConversationThread({
     {bindLost && <em className="chat-blocked">该学员已不在你的名下，无法继续发送</em>}
     {playingMessage && playingSetRef && <VideoModal
       key={playingMessage.video_url ?? playingMessage.id}
-      title={`${playingSetRef.setRef.exercise_name} · 第 ${playingSetRef.setRef.set_number} 组`}
+      title={[
+        playingSetRef.setRef.exercise_name,
+        `第 ${playingSetRef.setRef.set_number} 组${playingSetRef.setRef.set_total === null
+          ? ''
+          : ` / ${playingSetRef.setRef.set_total}`}`,
+      ].join(' · ')}
       detail={[
-        `${playingSetRef.setRef.weight_kg ?? '-'}kg × ${playingSetRef.setRef.reps ?? '-'}`,
+        `${playingSetRef.setRef.weight_kg ?? '-'}kg × ${playingSetRef.setRef.reps ?? '-'}${playingSetRef.setRef.reps_max === null
+          ? ''
+          : `-${playingSetRef.setRef.reps_max}`}`,
         playingSetRef.setRef.rpe === null ? null : `RPE ${playingSetRef.setRef.rpe}`,
         playingSetRef.setRef.day_date,
       ].filter(Boolean).join(' · ')}
@@ -925,14 +932,18 @@ function ChatBubble({ message, mine, senderLabel, receipt, imageUnavailable, onI
   onImageError: () => void
   onPlayVideo: () => void
 }) {
+  const hasSetRef = parseSetRefMessage(message) !== null
   return <div className={`chat-message${mine ? ' mine' : ''}`}>
     <div className="chat-message-meta">
       <span>{mine ? '我' : senderLabel}</span>
       <time>{chatClockTime(message.created_at)}</time>
     </div>
-    <div className={`chat-bubble${mine ? ' mine' : ''}`}>
+    <div className={`chat-bubble${mine ? ' mine' : ''}${hasSetRef ? ' set-ref-bubble' : ''}`}>
       {renderMessageBody(message, onImageError, imageUnavailable, onPlayVideo)}
     </div>
+    {/* No set-ref guard needed: a receipt only ever attaches to a message this
+        coach sent, and §3 lets only the student send a set card (a coach who
+        tries gets 403). The footer is structurally unreachable here. */}
     {receipt && <small className="chat-receipt">{receipt}</small>}
   </div>
 }
@@ -995,6 +1006,7 @@ export function renderMessageBody(
         ? <SetRefCard
             parsed={parsed}
             hasVideo={message.video_url !== null}
+            sentAt={chatClockTime(message.created_at)}
             onPlayVideo={onPlayVideo}
           />
         : <p>{message.body}</p>
