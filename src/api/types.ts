@@ -164,16 +164,26 @@ export interface ChatConversation {
   other_last_read: ChatReadCursor | null
 }
 
-export interface ChatSetRefV1 {
+interface ChatSetRefV1Base {
   v: 1
   exercise_name: string
   set_number: number
+  set_total: number | null
   weight_kg: string | null
   reps: number | null
+  reps_max: number | null
   rpe: string | null
   day_date: string
-  set_log_id: string
 }
+
+/**
+ * `source` discriminates which id is present — the two are mutually exclusive
+ * per §11.1. Modelling it as a union stops callers constructing states the
+ * runtime guard would reject, e.g. `planned` with a null `plan_set_id`.
+ */
+export type ChatSetRefV1 =
+  | (ChatSetRefV1Base & { source: 'logged'; set_log_id: string; plan_set_id: null })
+  | (ChatSetRefV1Base & { source: 'planned'; set_log_id: null; plan_set_id: string })
 
 export interface ChatMessage {
   id: string
