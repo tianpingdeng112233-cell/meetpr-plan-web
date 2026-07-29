@@ -2495,3 +2495,131 @@ textarea {
 .chat-composer button:disabled,.chat-composer textarea:disabled { opacity: .45; cursor: not-allowed; }
 .chat-blocked { padding: 0 16px 10px; display: block; background: var(--surface-1); color: var(--brand-red); font-style: normal; font-size: 11px; }
 .chat-session-banner { position: fixed; top: 0; left: 0; right: 0; z-index: 200; padding: 8px 16px; background: var(--bad); color: var(--white); text-align: center; font-weight: 700; }
+
+/* Set-ref video overlay (VideoModal). The videos page dropped the modal for an
+   in-screen player (card 5) and its CSS went with it, leaving chat's copy
+   unstyled — an inline, intrinsically-sized <video> that overflowed the pane.
+   The shell shrink-wraps the clip so portrait phone footage fills the height
+   instead of sitting in a letterboxed 820px box. */
+.video-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 180;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  box-sizing: border-box;
+  background: color-mix(in srgb, var(--play-bg) 88%, transparent);
+}
+.video-modal>div {
+  min-width: min(360px,92vw);
+  max-width: 92vw;
+  max-height: 92vh;
+  width: fit-content;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-lg);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface-2);
+  box-shadow: 0 20px 70px color-mix(in srgb, var(--play-bg) 55%, transparent);
+}
+.video-modal header {
+  padding: 11px 14px;
+  flex: 0 0 auto;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+}
+.video-modal header span {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.video-modal header b {
+  overflow: hidden;
+  color: var(--txt);
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.video-modal header small { color: var(--sec); font: 11px var(--font-mono); }
+.video-modal header button {
+  flex: 0 0 auto;
+  border: 0;
+  color: var(--sec);
+  background: transparent;
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+}
+.video-modal header button:hover { color: var(--txt); }
+.video-stage {
+  min-height: 0;
+  position: relative;
+  flex: 1 1 auto;
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+  background: var(--play-bg);
+}
+.video-modal video {
+  width: auto;
+  height: auto;
+  max-width: min(880px,86vw);
+  max-height: 72vh;
+  display: block;
+  object-fit: contain;
+  background: var(--play-bg);
+}
+.video-modal .video-loading {
+  width: min(420px,80vw);
+  height: 46vh;
+  padding: 16px;
+  box-sizing: border-box;
+  display: grid;
+  place-items: center;
+  color: color-mix(in srgb, var(--white) 68%, transparent);
+  font: 12px var(--font-mono);
+  text-align: center;
+}
+.video-nav {
+  width: 42px;
+  height: 52px;
+  padding: 0;
+  position: absolute;
+  top: 50%;
+  z-index: 1;
+  border: 1px solid color-mix(in srgb, var(--white) 16%, transparent);
+  border-radius: 9px;
+  transform: translateY(-50%);
+  color: var(--white);
+  background: color-mix(in srgb, var(--play-bg) 35%, transparent);
+  font-size: 32px;
+  line-height: 1;
+  cursor: pointer;
+  transition: background var(--dur-fast),opacity var(--dur-fast);
+}
+.video-nav:hover:not(:disabled) { background: color-mix(in srgb, var(--play-bg) 62%, transparent); }
+.video-nav:disabled { opacity: .28; cursor: default; }
+.video-nav.prev { left: 14px; }
+.video-nav.next { right: 14px; }
+.video-modal footer {
+  padding: 9px 10px;
+  flex: 0 0 auto;
+  display: flex;
+  justify-content: center;
+  gap: 6px;
+}
+.video-modal footer button {
+  padding: 4px 12px;
+  border: 1px solid var(--bd);
+  border-radius: var(--r-sm);
+  color: var(--sec);
+  background: transparent;
+  font: 11px var(--font-mono);
+  cursor: pointer;
+}
+.video-modal footer button.active { border-color: var(--ink); color: var(--ink); background: var(--tint); }

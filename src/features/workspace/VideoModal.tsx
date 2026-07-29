@@ -72,7 +72,7 @@ export function VideoModal({
       </header>
       <div className="video-stage">
         {url
-          ? <video ref={videoRef} src={url} controls autoPlay onError={onPlaybackError} />
+          ? <video ref={videoRef} src={url} controls autoPlay playsInline onError={onPlaybackError} />
           : <div className="video-loading">{loadingText}</div>}
         {navigation && <>
           <button
