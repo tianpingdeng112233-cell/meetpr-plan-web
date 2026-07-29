@@ -7,6 +7,7 @@ import { TopBar } from './components/TopBar'
 import { Toolbar } from './components/Toolbar'
 import { ContextBar } from './components/ContextBar'
 import { DayColumn } from './components/DayColumn'
+import { WritingContextPanel } from './components/WritingContextPanel'
 import { ExercisePopover } from './components/ExercisePopover'
 import { CustomExerciseDialog } from './components/CustomExerciseDialog'
 import type { ExerciseIndex, ExerciseHit } from './exerciseIndex'
@@ -293,6 +294,8 @@ export function PlanEditor(props: PlanEditorProps) {
   const [hasRowClipboard, setHasRowClipboard] = useState(false)
   const [curWeekLabel, setCurWeekLabel] = useState('—')
   const [pop, setPop] = useState<PopState>({ visible: false, x: 0, y: 0, wnum: 0, dow: 0, rowId: '', query: '' })
+  // Days whose writing-context panel the coach closed; the ▤ head button recalls it.
+  const [dismissedContextDays, setDismissedContextDays] = useState<Set<string>>(() => new Set())
   const [activeIndex, setActiveIndex] = useState(0)
   const [createExercise, setCreateExercise] = useState<CreateExerciseState>({ open: false, initialName: '', bindTarget: null })
   const [creatingExercise, setCreatingExercise] = useState(false)
@@ -1880,6 +1883,9 @@ export function PlanEditor(props: PlanEditorProps) {
       .some((day) => day.rows.some((row) => row.hasLogs)) ?? false
   })()
   const selectedRowForBar = selectedRowValue()
+  const selectedDayValue = sel ? weeks.find((week) => week.num === sel.wnum)?.days.find((day) => day.dow === sel.dow) ?? null : null
+  const selectedDayKey = sel ? `${sel.wnum}:${sel.dow}` : ''
+  const recallContext = () => setDismissedContextDays((prev) => { const next = new Set(prev); next.delete(selectedDayKey); return next })
   const selectedCellInfo = useMemo(() => {
     const resolved = resolvePlanCell(weeks, cellSelection)
     if (
@@ -2018,6 +2024,7 @@ export function PlanEditor(props: PlanEditorProps) {
                         readOnly={readOnly}
                         rowTier={rowTier}
                         onSelect={() => handleDayClick(wk.num, day.dow)}
+                        onRecallContext={recallContext}
                         onSelectRow={(rowId) => handleSelectRow(wk.num, day.dow, rowId)}
                         onSelectCell={(rowId, field, setIndex) => handleSelectCell(wk.num, day.dow, rowId, field, setIndex)}
                         onSetsDraftChange={(rowId, draft) => handleSetsDraftChange(wk.num, day.dow, rowId, draft)}
@@ -2047,6 +2054,12 @@ export function PlanEditor(props: PlanEditorProps) {
         <div style={{ textAlign: 'center', color: 'var(--mut)', fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '.1em', padding: '10px 7px 20px', textTransform: 'uppercase' }}>▼ 共 {weeks.length} 周</div>
         </div>
       </div>
+
+      {selectedDayValue && props.studentId && !dismissedContextDays.has(selectedDayKey) && (
+        <WritingContextPanel studentId={props.studentId} studentName={studentName} profile={props.onboardingProfile}
+          day={selectedDayValue} row={selectedRowForBar}
+          onClose={() => setDismissedContextDays((prev) => new Set(prev).add(selectedDayKey))} />
+      )}
 
       <ExercisePopover
         visible={pop.visible} x={pop.x} y={pop.y}

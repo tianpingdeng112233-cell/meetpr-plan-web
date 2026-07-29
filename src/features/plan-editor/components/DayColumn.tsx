@@ -24,6 +24,7 @@ interface Props {
   selectedRowId?: string | null
   cellSelection?: PlanCellSelection | null
   onSelect: () => void
+  onRecallContext?: () => void
   onSelectRow?: (rowId: string) => void
   onSelectCell?: (rowId: string, field: PlanCellField, setIndex?: number) => void
   onSetsDraftChange?: (rowId: string, draft: string | null) => void
@@ -271,6 +272,7 @@ export function DayColumn({
   selectedRowId,
   cellSelection,
   onSelect,
+  onRecallContext,
   onSelectRow,
   onSelectCell,
   onSetsDraftChange,
@@ -298,6 +300,12 @@ export function DayColumn({
   const dayMoveClass = dayMoveState ? ` day-move-${dayMoveState}` : ''
   const dayMoveTitle = dayMoveDisabledHint ?? '拖动搬到本周其他日期 / 点击选中日'
   const dayMoveCursor = dayMoveDisabledHint ? 'not-allowed' : 'grab'
+  // Brings the writing-context panel back after the coach dismisses it for this day.
+  const contextRecall = selected && onRecallContext ? (
+    <button className="context-recall" title="显示撰写上下文"
+      onMouseDown={(e) => e.stopPropagation()}
+      onClick={(e) => { e.stopPropagation(); onRecallContext() }}>▤</button>
+  ) : null
   const resolveTier = (row: ExerciseRow) => rowTier?.(row) ?? (row.isMain ? 'main' : 'aux')
   const mainRowsForDay = day.rows.filter((row) => resolveTier(row) === 'main')
   const auxRowsForDay = day.rows.filter((row) => resolveTier(row) === 'aux')
@@ -395,6 +403,7 @@ export function DayColumn({
           <span className="dayhead-primary">{!dayMoveDisabledHint && <span className="day-move-grip" aria-hidden="true">⋮ </span>}{day.dowLabel}</span>
           <span className="dayhead-date">{day.dateLabel}</span>
           <ShiftBadge day={day} />
+          {contextRecall}
         </div>
         <div className="restday-body">
           <span>休息</span>
@@ -417,6 +426,7 @@ export function DayColumn({
           <span className="dayhead-date">{day.dateLabel}</span>
           <ShiftBadge day={day} />
           {columnLetter && <kbd className="day-column-key">{columnLetter}</kbd>}
+          {contextRecall}
         </span>
         <span className="dayhead-theme">{dayTheme}</span>
         <span className="dayhead-meta">{dayMeta}</span>
