@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest'
-import { resolvePlanCell } from './selectionModel'
+import {
+  absoluteDayIndex,
+  applyPlanDayPlacements,
+  planDayFromAbsoluteIndex,
+  planDayKey,
+  planDaysInRange,
+  placePlanDayOffsets,
+  resolvePlanCell,
+} from './selectionModel'
 import type { DayCol, ExerciseRow, Week } from './types'
 
 function row(id: string, name: string): ExerciseRow {
@@ -68,5 +76,49 @@ describe('plan cell selection model', () => {
     expect(resolvePlanCell(weeks, {
       weekNumber: 31, dow: 0, rowId: 'a1', field: 'intensity', setIndex: 0,
     })?.value).toBe('BW')
+  })
+})
+
+describe('plan day absolute order', () => {
+  it('uses Monday as zero and crosses week boundaries without a gap', () => {
+    expect(absoluteDayIndex({ wnum: 1, dow: 0 })).toBe(0)
+    expect(absoluteDayIndex({ wnum: 1, dow: 6 })).toBe(6)
+    expect(absoluteDayIndex({ wnum: 2, dow: 0 })).toBe(7)
+    expect(planDayFromAbsoluteIndex(9)).toEqual({ wnum: 2, dow: 2 })
+  })
+
+  it('keeps a negative absolute index outside W1 instead of wrapping into it', () => {
+    expect(planDayFromAbsoluteIndex(-1)).toEqual({ wnum: 0, dow: 6 })
+    expect(planDayKey(planDayFromAbsoluteIndex(-8))).toBe('-1:6')
+  })
+
+  it('skips negative targets and preserves state when every placement is out of range', () => {
+    const plan = week31()
+    plan.num = 1
+    plan.num2 = '01'
+
+    expect(placePlanDayOffsets([{ offset: -1 }, { offset: 0 }], { wnum: 1, dow: 0 }, [plan]))
+      .toMatchObject({
+        inRange: [{ source: { offset: 0 }, target: { wnum: 1, dow: 0 } }],
+        skipped: 1,
+      })
+    const allOut = placePlanDayOffsets([{ offset: -8 }, { offset: -1 }], { wnum: 1, dow: 0 }, [plan])
+    expect(allOut).toEqual({ inRange: [], skipped: 2 })
+    const weeks = [plan]
+    expect(applyPlanDayPlacements(weeks, allOut.inRange, () => {
+      throw new Error('an out-of-range placement must not update a day')
+    })).toBe(weeks)
+  })
+
+  it('returns an inclusive Shift range across weeks in absolute order', () => {
+    const first = week31()
+    first.num = 1
+    first.num2 = '01'
+    const second = week31()
+    second.num = 2
+    second.num2 = '02'
+
+    expect(planDaysInRange([first, second], { wnum: 1, dow: 5 }, { wnum: 2, dow: 1 })
+      .map(planDayKey)).toEqual(['1:5', '1:6', '2:0', '2:1'])
   })
 })
