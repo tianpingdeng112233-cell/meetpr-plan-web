@@ -19,7 +19,7 @@ vi.mock('../../api/chat', () => ({
   openConversation: chatApi.openConversation,
 }))
 
-import MessagesPage from './MessagesPage'
+import MessagesPage, { type MessagesPageProps } from './MessagesPage'
 import { chatOutbox } from './chatOutbox'
 import { setRefFirstLine } from './setRef'
 
@@ -72,6 +72,8 @@ function Harness({
   initialActiveId = null,
   initialBindLostIds = [],
   onOpenPlan = vi.fn(),
+  onPlayVideo = vi.fn(),
+  pendingVideoCounts = {},
 }: {
   initial?: ChatConversation[] | null
   students?: { id: string; display_name: string; status: 'active'; evaluation: null }[]
@@ -79,6 +81,8 @@ function Harness({
   initialActiveId?: string | null
   initialBindLostIds?: string[]
   onOpenPlan?: (studentId: string) => void
+  onPlayVideo?: NonNullable<MessagesPageProps['onPlayVideo']>
+  pendingVideoCounts?: Record<string, number>
 }) {
   const [conversations, setConversations] = useState<ChatConversation[] | null>(initial)
   const [activeId, setActiveId] = useState<string | null>(initialActiveId)
@@ -99,6 +103,7 @@ function Harness({
       sessionDead={false}
       activeId={activeId}
       drafts={{}}
+      pendingVideoCounts={pendingVideoCounts}
       onActiveIdChange={setActiveId}
       onStudentChange={setSelectedStudentId}
       onOpenPlan={onOpenPlan}
@@ -107,6 +112,7 @@ function Harness({
       onReadStateApplied={applyRead}
       onBindLost={(conversationId) => setBindLostIds((prev) => new Set(prev).add(conversationId))}
       onSessionExpired={vi.fn()}
+      onPlayVideo={onPlayVideo}
     />
   </div>
 }
@@ -134,7 +140,7 @@ describe('MessagesPage', () => {
 
   beforeEach(() => {
     installLocalStorageMock()
-    window.localStorage.removeItem('meetpr:sidebar:messages')
+    window.localStorage.removeItem('meetpr:column:student-hub:chat')
     vi.spyOn(document, 'hasFocus').mockReturnValue(true)
     Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' })
     host = document.createElement('div')
@@ -168,20 +174,20 @@ describe('MessagesPage', () => {
     chatOutbox.reset()
   })
 
-  it('折叠会话列并从 localStorage 恢复', async () => {
+  it('折叠聊天列并从 localStorage 恢复', async () => {
     await act(async () => { root.render(<Harness />); await settle() })
-    const toggle = host.querySelector<HTMLButtonElement>('[aria-label="收起会话列表"]')!
+    const toggle = host.querySelector<HTMLButtonElement>('[aria-label="收起聊天"]')!
 
     act(() => toggle.click())
-    expect(host.querySelector('.chat-sidebar')?.classList.contains('collapsed')).toBe(true)
+    expect(host.querySelector('.chat-main-panel')?.classList.contains('collapsed')).toBe(true)
     expect(toggle.getAttribute('aria-expanded')).toBe('false')
-    expect(window.localStorage.getItem('meetpr:sidebar:messages')).toBe('true')
+    expect(window.localStorage.getItem('meetpr:column:student-hub:chat')).toBe('true')
 
     act(() => root.unmount())
     root = createRoot(host)
     await act(async () => { root.render(<Harness />); await settle() })
-    expect(host.querySelector('.chat-sidebar')?.classList.contains('collapsed')).toBe(true)
-    expect(host.querySelector('[aria-label="展开会话列表"]')).not.toBeNull()
+    expect(host.querySelector('.chat-main-panel')?.classList.contains('collapsed')).toBe(true)
+    expect(host.querySelector('[aria-label="展开聊天"]')).not.toBeNull()
   })
 
   it('进入消息屏自动选中当前学员的会话，首屏没有新增消息也立即打已读并清红点', async () => {
@@ -191,6 +197,19 @@ describe('MessagesPage', () => {
     expect(chatApi.markConversationRead).toHaveBeenCalledWith('conversation', 'message-1')
     expect(host.querySelector('.chat-unread-badge')).toBeNull()
     expect(host.querySelector('.chat-row.active')?.textContent).toContain('王晨曦')
+  })
+
+  it('学员行同时显示未读消息与待审视频双徽章', async () => {
+    vi.mocked(document.hasFocus).mockReturnValue(false)
+    await act(async () => {
+      root.render(<Harness pendingVideoCounts={{ student: 3 }} />)
+      await settle()
+    })
+
+    expect(host.querySelector('.chat-unread-badge')?.textContent).toBe('1')
+    expect(host.querySelector('.chat-unread-badge')?.getAttribute('aria-label')).toBe('1 条未读')
+    expect(host.querySelector('.chat-video-badge')?.textContent).toBe('3')
+    expect(host.querySelector('.chat-video-badge')?.getAttribute('aria-label')).toBe('3 条视频待审')
   })
 
   it('当前学员没有会话时不越界打开其他学员会话', async () => {
@@ -206,8 +225,10 @@ describe('MessagesPage', () => {
       await settle()
     })
 
-    expect(host.querySelector('.chat-row.active')).toBeNull()
-    expect(host.textContent).toContain('选择会话开始聊天')
+    expect(host.querySelector('.chat-row.active')?.textContent).toContain('林知夏')
+    expect(host.querySelector('.chat-row.active')?.classList.contains('chat-row-new')).toBe(true)
+    expect(host.textContent).toContain('和 林知夏 还没有消息')
+    expect(chatApi.openConversation).not.toHaveBeenCalled()
     expect(chatApi.getMessages).not.toHaveBeenCalled()
     expect(chatApi.markConversationRead).not.toHaveBeenCalled()
     expect(host.querySelector('[data-selected-student]')?.getAttribute('data-selected-student')).toBe('student-2')
@@ -266,8 +287,9 @@ describe('MessagesPage', () => {
       await settle()
     })
 
-    expect(host.querySelector('.chat-row.active')).toBeNull()
-    expect(host.textContent).toContain('选择会话开始聊天')
+    expect(host.querySelector('.chat-row.active')?.classList.contains('chat-row-new')).toBe(true)
+    expect(host.textContent).toContain('和 林知夏 还没有消息')
+    expect(chatApi.openConversation).not.toHaveBeenCalled()
     expect(chatApi.getMessages).not.toHaveBeenCalled()
     expect(chatApi.markConversationRead).not.toHaveBeenCalled()
   })
@@ -681,12 +703,17 @@ describe('MessagesPage', () => {
     expect(host.querySelector('.chat-send-state button')).toBeNull()
   })
 
-  it('发起对话走 get-or-create 并直接进入线程', async () => {
-    await act(async () => { root.render(<Harness initial={[]} />); await settle() })
+  it('点学员行只选中不建会话，发起对话按钮才走 get-or-create 进线程', async () => {
+    await act(async () => { root.render(<Harness initial={[]} initialStudentId="" />); await settle() })
     const start = host.querySelector<HTMLButtonElement>('.chat-row-new')!
     await act(async () => { start.click(); await settle() })
+    expect(chatApi.openConversation).not.toHaveBeenCalled()
+    expect(host.querySelector('[data-selected-student]')?.getAttribute('data-selected-student')).toBe('student')
+    expect(host.textContent).toContain('和 王晨曦 还没有消息')
+
+    const open = [...host.querySelectorAll<HTMLButtonElement>('.chat-start-state button')][0]
+    await act(async () => { open.click(); await settle() })
     expect(chatApi.openConversation).toHaveBeenCalledWith('student')
-    expect(host.textContent).toContain('王晨曦')
     expect(chatApi.getMessages).toHaveBeenCalledWith('conversation', { mode: 'latest', limit: 50 })
   })
 
@@ -709,7 +736,8 @@ describe('MessagesPage', () => {
     expect(host.querySelector<HTMLImageElement>('.chat-bubble img')?.src).toBe('https://new.example/image.jpg')
   })
 
-  it('组卡仅在 video_url 非空时显示播放入口，并打开无前后导航的既有视频弹窗', async () => {
+  it('组卡仅在 video_url 非空时显示播放入口，并把组定位信息交给右栏', async () => {
+    const onPlayVideo = vi.fn()
     chatApi.getMessages.mockResolvedValue({
       messages: [
         setCardMessage({
@@ -722,113 +750,17 @@ describe('MessagesPage', () => {
       ],
       meta: { other_last_read: null, has_more: false },
     })
-    await act(async () => { root.render(<Harness initial={[conversation(0)]} />); await settle() })
+    await act(async () => { root.render(<Harness initial={[conversation(0)]} onPlayVideo={onPlayVideo} />); await settle() })
     await act(async () => { host.querySelector<HTMLButtonElement>('.chat-row')?.click(); await settle() })
 
     expect(host.querySelectorAll('.set-ref-card')).toHaveLength(2)
     expect(host.querySelectorAll('.set-ref-play')).toHaveLength(1)
     await act(async () => { host.querySelector<HTMLButtonElement>('.set-ref-play')?.click(); await settle() })
-    expect(host.querySelector<HTMLVideoElement>('.video-modal video')?.src)
-      .toBe('https://old.example/video.mp4')
-    expect(host.querySelector('.video-nav')).toBeNull()
-  })
-
-  it('打开超过 expires_in 的组卡视频前，用 before_seq=seq+1&limit=1 单条续签', async () => {
-    const clock = vi.spyOn(Date, 'now').mockReturnValue(1_000_000)
-    chatApi.getMessages
-      .mockResolvedValueOnce({
-        messages: [setCardMessage({
-          video_url: 'https://old.example/video.mp4',
-          video_expires_in: 900,
-        })],
-        meta: { other_last_read: null, has_more: false },
-      })
-      .mockResolvedValueOnce({
-        messages: [setCardMessage({
-          video_url: 'https://new.example/video.mp4',
-          video_expires_in: 900,
-        })],
-        meta: { other_last_read: null, has_more: false },
-      })
-    await act(async () => { root.render(<Harness initial={[conversation(0)]} />); await settle() })
-    await act(async () => { host.querySelector<HTMLButtonElement>('.chat-row')?.click(); await settle() })
-    clock.mockReturnValue(1_901_000)
-    await act(async () => { host.querySelector<HTMLButtonElement>('.set-ref-play')?.click(); await settle() })
-
-    expect(chatApi.getMessages).toHaveBeenLastCalledWith(
-      'conversation',
-      { mode: 'before', seq: 2, limit: 1 },
-    )
-    expect(host.querySelector<HTMLVideoElement>('.video-modal video')?.src)
-      .toBe('https://new.example/video.mp4')
-  })
-
-  it('视频播放错误只对该消息走单条续签并替换弹窗 URL', async () => {
-    chatApi.getMessages
-      .mockResolvedValueOnce({
-        messages: [setCardMessage({
-          video_url: 'https://old.example/video.mp4',
-          video_expires_in: 900,
-        })],
-        meta: { other_last_read: null, has_more: false },
-      })
-      .mockResolvedValueOnce({
-        messages: [setCardMessage({
-          video_url: 'https://new.example/video.mp4',
-          video_expires_in: 900,
-        })],
-        meta: { other_last_read: null, has_more: false },
-      })
-    await act(async () => { root.render(<Harness initial={[conversation(0)]} />); await settle() })
-    await act(async () => { host.querySelector<HTMLButtonElement>('.chat-row')?.click(); await settle() })
-    await act(async () => { host.querySelector<HTMLButtonElement>('.set-ref-play')?.click(); await settle() })
-    const video = host.querySelector<HTMLVideoElement>('.video-modal video')!
-    await act(async () => { video.dispatchEvent(new Event('error')); await settle() })
-
-    expect(chatApi.getMessages).toHaveBeenLastCalledWith(
-      'conversation',
-      { mode: 'before', seq: 2, limit: 1 },
-    )
-    expect(host.querySelector<HTMLVideoElement>('.video-modal video')?.src)
-      .toBe('https://new.example/video.mp4')
-  })
-
-  it.each([
-    { name: '空响应', renewalMessages: [] },
-    {
-      name: '只返回相邻消息',
-      renewalMessages: [message({ id: 'adjacent', seq: 1, body: '仍可见的相邻消息' })],
-    },
-  ])('视频续签$name找不到目标 seq 时删除本地消息并关闭弹窗', async ({ renewalMessages }) => {
-    const target = setCardMessage({
-      id: 'target-video',
-      seq: 2,
-      video_url: 'https://old.example/video.mp4',
-      video_expires_in: 900,
+    expect(onPlayVideo).toHaveBeenCalledWith('student', {
+      setLogId: setRef.set_log_id,
+      dayDate: setRef.day_date,
+      exerciseName: setRef.exercise_name,
+      setIndex: 0,
     })
-    const adjacent = message({ id: 'adjacent', seq: 1, body: '仍可见的相邻消息' })
-    chatApi.getMessages
-      .mockResolvedValueOnce({
-        messages: [adjacent, target],
-        meta: { other_last_read: null, has_more: false },
-      })
-      .mockResolvedValueOnce({
-        messages: renewalMessages,
-        meta: { other_last_read: null, has_more: false },
-      })
-
-    await act(async () => { root.render(<Harness initial={[conversation(0)]} />); await settle() })
-    await act(async () => { host.querySelector<HTMLButtonElement>('.chat-row')?.click(); await settle() })
-    await act(async () => { host.querySelector<HTMLButtonElement>('.set-ref-play')?.click(); await settle() })
-    const video = host.querySelector<HTMLVideoElement>('.video-modal video')!
-    await act(async () => { video.dispatchEvent(new Event('error')); await settle() })
-
-    expect(chatApi.getMessages).toHaveBeenLastCalledWith(
-      'conversation',
-      { mode: 'before', seq: 3, limit: 1 },
-    )
-    expect(host.querySelector('.video-modal')).toBeNull()
-    expect(host.querySelector('.set-ref-card')).toBeNull()
-    expect(host.textContent).toContain('仍可见的相邻消息')
   })
 })

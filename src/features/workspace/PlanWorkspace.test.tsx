@@ -3,6 +3,7 @@ import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AuthUser, ChatConversation, ChatMessage, CoachBindRequest, ExerciseResponse, PlanResponse, PlanWithChildren, StudentVideo } from '../../api/types'
 import type { Week } from '../plan-editor/types'
+import { setRefFirstLine } from '../chat/setRef'
 
 const api = vi.hoisted(() => ({
   getCoachStudents: vi.fn(),
@@ -241,6 +242,13 @@ function clickButton(host: HTMLElement, label: string): void {
   button.dispatchEvent(new MouseEvent('click', { bubbles: true }))
 }
 
+function clickNav(host: HTMLElement, label: string): void {
+  const button = [...host.querySelectorAll<HTMLButtonElement>('.coach-nav-item')]
+    .find((item) => item.firstElementChild?.textContent === label)
+  if (!button) throw new Error(`nav button not found: ${label}`)
+  button.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+}
+
 async function settle(): Promise<void> {
   // Workspace boot now includes roster-wide plan/video badge derivation in
   // addition to the selected plan, so give the nested Promise.all chain enough
@@ -435,8 +443,8 @@ describe('PlanWorkspace editor remount', () => {
     expect(host.querySelector('[data-testid="editor-note"]')?.textContent).toBe('首位学员仍可编辑')
     expect(host.textContent).not.toContain('无法连接后端')
     expect(host.querySelector('.coach-statusbar')?.textContent).toContain('待排 1')
-    const videosTab = [...host.querySelectorAll('button')].find((item) => item.textContent?.includes('训练视频'))
-    expect(videosTab?.querySelector('.coach-nav-badge')).toBeNull()
+    const studentTab = [...host.querySelectorAll('button')].find((item) => item.firstElementChild?.textContent === '学员')
+    expect(studentTab?.querySelector('.coach-nav-badge')).toBeNull()
   }, 15_000)
 
   it('切换学员时清空旧计划挂载，且较早的后台计划响应不能覆盖较新的结果', async () => {
@@ -643,7 +651,7 @@ describe('PlanWorkspace editor remount', () => {
       await settle()
     })
     await act(async () => {
-      clickButton(host, '训练视频')
+      clickNav(host, '学员')
       await settle()
     })
     expect(host.textContent).toContain('刷新前视频')
@@ -672,6 +680,132 @@ describe('PlanWorkspace editor remount', () => {
     expect(host.textContent).not.toContain('后台旧视频')
   }, 15_000)
 
+  it('选择左栏学员会同时切换聊天会话并刷新右栏视频', async () => {
+    const studentAPlan = studentPlan({ id: 'plan-a', studentId: 'student-a', name: '甲计划' })
+    const conversationA: ChatConversation = {
+      ...chatConversation(0),
+      id: 'conversation-a',
+      other_party: { id: 'student-a', display_name: '甲学员' },
+    }
+    const conversationB: ChatConversation = {
+      ...chatConversation(0),
+      id: 'conversation-b',
+      other_party: { id: 'student-b', display_name: '乙学员' },
+    }
+    api.getCoachStudents.mockResolvedValue([
+      { id: 'student-a', display_name: '甲学员', status: 'active', evaluation: null },
+      { id: 'student-b', display_name: '乙学员', status: 'active', evaluation: null },
+    ])
+    api.getStudentPlans.mockImplementation((id: string) => Promise.resolve(id === 'student-a' ? [studentAPlan] : []))
+    api.getPlan.mockResolvedValue(studentAPlan)
+    api.listConversations.mockResolvedValue([conversationA, conversationB])
+    api.getStudentVideos.mockImplementation((id: string) => Promise.resolve([
+      video(`video-${id}`, id === 'student-a' ? '甲视频' : '乙视频'),
+    ]))
+    api.getMessages.mockImplementation((conversationId: string) => Promise.resolve({
+      messages: [{
+        ...chatMessage,
+        id: `message-${conversationId}`,
+        conversation_id: conversationId,
+        sender_id: conversationId === 'conversation-a' ? 'student-a' : 'student-b',
+        body: conversationId === 'conversation-a' ? '甲消息' : '乙消息',
+      }],
+      meta: { other_last_read: null, has_more: false },
+    }))
+
+    await act(async () => {
+      root.render(<PlanWorkspace onLogout={vi.fn()} me={me} />)
+      await settle()
+    })
+    await act(async () => {
+      clickNav(host, '学员')
+      await settle()
+    })
+    expect(host.querySelector('.student-hub-page')?.children).toHaveLength(2)
+    expect(host.querySelector('.chat-row.active')?.textContent).toContain('甲学员')
+    expect(host.querySelector('.video-detail-head')?.textContent).toContain('甲视频')
+
+    api.getMessages.mockClear()
+    api.getStudentVideos.mockClear()
+    const studentBRow = [...host.querySelectorAll<HTMLButtonElement>('.chat-row')]
+      .find((row) => row.textContent?.includes('乙学员'))!
+    await act(async () => {
+      studentBRow.click()
+      await settle()
+    })
+
+    expect(host.querySelector('.chat-row.active')?.textContent).toContain('乙学员')
+    expect(host.querySelector('.chat-thread')?.textContent).toContain('乙消息')
+    expect(host.querySelector('.video-detail-head')?.textContent).toContain('乙视频')
+    expect(api.getMessages).toHaveBeenCalledWith('conversation-b', { mode: 'latest', limit: 50 })
+    expect(api.getStudentVideos).toHaveBeenCalledWith('student-b')
+  }, 15_000)
+
+  it('聊天组卡播放会切到全部筛选并在右栏定位对应视频', async () => {
+    const setLogId = '70000000-0000-4000-8000-000000000001'
+    const setRef = {
+      v: 1 as const,
+      source: 'logged' as const,
+      exercise_name: '目标卧推',
+      set_number: 2,
+      set_total: 3,
+      weight_kg: '100',
+      reps: 5,
+      reps_max: null,
+      rpe: '8.5',
+      day_date: '2026-07-27',
+      set_log_id: setLogId,
+      plan_set_id: null,
+    }
+    const targetVideo = {
+      ...video('target-video', '目标卧推', '2026-07-27T10:00:00Z'),
+      set_log_id: setLogId,
+      set_index: 1,
+    }
+    api.getPlan.mockResolvedValue(plan('组卡定位'))
+    api.listConversations.mockResolvedValue([chatConversation(0)])
+    api.getStudentVideos.mockResolvedValue([
+      video('other-video', '另一条待审视频'),
+      targetVideo,
+    ])
+    api.getMessages.mockResolvedValue({
+      messages: [{
+        ...chatMessage,
+        id: 'set-card-message',
+        set_ref: setRef,
+        body: setRefFirstLine(setRef),
+        video_url: 'https://example.test/chat-video',
+        video_expires_in: 900,
+      }],
+      meta: { other_last_read: null, has_more: false },
+    })
+
+    await act(async () => {
+      root.render(<PlanWorkspace onLogout={vi.fn()} me={me} />)
+      await settle()
+    })
+    await act(async () => {
+      clickNav(host, '学员')
+      await settle()
+    })
+    const pendingTab = [...host.querySelectorAll<HTMLButtonElement>('.video-filter-tabs button')]
+      .find((tab) => tab.textContent?.startsWith('待审'))!
+    await act(async () => {
+      pendingTab.click()
+      await settle()
+    })
+    expect(host.querySelector('.video-detail-head')?.textContent).toContain('另一条待审视频')
+
+    await act(async () => {
+      host.querySelector<HTMLButtonElement>('.set-ref-play')?.click()
+      await settle()
+    })
+
+    expect(host.querySelector<HTMLButtonElement>('[role="tab"][aria-selected="true"]')?.textContent).toContain('全部')
+    expect(host.querySelector('.video-detail-head')?.textContent).toContain('目标卧推')
+    expect(host.querySelector('.video-master-row.selected')?.textContent).toContain('目标卧推')
+  }, 15_000)
+
   it('零学员空态可进入消息页且不发聊天请求', async () => {
     api.getCoachStudents.mockResolvedValue([])
 
@@ -679,18 +813,18 @@ describe('PlanWorkspace editor remount', () => {
       root.render(<PlanWorkspace onLogout={vi.fn()} me={me} />)
       await settle()
     })
-    expect(host.querySelectorAll('.coach-nav-item')).toHaveLength(6)
+    expect(host.querySelectorAll('.coach-nav-item')).toHaveLength(5)
     expect([...host.querySelectorAll('.coach-nav-item')].map((item) => item.firstElementChild?.textContent)).toEqual([
-      '总览', '计划编排', '消息', '动作库', '训练视频', '学员申请',
+      '总览', '计划编排', '学员', '动作库', '学员申请',
     ])
     expect(api.listConversations).not.toHaveBeenCalled()
 
     await act(async () => {
-      clickButton(host, '消息')
+      clickNav(host, '学员')
       await settle()
     })
 
-    expect(host.querySelector('.empty-page')?.textContent).toBe('接受学员申请后即可与学员聊天')
+    expect(host.querySelector('.empty-page')?.textContent).toBe('接受学员申请后即可查看学员消息与训练视频')
     expect(host.querySelector('.coach-shell-body')?.children).toHaveLength(2)
     expect(host.querySelector('.coach-main')).not.toBeNull()
     expect(api.listConversations).not.toHaveBeenCalled()
@@ -819,7 +953,7 @@ describe('PlanWorkspace editor remount', () => {
       await settle()
     })
     await act(async () => {
-      clickButton(host, '消息')
+      clickNav(host, '学员')
       await settle()
     })
     await act(async () => {
@@ -832,7 +966,7 @@ describe('PlanWorkspace editor remount', () => {
       resolveStale([chatConversation(1)])
       await settle()
     })
-    const messagesTab = [...host.querySelectorAll('button')].find((item) => item.textContent?.includes('消息'))
+    const messagesTab = [...host.querySelectorAll('button')].find((item) => item.firstElementChild?.textContent === '学员')
     expect(messagesTab?.querySelector('.coach-nav-badge')).toBeNull()
   }, 15_000)
 

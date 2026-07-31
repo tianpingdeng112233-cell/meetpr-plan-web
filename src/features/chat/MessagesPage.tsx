@@ -31,8 +31,8 @@ import { chatOutbox, type OutboxItem } from './chatOutbox'
 import { parseSetRefMessage, SetRefCard } from './setRef'
 import { useClockTick, useVisiblePolling } from './useVisiblePolling'
 import { usePersistentCollapse } from '../workspace/usePersistentCollapse'
-import { VideoModal } from '../workspace/VideoModal'
 import { useGlobalKeyboardHandler } from '../workspace/globalKeyboard'
+import type { VideoTarget } from '../workspace/VideosPage'
 
 const INTERACTION_WINDOW_MS = 120_000
 const MAX_MESSAGE_CHARS = 4000
@@ -45,7 +45,7 @@ const QUICK_REPLIES = [
 ] as const
 const WEEKDAYS = ['日', '一', '二', '三', '四', '五', '六'] as const
 
-interface MessagesPageProps {
+export interface MessagesPageProps {
   me: AuthUser
   students: CoachStudent[]
   selectedStudentId: string
@@ -54,6 +54,7 @@ interface MessagesPageProps {
   sessionDead: boolean
   activeId: string | null
   drafts: Record<string, string>
+  pendingVideoCounts?: Readonly<Record<string, number>>
   onActiveIdChange: (id: string | null) => void
   onStudentChange: (studentId: string) => void
   onOpenPlan: (studentId: string) => void
@@ -62,6 +63,7 @@ interface MessagesPageProps {
   onReadStateApplied: (conversationId: string, state: ChatReadState) => void
   onBindLost: (conversationId: string) => void
   onSessionExpired: () => void
+  onPlayVideo?: (studentId: string, target: Omit<VideoTarget, 'requestId'>) => void
 }
 
 const newerCursor = (left: ChatReadCursor | null, right: ChatReadCursor | null) => {
@@ -79,6 +81,7 @@ export default function MessagesPage({
   sessionDead,
   activeId,
   drafts,
+  pendingVideoCounts = {},
   onActiveIdChange,
   onStudentChange,
   onOpenPlan,
@@ -87,10 +90,13 @@ export default function MessagesPage({
   onReadStateApplied,
   onBindLost,
   onSessionExpired,
+  onPlayVideo,
 }: MessagesPageProps) {
   const now = useClockTick(60_000)
-  const [sidebarCollapsed, toggleSidebar] = usePersistentCollapse('meetpr:sidebar:messages')
+  const [threadCollapsed, toggleThread] = usePersistentCollapse('meetpr:column:student-hub:chat')
   const localSelection = useRef<{ conversationId: string; selectedStudentId: string } | null>(null)
+  const selectedStudentRef = useRef(selectedStudentId)
+  selectedStudentRef.current = selectedStudentId
   const activeFromList = activeId == null
     ? null
     : conversations?.find((conversation) => conversation.id === activeId) ?? null
@@ -101,6 +107,9 @@ export default function MessagesPage({
     && localSelection.current?.conversationId === activeId
     && localSelection.current.selectedStudentId === selectedStudentId
   const activeMatchesSelectedStudent = activeFromList?.other_party.id === selectedStudentId
+  const selectedStudent = students.find((student) => student.id === selectedStudentId) ?? null
+  const selectedStudentWithoutConversation = selectedStudent != null && selectedConversation == null
+  const selectedStudentName = selectedStudent?.display_name || '未命名学员'
   const synchronizedActiveId = conversations === null || keepLocalSelection || activeMatchesSelectedStudent
     ? activeId
     : selectedConversation?.id ?? null
@@ -156,7 +165,9 @@ export default function MessagesPage({
       onConversationsChanged((prev) => prev.some((item) => item.id === opened.id)
         ? prev.map((item) => item.id === opened.id ? opened : item)
         : [...prev, opened])
-      selectConversation(opened)
+      // The coach may have selected another student while this was in
+      // flight: always merge the conversation, but never yank focus back.
+      if (selectedStudentRef.current === studentId) selectConversation(opened)
     } catch (caught) {
       if (isSessionExpired(caught)) onSessionExpired()
       else if (isBindLost(caught)) {
@@ -183,22 +194,12 @@ export default function MessagesPage({
     else window.dispatchEvent(new CustomEvent('meetpr:toast', { detail: '没有未读消息了' }))
   }
 
-  return <main className="chat-page">
-    <aside className={`chat-sidebar${sidebarCollapsed ? ' collapsed' : ''}`} aria-label="会话列表">
+  return <main className={`chat-page${threadCollapsed ? ' thread-collapsed' : ''}`}>
+    <aside className="chat-sidebar" aria-label="学员列表">
       <header className="chat-panel-head chat-list-head">
-        <b>会话</b>
+        <b>学员</b>
         <button type="button" className="chat-next-unread" onClick={nextUnread}>
           下一条未读 <span>{totalUnread}</span>
-        </button>
-        <button
-          type="button"
-          className="column-collapse-toggle"
-          aria-label={sidebarCollapsed ? '展开会话列表' : '收起会话列表'}
-          aria-expanded={!sidebarCollapsed}
-          title={sidebarCollapsed ? '展开会话列表' : '收起会话列表'}
-          onClick={toggleSidebar}
-        >
-          {sidebarCollapsed ? '›' : '‹'}
         </button>
       </header>
       {openError && <div className="chat-open-error">{openError}</div>}
@@ -210,32 +211,56 @@ export default function MessagesPage({
             bindLostIds={bindLostIds}
             unavailableStudentIds={unavailableStudentIds}
             activeId={synchronizedActiveId}
-            openingConversation={openingConversation}
             sessionDead={sessionDead}
+            pendingVideoCounts={pendingVideoCounts}
             now={now}
+            selectedStudentId={selectedStudentId}
             onOpen={selectConversation}
-            onStart={(studentId) => { void startConversation(studentId) }}
+            onStart={(studentId) => { onStudentChange(studentId) }}
           />}
     </aside>
-    <section className="chat-main-panel" aria-label="消息">
-      {active && <header className="chat-panel-head chat-thread-head">
-        <span className="chat-thread-avatar">{active.other_party.display_name.slice(0, 1) || '?'}</span>
-        <b>{active.other_party.display_name || '未命名学员'}</b>
-        <span className="chat-thread-meta">{activeMeta}</span>
+    <section className={`chat-main-panel${threadCollapsed ? ' collapsed' : ''}`} aria-label="消息">
+      <header className="chat-panel-head chat-thread-head">
+        {active && <>
+          <span className="chat-thread-avatar">{active.other_party.display_name.slice(0, 1) || '?'}</span>
+          <b>{active.other_party.display_name || '未命名学员'}</b>
+          <span className="chat-thread-meta">{activeMeta}</span>
+          <button
+            type="button"
+            className="chat-open-plan"
+            disabled={activeBindLost}
+            title={activeBindLost ? '该学员已不在你的名下，无法打开计划' : undefined}
+            onClick={() => onOpenPlan(active.other_party.id)}
+          >
+            打开 TA 的计划
+          </button>
+        </>}
         <button
           type="button"
-          className="chat-open-plan"
-          disabled={activeBindLost}
-          title={activeBindLost ? '该学员已不在你的名下，无法打开计划' : undefined}
-          onClick={() => onOpenPlan(active.other_party.id)}
+          className="column-collapse-toggle chat-collapse-toggle"
+          aria-label={threadCollapsed ? '展开聊天' : '收起聊天'}
+          aria-expanded={!threadCollapsed}
+          title={threadCollapsed ? '展开聊天' : '收起聊天'}
+          onClick={toggleThread}
         >
-          打开 TA 的计划
+          {threadCollapsed ? '›' : '‹'}
         </button>
-      </header>}
+      </header>
       {conversations === null
         ? <div className="empty-state">加载中…</div>
         : synchronizedActiveId == null
-          ? <div className="empty-state">选择会话开始聊天</div>
+          ? selectedStudentWithoutConversation
+            ? <div className="empty-state chat-start-state">
+                <p>和 {selectedStudentName} 还没有消息</p>
+                <button
+                  type="button"
+                  disabled={openingConversation || sessionDead || unavailableStudentIds.has(selectedStudentId)}
+                  onClick={() => { void startConversation(selectedStudentId) }}
+                >
+                  发起对话
+                </button>
+              </div>
+            : <div className="empty-state">选择会话开始聊天</div>
           : active
             ? <ConversationThread
                 key={active.id}
@@ -258,6 +283,7 @@ export default function MessagesPage({
                 }}
                 onBindLost={() => onBindLost(active.id)}
                 onSessionExpired={onSessionExpired}
+                onPlayVideo={(target) => onPlayVideo?.(active.other_party.id, target)}
               />
             : <div className="empty-state">会话不存在</div>}
     </section>
@@ -270,8 +296,9 @@ function ConversationList({
   bindLostIds,
   unavailableStudentIds,
   activeId,
-  openingConversation,
+  selectedStudentId,
   sessionDead,
+  pendingVideoCounts,
   now,
   onOpen,
   onStart,
@@ -281,8 +308,9 @@ function ConversationList({
   bindLostIds: ReadonlySet<string>
   unavailableStudentIds: ReadonlySet<string>
   activeId: string | null
-  openingConversation: boolean
+  selectedStudentId: string
   sessionDead: boolean
+  pendingVideoCounts: Readonly<Record<string, number>>
   now: number
   onOpen: (conversation: ChatConversation) => void
   onStart: (studentId: string) => void
@@ -309,24 +337,38 @@ function ConversationList({
       </span>
       <span className="chat-row-meta">
         <time>{chatRelativeTime(conversation.last_message_at, now)}</time>
-        {conversation.unread_count > 0 && <i className="chat-unread-badge" aria-label={`${conversation.unread_count} 条未读`}>
-          {conversation.unread_count}
-        </i>}
+        <span className="chat-row-badges">
+          {conversation.unread_count > 0 && <i className="chat-unread-badge" aria-label={`${conversation.unread_count} 条未读`}>
+            {conversation.unread_count}
+          </i>}
+          {(pendingVideoCounts[conversation.other_party.id] ?? 0) > 0 && (
+            <i className="chat-video-badge" aria-label={`${pendingVideoCounts[conversation.other_party.id]} 条视频待审`}>
+              {pendingVideoCounts[conversation.other_party.id]}
+            </i>
+          )}
+        </span>
       </span>
     </button>
   })}
     {unstarted.map((student) => <button
       type="button"
-      className="chat-row chat-row-new"
+      className={`chat-row chat-row-new${activeId == null && selectedStudentId === student.id ? ' active' : ''}`}
+      aria-current={activeId == null && selectedStudentId === student.id ? 'true' : undefined}
       key={student.id}
-      disabled={sessionDead || openingConversation || unavailableStudentIds.has(student.id)}
+      disabled={sessionDead || unavailableStudentIds.has(student.id)}
       onClick={() => onStart(student.id)}
     >
       <span className="chat-row-copy">
         <b>{student.display_name || '未命名学员'}</b>
         <small>{unavailableStudentIds.has(student.id) ? '该学员已不在你的名下' : '还没有消息'}</small>
       </span>
-      <span className="chat-row-start">{openingConversation ? '发起中…' : '发起'}</span>
+      <span className="chat-row-actions">
+        {(pendingVideoCounts[student.id] ?? 0) > 0 && (
+          <i className="chat-video-badge" aria-label={`${pendingVideoCounts[student.id]} 条视频待审`}>
+            {pendingVideoCounts[student.id]}
+          </i>
+        )}
+      </span>
     </button>)}
   </div>
 }
@@ -345,6 +387,7 @@ function ConversationThread({
   onMissing,
   onBindLost,
   onSessionExpired,
+  onPlayVideo,
 }: {
   me: AuthUser
   conversation: ChatConversation
@@ -359,6 +402,7 @@ function ConversationThread({
   onMissing: () => void
   onBindLost: () => void
   onSessionExpired: () => void
+  onPlayVideo: (target: Omit<VideoTarget, 'requestId'>) => void
 }) {
   const [snapshot, setSnapshot] = useState(conversation)
   const snapshotRef = useRef(conversation)
@@ -393,26 +437,7 @@ function ConversationThread({
   const imageRenewalAttempted = useRef(new Set<string>())
   const lastImageRenewalAt = useRef(0)
   const [unavailableImageIds, setUnavailableImageIds] = useState<Set<string>>(() => new Set())
-  const videoUrlIssuedAt = useRef(new Map<string, { url: string; issuedAt: number }>())
-  const videoRenewalAttempted = useRef(new Map<string, string>())
-  const [unavailableVideoIds, setUnavailableVideoIds] = useState<Set<string>>(() => new Set())
-  const [renewingVideoIds, setRenewingVideoIds] = useState<Set<string>>(() => new Set())
-  const [playingVideoId, setPlayingVideoId] = useState<string | null>(null)
   const [, setOutboxRevision] = useState(0)
-
-  const recordVideoUrls = (incoming: ChatMessage[], force = false) => {
-    const receivedAt = Date.now()
-    for (const message of incoming) {
-      if (!message.video_url) {
-        videoUrlIssuedAt.current.delete(message.id)
-        continue
-      }
-      const current = videoUrlIssuedAt.current.get(message.id)
-      if (force || current?.url !== message.video_url) {
-        videoUrlIssuedAt.current.set(message.id, { url: message.video_url, issuedAt: receivedAt })
-      }
-    }
-  }
 
   const commitSnapshot = (update: (current: ChatConversation) => ChatConversation) => {
     const current = snapshotRef.current
@@ -590,7 +615,6 @@ function ConversationThread({
   }, [messages])
 
   const mergePage = (pageMessages: ChatMessage[], otherLastRead: ChatReadCursor | null, scrollToBottom: boolean) => {
-    recordVideoUrls(pageMessages)
     const next = mergeMessages(messagesRef.current, pageMessages)
     commitMessages(next)
     chatOutbox.reconcile(conversation.id, pageMessages, me.id)
@@ -613,8 +637,12 @@ function ConversationThread({
     try {
       if (!initialized.current || maxSeq(messagesRef.current) === 0) {
         const page = await getMessages(conversation.id, { mode: 'latest', limit: 50 })
+        // A response landing after unmount (the coach switched students) must
+        // not issue read receipts for the conversation they just left.
+        if (!alive.current) return
         initialized.current = true
-        if (alive.current) { setHasMoreHistory(page.meta.has_more); setError('') }
+        setHasMoreHistory(page.meta.has_more)
+        setError('')
         const next = mergePage(page.messages, page.meta.other_last_read, true)
         await markReadIfNeeded(next)
         return 5_000
@@ -626,6 +654,7 @@ function ConversationThread({
         otherLastRead = newerCursor(otherLastRead, page.meta.other_last_read)
         return page
       }, maxSeq(messagesRef.current))
+      if (!alive.current) return
       const next = result.messages.length > 0
         ? mergePage(result.messages, otherLastRead, isNearBottom())
         : messagesRef.current
@@ -649,7 +678,6 @@ function ConversationThread({
       // history page is in flight, and a pre-request height would fold that growth into the
       // anchor delta and shove the coach down by it.
       const oldHeight = scrollRef.current?.scrollHeight ?? 0
-      recordVideoUrls(page.messages)
       const next = mergeMessages(messagesRef.current, page.messages)
       commitMessages(next)
       chatOutbox.reconcile(conversation.id, page.messages, me.id)
@@ -688,75 +716,12 @@ function ConversationThread({
     }
   }
 
-  const renewVideo = async (message: ChatMessage) => {
-    if (!message.video_url) return null
-    if (videoRenewalAttempted.current.get(message.id) === message.video_url) {
-      setUnavailableVideoIds((prev) => new Set(prev).add(message.id))
-      return null
-    }
-    videoRenewalAttempted.current.set(message.id, message.video_url)
-    setRenewingVideoIds((prev) => new Set(prev).add(message.id))
-    try {
-      const page = await getMessages(conversation.id, {
-        mode: 'before',
-        seq: message.seq + 1,
-        limit: 1,
-      })
-      const renewed = page.messages.find((candidate) => candidate.seq === message.seq)
-      if (!renewed) {
-        videoUrlIssuedAt.current.delete(message.id)
-        videoRenewalAttempted.current.delete(message.id)
-        commitMessages(messagesRef.current.filter((candidate) => candidate.seq !== message.seq))
-        // Only dismiss the modal if it is still showing THIS message: renewal A can resolve
-        // after the coach has closed A and opened B, and B must not be yanked shut by it.
-        setPlayingVideoId((current) => (current === message.id ? null : current))
-        return null
-      }
-      recordVideoUrls([renewed], true)
-      mergePage([renewed], page.meta.other_last_read, false)
-      if (!renewed.video_url) throw new Error('CHAT_VIDEO_UNAVAILABLE')
-      setUnavailableVideoIds((prev) => {
-        const next = new Set(prev)
-        next.delete(message.id)
-        return next
-      })
-      return renewed
-    } catch (caught) {
-      if (alive.current) setUnavailableVideoIds((prev) => new Set(prev).add(message.id))
-      handleError(caught)
-      return null
-    } finally {
-      if (alive.current) setRenewingVideoIds((prev) => {
-        const next = new Set(prev)
-        next.delete(message.id)
-        return next
-      })
-    }
-  }
-
-  const videoIsStale = (message: ChatMessage) => {
-    if (!message.video_url) return false
-    const issued = videoUrlIssuedAt.current.get(message.id)
-    if (!issued || issued.url !== message.video_url) return true
-    const ttlSeconds = message.video_expires_in ?? 900
-    return Date.now() - issued.issuedAt >= ttlSeconds * 1000
-  }
-
-  const openVideo = (message: ChatMessage) => {
-    setPlayingVideoId(message.id)
-    if (videoIsStale(message)) void renewVideo(message)
-  }
-
   const receipt = messages ? readReceiptFor(messages, me.id, snapshot.other_last_read) : null
   const pendingItems = chatOutbox.itemsFor(conversation.id)
   const messageGroups = messages ? groupMessagesByDay(messages, now) : []
   const todayKey = localDayKey(now)
   const lastMessageGroupIsToday = messageGroups.at(-1)?.key === todayKey
   const pendingSharesLastMessageGroup = !error && lastMessageGroupIsToday
-  const playingMessage = playingVideoId === null
-    ? null
-    : messages?.find((message) => message.id === playingVideoId) ?? null
-  const playingSetRef = playingMessage ? parseSetRefMessage(playingMessage) : null
   return <>
     <div className="chat-thread" ref={scrollRef} aria-busy={messages === null && !error}>
       {hasMoreHistory && <button className="chat-more" disabled={loadingHistory} onClick={() => { void loadHistory() }}>
@@ -775,7 +740,16 @@ function ConversationThread({
           receipt={receipt?.messageId === message.id ? receipt.status : null}
           imageUnavailable={unavailableImageIds.has(message.id)}
           onImageError={() => { void renewImage(message) }}
-          onPlayVideo={() => openVideo(message)}
+          onPlayVideo={() => {
+            const parsed = parseSetRefMessage(message)
+            if (!parsed) return
+            onPlayVideo({
+              setLogId: parsed.setRef.set_log_id,
+              dayDate: parsed.setRef.day_date,
+              exerciseName: parsed.setRef.exercise_name,
+              setIndex: parsed.setRef.set_number - 1,
+            })
+          }}
         />)}
         {index === messageGroups.length - 1 && pendingSharesLastMessageGroup
           && pendingItems.map((item) => <PendingBubble key={item.clientId} item={item} />)}
@@ -793,30 +767,6 @@ function ConversationThread({
       onDraftChange={onDraftChange}
     />
     {bindLost && <em className="chat-blocked">该学员已不在你的名下，无法继续发送</em>}
-    {playingMessage && playingSetRef && <VideoModal
-      key={playingMessage.video_url ?? playingMessage.id}
-      title={[
-        playingSetRef.setRef.exercise_name,
-        `第 ${playingSetRef.setRef.set_number} 组${playingSetRef.setRef.set_total === null
-          ? ''
-          : ` / ${playingSetRef.setRef.set_total}`}`,
-      ].join(' · ')}
-      detail={[
-        `${playingSetRef.setRef.weight_kg ?? '-'}kg × ${playingSetRef.setRef.reps ?? '-'}${playingSetRef.setRef.reps_max === null
-          ? ''
-          : `-${playingSetRef.setRef.reps_max}`}`,
-        playingSetRef.setRef.rpe === null ? null : `RPE ${playingSetRef.setRef.rpe}`,
-        playingSetRef.setRef.day_date,
-      ].filter(Boolean).join(' · ')}
-      url={renewingVideoIds.has(playingMessage.id) || unavailableVideoIds.has(playingMessage.id)
-        ? ''
-        : playingMessage.video_url ?? ''}
-      loadingText={unavailableVideoIds.has(playingMessage.id)
-        ? '视频暂不可用'
-        : '正在续签播放链接…'}
-      onClose={() => setPlayingVideoId(null)}
-      onPlaybackError={() => { void renewVideo(playingMessage) }}
-    />}
   </>
 }
 

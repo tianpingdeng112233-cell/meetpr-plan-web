@@ -120,10 +120,11 @@ describe('CoachShell', () => {
       root.render(<ShellHarness unreadCount={5} requestCount={2} videoCount={3} exerciseCount={1} />)
     })
 
-    expect(navButton(host, '消息').querySelector('.coach-nav-badge.danger')?.textContent).toBe('5')
+    expect(navButton(host, '学员').querySelector('.coach-nav-badge.danger')?.textContent).toBe('8')
+    expect(navButton(host, '学员').querySelector('.coach-nav-badge')?.getAttribute('aria-label'))
+      .toBe('5 条未读，3 条视频待审')
     expect(navButton(host, '学员申请').querySelector('.coach-nav-badge.danger')?.textContent).toBe('2')
     expect(navButton(host, '动作库').querySelector('.coach-nav-badge.muted')?.textContent).toBe('1')
-    expect(navButton(host, '训练视频').querySelector('.coach-nav-badge.muted')?.textContent).toBe('3')
   })
 
   it('renders the main workspace full-width beside the navigation on every screen', async () => {
@@ -144,9 +145,9 @@ describe('CoachShell', () => {
     expect(navigation.classList.contains('collapsed')).toBe(true)
     expect(toggle.getAttribute('aria-expanded')).toBe('false')
     expect(window.localStorage.getItem('meetpr:sidebar:coach-shell')).toBe('true')
-    const messages = navigation.querySelector<HTMLButtonElement>('[title="消息"]')!
-    expect(messages.textContent).toContain('消')
-    expect(messages.getAttribute('aria-label')).toBe('消息，5 条未读')
+    const messages = navigation.querySelector<HTMLButtonElement>('[title="学员"]')!
+    expect(messages.textContent).toContain('学')
+    expect(messages.getAttribute('aria-label')).toBe('学员，5 条未读，0 条视频待审')
     expect(messages.querySelector('.coach-nav-badge.danger')?.textContent).toBe('5')
     expect(messages.querySelector('.coach-nav-badge.danger')?.getAttribute('aria-hidden')).toBe('true')
     expect(navigation.querySelector<HTMLButtonElement>('[title="计划编排"]')?.getAttribute('aria-label')).toBe('计划编排')

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { ApiException } from '../../api/client'
 import { getUploadUrl, patchCoachRpe, postCoachFeedback } from '../../api/coach'
 import { createVideoMarker, deleteVideoMarker, getVideoMarkers } from '../../api/markers'
-import type { CoachStudent, StudentVideo, VideoMarker } from '../../api/types'
+import type { StudentVideo, VideoMarker } from '../../api/types'
 import { kg } from './WorkspaceCommon'
 import { usePersistentCollapse } from './usePersistentCollapse'
 import { useGlobalKeyboardHandler } from './globalKeyboard'
@@ -66,12 +66,19 @@ export const videoAssociation = (video: {
   ].filter(Boolean).join(' · ')
 }
 
-export function VideosPage({ students, studentId, videos, onRefreshVideos, onStudent }: {
-  students: CoachStudent[]
+export interface VideoTarget {
+  requestId: number
+  setLogId: string | null
+  dayDate: string
+  exerciseName: string
+  setIndex: number
+}
+
+export function VideosPage({ studentId, videos, onRefreshVideos, target }: {
   studentId: string
   videos: StudentVideo[]
   onRefreshVideos: (studentId: string) => Promise<void>
-  onStudent: (id: string) => void
+  target?: VideoTarget | null
 }) {
   const [masterCollapsed, toggleMaster] = usePersistentCollapse('meetpr:sidebar:videos')
   const [filter, setFilter] = useState<VideoFilter>('all')
@@ -104,6 +111,7 @@ export function VideosPage({ students, studentId, videos, onRefreshVideos, onStu
   const sentTimer = useRef<number>()
   const draftRef = useRef('')
   const activeVideoIdRef = useRef<string | null>(null)
+  const handledTargetRequest = useRef<number | null>(null)
 
   const writeFeedback = (value: string) => {
     draftRef.current = value
@@ -155,6 +163,24 @@ export function VideosPage({ students, studentId, videos, onRefreshVideos, onStu
     })
     return [...groups.entries()]
   }, [visibleVideos])
+
+  useEffect(() => {
+    if (!target || handledTargetRequest.current === target.requestId) return
+    // A non-null set_log_id must match exactly: falling back to the
+    // day/exercise/set-index triple could land on a different upload of the
+    // same set. The triple fallback exists only for legacy refs without an id.
+    const matched = target.setLogId != null
+      ? videos.find((video) => video.set_log_id === target.setLogId)
+      : videos.find((video) => (
+          videoDay(video) === target.dayDate
+          && video.exercise_name === target.exerciseName
+          && video.set_index === target.setIndex
+        ))
+    if (!matched) return
+    handledTargetRequest.current = target.requestId
+    setFilter('all')
+    setActiveId(matched.id)
+  }, [target?.requestId, videos])
 
   const resetFeedback = useCallback(() => {
     feedbackRequest.current += 1
@@ -423,18 +449,6 @@ export function VideosPage({ students, studentId, videos, onRefreshVideos, onStu
     <main className="videos-page">
       <aside className={`videos-master${masterCollapsed ? ' collapsed' : ''}`}>
         <header className="videos-master-head">
-          {students.length > 0 && (
-            <select
-              className="student-select"
-              aria-label="学员"
-              value={studentId}
-              onChange={(event) => onStudent(event.target.value)}
-            >
-              {students.map((student) => (
-                <option key={student.id} value={student.id}>{student.display_name}</option>
-              ))}
-            </select>
-          )}
           <span>{videos.length} 条 · 近 {trainingDays} 个训练日</span>
           <button
             type="button"

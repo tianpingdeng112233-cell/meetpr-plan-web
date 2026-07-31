@@ -9,34 +9,31 @@ import {
 import { usePersistentCollapse } from './usePersistentCollapse'
 import { useGlobalKeyboardHandler } from './globalKeyboard'
 
-export type CoachView = 'board' | 'editor' | 'messages' | 'catalog' | 'videos' | 'requests'
+export type CoachView = 'board' | 'editor' | 'messages' | 'catalog' | 'requests'
 
-type Badge = { count: number; tone: 'danger' | 'muted' }
+type Badge = { count: number; tone: 'danger' | 'muted'; label: string }
 
 const NAV_ITEMS: { id: CoachView; label: string; short: string }[] = [
   { id: 'board', label: '总览', short: '总' },
   { id: 'editor', label: '计划编排', short: '编' },
-  { id: 'messages', label: '消息', short: '消' },
+  { id: 'messages', label: '学员', short: '学' },
   { id: 'catalog', label: '动作库', short: '动' },
-  { id: 'videos', label: '训练视频', short: '视' },
   { id: 'requests', label: '学员申请', short: '申' },
 ]
 
 const VIEW_SHORTCUTS: Record<CoachView, string> = {
   board: 'J / K 移动 · ↵ 打开编排器 · ⌘K 命令',
   editor: 'Tab / ⇧Tab 横移 · ↵ / ↑↓ 纵移 · ⌘D 向下填充 · ⌘C / ⌘V · ⌘Z',
-  messages: '⌥1–5 快捷回复 · ↵ 发送 · ⌘K 命令',
+  messages: '⌥1–5 快捷回复 · ↵ 发送 · ← / → 切视频 · 空格播放 · ⌘↵ 反馈',
   catalog: '⌘K 搜动作 / 跳转',
-  videos: '← / → 切换 · 空格 播放 / 暂停 · ⌘↵ 发送反馈',
   requests: '',
 }
 
 const VIEW_CRUMBS: Record<CoachView, string> = {
   board: '总览',
   editor: '计划编排',
-  messages: '消息',
+  messages: '学员',
   catalog: '动作库',
-  videos: '训练视频',
   requests: '学员申请',
 }
 
@@ -82,10 +79,15 @@ export function CoachShell({
   onCommandExercise = () => {},
 }: CoachShellProps) {
   const badges = useMemo<Partial<Record<CoachView, Badge>>>(() => ({
-    messages: { count: unreadCount, tone: 'danger' },
-    requests: { count: requestCount, tone: 'danger' },
-    catalog: { count: exerciseCount, tone: 'muted' },
-    ...(videoCount == null ? {} : { videos: { count: videoCount, tone: 'muted' as const } }),
+    messages: {
+      count: unreadCount + (videoCount ?? 0),
+      tone: unreadCount > 0 ? 'danger' : 'muted',
+      label: videoCount == null
+        ? `${unreadCount} 条未读`
+        : `${unreadCount} 条未读，${videoCount} 条视频待审`,
+    },
+    requests: { count: requestCount, tone: 'danger', label: `${requestCount} 条待处理` },
+    catalog: { count: exerciseCount, tone: 'muted', label: `${exerciseCount} 个动作` },
   }), [exerciseCount, requestCount, unreadCount, videoCount])
   const [toast, setToast] = useState('')
   const [commandOpen, setCommandOpen] = useState(false)
@@ -316,7 +318,7 @@ function CoachNavigation({
       </div>
       {NAV_ITEMS.map((item) => {
         const badge = badges[item.id]
-        const collapsedLabel = collapsedNavLabel(item.id, item.label, badge?.count ?? 0)
+        const collapsedLabel = collapsedNavLabel(item.label, badge)
         return (
           <button
             key={item.id}
@@ -329,7 +331,11 @@ function CoachNavigation({
           >
             <span>{collapsed ? item.short : item.label}</span>
             {badge && badge.count > 0 && (
-              <span className={`coach-nav-badge ${badge.tone}`} aria-hidden={collapsed || undefined}>{badge.count}</span>
+              <span
+                className={`coach-nav-badge ${badge.tone}`}
+                aria-label={collapsed ? undefined : badge.label}
+                aria-hidden={collapsed || undefined}
+              >{badge.count}</span>
             )}
           </button>
         )
@@ -358,13 +364,9 @@ function CoachNavigation({
   )
 }
 
-function collapsedNavLabel(view: CoachView, label: string, count: number): string {
-  if (count <= 0) return label
-  if (view === 'messages') return `${label}，${count} 条未读`
-  if (view === 'requests') return `${label}，${count} 条待处理`
-  if (view === 'catalog') return `${label}，${count} 个动作`
-  if (view === 'videos') return `${label}，${count} 条待复盘`
-  return label
+function collapsedNavLabel(label: string, badge: Badge | undefined): string {
+  if (!badge || badge.count <= 0) return label
+  return `${label}，${badge.label}`
 }
 
 function weekRange(date: Date): string {
