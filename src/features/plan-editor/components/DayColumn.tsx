@@ -25,7 +25,7 @@ interface Props {
   selectedRowId?: string | null
   selectedRowIds?: ReadonlySet<string>
   cellSelection?: PlanCellSelection | null
-  onSelect: () => void
+  onSelect: (event: React.MouseEvent) => void
   onRecallContext?: () => void
   onSelectRow?: (rowId: string, modifiers?: { toggle: boolean; range: boolean }) => void
   onSelectCell?: (rowId: string, field: PlanCellField, setIndex?: number) => void

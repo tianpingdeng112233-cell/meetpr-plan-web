@@ -26,17 +26,23 @@ export function serializeDayForClipboard(day: DayCol): string {
   return serializeRowsForClipboard(day.rows)
 }
 
+export function formatTranslatedDaysPasteStatus(pasted: number, skipped: number): string {
+  if (pasted === 0) return `${skipped} 天全部超出计划范围已跳过`
+  return skipped > 0
+    ? `已粘贴 ${pasted} 天,${skipped} 天超出计划范围已跳过`
+    : `已粘贴 ${pasted} 天`
+}
+
 export function parseClipboardRows(text: string, exerciseIndex?: ExerciseResolver | null): ExerciseRow[] | null {
   const lines = text.replace(/\r/g, '').split('\n').map((line) => line.trimEnd()).filter((line) => line.trim() !== '')
   if (lines.length === 0) return null
-  const first = lines[0].split('\t')[0]?.trim()
-  if (first === '动作' || first?.toLowerCase() === 'exercise') lines.shift()
 
   const rows: ExerciseRow[] = []
   for (const [lineIndex, line] of lines.entries()) {
+    if (line.trimStart().startsWith('#')) continue
     const cells = line.split('\t')
     const name = (cells[0] ?? '').trim()
-    if (!name) continue
+    if (!name || name === '动作' || name.toLowerCase() === 'exercise') continue
     const mode = clipboardMode(cells[3] ?? '')
     const valueText = cells[4] ?? ''
     const values = mode === 'bodyweight'

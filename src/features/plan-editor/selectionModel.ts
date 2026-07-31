@@ -24,6 +24,75 @@ export type PlanCellMove = 'next' | 'previous' | 'up' | 'down'
 
 export type RowDisplayTier = 'main' | 'aux'
 
+export interface PlanDayTarget {
+  wnum: number
+  dow: number
+}
+
+/** Absolute Monday-based day order shared by cross-week selection and paste. */
+export function absoluteDayIndex({ wnum, dow }: PlanDayTarget): number {
+  return (wnum - 1) * 7 + dow
+}
+
+export function planDayKey({ wnum, dow }: PlanDayTarget): string {
+  return `${wnum}:${dow}`
+}
+
+export function planDayFromAbsoluteIndex(abs: number): PlanDayTarget {
+  return { wnum: Math.floor(abs / 7) + 1, dow: ((abs % 7) + 7) % 7 }
+}
+
+export function placePlanDayOffsets<T extends { offset: number }>(
+  sources: readonly T[],
+  anchor: PlanDayTarget,
+  weeks: readonly Week[],
+): { inRange: Array<{ source: T; target: PlanDayTarget }>; skipped: number } {
+  const anchorAbs = absoluteDayIndex(anchor)
+  const planKeys = new Set(weeks.flatMap((week) => (
+    week.days.map((day) => planDayKey({ wnum: week.num, dow: day.dow }))
+  )))
+  const placements = sources.map((source) => ({
+    source,
+    target: planDayFromAbsoluteIndex(anchorAbs + source.offset),
+  }))
+  const inRange = placements.filter(({ target }) => planKeys.has(planDayKey(target)))
+  return { inRange, skipped: placements.length - inRange.length }
+}
+
+export function applyPlanDayPlacements<T>(
+  weeks: Week[],
+  placements: readonly { source: T; target: PlanDayTarget }[],
+  replace: (day: Week['days'][number], source: T) => Week['days'][number],
+): Week[] {
+  if (placements.length === 0) return weeks
+  const byTarget = new Map(placements.map(({ source, target }) => [planDayKey(target), source]))
+  return weeks.map((week) => ({
+    ...week,
+    days: week.days.map((day) => {
+      const source = byTarget.get(planDayKey({ wnum: week.num, dow: day.dow }))
+      return source === undefined ? day : replace(day, source)
+    }),
+  }))
+}
+
+/** Existing plan days in inclusive absolute order, including cross-week ranges. */
+export function planDaysInRange(
+  weeks: readonly Week[],
+  anchor: PlanDayTarget,
+  target: PlanDayTarget,
+): PlanDayTarget[] {
+  const anchorAbs = absoluteDayIndex(anchor)
+  const targetAbs = absoluteDayIndex(target)
+  const start = Math.min(anchorAbs, targetAbs)
+  const end = Math.max(anchorAbs, targetAbs)
+  return weeks.flatMap((week) => week.days.map((day) => ({ wnum: week.num, dow: day.dow })))
+    .filter((day) => {
+      const abs = absoluteDayIndex(day)
+      return abs >= start && abs <= end
+    })
+    .sort((left, right) => absoluteDayIndex(left) - absoluteDayIndex(right))
+}
+
 /**
  * Returns the rows in the order presented inside a day. Tiered days render all
  * main rows first and all auxiliary rows second, while preserving source order
