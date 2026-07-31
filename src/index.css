@@ -1603,6 +1603,59 @@ textarea {
 
 /* Editor writing context: intentionally below exercise search/dropdowns (80+). */
 .context-recall { margin-left: auto; padding: 0; border: 0; background: transparent; color: var(--fg-tertiary); font-size: 11px; cursor: pointer; }.writing-panel { position: fixed; z-index: 45; width: 316px; max-height: calc(100vh - 80px); overflow: auto; background: var(--surface-2); border: 1px solid var(--border-strong); border-radius: 12px; box-shadow: var(--elev-modal); }.writing-panel>.panel-arrow { position: absolute; left: -6px; top: 27px; width: 10px; height: 10px; background: var(--surface-2); border-left: 1px solid var(--border-strong); border-bottom: 1px solid var(--border-strong); transform: rotate(45deg); }.writing-panel.flip>.panel-arrow { left: auto; right: -6px; transform: rotate(225deg); }.writing-panel>header { position: sticky; top: 0; z-index: 2; height: 49px; padding: 0 12px; display: flex; align-items: center; background: var(--surface-2); border-bottom: 1px solid var(--border); }.writing-panel>header span { flex: 1; }.writing-panel>header b,.writing-panel>header small { display: block; }.writing-panel>header small { margin-top: 2px; color: var(--fg-tertiary); }.writing-panel>header button { border: 0; background: transparent; color: var(--fg-tertiary); cursor: pointer; }.writing-body { padding: 12px; }.panel-profile dl { margin: 0; display: grid; grid-template-columns: 65px 1fr; row-gap: 9px; }.panel-profile dt { color: var(--fg-tertiary); }.panel-profile dd { margin: 0; color: var(--fg-secondary); line-height: 1.35; }.panel-profile.compact { margin-top: 10px; }.context-chips { display: flex; gap: 6px; margin-bottom: 12px; }.context-chips>* { padding: 4px 7px; border: 1px solid var(--border); border-radius: 5px; color: var(--fg-tertiary); font-size: 10px; }.context-chips b { color: var(--ink); border-color: var(--ink); background: var(--ink-soft); }.bucket-line { padding: 9px 4px; display: flex; justify-content: space-between; border-bottom: 1px solid var(--border); color: var(--fg-tertiary); }.bucket-line b { color: var(--fg-secondary); }.best-line { padding: 10px; margin-bottom: 12px; display: flex; align-items: baseline; gap: 10px; border: 1px solid var(--border); border-radius: 8px; }.best-line b { font: 700 20px var(--font-mono); }.best-line span { color: var(--fg-tertiary); }
+/* Context rail: docked beside the calendar (never over it), metric band always
+   on the first screen so the coach reads the decisive numbers at a glance. */
+.plan-with-rail { position: relative; display: flex; align-items: stretch; min-height: 0; flex: 1; }
+.plan-with-rail>.scroller { flex: 1; min-width: 0; }
+/* Give the last day a place to scroll out from under the overlay. Padding on an
+   overflowing scroll container is dropped by Chrome, so add a real flex spacer. */
+.plan-with-rail.rail-open .weekrow::after { content: ''; flex: none; width: 260px; }
+/* Overlay, not a column: the calendar keeps its full width and scrolls underneath. */
+.context-rail { position: absolute; z-index: 45; top: 0; right: 0; bottom: 0; width: 260px; display: flex; flex-direction: column; background: var(--surface-2); border-left: 1px solid var(--border-strong); box-shadow: -10px 0 24px -12px rgb(15 23 42 / .28); }
+/* Follow mode: parked mid-canvas beside the day being edited, so it needs both edges. */
+.context-rail.floating { right: auto; bottom: auto; max-height: 100%; border-right: 1px solid var(--border-strong); border-bottom: 1px solid var(--border-strong); border-radius: 0 0 var(--r-md) var(--r-md); box-shadow: 0 10px 26px -12px rgb(15 23 42 / .38); }
+.context-rail>.rail-head { flex: none; height: 42px; padding: 0 10px; display: flex; align-items: center; gap: 6px; border-bottom: 1px solid var(--border); }
+.rail-title { flex: 1; min-width: 0; display: flex; align-items: baseline; gap: 6px; }
+.rail-title b { font-size: 13px; color: var(--fg-primary); }
+.rail-title small { color: var(--fg-tertiary); font: 10px var(--font-mono); }
+.rail-head button { flex: none; border: 0; background: transparent; color: var(--fg-tertiary); font-size: 12px; cursor: pointer; }
+.rail-head .rail-mode-toggle { font-size: 13px; line-height: 1; padding: 2px 3px; border-radius: var(--r-sm); }
+.rail-head .rail-mode-toggle[aria-pressed="true"] { color: var(--fg-primary); background: var(--surface-3); }
+.rail-head button:hover { color: var(--fg-primary); }
+.metric-band { flex: none; display: grid; grid-template-columns: repeat(3, 1fr); padding: 8px 10px; gap: 4px; border-bottom: 1px solid var(--border); background: var(--surface-1); }
+.metric-band>.metric { min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.metric-band b { font: 600 19px/1.05 var(--font-mono); color: var(--fg-primary); font-variant-numeric: tabular-nums; }
+.metric-band b.accent { color: var(--brand-red); }
+.metric-band small { color: var(--fg-tertiary); font-size: 9px; letter-spacing: .02em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rail-body { flex: 1; min-height: 0; overflow: auto; padding: 8px 10px 12px; font-size: 11px; }
+.rail-body h3 { margin: 10px 0 5px; color: var(--fg-tertiary); font: 500 9px var(--font-mono); letter-spacing: .08em; text-transform: uppercase; }
+.rail-body h3:first-child { margin-top: 0; }
+.rail-body .empty-state { padding: 8px 0; color: var(--fg-tertiary); font-size: 11px; }
+.rail-body details { margin-top: 10px; border-top: 1px solid var(--border); padding-top: 6px; }
+.rail-body summary { color: var(--fg-tertiary); font-size: 10px; cursor: pointer; }
+.rail-row-chip { display: flex; align-items: baseline; gap: 6px; padding-bottom: 6px; margin-bottom: 6px; border-bottom: 1px solid var(--border); }
+.rail-row-chip b { color: var(--fg-primary); font-size: 12px; }
+.rail-row-chip span { color: var(--fg-tertiary); font: 10px var(--font-mono); }
+.rail-best { display: flex; align-items: baseline; gap: 6px; padding: 6px 8px; border: 1px solid var(--border); border-radius: var(--r-sm); }
+.rail-best b { font: 600 15px var(--font-mono); color: var(--fg-primary); }
+.rail-best span { color: var(--fg-tertiary); font-size: 10px; }
+.rail-body .pr-table td { padding: 3px 0; color: var(--fg-secondary); font-size: 11px; }
+.rail-body .pr-table td:first-child { color: var(--fg-tertiary); font-family: var(--font-mono); width: 34px; }
+.rail-body .pr-table td:last-child { color: var(--fg-tertiary); text-align: right; font-family: var(--font-mono); font-size: 10px; }
+.rail-body .bucket-line { padding: 5px 0; display: flex; justify-content: space-between; gap: 6px; border-bottom: 1px solid var(--border); color: var(--fg-tertiary); font-size: 10px; }
+.rail-body .bucket-line b { color: var(--fg-secondary); font-family: var(--font-mono); }
+.rail-sessions>section { margin-bottom: 8px; }
+.rail-sessions header { display: flex; justify-content: space-between; padding-bottom: 3px; color: var(--fg-tertiary); font: 10px var(--font-mono); }
+.rail-sessions header b { color: var(--fg-secondary); }
+.rail-sessions .set-line { display: flex; align-items: baseline; gap: 6px; padding: 2px 0; color: var(--fg-tertiary); font-size: 10px; }
+.rail-sessions .set-line b { flex: 1; color: var(--fg-secondary); font: 500 11px var(--font-mono); font-variant-numeric: tabular-nums; }
+.rail-sessions .set-line em { font-style: normal; color: var(--green); }
+.rail-sessions .set-line em.failed { color: var(--brand-red); }
+.rail-body .panel-profile dl { margin: 0; display: grid; grid-template-columns: 40px 1fr; row-gap: 6px; column-gap: 8px; }
+.rail-body .panel-profile dt { color: var(--fg-tertiary); }
+.rail-body .panel-profile dd { margin: 0; color: var(--fg-secondary); line-height: 1.35; }
+.rail-body .panel-profile blockquote { margin: 8px 0 0; color: var(--fg-tertiary); font-size: 10px; line-height: 1.4; }
+
 @media (max-width: 900px) { .overview-cards { grid-template-columns: 1fr; }.student-capacity-lifts { grid-template-columns: 1fr; }.board-grid { grid-template-columns: 180px 1fr; }.exercise-archive { grid-template-columns: 1fr; }.request-detail>div { grid-template-columns: 1fr 1fr; } }
 
 /* Week-band capacity: compact at rest, exact accounting and definitions on hover/focus. */
