@@ -2,7 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { ApiException } from '../../api/client'
 import { getUploadUrl, patchCoachRpe, postCoachFeedback } from '../../api/coach'
 import { createVideoMarker, deleteVideoMarker, getVideoMarkers } from '../../api/markers'
-import type { CoachStudent, StudentVideo, VideoMarker } from '../../api/types'
+import type { StudentVideo, VideoMarker } from '../../api/types'
 import { kg } from './WorkspaceCommon'
 import { usePersistentCollapse } from './usePersistentCollapse'
 import { useGlobalKeyboardHandler } from './globalKeyboard'
@@ -66,12 +66,20 @@ export const videoAssociation = (video: {
   ].filter(Boolean).join(' · ')
 }
 
-export function VideosPage({ students, studentId, videos, onRefreshVideos, onStudent }: {
-  students: CoachStudent[]
+export interface VideoTarget {
+  requestId: number
+  setLogId: string | null
+  dayDate: string
+  exerciseName: string
+  setIndex: number
+}
+
+export function VideosPage({ studentId, videos, onRefreshVideos, target, onDetailOpenChange }: {
   studentId: string
   videos: StudentVideo[]
   onRefreshVideos: (studentId: string) => Promise<void>
-  onStudent: (id: string) => void
+  target?: VideoTarget | null
+  onDetailOpenChange?: (open: boolean) => void
 }) {
   const [masterCollapsed, toggleMaster] = usePersistentCollapse('meetpr:sidebar:videos')
   const [filter, setFilter] = useState<VideoFilter>('all')
@@ -104,6 +112,7 @@ export function VideosPage({ students, studentId, videos, onRefreshVideos, onStu
   const sentTimer = useRef<number>()
   const draftRef = useRef('')
   const activeVideoIdRef = useRef<string | null>(null)
+  const handledTargetRequest = useRef<number | null>(null)
 
   const writeFeedback = (value: string) => {
     draftRef.current = value
@@ -139,11 +148,18 @@ export function VideosPage({ students, studentId, videos, onRefreshVideos, onStu
   )), [filter, videos])
   const selectedId = visibleVideos.some((video) => video.id === activeId)
     ? activeId
-    : visibleVideos[0]?.id ?? null
+    : null
   const activeIndex = visibleVideos.findIndex((video) => video.id === selectedId)
   const active = activeIndex < 0 ? null : visibleVideos[activeIndex] ?? null
   const url = videoSource && videoSource.videoId === active?.id ? videoSource.url : ''
   activeVideoIdRef.current = active?.id ?? null
+  const detailOpen = active != null
+  useLayoutEffect(() => { onDetailOpenChange?.(detailOpen) }, [detailOpen, onDetailOpenChange])
+  useEffect(() => {
+    if (activeId != null && !visibleVideos.some((video) => video.id === activeId)) {
+      setActiveId(null)
+    }
+  }, [activeId, visibleVideos])
   const trainingDays = useMemo(() => new Set(videos.map(videoDay)).size, [videos])
   const grouped = useMemo(() => {
     const groups = new Map<string, StudentVideo[]>()
@@ -155,6 +171,24 @@ export function VideosPage({ students, studentId, videos, onRefreshVideos, onStu
     })
     return [...groups.entries()]
   }, [visibleVideos])
+
+  useEffect(() => {
+    if (!target || handledTargetRequest.current === target.requestId) return
+    // A non-null set_log_id must match exactly: falling back to the
+    // day/exercise/set-index triple could land on a different upload of the
+    // same set. The triple fallback exists only for legacy refs without an id.
+    const matched = target.setLogId != null
+      ? videos.find((video) => video.set_log_id === target.setLogId)
+      : videos.find((video) => (
+          videoDay(video) === target.dayDate
+          && video.exercise_name === target.exerciseName
+          && video.set_index === target.setIndex
+        ))
+    if (!matched) return
+    handledTargetRequest.current = target.requestId
+    setFilter('all')
+    setActiveId(matched.id)
+  }, [target?.requestId, videos])
 
   const resetFeedback = useCallback(() => {
     feedbackRequest.current += 1
@@ -252,13 +286,10 @@ export function VideosPage({ students, studentId, videos, onRefreshVideos, onStu
         return true
       }
       if (editable || video || event.metaKey || event.ctrlKey || event.altKey) return false
-      if (event.key === 'ArrowLeft') {
+      if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
         event.preventDefault()
-        move(-1)
-        return true
-      } else if (event.key === 'ArrowRight') {
-        event.preventDefault()
-        move(1)
+        if (active == null) setActiveId(visibleVideos[0]?.id ?? null)
+        else move(event.key === 'ArrowLeft' ? -1 : 1)
         return true
       } else if (event.key === ' ' || event.key === 'Spacebar') {
         event.preventDefault()
@@ -420,92 +451,17 @@ export function VideosPage({ students, studentId, videos, onRefreshVideos, onStu
   ].filter(Boolean).join(' · ') : ''
 
   return (
-    <main className="videos-page">
-      <aside className={`videos-master${masterCollapsed ? ' collapsed' : ''}`}>
-        <header className="videos-master-head">
-          {students.length > 0 && (
-            <select
-              className="student-select"
-              aria-label="学员"
-              value={studentId}
-              onChange={(event) => onStudent(event.target.value)}
-            >
-              {students.map((student) => (
-                <option key={student.id} value={student.id}>{student.display_name}</option>
-              ))}
-            </select>
-          )}
-          <span>{videos.length} 条 · 近 {trainingDays} 个训练日</span>
-          <button
-            type="button"
-            className="column-collapse-toggle"
-            aria-label={masterCollapsed ? '展开视频片段列表' : '收起视频片段列表'}
-            aria-expanded={!masterCollapsed}
-            title={masterCollapsed ? '展开视频片段列表' : '收起视频片段列表'}
-            onClick={toggleMaster}
-          >
-            {masterCollapsed ? '›' : '‹'}
-          </button>
-        </header>
-        <div className="video-filter-tabs" role="tablist" aria-label="视频状态">
-          {([
-            ['all', '全部'],
-            ['pending', '待审'],
-            ['reviewed', '已反馈'],
-          ] as const).map(([value, label]) => (
-            <button
-              type="button"
-              role="tab"
-              aria-selected={filter === value}
-              className={filter === value ? 'active' : ''}
-              onClick={() => setFilter(value)}
-              key={value}
-            >
-              {label}<span>{counts[value]}</span>
-            </button>
-          ))}
-        </div>
-        <div className="video-master-scroll">
-          {grouped.length === 0 && <div className="video-list-empty">暂无符合条件的视频</div>}
-          {grouped.map(([day, rows]) => (
-            <section className="video-date-group" key={day}>
-              <h2 className="video-date-heading">
-                <span>{dayLabel(day)}</span>
-                <small>· {rows.length} 条</small>
-              </h2>
-              {rows.map((video) => {
-                const selected = video.id === active?.id
-                return (
-                  <button
-                    type="button"
-                    className={`video-master-row${selected ? ' selected' : ''}`}
-                    aria-current={selected ? 'true' : undefined}
-                    onClick={() => pickVideo(video)}
-                    key={video.id}
-                  >
-                    <span className="video-thumb" aria-hidden="true">▶</span>
-                    <span className="video-row-copy">
-                      <b>{videoTitle(video)}</b>
-                      <small>
-                        {day.slice(5)} · {setLabel(video.set_index) ?? '未关联组'} · RPE {video.rpe == null ? '—' : Number(video.rpe)}
-                      </small>
-                    </span>
-                    <span className={`video-status ${video.viewed_at == null ? 'pending' : 'reviewed'}`}>
-                      {statusLabel(video)}
-                    </span>
-                  </button>
-                )
-              })}
-            </section>
-          ))}
-        </div>
-      </aside>
-
-      <section className="videos-detail">
-        {!active && <div className="video-detail-empty">暂无训练视频</div>}
-        {active && (
+    <main className={`videos-page${masterCollapsed ? ' master-collapsed' : ''}`}>
+      {active && <section className="videos-detail">
+        {(
           <>
             <header className="video-detail-head">
+              <button
+                type="button"
+                className="video-detail-close"
+                aria-label="关闭播放"
+                onClick={() => setActiveId(null)}
+              >×</button>
               <b>{videoTitle(active)}</b>
               <span className={`video-status ${active.viewed_at == null ? 'pending' : 'reviewed'}`}>
                 {statusLabel(active)}
@@ -751,7 +707,75 @@ export function VideosPage({ students, studentId, videos, onRefreshVideos, onStu
             </div>
           </>
         )}
-      </section>
+      </section>}
+
+      <aside className={`videos-master${masterCollapsed ? ' collapsed' : ''}`}>
+        <header className="videos-master-head">
+          <span>{videos.length} 条 · 近 {trainingDays} 个训练日</span>
+          <button
+            type="button"
+            className="column-collapse-toggle"
+            aria-label={masterCollapsed ? '展开视频片段列表' : '收起视频片段列表'}
+            aria-expanded={!masterCollapsed}
+            title={masterCollapsed ? '展开视频片段列表' : '收起视频片段列表'}
+            onClick={toggleMaster}
+          >
+            {masterCollapsed ? '›' : '‹'}
+          </button>
+        </header>
+        <div className="video-filter-tabs" role="tablist" aria-label="视频状态">
+          {([
+            ['all', '全部'],
+            ['pending', '待审'],
+            ['reviewed', '已反馈'],
+          ] as const).map(([value, label]) => (
+            <button
+              type="button"
+              role="tab"
+              aria-selected={filter === value}
+              className={filter === value ? 'active' : ''}
+              onClick={() => setFilter(value)}
+              key={value}
+            >
+              {label}<span>{counts[value]}</span>
+            </button>
+          ))}
+        </div>
+        <div className="video-master-scroll">
+          {grouped.length === 0 && <div className="video-list-empty">暂无符合条件的视频</div>}
+          {grouped.map(([day, rows]) => (
+            <section className="video-date-group" key={day}>
+              <h2 className="video-date-heading">
+                <span>{dayLabel(day)}</span>
+                <small>· {rows.length} 条</small>
+              </h2>
+              {rows.map((video) => {
+                const selected = video.id === active?.id
+                return (
+                  <button
+                    type="button"
+                    className={`video-master-row${selected ? ' selected' : ''}`}
+                    aria-current={selected ? 'true' : undefined}
+                    onClick={() => pickVideo(video)}
+                    key={video.id}
+                  >
+                    <span className="video-thumb" aria-hidden="true">▶</span>
+                    <span className="video-row-copy">
+                      <b>{videoTitle(video)}</b>
+                      <small>
+                        {day.slice(5)} · {setLabel(video.set_index) ?? '未关联组'} · RPE {video.rpe == null ? '—' : Number(video.rpe)}
+                      </small>
+                    </span>
+                    <span className={`video-status ${video.viewed_at == null ? 'pending' : 'reviewed'}`}>
+                      {statusLabel(video)}
+                    </span>
+                  </button>
+                )
+              })}
+            </section>
+          ))}
+        </div>
+      </aside>
     </main>
   )
 }

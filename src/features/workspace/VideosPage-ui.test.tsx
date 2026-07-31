@@ -26,7 +26,7 @@ vi.mock('../../api/markers', () => ({
   deleteVideoMarker: api.deleteVideoMarker,
 }))
 
-import { VideosPage } from './VideosPage'
+import { VideosPage, type VideoTarget } from './VideosPage'
 import { createKeyedRequestVersions } from './requestVersions'
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
@@ -118,7 +118,7 @@ const setSelect = (element: HTMLSelectElement, value: string) => act(() => {
 const buttonWithText = (host: HTMLElement, text: string) =>
   [...host.querySelectorAll('button')].find((button) => button.textContent?.includes(text)) ?? null
 
-function VideosHarness({ studentId }: { studentId: string }) {
+function VideosHarness({ studentId, target }: { studentId: string; target?: VideoTarget | null }) {
   const [rowsByStudent, setRowsByStudent] = useState<Record<string, StudentVideo[]>>({})
   const requestVersions = useRef(createKeyedRequestVersions())
   const refreshVideos = useCallback(async (id: string) => {
@@ -129,11 +129,10 @@ function VideosHarness({ studentId }: { studentId: string }) {
   }, [])
   return (
     <VideosPage
-      students={[]}
       studentId={studentId}
       videos={rowsByStudent[studentId] ?? []}
       onRefreshVideos={refreshVideos}
-      onStudent={vi.fn()}
+      target={target}
     />
   )
 }
@@ -180,6 +179,12 @@ describe('VideosPage master-detail interactions', () => {
       await settle()
     })
     mounted = true
+    // The player is on-demand since the student hub: open the first clip so
+    // the detail-pane assertions keep their historical precondition.
+    const first = host.querySelector<HTMLButtonElement>('.video-master-row')
+    if (first) {
+      await act(async () => { first.click(); await settle() })
+    }
   }
 
   it('collapses the clip list and restores the saved state', async () => {
@@ -215,6 +220,71 @@ describe('VideosPage master-detail interactions', () => {
     await act(settle)
     expect(host.querySelectorAll('.video-master-row')).toHaveLength(1)
     expect(host.querySelector('.video-master-row .video-status')?.textContent).toBe('已反馈')
+  })
+
+  it('switches to all and locates a group-card target hidden by the current filter', async () => {
+    await renderHarness()
+    click([...host.querySelectorAll<HTMLButtonElement>('.video-filter-tabs button')][1]!)
+    await act(settle)
+    expect(host.textContent).not.toContain('卧推')
+
+    await act(async () => {
+      root.render(<VideosHarness
+        studentId="student-1"
+        target={{
+          requestId: 1,
+          setLogId: 'log-2',
+          dayDate: '2026-07-18',
+          exerciseName: '卧推',
+          setIndex: 1,
+        }}
+      />)
+      await settle()
+    })
+
+    expect(host.querySelector<HTMLButtonElement>('[role="tab"][aria-selected="true"]')?.textContent).toBe('全部3')
+    expect(host.querySelector('.video-detail-head')?.textContent).toContain('卧推')
+    expect(host.querySelector('.video-master-row.selected')?.textContent).toContain('卧推')
+  })
+
+  it('keeps the player closed until a clip is picked and closes it via the × button', async () => {
+    await act(async () => {
+      root.render(<VideosHarness studentId="student-1" />)
+      await settle()
+    })
+    mounted = true
+    expect(host.querySelector('.videos-detail')).toBeNull()
+    expect(host.querySelector('.videos-master')).not.toBeNull()
+
+    const first = host.querySelector<HTMLButtonElement>('.video-master-row')!
+    await act(async () => { first.click(); await settle() })
+    expect(host.querySelector('.videos-detail')).not.toBeNull()
+
+    click(host.querySelector<HTMLButtonElement>('.video-detail-close')!)
+    await act(settle)
+    expect(host.querySelector('.videos-detail')).toBeNull()
+    expect(host.querySelector('.video-master-row.selected')).toBeNull()
+  })
+
+  it('never falls back to day/exercise/set matching when the target has a set_log_id', async () => {
+    await renderHarness()
+    const before = host.querySelector('.video-detail-head')?.textContent
+    await act(async () => {
+      root.render(<VideosHarness
+        studentId="student-1"
+        target={{
+          requestId: 9,
+          // A real id that matches no video: the same set may have another
+          // upload whose day/exercise/index triple would collide.
+          setLogId: 'log-vanished',
+          dayDate: '2026-07-18',
+          exerciseName: '卧推',
+          setIndex: 1,
+        }}
+      />)
+      await settle()
+    })
+    expect(host.querySelector('.video-detail-head')?.textContent).toBe(before)
   })
 
   it('uses sticky date-group heading structure and displays source 0-based set indexes as 1-based', async () => {

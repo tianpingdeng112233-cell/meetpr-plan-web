@@ -778,15 +778,6 @@ textarea {
   box-sizing: border-box;
   white-space: nowrap;
 }
-.videos-master-head .student-select {
-  min-width: 0;
-  max-width: 128px;
-  height: 28px;
-  padding: 0 24px 0 9px;
-  border-color: var(--bd);
-  border-radius: var(--r-sm);
-  font-size: 12px;
-}
 .videos-master-head>span {
   margin-left: auto;
   color: var(--mut);
@@ -2411,26 +2402,62 @@ textarea {
   box-shadow: inset 0 0 0 1px var(--bad);
 }
 
-/* Coach chat card 4: 300px master list + full-width conversation. */
+/* Unified student hub: roster + collapsible chat + video review workspace. */
+.student-hub-page { width: 100%; height: 100%; min-width: 0; display: flex; overflow: hidden; background: var(--card-bg); }
+/* Player closed: chat fills the middle, the review list stands on the right.
+   .videos-page keeps width:100% globally, so the closed rail needs explicit
+   widths (list 264 + 1px border; 44 + 1 when collapsed). */
+.student-hub-page>.chat-page { min-width: 0; flex: 1; }
+.student-hub-page>.videos-page { min-width: 0; width: 265px; flex: 0 0 265px; border-left: 1px solid var(--bd); }
+.student-hub-page>.videos-page.master-collapsed { width: 45px; flex: 0 0 45px; }
+/* Player open: chat yields to a fixed rail, the player takes the middle. */
+.student-hub-page.video-open>.chat-page { width: 560px; flex: 0 0 560px; }
+.student-hub-page.video-open>.chat-page.thread-collapsed { width: 284px; flex-basis: 284px; }
+.student-hub-page.video-open>.videos-page { width: auto; flex: 1; }
+.student-hub-page .chat-sidebar { width: 240px; flex-basis: 240px; }
+.student-hub-page .videos-master { width: 264px; flex-basis: 264px; border-left: 1px solid var(--bd); }
+.student-hub-page .videos-master.collapsed { width: 44px; flex-basis: 44px; }
+.student-hub-page .videos-page>.videos-master:first-child { border-left: none; }
+.video-detail-close {
+  width: 24px;
+  height: 24px;
+  border: 1px solid var(--bd);
+  border-radius: var(--r-sm);
+  color: var(--sec);
+  background: transparent;
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+}
+.video-detail-close:hover { color: var(--ink); border-color: var(--ink); }
+
 .chat-page { width: 100%; height: 100%; min-width: 0; display: flex; overflow: hidden; color: var(--txt); background: var(--card-bg); }
 .chat-sidebar { width: 300px; min-width: 0; flex: 0 0 300px; border-right: 1px solid var(--bd); display: flex; flex-direction: column; background: var(--card-bg); }
-.chat-sidebar.collapsed { width: 44px; flex-basis: 44px; }
 .chat-main-panel { min-width: 0; flex: 1; display: flex; flex-direction: column; background: var(--page-bg); }
+.chat-main-panel.collapsed { width: 44px; flex: 0 0 44px; }
+.chat-main-panel.collapsed .chat-thread-head { padding: 0; justify-content: center; }
+.chat-main-panel.collapsed .chat-thread-head > :not(.chat-collapse-toggle),
+.chat-main-panel.collapsed > :not(.chat-thread-head) { display: none; }
 .chat-main-panel>.empty-state { flex: 1; }
 .chat-panel-head { height: 44px; flex: 0 0 44px; border-bottom: 1px solid var(--line); box-sizing: border-box; display: flex; align-items: center; gap: 8px; white-space: nowrap; background: var(--card-bg); }
 .chat-list-head { padding: 0 12px; }
 .chat-list-head>b { font-size: 13px; }
-.chat-list-head .column-collapse-toggle { margin-left: 0; }
-.chat-sidebar.collapsed .chat-list-head {
-  padding: 0;
-  justify-content: center;
-}
-.chat-sidebar.collapsed .chat-list-head > :not(.column-collapse-toggle),
-.chat-sidebar.collapsed > :not(.chat-list-head) { display: none; }
 .chat-next-unread { height: 22px; margin-left: auto; padding: 0 9px; border: 0; border-radius: var(--r-sm); display: inline-flex; align-items: center; gap: 4px; color: var(--white); background: var(--play-bg); font-size: 11px; font-weight: 600; cursor: pointer; }
 .chat-next-unread:hover { background: var(--ink); }
 .chat-next-unread>span { font-family: var(--font-mono); }
 .chat-open-error { flex: 0 0 auto; padding: 7px 8px; border-bottom: 1px solid var(--line); background: var(--card-bg); color: var(--bad); font-size: 11px; }
+.chat-start-state { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.chat-start-state button {
+  height: 28px;
+  padding: 0 14px;
+  border: 1px solid var(--ink);
+  border-radius: var(--r-sm);
+  color: var(--ink);
+  background: transparent;
+  font-size: 12px;
+  cursor: pointer;
+}
+.chat-start-state button:disabled { opacity: .4; cursor: default; }
 .chat-list { flex: 1; min-height: 0; padding: 6px; overflow-y: auto; box-sizing: border-box; }
 .chat-row { width: 100%; min-height: 48px; padding: 6px 8px; border: 0; border-radius: var(--r-sm); background: transparent; color: var(--txt); display: flex; align-items: center; gap: 8px; text-align: left; cursor: pointer; }
 .chat-row:hover { background: var(--row-hover); }
@@ -2443,9 +2470,12 @@ textarea {
 .chat-row.unread .chat-row-copy b { font-weight: 700; }
 .chat-row-copy small { color: var(--faint); font: 11px var(--font-mono); }
 .chat-row-meta { flex: 0 0 auto; display: flex; flex-direction: column; align-items: flex-end; gap: 3px; color: var(--faint); font: 10px var(--font-mono); }
+.chat-row-badges,.chat-row-actions { display: flex; align-items: center; justify-content: flex-end; gap: 4px; }
 .chat-unread-badge { min-width: 15px; height: 15px; padding: 0 4px; border-radius: var(--r-pill); box-sizing: border-box; display: grid; place-items: center; color: var(--white); background: var(--bad); font: normal 700 9px var(--font-mono); }
-.chat-row-start { flex: 0 0 auto; color: var(--ink); font-size: 11px; font-weight: 600; }
+.chat-video-badge { min-width: 15px; height: 15px; padding: 0 4px; border-radius: var(--r-pill); box-sizing: border-box; display: grid; place-items: center; color: var(--warn); background: var(--warn-soft); font: normal 700 9px var(--font-mono); }
 .chat-thread-head { padding: 0 16px; gap: 10px; }
+.chat-collapse-toggle { margin-left: auto; }
+.chat-open-plan+.chat-collapse-toggle { margin-left: 0; }
 .chat-thread-avatar { width: 26px; height: 26px; flex: 0 0 26px; border: 1px solid var(--tint-bd); border-radius: var(--r-pill); display: grid; place-items: center; color: var(--ink); background: var(--tint); font-size: 12px; font-weight: 700; }
 .chat-thread-head>b { flex: 0 0 auto; font-size: 14px; }
 .chat-thread-meta { min-width: 0; overflow: hidden; color: var(--mut); font: 11px var(--font-mono); text-overflow: ellipsis; }
@@ -2529,131 +2559,3 @@ textarea {
 .chat-composer button:disabled,.chat-composer textarea:disabled { opacity: .45; cursor: not-allowed; }
 .chat-blocked { padding: 0 16px 10px; display: block; background: var(--surface-1); color: var(--brand-red); font-style: normal; font-size: 11px; }
 .chat-session-banner { position: fixed; top: 0; left: 0; right: 0; z-index: 200; padding: 8px 16px; background: var(--bad); color: var(--white); text-align: center; font-weight: 700; }
-
-/* Set-ref video overlay (VideoModal). The videos page dropped the modal for an
-   in-screen player (card 5) and its CSS went with it, leaving chat's copy
-   unstyled — an inline, intrinsically-sized <video> that overflowed the pane.
-   The shell shrink-wraps the clip so portrait phone footage fills the height
-   instead of sitting in a letterboxed 820px box. */
-.video-modal {
-  position: fixed;
-  inset: 0;
-  z-index: 180;
-  display: grid;
-  place-items: center;
-  padding: 24px;
-  box-sizing: border-box;
-  background: color-mix(in srgb, var(--play-bg) 88%, transparent);
-}
-.video-modal>div {
-  min-width: min(360px,92vw);
-  max-width: 92vw;
-  max-height: 92vh;
-  width: fit-content;
-  border: 1px solid var(--border-strong);
-  border-radius: var(--r-lg);
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-  background: var(--surface-2);
-  box-shadow: 0 20px 70px color-mix(in srgb, var(--play-bg) 55%, transparent);
-}
-.video-modal header {
-  padding: 11px 14px;
-  flex: 0 0 auto;
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 14px;
-}
-.video-modal header span {
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-.video-modal header b {
-  overflow: hidden;
-  color: var(--txt);
-  font-size: 13px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.video-modal header small { color: var(--sec); font: 11px var(--font-mono); }
-.video-modal header button {
-  flex: 0 0 auto;
-  border: 0;
-  color: var(--sec);
-  background: transparent;
-  font-size: 14px;
-  line-height: 1;
-  cursor: pointer;
-}
-.video-modal header button:hover { color: var(--txt); }
-.video-stage {
-  min-height: 0;
-  position: relative;
-  flex: 1 1 auto;
-  overflow: hidden;
-  display: grid;
-  place-items: center;
-  background: var(--play-bg);
-}
-.video-modal video {
-  width: auto;
-  height: auto;
-  max-width: min(880px,86vw);
-  max-height: 72vh;
-  display: block;
-  object-fit: contain;
-  background: var(--play-bg);
-}
-.video-modal .video-loading {
-  width: min(420px,80vw);
-  height: 46vh;
-  padding: 16px;
-  box-sizing: border-box;
-  display: grid;
-  place-items: center;
-  color: color-mix(in srgb, var(--white) 68%, transparent);
-  font: 12px var(--font-mono);
-  text-align: center;
-}
-.video-nav {
-  width: 42px;
-  height: 52px;
-  padding: 0;
-  position: absolute;
-  top: 50%;
-  z-index: 1;
-  border: 1px solid color-mix(in srgb, var(--white) 16%, transparent);
-  border-radius: 9px;
-  transform: translateY(-50%);
-  color: var(--white);
-  background: color-mix(in srgb, var(--play-bg) 35%, transparent);
-  font-size: 32px;
-  line-height: 1;
-  cursor: pointer;
-  transition: background var(--dur-fast),opacity var(--dur-fast);
-}
-.video-nav:hover:not(:disabled) { background: color-mix(in srgb, var(--play-bg) 62%, transparent); }
-.video-nav:disabled { opacity: .28; cursor: default; }
-.video-nav.prev { left: 14px; }
-.video-nav.next { right: 14px; }
-.video-modal footer {
-  padding: 9px 10px;
-  flex: 0 0 auto;
-  display: flex;
-  justify-content: center;
-  gap: 6px;
-}
-.video-modal footer button {
-  padding: 4px 12px;
-  border: 1px solid var(--bd);
-  border-radius: var(--r-sm);
-  color: var(--sec);
-  background: transparent;
-  font: 11px var(--font-mono);
-  cursor: pointer;
-}
-.video-modal footer button.active { border-color: var(--ink); color: var(--ink); background: var(--tint); }

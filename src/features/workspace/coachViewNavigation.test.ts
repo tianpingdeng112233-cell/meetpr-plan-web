@@ -29,7 +29,7 @@ describe('navigateCoachView', () => {
     const commitView = vi.fn()
     const navigation = navigateCoachView({
       currentView: 'editor',
-      nextView: 'videos',
+      nextView: 'messages',
       guardLeave: vi.fn(() => flush.promise),
       refreshEditor: vi.fn(async () => true),
       commitView,
@@ -39,7 +39,7 @@ describe('navigateCoachView', () => {
     expect(commitView).not.toHaveBeenCalled()
     flush.resolve(true)
     await expect(navigation).resolves.toBe(true)
-    expect(commitView).toHaveBeenCalledWith('videos')
+    expect(commitView).toHaveBeenCalledWith('messages')
   })
 
   it('fetches the current plan before remounting the editor', async () => {

@@ -19,14 +19,13 @@ import { BackfillHistoryDialog, CompletePlanDialog, DeletePlanDialog, NewPlanDia
 import { getBindRequests, getExerciseStatsOverview, getStudentVideos, refreshCoachStudents } from '../../api/coach'
 import { CoachShell, type CoachView } from './CoachShell'
 import { StudentBoard } from './StatsViews'
-import { VideosPage } from './VideosPage'
+import { StudentHubPage } from './StudentHubPage'
 import { REQUEST_POLL_INTERVAL_MS, RequestsPage } from './RequestsPage'
 import { CatalogPage } from '../catalog/CatalogPage'
 import { navigateCoachView } from './coachViewNavigation'
 import { clearDraftMirror } from '../plan-editor/draftMirror'
 import { listConversations } from '../../api/chat'
 import { isSessionExpired } from '../../api/errors'
-import MessagesPage from '../chat/MessagesPage'
 import { unreadTotal } from '../chat/chatModel'
 import { useVisiblePolling } from '../chat/useVisiblePolling'
 import { chatOutbox } from '../chat/chatOutbox'
@@ -925,21 +924,14 @@ export function PlanWorkspace({ onLogout, me }: Props) {
           onOpen={(id) => { void openStudentEditor(id) }}
         />
       : <div className="empty-page">接受学员申请后即可查看学员总览</div>)}
-    {view === 'videos' && (hasStudents
-      ? <VideosPage
-          students={students}
-          studentId={studentId}
-          videos={videosByStudent[studentId] ?? []}
-          onRefreshVideos={refreshStudentVideos}
-          onStudent={(id) => { void switchStudent(id) }}
-        />
-      : <div className="empty-page">接受学员申请后即可查看训练视频</div>)}
     {view === 'requests' && <RequestsPage requests={bindRequests} onRequestsChanged={applyBindRequests} onAccepted={refreshStudentsAfterAccept} />}
     {view === 'messages' && (hasStudents
-      ? <MessagesPage
+      ? <StudentHubPage
           me={me}
           students={students}
           selectedStudentId={studentId}
+          videosByStudent={videosByStudent}
+          onRefreshVideos={refreshStudentVideos}
           conversations={conversations}
           bindLostIds={bindLostIds}
           sessionDead={sessionDead}
@@ -954,7 +946,7 @@ export function PlanWorkspace({ onLogout, me }: Props) {
           onBindLost={(conversationId) => setBindLostIds((prev) => new Set(prev).add(conversationId))}
           onSessionExpired={() => setSessionDead(true)}
         />
-      : <div className="empty-page">接受学员申请后即可与学员聊天</div>)}
+      : <div className="empty-page">接受学员申请后即可查看学员消息与训练视频</div>)}
     </CoachShell>
   )
 }
