@@ -29,7 +29,6 @@ interface Props {
   onSelectCell?: (rowId: string, field: PlanCellField, setIndex?: number) => void
   onSetsDraftChange?: (rowId: string, draft: string | null) => void
   readOnly?: boolean
-  infoTokens?: (row: ExerciseRow) => readonly string[]
   dayMoveState?: 'source' | 'target' | 'invalid'
   dayMoveDisabledHint?: string | null
   onDayMoveStart?: (e: React.MouseEvent) => void
@@ -277,7 +276,6 @@ export function DayColumn({
   onSelectCell,
   onSetsDraftChange,
   readOnly,
-  infoTokens,
   dayMoveState,
   dayMoveDisabledHint,
   onDayMoveStart,
@@ -300,7 +298,7 @@ export function DayColumn({
   const dayMoveClass = dayMoveState ? ` day-move-${dayMoveState}` : ''
   const dayMoveTitle = dayMoveDisabledHint ?? '拖动搬到本周其他日期 / 点击选中日'
   const dayMoveCursor = dayMoveDisabledHint ? 'not-allowed' : 'grab'
-  // Brings the writing-context panel back after the coach dismisses it for this day.
+  // Brings the context rail back after the coach dismisses it for this day.
   const contextRecall = selected && onRecallContext ? (
     <button className="context-recall" title="显示撰写上下文"
       onMouseDown={(e) => e.stopPropagation()}
@@ -447,7 +445,6 @@ export function DayColumn({
           const inputIssue = getBoundRowInputIssue(row)
           const isSelectedRow = selectedRowId === row.id
           const dropPosition = dropTarget?.rowId === row.id ? dropTarget.position : null
-          const tokens = infoTokens?.(row) ?? []
           return (
             <div
               key={row.id}
@@ -563,13 +560,6 @@ export function DayColumn({
                   )}
                 </div>
               </div>
-              {tokens.length > 0 && (
-                <div className="exercise-info-tokens" data-exercise-info-tokens="">
-                  {tokens.map((token, index) => (
-                    <span className="exercise-info-token" key={`${token}-${index}`} data-exercise-info-token="">{token}</span>
-                  ))}
-                </div>
-              )}
             </div>
           )
         }

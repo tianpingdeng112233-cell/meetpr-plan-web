@@ -7,7 +7,7 @@ import { TopBar } from './components/TopBar'
 import { Toolbar } from './components/Toolbar'
 import { ContextBar } from './components/ContextBar'
 import { DayColumn } from './components/DayColumn'
-import { WritingContextPanel } from './components/WritingContextPanel'
+import { ContextRail, isRowComplete, useRailMode, useRailPlacement } from './components/ContextRail'
 import { ExercisePopover } from './components/ExercisePopover'
 import { CustomExerciseDialog } from './components/CustomExerciseDialog'
 import type { ExerciseIndex, ExerciseHit } from './exerciseIndex'
@@ -37,7 +37,6 @@ import {
   type PlanCellField,
   type PlanCellSelection,
 } from './selectionModel'
-import { buildExerciseInfoTokens } from './exerciseInfo'
 import { useGlobalKeyboardHandler } from '../workspace/globalKeyboard'
 
 interface Sel { wnum: number; dow: number }
@@ -112,6 +111,17 @@ export interface PlanEditorProps {
   planStartDate?: string
   onChangeStartDate?: (startDate: string) => Promise<void>
   onChangePlanWeeks?: (planWeeks: number) => Promise<void>
+}
+
+/** Everything the rail's visibility depends on; edits invalidate a recall. */
+function rowContextFingerprint(row: ExerciseRow | null): string {
+  if (!row) return 'day'
+  return [
+    row.exerciseId ?? '',
+    row.reps,
+    row.mode,
+    row.boxes.map((b) => (b.empty ? '-' : b.val)).join(','),
+  ].join('|')
 }
 
 function hasGridContent(weeks: Week[]): boolean {
@@ -294,8 +304,10 @@ export function PlanEditor(props: PlanEditorProps) {
   const [hasRowClipboard, setHasRowClipboard] = useState(false)
   const [curWeekLabel, setCurWeekLabel] = useState('—')
   const [pop, setPop] = useState<PopState>({ visible: false, x: 0, y: 0, wnum: 0, dow: 0, rowId: '', query: '' })
-  // Days whose writing-context panel the coach closed; the ▤ head button recalls it.
-  const [dismissedContextDays, setDismissedContextDays] = useState<Set<string>>(() => new Set())
+  // Selection whose context rail the coach closed; the ▤ head button recalls it.
+  const [dismissedContext, setDismissedContext] = useState<string | null>(null)
+  // Selection the coach explicitly recalled, so a finished row still shows its rail.
+  const [recalledContext, setRecalledContext] = useState<{ key: string; fingerprint: string } | null>(null)
   const [activeIndex, setActiveIndex] = useState(0)
   const [createExercise, setCreateExercise] = useState<CreateExerciseState>({ open: false, initialName: '', bindTarget: null })
   const [creatingExercise, setCreatingExercise] = useState(false)
@@ -303,6 +315,7 @@ export function PlanEditor(props: PlanEditorProps) {
   const [dayMoveVisual, setDayMoveVisual] = useState<DayMoveVisual | null>(null)
 
   const rootRef = useRef<HTMLDivElement>(null)
+  const wrapRef = useRef<HTMLDivElement>(null)
   const scrollerRef = useRef<HTMLDivElement>(null)
   const zoomwrapRef = useRef<HTMLDivElement>(null)
   const sizerRef = useRef<HTMLDivElement>(null)
@@ -324,6 +337,7 @@ export function PlanEditor(props: PlanEditorProps) {
   const suppressDayClickRef = useRef(false)
   const dayMoveCleanupRef = useRef<((updateVisual?: boolean) => void) | null>(null)
   const visibleWeekRef = useRef<number | null>(null)
+  const [railMode, toggleRailMode] = useRailMode()
 
   useEffect(() => () => dayMoveCleanupRef.current?.(false), [])
 
@@ -882,19 +896,6 @@ export function PlanEditor(props: PlanEditorProps) {
     }
     return derived
   }, [props.exerciseIndex, weeks])
-
-  const exerciseInfoForRow = useCallback((weekIndex: number, row: ExerciseRow) => (
-    buildExerciseInfoTokens({
-      weeks,
-      weekIndex,
-      row,
-      metadata: row.exerciseId
-        ? props.exerciseIndex?.infoMetadataById(row.exerciseId) ?? null
-        : null,
-      onboarding: props.onboardingProfile,
-      statsOverview: props.exerciseStatsOverview,
-    })
-  ), [props.exerciseIndex, props.exerciseStatsOverview, props.onboardingProfile, weeks])
 
   const reorderRow = (
     wnum: number,
@@ -1885,7 +1886,24 @@ export function PlanEditor(props: PlanEditorProps) {
   const selectedRowForBar = selectedRowValue()
   const selectedDayValue = sel ? weeks.find((week) => week.num === sel.wnum)?.days.find((day) => day.dow === sel.dow) ?? null : null
   const selectedDayKey = sel ? `${sel.wnum}:${sel.dow}` : ''
-  const recallContext = () => setDismissedContextDays((prev) => { const next = new Set(prev); next.delete(selectedDayKey); return next })
+  const selectedRowKey = selectedRow ? `${selectedRow.wnum}:${selectedRow.dow}:${selectedRow.rowId}` : `${selectedDayKey}:day`
+  const selectedRowComplete = isRowComplete(selectedRowForBar)
+  // Both rail overrides are matched against the current selection rather than
+  // cleared by each selection handler, so keyboard navigation gets the same
+  // behaviour as clicking without any handler having to remember to reset them.
+  const railFingerprint = rowContextFingerprint(selectedRowForBar)
+  const railDismissed = dismissedContext === selectedRowKey
+  // Recall survives only while the row stays as it was: edit it and the
+  // finished-row auto-collapse takes over again.
+  const railRecalled = recalledContext?.key === selectedRowKey
+    && recalledContext.fingerprint === railFingerprint
+  const railVisible = !!selectedDayValue && !!props.studentId
+    && !railDismissed && (!selectedRowComplete || railRecalled)
+  const railPlacement = useRailPlacement(railMode, railVisible, wrapRef, selectedRowKey)
+  const recallContext = () => {
+    setDismissedContext(null)
+    setRecalledContext({ key: selectedRowKey, fingerprint: railFingerprint })
+  }
   const selectedCellInfo = useMemo(() => {
     const resolved = resolvePlanCell(weeks, cellSelection)
     if (
@@ -1990,6 +2008,7 @@ export function PlanEditor(props: PlanEditorProps) {
       />
       <FormulaBar cell={selectedCellInfo} />
 
+      <div className={`plan-with-rail${railVisible && railMode === 'dock' ? ' rail-open' : ''}`} ref={wrapRef}>
       <div className="scroller" ref={scrollerRef} aria-readonly={readOnly || undefined} style={{ flex: 1, overflow: 'auto', position: 'relative', background: 'var(--page-bg)' }}>
         {readOnly && <div role="status" style={{ position: 'sticky', top: 0, zIndex: 12, padding: '8px 16px', background: 'var(--panel-bg)', borderBottom: '1px solid var(--bd)', color: 'var(--sec)', fontSize: 12 }}>历史计划只读：可以查看，但不会保存任何修改</div>}
         <div style={{ pointerEvents: readOnly ? 'none' : undefined }}>
@@ -2024,11 +2043,10 @@ export function PlanEditor(props: PlanEditorProps) {
                         readOnly={readOnly}
                         rowTier={rowTier}
                         onSelect={() => handleDayClick(wk.num, day.dow)}
-                        onRecallContext={recallContext}
+                        onRecallContext={railVisible ? undefined : recallContext}
                         onSelectRow={(rowId) => handleSelectRow(wk.num, day.dow, rowId)}
                         onSelectCell={(rowId, field, setIndex) => handleSelectCell(wk.num, day.dow, rowId, field, setIndex)}
                         onSetsDraftChange={(rowId, draft) => handleSetsDraftChange(wk.num, day.dow, rowId, draft)}
-                        infoTokens={(row) => exerciseInfoForRow(weekIndex, row)}
                         dayMoveState={moveStateForDay(wk.num, day.dow)}
                         dayMoveDisabledHint={dayMoveDisabledReason(day, dayMoveLocked)}
                         onDayMoveStart={(e) => handleDayMoveStart(wk.num, day, e)}
@@ -2055,11 +2073,13 @@ export function PlanEditor(props: PlanEditorProps) {
         </div>
       </div>
 
-      {selectedDayValue && props.studentId && !dismissedContextDays.has(selectedDayKey) && (
-        <WritingContextPanel studentId={props.studentId} studentName={studentName} profile={props.onboardingProfile}
+      {railVisible && selectedDayValue && props.studentId && (
+        <ContextRail studentId={props.studentId} studentName={studentName} profile={props.onboardingProfile}
           day={selectedDayValue} row={selectedRowForBar}
-          onClose={() => setDismissedContextDays((prev) => new Set(prev).add(selectedDayKey))} />
+          style={railPlacement} mode={railMode} onToggleMode={toggleRailMode}
+          onClose={() => setDismissedContext(selectedRowKey)} />
       )}
+      </div>
 
       <ExercisePopover
         visible={pop.visible} x={pop.x} y={pop.y}

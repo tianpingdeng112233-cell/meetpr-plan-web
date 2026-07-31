@@ -22,10 +22,12 @@ export function contextRailLevel(row: ExerciseRow | null): 1 | 2 | 3 | 4 {
 export function isRowComplete(row: ExerciseRow | null): boolean {
   if (!row?.exerciseId) return false
   if (!(Number.parseInt(row.reps, 10) > 0)) return false
-  const live = row.boxes.filter((b) => !b.empty)
-  if (live.length === 0) return false
+  if (row.boxes.length === 0) return false
+  // Bodyweight sets carry no load at all — mapping and reconcile both store them
+  // as empty boxes — so sets plus reps is the whole prescription.
   if (row.mode === 'bodyweight') return true
-  return live.every((b) => b.val.trim() !== '')
+  const live = row.boxes.filter((b) => !b.empty)
+  return live.length > 0 && live.every((b) => b.val.trim() !== '')
 }
 
 export function profileEmptyMessage(profile: StudentOnboardingProfile | null | undefined): string | null {
@@ -300,6 +302,9 @@ export function ContextRail({ studentId, ...rest }: {
   day: DayCol
   row: ExerciseRow | null
   profile: StudentOnboardingProfile | null | undefined
+  style?: React.CSSProperties
+  mode?: RailMode
+  onToggleMode?: () => void
   onClose: () => void
 }) {
   const [cache, setCache] = useState<Record<string, ExerciseStatsDetail>>({})

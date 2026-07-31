@@ -691,7 +691,7 @@ textarea {
 .page-status { color: var(--fg-tertiary); font: 11px var(--font-mono); }.page-status::first-letter { color: var(--green); }
 .overview-cards { padding: 16px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
 .overview-cards article { min-height: 98px; padding: 14px 16px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-1); box-sizing: border-box; }
-.overview-cards h3,.exercise-archive h3,.writing-body h3,.request-detail h3,.video-wall h3 { margin: 0 0 10px; color: var(--fg-tertiary); font: 600 10px var(--font-mono); letter-spacing: .09em; text-transform: uppercase; }
+.overview-cards h3,.exercise-archive h3,.request-detail h3,.video-wall h3 { margin: 0 0 10px; color: var(--fg-tertiary); font: 600 10px var(--font-mono); letter-spacing: .09em; text-transform: uppercase; }
 .overview-cards p { margin: 5px 0; color: var(--txt); font-size: 12px; }.rm-three { display: grid; grid-template-columns: repeat(3, 1fr); }.rm-three span { display: flex; flex-direction: column; }.rm-three b { color: var(--txt); font: 500 21px var(--font-mono); }.rm-three small,.rm-strip small { color: var(--fg-tertiary); font-size: 10px; margin-top: 4px; }
 .student-capacity-card { grid-column: 1 / -1; min-height: 0 !important; }
 .student-capacity-card>header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
@@ -1601,8 +1601,19 @@ textarea {
 .invite-footer b { color: var(--txt); font: 700 17px var(--font-mono); letter-spacing: .16em; }
 .invite-footer button { margin-left: auto; padding: 0 16px; color: var(--txt); font-weight: 600; }
 
-/* Editor writing context: intentionally below exercise search/dropdowns (80+). */
-.context-recall { margin-left: auto; padding: 0; border: 0; background: transparent; color: var(--fg-tertiary); font-size: 11px; cursor: pointer; }.writing-panel { position: fixed; z-index: 45; width: 316px; max-height: calc(100vh - 80px); overflow: auto; background: var(--surface-2); border: 1px solid var(--border-strong); border-radius: 12px; box-shadow: var(--elev-modal); }.writing-panel>.panel-arrow { position: absolute; left: -6px; top: 27px; width: 10px; height: 10px; background: var(--surface-2); border-left: 1px solid var(--border-strong); border-bottom: 1px solid var(--border-strong); transform: rotate(45deg); }.writing-panel.flip>.panel-arrow { left: auto; right: -6px; transform: rotate(225deg); }.writing-panel>header { position: sticky; top: 0; z-index: 2; height: 49px; padding: 0 12px; display: flex; align-items: center; background: var(--surface-2); border-bottom: 1px solid var(--border); }.writing-panel>header span { flex: 1; }.writing-panel>header b,.writing-panel>header small { display: block; }.writing-panel>header small { margin-top: 2px; color: var(--fg-tertiary); }.writing-panel>header button { border: 0; background: transparent; color: var(--fg-tertiary); cursor: pointer; }.writing-body { padding: 12px; }.panel-profile dl { margin: 0; display: grid; grid-template-columns: 65px 1fr; row-gap: 9px; }.panel-profile dt { color: var(--fg-tertiary); }.panel-profile dd { margin: 0; color: var(--fg-secondary); line-height: 1.35; }.panel-profile.compact { margin-top: 10px; }.context-chips { display: flex; gap: 6px; margin-bottom: 12px; }.context-chips>* { padding: 4px 7px; border: 1px solid var(--border); border-radius: 5px; color: var(--fg-tertiary); font-size: 10px; }.context-chips b { color: var(--ink); border-color: var(--ink); background: var(--ink-soft); }.bucket-line { padding: 9px 4px; display: flex; justify-content: space-between; border-bottom: 1px solid var(--border); color: var(--fg-tertiary); }.bucket-line b { color: var(--fg-secondary); }.best-line { padding: 10px; margin-bottom: 12px; display: flex; align-items: baseline; gap: 10px; border: 1px solid var(--border); border-radius: 8px; }.best-line b { font: 700 20px var(--font-mono); }.best-line span { color: var(--fg-tertiary); }
+/* Context controls stay below exercise search/dropdowns (80+). */
+.context-recall { margin-left: auto; padding: 0; border: 0; background: transparent; color: var(--fg-tertiary); font-size: 11px; cursor: pointer; }
+/* Shared by the exercise catalog drawer; do not fold this into retired editor-panel styles. */
+.writing-panel { position: fixed; z-index: 45; width: 316px; max-height: calc(100vh - 80px); overflow: auto; background: var(--surface-2); border: 1px solid var(--border-strong); border-radius: 12px; box-shadow: var(--elev-modal); }
+.writing-panel>header { position: sticky; top: 0; z-index: 2; height: 49px; padding: 0 12px; display: flex; align-items: center; background: var(--surface-2); border-bottom: 1px solid var(--border); }
+.writing-panel>header small { display: block; margin-top: 2px; color: var(--fg-tertiary); }
+.writing-panel>header button { border: 0; background: transparent; color: var(--fg-tertiary); cursor: pointer; }
+.panel-profile dl { margin: 0; display: grid; grid-template-columns: 65px 1fr; row-gap: 9px; }
+.panel-profile dt { color: var(--fg-tertiary); }
+.panel-profile dd { margin: 0; color: var(--fg-secondary); line-height: 1.35; }
+.panel-profile.compact { margin-top: 10px; }
+.bucket-line { padding: 9px 4px; display: flex; justify-content: space-between; border-bottom: 1px solid var(--border); color: var(--fg-tertiary); }
+.bucket-line b { color: var(--fg-secondary); }
 /* Context rail: docked beside the calendar (never over it), metric band always
    on the first screen so the coach reads the decisive numbers at a glance. */
 .plan-with-rail { position: relative; display: flex; align-items: stretch; min-height: 0; flex: 1; }
@@ -2283,21 +2294,6 @@ textarea {
 .row-mark.custom { padding: 0 3px; border: 1px solid var(--tint-bd); border-radius: var(--r-sm); color: var(--ink); background: var(--tint); }
 .row-mark.locked { padding: 0 3px; border: 1px solid var(--line); border-radius: var(--r-sm); color: var(--faint); cursor: help; }
 .row-mark.conflict { color: var(--warn); cursor: help; }
-.exercise-info-tokens {
-  min-width: 0;
-  padding: 0 6px 5px;
-  display: flex;
-  align-items: baseline;
-  flex-wrap: wrap;
-  gap: 0 6px;
-  color: var(--mut);
-  font: 500 11px var(--font-mono);
-}
-.exercise-info-tokens>span {
-  flex: none;
-  white-space: nowrap;
-}
-.exercise-info-tokens>span+span::before { content: "· "; color: var(--faint); }
 .tierhead {
   min-width: 0;
   padding: 4px 8px;
