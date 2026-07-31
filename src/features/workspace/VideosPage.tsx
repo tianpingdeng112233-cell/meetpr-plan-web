@@ -2,7 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { ApiException } from '../../api/client'
 import { getUploadUrl, patchCoachRpe, postCoachFeedback } from '../../api/coach'
 import { createVideoMarker, deleteVideoMarker, getVideoMarkers } from '../../api/markers'
-import type { CoachStudent, StudentVideo, VideoMarker, VideoMarkerLevel } from '../../api/types'
+import type { CoachStudent, StudentVideo, VideoMarker } from '../../api/types'
 import { kg } from './WorkspaceCommon'
 import { usePersistentCollapse } from './usePersistentCollapse'
 import { useGlobalKeyboardHandler } from './globalKeyboard'
@@ -11,11 +11,6 @@ type VideoFilter = 'all' | 'pending' | 'reviewed'
 type MarkerAvailability = 'loading' | 'available' | 'error' | 'unavailable'
 
 const weekdays = ['周日', '周一', '周二', '周三', '周四', '周五', '周六']
-const markerLevels: { value: VideoMarkerLevel; label: string }[] = [
-  { value: 'info', label: '提示' },
-  { value: 'warn', label: '注意' },
-  { value: 'bad', label: '问题' },
-]
 const coachRpeOptions = Array.from({ length: 11 }, (_, index) => 5 + index * 0.5)
 
 const videoDay = (video: Pick<StudentVideo, 'logged_at' | 'created_at'>) =>
@@ -97,7 +92,6 @@ export function VideosPage({ students, studentId, videos, onRefreshVideos, onStu
   const [markers, setMarkers] = useState<VideoMarker[]>([])
   const [markerOpen, setMarkerOpen] = useState(false)
   const [markerNote, setMarkerNote] = useState('')
-  const [markerLevel, setMarkerLevel] = useState<VideoMarkerLevel>('info')
   const [markerSaving, setMarkerSaving] = useState(false)
   const [markerError, setMarkerError] = useState('')
 
@@ -194,7 +188,6 @@ export function VideosPage({ students, studentId, videos, onRefreshVideos, onStu
     setMarkers([])
     setMarkerOpen(false)
     setMarkerNote('')
-    setMarkerLevel('info')
     setMarkerSaving(false)
     setMarkerError('')
     if (!active) {
@@ -393,7 +386,6 @@ export function VideosPage({ students, studentId, videos, onRefreshVideos, onStu
     try {
       const marker = await createVideoMarker(videoId, {
         time_ms: Math.max(0, Math.round(currentTime * 1000)),
-        level: markerLevel,
         note,
       })
       if (activeVideoIdRef.current !== videoId) return
@@ -402,7 +394,6 @@ export function VideosPage({ students, studentId, videos, onRefreshVideos, onStu
         : [...current, marker].sort((left, right) => left.time_ms - right.time_ms)))
       setMarkerOpen(false)
       setMarkerNote('')
-      setMarkerLevel('info')
     } catch {
       if (activeVideoIdRef.current === videoId) setMarkerError('打点保存失败，请稍后重试')
     } finally {
@@ -615,7 +606,7 @@ export function VideosPage({ students, studentId, videos, onRefreshVideos, onStu
                   <span style={{ width: `${duration > 0 ? markerPositionPercent(currentTime * 1000, duration) : 0}%` }} />
                   {markerAvailability === 'available' && markers.map((marker) => (
                     <i
-                      className={`video-marker-tick ${marker.level}`}
+                      className="video-marker-tick"
                       style={{ left: `${markerPositionPercent(marker.time_ms, duration)}%` }}
                       data-time-ms={marker.time_ms}
                       key={marker.id}
@@ -663,17 +654,6 @@ export function VideosPage({ students, studentId, videos, onRefreshVideos, onStu
                       }
                     }}
                   />
-                  <span className="video-marker-levels">
-                    {markerLevels.map((level) => (
-                      <button
-                        type="button"
-                        className={`${level.value}${markerLevel === level.value ? ' active' : ''}`}
-                        aria-pressed={markerLevel === level.value}
-                        onClick={() => setMarkerLevel(level.value)}
-                        key={level.value}
-                      >{level.label}</button>
-                    ))}
-                  </span>
                   <button
                     type="button"
                     className="video-marker-save"
@@ -750,7 +730,7 @@ export function VideosPage({ students, studentId, videos, onRefreshVideos, onStu
                                 className="video-marker-seek"
                                 onClick={() => seekTo(marker.time_ms / 1000)}
                               >
-                                <i className={marker.level} />
+                                <i />
                                 <time>{timeLabel(marker.time_ms / 1000)}</time>
                                 <span>{marker.note}</span>
                               </button>

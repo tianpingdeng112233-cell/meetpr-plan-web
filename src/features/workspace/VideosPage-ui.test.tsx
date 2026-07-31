@@ -600,7 +600,6 @@ describe('VideosPage master-detail interactions', () => {
 
     click(host.querySelector('.video-add-marker'))
     setInput(host.querySelector<HTMLInputElement>('[aria-label="打点短评"]')!, '膝盖继续向外推')
-    click(buttonWithText(host.querySelector('.video-marker-levels') as HTMLElement, '注意'))
     await act(async () => {
       buttonWithText(host, '保存打点')?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
       await settle()
@@ -608,7 +607,6 @@ describe('VideosPage master-detail interactions', () => {
 
     expect(api.createVideoMarker).toHaveBeenCalledWith('video-1', {
       time_ms: 12000,
-      level: 'warn',
       note: '膝盖继续向外推',
     })
     expect(host.querySelector('.video-markers-card h2')?.textContent).toBe('打点 · 2 处')

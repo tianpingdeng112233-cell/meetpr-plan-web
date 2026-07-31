@@ -86,8 +86,6 @@
   --bad: #A81E17;
   --bad-press: #861813;
   /* marker level warn/bad 在暗底上的亮化变体。 */
-  --marker-level-warn-on-dark: #F5BA68;
-  --marker-level-bad-on-dark: #F08B85;
   /* 来源：coach web mock 的拒绝按钮边框与动作分类标签底色。 */
   --reject-border: #E0B4B0;
   --tag-neutral-bg: #F1F3F5;
@@ -1142,10 +1140,8 @@ textarea {
   top: -3px;
   transform: translateX(-1px);
   pointer-events: none;
+  background: var(--faint);
 }
-.video-marker-tick.info { background: var(--faint); }
-.video-marker-tick.warn { background: var(--warn); }
-.video-marker-tick.bad { background: var(--bad); }
 .video-speeds {
   padding: 2px;
   flex: 0 0 auto;
@@ -1208,11 +1204,6 @@ textarea {
   font-size: 12px;
 }
 .video-marker-editor>input:focus { border-color: var(--faint); }
-.video-marker-levels {
-  display: flex;
-  gap: 2px;
-}
-.video-marker-levels button,
 .video-marker-save,
 .video-marker-cancel {
   height: 26px;
@@ -1224,10 +1215,6 @@ textarea {
   font-size: 11px;
   cursor: pointer;
 }
-.video-marker-levels button.active { color: var(--white); background: var(--play-surface); }
-.video-marker-levels button.info.active { border-color: var(--faint); }
-.video-marker-levels button.warn.active { border-color: var(--warn); color: var(--marker-level-warn-on-dark); }
-.video-marker-levels button.bad.active { border-color: var(--bad); color: var(--marker-level-bad-on-dark); }
 .video-marker-save { border-color: var(--white); color: var(--txt); background: var(--white); font-weight: 600; }
 .video-marker-save:disabled { opacity: .35; cursor: default; }
 .video-marker-cancel { border-color: transparent; }
@@ -1389,10 +1376,8 @@ textarea {
   width: 6px;
   height: 6px;
   border-radius: var(--r-pill);
+  background: var(--faint);
 }
-.video-marker-seek>i.info { background: var(--faint); }
-.video-marker-seek>i.warn { background: var(--warn); }
-.video-marker-seek>i.bad { background: var(--bad); }
 .video-marker-seek time { color: var(--ink); font: 10px var(--font-mono); }
 .video-marker-seek>span {
   overflow: hidden;
