@@ -16,6 +16,7 @@ export function StudentHubPage({
 }: StudentHubPageProps) {
   const targetRequest = useRef(0)
   const [videoTarget, setVideoTarget] = useState<(VideoTarget & { studentId: string }) | null>(null)
+  const [videoOpen, setVideoOpen] = useState(false)
   const pendingVideoCounts = useMemo(() => Object.fromEntries(
     Object.entries(videosByStudent).map(([studentId, videos]) => [
       studentId,
@@ -24,7 +25,7 @@ export function StudentHubPage({
   ), [videosByStudent])
 
   return (
-    <main className="student-hub-page">
+    <main className={`student-hub-page${videoOpen ? ' video-open' : ''}`}>
       <MessagesPage
         {...messagesProps}
         selectedStudentId={selectedStudentId}
@@ -39,6 +40,7 @@ export function StudentHubPage({
         videos={videosByStudent[selectedStudentId] ?? []}
         onRefreshVideos={onRefreshVideos}
         target={videoTarget?.studentId === selectedStudentId ? videoTarget : null}
+        onDetailOpenChange={setVideoOpen}
       />
     </main>
   )

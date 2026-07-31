@@ -657,6 +657,7 @@ describe('PlanWorkspace editor remount', () => {
     expect(host.textContent).toContain('刷新前视频')
 
     await act(async () => {
+      host.querySelector<HTMLButtonElement>('.video-master-row')?.click()
       await settle()
     })
     const feedback = host.querySelector<HTMLTextAreaElement>('.video-feedback textarea')!
@@ -723,7 +724,8 @@ describe('PlanWorkspace editor remount', () => {
     })
     expect(host.querySelector('.student-hub-page')?.children).toHaveLength(2)
     expect(host.querySelector('.chat-row.active')?.textContent).toContain('甲学员')
-    expect(host.querySelector('.video-detail-head')?.textContent).toContain('甲视频')
+    expect(host.querySelector('.videos-detail')).toBeNull()
+    expect(host.querySelector('.video-master-row')?.textContent).toContain('甲视频')
 
     api.getMessages.mockClear()
     api.getStudentVideos.mockClear()
@@ -736,7 +738,7 @@ describe('PlanWorkspace editor remount', () => {
 
     expect(host.querySelector('.chat-row.active')?.textContent).toContain('乙学员')
     expect(host.querySelector('.chat-thread')?.textContent).toContain('乙消息')
-    expect(host.querySelector('.video-detail-head')?.textContent).toContain('乙视频')
+    expect(host.querySelector('.video-master-row')?.textContent).toContain('乙视频')
     expect(api.getMessages).toHaveBeenCalledWith('conversation-b', { mode: 'latest', limit: 50 })
     expect(api.getStudentVideos).toHaveBeenCalledWith('student-b')
   }, 15_000)
@@ -794,7 +796,8 @@ describe('PlanWorkspace editor remount', () => {
       pendingTab.click()
       await settle()
     })
-    expect(host.querySelector('.video-detail-head')?.textContent).toContain('另一条待审视频')
+    expect(host.querySelector('.videos-detail')).toBeNull()
+    expect(host.querySelector('.video-master-row')?.textContent).toContain('另一条待审视频')
 
     await act(async () => {
       host.querySelector<HTMLButtonElement>('.set-ref-play')?.click()

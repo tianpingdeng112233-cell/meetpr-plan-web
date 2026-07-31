@@ -2404,12 +2404,32 @@ textarea {
 
 /* Unified student hub: roster + collapsible chat + video review workspace. */
 .student-hub-page { width: 100%; height: 100%; min-width: 0; display: flex; overflow: hidden; background: var(--card-bg); }
-.student-hub-page>.chat-page { width: 560px; flex: 0 0 560px; }
-.student-hub-page>.chat-page.thread-collapsed { width: 284px; flex-basis: 284px; }
-.student-hub-page>.videos-page { min-width: 0; flex: 1; border-left: 1px solid var(--bd); }
+/* Player closed: chat fills the middle, the review list stands on the right.
+   .videos-page keeps width:100% globally, so the closed rail needs explicit
+   widths (list 264 + 1px border; 44 + 1 when collapsed). */
+.student-hub-page>.chat-page { min-width: 0; flex: 1; }
+.student-hub-page>.videos-page { min-width: 0; width: 265px; flex: 0 0 265px; border-left: 1px solid var(--bd); }
+.student-hub-page>.videos-page.master-collapsed { width: 45px; flex: 0 0 45px; }
+/* Player open: chat yields to a fixed rail, the player takes the middle. */
+.student-hub-page.video-open>.chat-page { width: 560px; flex: 0 0 560px; }
+.student-hub-page.video-open>.chat-page.thread-collapsed { width: 284px; flex-basis: 284px; }
+.student-hub-page.video-open>.videos-page { width: auto; flex: 1; }
 .student-hub-page .chat-sidebar { width: 240px; flex-basis: 240px; }
-.student-hub-page .videos-master { width: 264px; flex-basis: 264px; }
+.student-hub-page .videos-master { width: 264px; flex-basis: 264px; border-left: 1px solid var(--bd); }
 .student-hub-page .videos-master.collapsed { width: 44px; flex-basis: 44px; }
+.student-hub-page .videos-page>.videos-master:first-child { border-left: none; }
+.video-detail-close {
+  width: 24px;
+  height: 24px;
+  border: 1px solid var(--bd);
+  border-radius: var(--r-sm);
+  color: var(--sec);
+  background: transparent;
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+}
+.video-detail-close:hover { color: var(--ink); border-color: var(--ink); }
 
 .chat-page { width: 100%; height: 100%; min-width: 0; display: flex; overflow: hidden; color: var(--txt); background: var(--card-bg); }
 .chat-sidebar { width: 300px; min-width: 0; flex: 0 0 300px; border-right: 1px solid var(--bd); display: flex; flex-direction: column; background: var(--card-bg); }

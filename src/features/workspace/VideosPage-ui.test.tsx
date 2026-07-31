@@ -179,6 +179,12 @@ describe('VideosPage master-detail interactions', () => {
       await settle()
     })
     mounted = true
+    // The player is on-demand since the student hub: open the first clip so
+    // the detail-pane assertions keep their historical precondition.
+    const first = host.querySelector<HTMLButtonElement>('.video-master-row')
+    if (first) {
+      await act(async () => { first.click(); await settle() })
+    }
   }
 
   it('collapses the clip list and restores the saved state', async () => {
@@ -239,6 +245,25 @@ describe('VideosPage master-detail interactions', () => {
     expect(host.querySelector<HTMLButtonElement>('[role="tab"][aria-selected="true"]')?.textContent).toBe('全部3')
     expect(host.querySelector('.video-detail-head')?.textContent).toContain('卧推')
     expect(host.querySelector('.video-master-row.selected')?.textContent).toContain('卧推')
+  })
+
+  it('keeps the player closed until a clip is picked and closes it via the × button', async () => {
+    await act(async () => {
+      root.render(<VideosHarness studentId="student-1" />)
+      await settle()
+    })
+    mounted = true
+    expect(host.querySelector('.videos-detail')).toBeNull()
+    expect(host.querySelector('.videos-master')).not.toBeNull()
+
+    const first = host.querySelector<HTMLButtonElement>('.video-master-row')!
+    await act(async () => { first.click(); await settle() })
+    expect(host.querySelector('.videos-detail')).not.toBeNull()
+
+    click(host.querySelector<HTMLButtonElement>('.video-detail-close')!)
+    await act(settle)
+    expect(host.querySelector('.videos-detail')).toBeNull()
+    expect(host.querySelector('.video-master-row.selected')).toBeNull()
   })
 
   it('never falls back to day/exercise/set matching when the target has a set_log_id', async () => {
