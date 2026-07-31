@@ -115,7 +115,8 @@ export interface VideoMarker {
 }
 export interface CreateVideoMarkerPayload {
   time_ms: number
-  level: VideoMarkerLevel
+  /** Omitted by the UI since the single-tier decision (2026-07-31); backend defaults to 'info'. */
+  level?: VideoMarkerLevel
   note: string
 }
 export interface CoachFeedbackPayload {
