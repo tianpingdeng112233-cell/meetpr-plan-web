@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from 'react'
 import { getExerciseStats } from '../../../api/coach'
-import type { ExerciseStatsDetail, StudentOnboardingProfile } from '../../../api/types'
+import type { ExerciseStatsDetail, ExerciseStatsOverview, StudentOnboardingProfile } from '../../../api/types'
 import type { DayCol, ExerciseRow } from '../types'
 import { kg, profileLine, shortDate, techniqueStyleLine } from '../../workspace/WorkspaceCommon'
 
@@ -131,15 +131,18 @@ export function metricCells(args: {
   level: 1 | 2 | 3 | 4
   profile: StudentOnboardingProfile | null | undefined
   detail: ExerciseStatsDetail | null
+  overview?: ExerciseStatsOverview | null
   reps: number
   weight: number | null
 }): MetricCell[] {
-  const { level, profile, detail, reps, weight } = args
+  const { level, detail, overview, reps, weight } = args
   if (level === 1 || !detail) {
+    // Day level leads with measured rolling e1RMs (self-reported 1RM lives in
+    // the profile block below); an older backend without the field reads「—」.
     return [
-      { value: kg(profile?.squat_1rm_kg), label: '深蹲 1RM' },
-      { value: kg(profile?.bench_1rm_kg), label: '卧推 1RM' },
-      { value: kg(profile?.deadlift_1rm_kg), label: '硬拉 1RM' },
+      { value: overview?.e1rm?.squat ? kg(overview.e1rm.squat.value) : '—', label: '深蹲 e1RM' },
+      { value: overview?.e1rm?.bench ? kg(overview.e1rm.bench.value) : '—', label: '卧推 e1RM' },
+      { value: overview?.e1rm?.deadlift ? kg(overview.e1rm.deadlift.value) : '—', label: '硬拉 e1RM' },
     ]
   }
   const cells: MetricCell[] = []
@@ -165,13 +168,14 @@ export function metricCells(args: {
 
 /** Presentational rail: no data fetching, so mocks and tests can drive every state. */
 export function ContextRailView({
-  studentName, day, row, profile, detail, loading = false, style, mode = 'follow', onToggleMode, onClose,
+  studentName, day, row, profile, detail, overview = null, loading = false, style, mode = 'follow', onToggleMode, onClose,
 }: {
   studentName: string
   day: DayCol
   row: ExerciseRow | null
   profile: StudentOnboardingProfile | null | undefined
   detail: ExerciseStatsDetail | null
+  overview?: ExerciseStatsOverview | null
   loading?: boolean
   /** Placement override; absent = docked to the editor's right edge. */
   style?: React.CSSProperties
@@ -183,7 +187,7 @@ export function ContextRailView({
   const sets = row?.boxes.length ?? 0
   const reps = row ? Number.parseInt(row.reps, 10) || 0 : 0
   const weight = topSetWeight(row)
-  const cells = metricCells({ level, profile, detail, reps, weight })
+  const cells = metricCells({ level, profile, detail, overview, reps, weight })
   const matching = useMemo(
     () => detail?.recent_sessions.filter((s) => s.sets.length === sets && s.sets.every((x) => x.reps === reps)).slice(0, 2) ?? [],
     [detail, sets, reps],
@@ -302,6 +306,7 @@ export function ContextRail({ studentId, ...rest }: {
   day: DayCol
   row: ExerciseRow | null
   profile: StudentOnboardingProfile | null | undefined
+  overview?: ExerciseStatsOverview | null
   style?: React.CSSProperties
   mode?: RailMode
   onToggleMode?: () => void
@@ -349,6 +354,7 @@ function Profile({ profile, compact = false }: { profile: StudentOnboardingProfi
         <dt>基础</dt><dd>{profileLine(profile)}</dd>
         <dt>年限</dt><dd>{profile.training_years != null ? `${profile.training_years} 年 · 每周 ${profile.training_days?.length ?? '—'} 天` : '未填写'}</dd>
         <dt>风格</dt><dd>{techniqueStyleLine(profile)}</dd>
+        <dt>自报</dt><dd>S {kg(profile.squat_1rm_kg)} / B {kg(profile.bench_1rm_kg)} / D {kg(profile.deadlift_1rm_kg)}</dd>
         <dt>伤病</dt><dd>{profile.injury_notes || profile.injury_areas?.join('、') || '无'}</dd>
         <dt>备赛</dt><dd>{profile.is_competing ? `${shortDate(profile.competition_date)} · ${profile.target_weight_class || '未填级别'}` : '暂不备赛'}</dd>
       </dl>

@@ -2170,7 +2170,7 @@ export function PlanEditor(props: PlanEditorProps) {
 
       {railVisible && selectedDayValue && props.studentId && (
         <ContextRail studentId={props.studentId} studentName={studentName} profile={props.onboardingProfile}
-          day={selectedDayValue} row={selectedRowForBar}
+          overview={props.exerciseStatsOverview} day={selectedDayValue} row={selectedRowForBar}
           style={railPlacement} mode={railMode} onToggleMode={toggleRailMode}
           onClose={() => setDismissedContext(selectedRowKey)} />
       )}
