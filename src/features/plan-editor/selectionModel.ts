@@ -22,6 +22,27 @@ export interface PlanCellInfo {
 
 export type PlanCellMove = 'next' | 'previous' | 'up' | 'down'
 
+export type RowDisplayTier = 'main' | 'aux'
+
+/**
+ * Returns the rows in the order presented inside a day. Tiered days render all
+ * main rows first and all auxiliary rows second, while preserving source order
+ * inside each section. Without a tier resolver the legacy flat order is kept.
+ */
+export function orderRowsForDisplay<T>(
+  rows: readonly T[],
+  resolveTier?: (row: T) => RowDisplayTier,
+): T[] {
+  if (!resolveTier) return [...rows]
+  const main: T[] = []
+  const aux: T[] = []
+  for (const row of rows) {
+    if (resolveTier(row) === 'main') main.push(row)
+    else aux.push(row)
+  }
+  return [...main, ...aux]
+}
+
 export function samePlanCell(
   left: PlanCellSelection | null,
   right: PlanCellSelection | null,

@@ -9,6 +9,7 @@ import {
 } from '../inputGuard'
 import { compactTonnage, summarizeDaySection, type DaySectionSummary } from '../weeklySummary'
 import {
+  orderRowsForDisplay,
   planCellKey,
   samePlanCell,
   type PlanCellField,
@@ -22,10 +23,11 @@ interface Props {
   colW: ColWidths
   selected: boolean
   selectedRowId?: string | null
+  selectedRowIds?: ReadonlySet<string>
   cellSelection?: PlanCellSelection | null
   onSelect: () => void
   onRecallContext?: () => void
-  onSelectRow?: (rowId: string) => void
+  onSelectRow?: (rowId: string, modifiers?: { toggle: boolean; range: boolean }) => void
   onSelectCell?: (rowId: string, field: PlanCellField, setIndex?: number) => void
   onSetsDraftChange?: (rowId: string, draft: string | null) => void
   readOnly?: boolean
@@ -269,6 +271,7 @@ export function DayColumn({
   colW,
   selected,
   selectedRowId,
+  selectedRowIds,
   cellSelection,
   onSelect,
   onRecallContext,
@@ -305,6 +308,7 @@ export function DayColumn({
       onClick={(e) => { e.stopPropagation(); onRecallContext() }}>▤</button>
   ) : null
   const resolveTier = (row: ExerciseRow) => rowTier?.(row) ?? (row.isMain ? 'main' : 'aux')
+  const displayRows = orderRowsForDisplay(day.rows, rowTier)
   const mainRowsForDay = day.rows.filter((row) => resolveTier(row) === 'main')
   const auxRowsForDay = day.rows.filter((row) => resolveTier(row) === 'aux')
   const mainDaySummary = summarizeDaySection(mainRowsForDay)
@@ -326,12 +330,15 @@ export function DayColumn({
   const selectCell = (rowId: string, field: PlanCellField, setIndex?: number) => {
     onSelectCell?.(rowId, field, setIndex)
   }
+  const rowSelectionModifiers = (event: React.MouseEvent) => ({
+    toggle: event.metaKey || event.ctrlKey,
+    range: event.shiftKey,
+  })
 
   const startRowDrag = (e: React.MouseEvent, rowId: string) => {
     if (e.button !== 0 || dragDisabled) return
     e.preventDefault()
     e.stopPropagation()
-    onSelectRow?.(rowId)
     setDragRowId(rowId)
 
     let currentDrop: { rowId: string; position: 'before' | 'after' } | null = null
@@ -443,7 +450,7 @@ export function DayColumn({
         const renderRow = (row: ExerciseRow) => {
           const edit = (u: (r: ExerciseRow) => ExerciseRow) => onEditRow(row.id, u)
           const inputIssue = getBoundRowInputIssue(row)
-          const isSelectedRow = selectedRowId === row.id
+          const isSelectedRow = selectedRowIds?.has(row.id) ?? selectedRowId === row.id
           const dropPosition = dropTarget?.rowId === row.id ? dropTarget.position : null
           return (
             <div
@@ -452,7 +459,9 @@ export function DayColumn({
               data-locked={row.hasLogs ? 'true' : 'false'}
               data-drag-disabled={dragDisabled ? 'true' : 'false'}
               className={`exrow${resolveTier(row) === 'aux' ? ' aux' : ''}${row.hasLogs ? ' locked' : ''}${isSelectedRow ? ' row-sel' : ''}${dragRowId === row.id ? ' row-dragging' : ''}${dropPosition ? ` row-drop-${dropPosition}` : ''}`}
-              onMouseDownCapture={(e) => { if (e.button === 0) onSelectRow?.(row.id) }}
+              onMouseDownCapture={(e) => {
+                if (e.button === 0) onSelectRow?.(row.id, rowSelectionModifiers(e))
+              }}
               onClick={(e) => e.stopPropagation()}
             >
               <div className="exercise-row-main">
@@ -467,7 +476,10 @@ export function DayColumn({
                     className="rowdrag"
                     title={dragDisabled ? '该日含学员已打卡动作，整天不可拖排' : '拖动调整顺序 / 点击选中动作'}
                     onMouseDown={(e) => startRowDrag(e, row.id)}
-                    onClick={(e) => { e.stopPropagation(); onSelectRow?.(row.id) }}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      if (e.detail === 0) onSelectRow?.(row.id, rowSelectionModifiers(e))
+                    }}
                     style={{ cursor: dragDisabled ? 'not-allowed' : undefined, opacity: dragDisabled ? 0.45 : undefined }}
                   >
                     ⋮
@@ -572,13 +584,13 @@ export function DayColumn({
         if (!rowTier) {
           return (
             <>
-              {day.rows.map(renderRow)}
+              {displayRows.map(renderRow)}
               {selected && addRowEntry('aux')}
             </>
           )
         }
-        const mainRows = day.rows.filter((r) => rowTier(r) === 'main')
-        const auxRows = day.rows.filter((r) => rowTier(r) === 'aux')
+        const mainRows = displayRows.filter((r) => rowTier(r) === 'main')
+        const auxRows = displayRows.filter((r) => rowTier(r) === 'aux')
         const mainSummary = summarizeDaySection(mainRows)
         const auxSummary = summarizeDaySection(auxRows)
         return (
