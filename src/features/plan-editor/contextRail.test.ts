@@ -10,7 +10,7 @@ import {
   topSetWeight,
 } from './components/ContextRail'
 import type { ExerciseRow } from './types'
-import type { ExerciseStatsDetail, StudentOnboardingProfile } from '../../api/types'
+import type { ExerciseStatsDetail, ExerciseStatsOverview, StudentOnboardingProfile } from '../../api/types'
 
 function row(patch: Partial<ExerciseRow> = {}): ExerciseRow {
   return {
@@ -98,11 +98,27 @@ describe('railPlacement', () => {
   })
 })
 
+const overview = {
+  exercises: [], one_rm: { squat: '240', bench: '100', deadlift: '270' },
+  e1rm: {
+    squat: { value: '221.50', computed_at: '2026-07-27' },
+    bench: null,
+    deadlift: { value: '228.50', computed_at: '2026-07-27' },
+  },
+  last_trained_at: null,
+  recent_4w: { trained_days: 0, total_planned_days: 0, completion_rate: 0 },
+} as ExerciseStatsOverview
+
 describe('metricCells', () => {
-  it('shows the three onboarding 1RMs while only a day is selected', () => {
-    const cells = metricCells({ level: 1, profile, detail: null, reps: 0, weight: null })
-    expect(cells.map((c) => c.label)).toEqual(['深蹲 1RM', '卧推 1RM', '硬拉 1RM'])
-    expect(cells.map((c) => c.value)).toEqual(['240', '100', '270'])
+  it('shows the three rolling e1RMs while only a day is selected', () => {
+    const cells = metricCells({ level: 1, profile, detail: null, overview, reps: 0, weight: null })
+    expect(cells.map((c) => c.label)).toEqual(['深蹲 e1RM', '卧推 e1RM', '硬拉 e1RM'])
+    expect(cells.map((c) => c.value)).toEqual(['221.5', '—', '228.5'])
+  })
+
+  it('degrades to dashes when the backend does not send e1rm yet', () => {
+    const cells = metricCells({ level: 1, profile, detail: null, overview: { ...overview, e1rm: undefined }, reps: 0, weight: null })
+    expect(cells.map((c) => c.value)).toEqual(['—', '—', '—'])
   })
 
   it('leads with 1RM and e1RM for a main lift', () => {

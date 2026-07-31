@@ -55,6 +55,12 @@ export interface StudentOnboardingProfile {
 export interface ExerciseStatsOverview {
   exercises: { exercise_id: string; name: string; session_count: number; last_logged_at: string }[]
   one_rm: { squat: string | null; bench: string | null; deadlift: string | null }
+  /** Rolling e1RM per competition-lift family; optional until every backend deploy carries it. */
+  e1rm?: {
+    squat: { value: string; computed_at: string } | null
+    bench: { value: string; computed_at: string } | null
+    deadlift: { value: string; computed_at: string } | null
+  }
   last_trained_at: string | null
   recent_4w: { trained_days: number; total_planned_days: number; completion_rate: number }
 }

@@ -8,8 +8,19 @@ import ReactDOM from 'react-dom/client'
 import { DayColumn } from '../features/plan-editor/components/DayColumn'
 import { ContextRailView, isRowComplete, useRailMode, useRailPlacement } from '../features/plan-editor/components/ContextRail'
 import { COL_DEFAULTS, type DayCol, type ExerciseRow } from '../features/plan-editor/types'
-import type { ExerciseStatsDetail, StudentOnboardingProfile } from '../api/types'
+import type { ExerciseStatsDetail, ExerciseStatsOverview, StudentOnboardingProfile } from '../api/types'
 import '../index.css'
+
+const overview = {
+  exercises: [], one_rm: { squat: '240', bench: '100', deadlift: '270' },
+  e1rm: {
+    squat: { value: '221.50', computed_at: '2026-07-27' },
+    bench: { value: '96.00', computed_at: '2026-07-20' },
+    deadlift: { value: '228.50', computed_at: '2026-07-27' },
+  },
+  last_trained_at: null,
+  recent_4w: { trained_days: 0, total_planned_days: 0, completion_rate: 0 },
+} as ExerciseStatsOverview
 
 const profile: StudentOnboardingProfile = {
   gender: 'male', birth_date: '2005-03-02', height_cm: '188', weight_kg: '85',
@@ -227,7 +238,7 @@ function Mock() {
 
         {railVisible && (
           <ContextRailView
-            studentName="史俊义" day={day} row={sel} profile={profile}
+            studentName="史俊义" day={day} row={sel} profile={profile} overview={overview}
             detail={detail} style={placement} mode={mode} onToggleMode={toggleMode}
             onClose={() => setDismissed(true)}
           />

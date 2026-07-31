@@ -53,12 +53,23 @@ const profile = {
   note_to_coach: '想先把硬拉锁定环节练稳。',
 } as unknown as StudentOnboardingProfile
 
+const overview = {
+  exercises: [], one_rm: { squat: '240', bench: '100', deadlift: '270' },
+  e1rm: {
+    squat: { value: '221.50', computed_at: '2026-07-27' },
+    bench: { value: '96.00', computed_at: '2026-07-20' },
+    deadlift: { value: '228.50', computed_at: '2026-07-27' },
+  },
+  last_trained_at: null,
+  recent_4w: { trained_days: 0, total_planned_days: 0, completion_rate: 0 },
+} as import('../api/types').ExerciseStatsOverview
+
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <div style={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>
       <PlanEditor
         initialWeeks={[week]} weeksCount={1} studentId="student-mock" studentName="史俊义"
-        planName="硬拉300" onboardingProfile={profile}
+        planName="硬拉300" onboardingProfile={profile} exerciseStatsOverview={overview}
       />
     </div>
   </React.StrictMode>,
