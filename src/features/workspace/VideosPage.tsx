@@ -146,6 +146,7 @@ export function VideosPage({
   const [markerSaving, setMarkerSaving] = useState(false)
   const [markerError, setMarkerError] = useState('')
   const [deletingMarkerIds, setDeletingMarkerIds] = useState<ReadonlySet<string>>(new Set())
+  const [viewingAnnotation, setViewingAnnotation] = useState<VideoMarker | null>(null)
 
   const retried = useRef(false)
   const crossOriginRetried = useRef(false)
@@ -281,6 +282,7 @@ export function VideosPage({
     setCrossOriginEnabled(true)
     setAnnotateUnavailable(false)
     setAnnotationOpen(false)
+    setViewingAnnotation(null)
     setAnnotationTool('freehand')
     setAnnotationStrokes([])
     setActiveStroke(null)
@@ -687,7 +689,12 @@ export function VideosPage({
       reject(caught)
     }
   })
-  const dropAnnotationMarker = async (videoId: string, timeMs: number, note: string) => {
+  const dropAnnotationMarker = async (
+    videoId: string,
+    timeMs: number,
+    note: string,
+    attachmentId?: string,
+  ) => {
     // The marker surface may be hidden (endpoint 404) — then skip silently,
     // matching the rest of the optional-marker contract.
     if (markerAvailability !== 'available') return
@@ -695,6 +702,9 @@ export function VideosPage({
       const marker = await createVideoMarker(videoId, {
         time_ms: timeMs,
         note: note.trim().slice(0, 500) || '✏️ 标注',
+        // The same chat_image attachment anchors the drawn frame onto the
+        // marker so the student can view it from the player (0055).
+        ...(attachmentId ? { attachment_id: attachmentId } : {}),
       })
       if (activeVideoIdRef.current !== videoId) return
       setMarkers((current) => (current.some((item) => item.id === marker.id)
@@ -731,7 +741,7 @@ export function VideosPage({
       // Publishing belongs to the request that produced it — but the editing
       // state may already belong to a newer annotation; never touch that.
       chatOutbox.publishConfirmed(message)
-      await dropAnnotationMarker(videoId, annotationTimeMs.current, annotationNote)
+      await dropAnnotationMarker(videoId, annotationTimeMs.current, annotationNote, session.attachmentId)
       if (generation !== annotationGeneration.current) return
       annotationSession.current = null
       setAnnotationOpen(false)
@@ -990,6 +1000,33 @@ export function VideosPage({
                   ) : (
                     <div className="video-loading">{playbackError || '正在获取播放链接…'}</div>
                   )}
+                  {viewingAnnotation?.annotation_url && !annotationOpen && (
+                    <button
+                      type="button"
+                      className="video-annotation-view"
+                      aria-label={`标注帧 ${timeLabel(viewingAnnotation.time_ms / 1000)}，点击关闭`}
+                      onClick={() => setViewingAnnotation(null)}
+                    >
+                      <img
+                        src={viewingAnnotation.annotation_url}
+                        alt={viewingAnnotation.note || '标注帧'}
+                        onError={() => {
+                          // Signed URL likely expired: refresh the list once
+                          // so the next tap gets a fresh one.
+                          setViewingAnnotation(null)
+                          markerRequest.current += 1
+                          void getVideoMarkers(viewingAnnotation.video_id)
+                            .then((fresh) => {
+                              if (activeVideoIdRef.current === viewingAnnotation.video_id) {
+                                setMarkers(fresh)
+                              }
+                            })
+                            .catch(() => {})
+                        }}
+                      />
+                      <span>✏️ {timeLabel(viewingAnnotation.time_ms / 1000)} 标注帧 · 点击关闭</span>
+                    </button>
+                  )}
                   {annotationOpen && annotationBaseRef.current && (
                     <div className="video-annotation-layer" aria-label="冻结帧标注编辑器">
                       <div
@@ -1221,11 +1258,18 @@ export function VideosPage({
                               <button
                                 type="button"
                                 className="video-marker-seek"
-                                onClick={() => seekTo(marker.time_ms / 1000)}
+                                onClick={() => {
+                                  seekTo(marker.time_ms / 1000)
+                                  if (marker.annotation_url) {
+                                    videoRef.current?.pause()
+                                    setViewingAnnotation(marker)
+                                  }
+                                }}
                               >
                                 <i />
                                 <time>{timeLabel(marker.time_ms / 1000)}</time>
                                 <span>{marker.note}</span>
+                                {marker.annotation_url && <em className="video-marker-annotated" aria-label="含标注帧">✏️</em>}
                               </button>
                               <button
                                 type="button"

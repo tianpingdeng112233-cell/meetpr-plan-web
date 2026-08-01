@@ -1225,6 +1225,23 @@ textarea {
 .video-annotate:disabled { opacity: .4; cursor: default; }
 .video-annotate { border-color: color-mix(in srgb, #F59E0B 64%, transparent); }
 .video-annotate:hover { border-color: #F59E0B; }
+.video-annotation-view {
+  position: absolute;
+  inset: 0;
+  z-index: 7;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: 0;
+  padding: 0;
+  background: rgba(0, 0, 0, .82);
+  cursor: pointer;
+}
+.video-annotation-view img { min-height: 0; max-width: 100%; flex: 1; object-fit: contain; }
+.video-annotation-view span { flex: 0 0 auto; padding: 4px 10px; border-radius: var(--r-pill); color: var(--white); background: rgba(0,0,0,.6); font: 600 11px var(--font-mono); }
+.video-marker-annotated { flex: 0 0 auto; font-size: 11px; font-style: normal; }
 .video-annotation-layer {
   position: absolute;
   inset: 0;

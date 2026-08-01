@@ -112,12 +112,17 @@ export interface VideoMarker {
   level: VideoMarkerLevel
   note: string
   created_at: string
+  attachment_id?: string | null
+  annotation_url?: string | null
+  annotation_expires_in?: number | null
 }
 export interface CreateVideoMarkerPayload {
   time_ms: number
   /** Omitted by the UI since the single-tier decision (2026-07-31); backend defaults to 'info'. */
   level?: VideoMarkerLevel
   note: string
+  /** Links the coach's annotation frame (chat_image attachment) to the marker. */
+  attachment_id?: string
 }
 export interface CoachFeedbackPayload {
   student_id: string
