@@ -723,16 +723,19 @@ describe('VideosPage master-detail interactions', () => {
 
     click(host.querySelector('.video-annotate'))
     expect(HTMLMediaElement.prototype.pause).toHaveBeenCalledTimes(1)
-    expect(context.drawImage).toHaveBeenCalledWith(video, 0, 0, 1080, 1920)
-    expect(host.querySelector('.video-annotation-layer')).not.toBeNull()
+    // Live layer: no frame grab on open — the frame is captured at SEND time.
+    expect(context.drawImage).not.toHaveBeenCalled()
+    expect(host.querySelector('.video-annotation-layer.live')).not.toBeNull()
 
+    // The live layer keeps playback shortcuts working: space toggles play.
     act(() => window.dispatchEvent(new KeyboardEvent('keydown', { key: ' ', bubbles: true })))
-    act(() => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true })))
-    expect(HTMLMediaElement.prototype.play).not.toHaveBeenCalled()
+    expect(HTMLMediaElement.prototype.play).toHaveBeenCalled()
     expect(host.querySelector('.video-detail-head')?.textContent).toContain('深蹲')
 
     click(buttonWithText(host, '发送到聊天'))
     await act(settle)
+    // Send freezes NOW: current frame + strokes + badge composited.
+    expect(context.drawImage).toHaveBeenCalledWith(video, 0, 0, 1080, 1920)
     expect(buttonWithText(host, '发送中')?.textContent).toBe('发送中…')
     expect(api.openConversation).toHaveBeenCalledWith('student-1')
     expect(api.sendChatImage).not.toHaveBeenCalled()
