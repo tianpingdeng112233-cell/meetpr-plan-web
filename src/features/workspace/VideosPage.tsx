@@ -132,7 +132,6 @@ export function VideosPage({
   const [activeStroke, setActiveStroke] = useState<AnnotationStroke | null>(null)
   const [annotationSending, setAnnotationSending] = useState(false)
   const [annotationNote, setAnnotationNote] = useState('')
-  const annotationTimeMs = useRef(0)
   const [feedback, setFeedback] = useState('')
   const [feedbackState, setFeedbackState] = useState<'idle' | 'sending' | 'sent'>('idle')
   const [feedbackError, setFeedbackError] = useState('')
@@ -152,7 +151,12 @@ export function VideosPage({
   const crossOriginRetried = useRef(false)
   const videoRef = useRef<HTMLVideoElement>(null)
   const annotationCanvasRef = useRef<HTMLCanvasElement>(null)
-  const annotationBaseRef = useRef<HTMLCanvasElement | null>(null)
+  const annotationFrameSize = useRef<{ width: number; height: number } | null>(null)
+  // One freeze per send-attempt family: retries must resend EXACTLY the
+  // image the coach saw when they hit send (the upload session records
+  // etag/size against it). Editing strokes discards it via
+  // invalidateAnnotationUpload; moving the playhead alone does not.
+  const annotationExport = useRef<{ blob: Blob; timeMs: number; generation: number } | null>(null)
   const annotationPointer = useRef<number | null>(null)
   const annotationSession = useRef<ChatImageSendSession | null>(null)
   const annotationGeneration = useRef(0)
@@ -161,6 +165,7 @@ export function VideosPage({
   // matches the canvas — drop it (keeping the clientId) so the retry
   // uploads the current image instead of resending the stale attachment.
   const invalidateAnnotationUpload = () => {
+    annotationExport.current = null
     const session = annotationSession.current
     if (!session || !session.attachmentId) return
     abortChatImage(session)
@@ -171,6 +176,7 @@ export function VideosPage({
   // that is mid-send is left to its own request: on success it publishes,
   // on generation-mismatch failure it aborts itself.
   const abandonAnnotationSession = () => {
+    annotationExport.current = null
     annotationGeneration.current += 1
     const session = annotationSession.current
     if (session && session !== sendingSessionRef.current) abortChatImage(session)
@@ -288,7 +294,6 @@ export function VideosPage({
     setActiveStroke(null)
     abandonAnnotationSession()
     setAnnotationSending(false)
-    annotationBaseRef.current = null
     annotationPointer.current = null
     resetFeedback()
     if (!active) return
@@ -386,16 +391,14 @@ export function VideosPage({
       return false
   }, 10)
 
-  // The annotation surface is an editing mode even when the canvas itself is
-  // not a native editable element. Consume app-wide shortcuts before any
-  // screen-level registration can navigate, play, or mutate hidden content —
-  // except Esc, which closes the layer (unless a send is in flight).
+  // Live-layer annotation keeps the whole transport usable — including
+  // space/arrow shortcuts. Only Esc is intercepted to close the layer
+  // (unless a send is in flight); typed input is already covered by the
+  // dispatcher's editable guard.
   useGlobalKeyboardHandler(({ event }) => {
-    if (!annotationOpen) return false
-    if (event.key === 'Escape') {
-      event.preventDefault()
-      if (!annotationSending) closeAnnotation()
-    }
+    if (!annotationOpen || event.key !== 'Escape') return false
+    event.preventDefault()
+    if (!annotationSending) closeAnnotation()
     return true
   }, 1000)
 
@@ -410,7 +413,6 @@ export function VideosPage({
       setCrossOriginEnabled(false)
       setAnnotateUnavailable(true)
       setAnnotationOpen(false)
-      annotationBaseRef.current = null
       abandonAnnotationSession()
       return
     }
@@ -437,10 +439,8 @@ export function VideosPage({
   }
 
   const togglePlayback = () => {
-    // The annotation editor freezes a frame OVER the video: playing under it
-    // would be audio-only with a stuck picture. The passive viewer simply
-    // yields to playback.
-    if (annotationOpen) return
+    // The passive annotation viewer yields to playback; the live-layer
+    // editor does not restrict the transport at all.
     if (viewingAnnotation) setViewingAnnotation(null)
     const video = videoRef.current
     if (!video) return
@@ -455,7 +455,6 @@ export function VideosPage({
     setCurrentTime(next)
   }
   const stepFrame = (direction: -1 | 1) => {
-    if (annotationOpen) return
     const video = videoRef.current
     if (!video) return
     const next = frameStepTime(video.currentTime, direction, duration || video.duration)
@@ -481,7 +480,7 @@ export function VideosPage({
   }
   const beginScrub = (event: React.PointerEvent<HTMLButtonElement>) => {
     // Single active pointer: a second finger must not hijack the gesture.
-    if (annotationOpen || duration <= 0 || scrubState.current != null) return
+    if (duration <= 0 || scrubState.current != null) return
     const video = videoRef.current
     event.currentTarget.setPointerCapture(event.pointerId)
     // Pause while dragging so the thumb follows the pointer instead of
@@ -539,7 +538,7 @@ export function VideosPage({
   }
   const wheelFrame = useRef<(delta: number) => void>(() => {})
   wheelFrame.current = (delta: number) => {
-    if (annotationOpen || duration <= 0 || scrubState.current != null || delta === 0) return
+    if (duration <= 0 || scrubState.current != null || delta === 0) return
     stepFrame(delta > 0 ? 1 : -1)
   }
   const wheelCleanup = useRef<(() => void) | null>(null)
@@ -578,7 +577,6 @@ export function VideosPage({
     setAnnotateUnavailable(true)
     setAnnotationOpen(false)
     setActiveStroke(null)
-    annotationBaseRef.current = null
     annotationPointer.current = null
     abandonAnnotationSession()
     toast('当前视频无法安全捕获画面，标注已停用')
@@ -588,31 +586,18 @@ export function VideosPage({
     if (annotateUnavailable || annotationOpen || annotationSending) return
     annotationGeneration.current += 1
     annotationSession.current = { clientId: newClientId() }
+    annotationExport.current = null
     setAnnotationNote('')
     const video = videoRef.current
     if (!video || video.videoWidth <= 0 || video.videoHeight <= 0) {
       toast('视频画面尚未就绪')
       return
     }
+    // The layer is a transparent telestrator over the LIVE video: playback
+    // stays fully usable underneath. Pausing on entry is just a convenient
+    // starting point; the frame (and its timestamp) is captured at SEND time.
     video.pause()
-    const base = document.createElement('canvas')
-    base.width = video.videoWidth
-    base.height = video.videoHeight
-    const context = base.getContext('2d')
-    if (!context) {
-      toast('帧捕获失败，请重试')
-      return
-    }
-    try {
-      context.drawImage(video, 0, 0, base.width, base.height)
-      drawTimeBadge(context, base.width, base.height, timeLabel(video.currentTime))
-      annotationTimeMs.current = Math.max(0, Math.round(video.currentTime * 1000))
-    } catch (caught) {
-      if (isSecurityError(caught)) degradeAnnotation()
-      else toast('帧捕获失败，请重试')
-      return
-    }
-    annotationBaseRef.current = base
+    annotationFrameSize.current = { width: video.videoWidth, height: video.videoHeight }
     setAnnotationTool('freehand')
     setAnnotationStrokes([])
     setActiveStroke(null)
@@ -622,14 +607,13 @@ export function VideosPage({
   useEffect(() => {
     if (!annotationOpen) return
     const canvas = annotationCanvasRef.current
-    const base = annotationBaseRef.current
-    if (!canvas || !base) return
-    if (canvas.width !== base.width) canvas.width = base.width
-    if (canvas.height !== base.height) canvas.height = base.height
+    const frame = annotationFrameSize.current
+    if (!canvas || !frame) return
+    if (canvas.width !== frame.width) canvas.width = frame.width
+    if (canvas.height !== frame.height) canvas.height = frame.height
     const context = canvas.getContext('2d')
     if (!context) return
     context.clearRect(0, 0, canvas.width, canvas.height)
-    context.drawImage(base, 0, 0)
     drawAnnotationStrokes(
       context,
       activeStroke ? [...annotationStrokes, activeStroke] : annotationStrokes,
@@ -638,14 +622,14 @@ export function VideosPage({
   }, [activeStroke, annotationOpen, annotationStrokes])
 
   const annotationPoint = (event: React.PointerEvent<HTMLCanvasElement>) => {
-    const base = annotationBaseRef.current
-    if (!base) return null
+    const frame = annotationFrameSize.current
+    if (!frame) return null
     const rect = event.currentTarget.getBoundingClientRect()
     return displayPointToFrame(
       { x: event.clientX, y: event.clientY },
       rect,
-      base.width,
-      base.height,
+      frame.width,
+      frame.height,
     )
   }
   const beginAnnotationStroke = (event: React.PointerEvent<HTMLCanvasElement>) => {
@@ -680,19 +664,66 @@ export function VideosPage({
     abandonAnnotationSession()
     setAnnotationOpen(false)
     setActiveStroke(null)
-    annotationBaseRef.current = null
     annotationPointer.current = null
   }
-  const annotationBlob = () => new Promise<Blob>((resolve, reject) => {
-    const canvas = annotationCanvasRef.current
-    if (!canvas) { reject(new Error('ANNOTATION_CANVAS_MISSING')); return }
-    try {
-      canvas.toBlob((blob) => {
-        if (blob) resolve(blob)
-        else reject(new Error('ANNOTATION_EXPORT_FAILED'))
-      }, 'image/jpeg', 0.9)
-    } catch (caught) {
-      reject(caught)
+  const annotationBlob = (generation: number) => new Promise<{ blob: Blob; timeMs: number }>((resolve, reject) => {
+    // A prior failed attempt already froze an image the session's upload
+    // state refers to — retries resend exactly that. The freeze belongs to
+    // one annotation generation: a layer opened later never reuses it.
+    const existing = annotationExport.current
+    if (existing && existing.generation === generation) { resolve(existing); return }
+    const video = videoRef.current
+    const frame = annotationFrameSize.current
+    if (!video || !frame) { reject(new Error('ANNOTATION_CANVAS_MISSING')); return }
+    let settled = false
+    const capture = (mediaTime: number) => {
+      if (settled) return
+      settled = true
+      try {
+        const exportCanvas = document.createElement('canvas')
+        exportCanvas.width = frame.width
+        exportCanvas.height = frame.height
+        const context = exportCanvas.getContext('2d')
+        if (!context) { reject(new Error('ANNOTATION_EXPORT_FAILED')); return }
+        context.drawImage(video, 0, 0, frame.width, frame.height)
+        drawAnnotationStrokes(context, annotationStrokes, annotationLineWidth(frame.width))
+        drawTimeBadge(context, frame.width, frame.height, timeLabel(mediaTime))
+        const timeMs = Math.max(0, Math.round(mediaTime * 1000))
+        exportCanvas.toBlob((blob) => {
+          if (!blob) { reject(new Error('ANNOTATION_EXPORT_FAILED')); return }
+          const frozen = { blob, timeMs, generation }
+          // The async callback may land after the coach moved on: only the
+          // owning generation caches globally; an orphan still resolves so
+          // its own in-flight send can finish coherently.
+          if (generation === annotationGeneration.current) {
+            annotationExport.current = frozen
+          }
+          resolve(frozen)
+        }, 'image/jpeg', 0.9)
+      } catch (caught) {
+        reject(caught)
+      }
+    }
+    // Badge, marker time, and pixels must come from the same PRESENTED
+    // frame. Already-paused & not seeking → the presented frame is stable.
+    // Playing → register rVFC BEFORE pausing so the next presentation fires
+    // it. Seeking → wait for seeked. Fallbacks guarantee we never hang.
+    const vfc = video as HTMLVideoElement & {
+      requestVideoFrameCallback?: (
+        callback: (now: number, metadata: { mediaTime: number }) => void,
+      ) => number
+    }
+    if (video.seeking) {
+      video.addEventListener('seeked', () => capture(video.currentTime), { once: true })
+      video.pause()
+      window.setTimeout(() => capture(video.currentTime), 300)
+    } else if (!video.paused && typeof vfc.requestVideoFrameCallback === 'function') {
+      vfc.requestVideoFrameCallback((_now, metadata) => capture(metadata.mediaTime))
+      video.pause()
+      window.setTimeout(() => capture(video.currentTime), 300)
+    } else {
+      video.pause()
+      capture(video.currentTime)
     }
   })
   const dropAnnotationMarker = async (
@@ -733,7 +764,7 @@ export function VideosPage({
     setAnnotationSending(true)
     sendingSessionRef.current = session
     try {
-      const image = await annotationBlob()
+      const { blob: image, timeMs: frozenTimeMs } = await annotationBlob(generation)
       if (image.size > 10 * 1024 * 1024) {
         toast('标注图片超过 10MB，无法发送')
         return
@@ -747,12 +778,11 @@ export function VideosPage({
       // Publishing belongs to the request that produced it — but the editing
       // state may already belong to a newer annotation; never touch that.
       chatOutbox.publishConfirmed(message)
-      await dropAnnotationMarker(videoId, annotationTimeMs.current, annotationNote, session.attachmentId)
+      await dropAnnotationMarker(videoId, frozenTimeMs, annotationNote, session.attachmentId)
       if (generation !== annotationGeneration.current) return
       annotationSession.current = null
       setAnnotationOpen(false)
       setActiveStroke(null)
-      annotationBaseRef.current = null
       annotationPointer.current = null
     } catch (caught) {
       if (generation !== annotationGeneration.current) {
@@ -1033,15 +1063,15 @@ export function VideosPage({
                       <span>✏️ {timeLabel(viewingAnnotation.time_ms / 1000)} 标注帧 · 点击关闭</span>
                     </button>
                   )}
-                  {annotationOpen && annotationBaseRef.current && (
-                    <div className="video-annotation-layer" aria-label="冻结帧标注编辑器">
+                  {annotationOpen && annotationFrameSize.current && (
+                    <div className="video-annotation-layer live" aria-label="视频标注图层">
                       <div
                         className="video-annotation-frame"
                       >
                         <canvas
                           ref={annotationCanvasRef}
-                          width={annotationBaseRef.current.width}
-                          height={annotationBaseRef.current.height}
+                          width={annotationFrameSize.current.width}
+                          height={annotationFrameSize.current.height}
                           onPointerDown={beginAnnotationStroke}
                           onPointerMove={moveAnnotationStroke}
                           onPointerUp={endAnnotationStroke}
@@ -1108,21 +1138,20 @@ export function VideosPage({
                   type="button"
                   className="video-play-toggle"
                   aria-label={playing ? '暂停' : '播放'}
-                  disabled={annotationOpen}
                   onClick={togglePlayback}
                 >{playing ? 'Ⅱ' : '▶'}</button>
                 <button
                   type="button"
                   className="video-frame-step"
                   aria-label="上一帧"
-                  disabled={duration <= 0 || annotationOpen}
+                  disabled={duration <= 0}
                   onClick={() => stepFrame(-1)}
                 >⏮ᶠ</button>
                 <button
                   type="button"
                   className="video-frame-step"
                   aria-label="下一帧"
-                  disabled={duration <= 0 || annotationOpen}
+                  disabled={duration <= 0}
                   onClick={() => stepFrame(1)}
                 >⏭ᶠ</button>
                 <span className="video-time">
