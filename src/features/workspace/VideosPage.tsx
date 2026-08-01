@@ -461,6 +461,7 @@ export function VideosPage({
     fine?: { anchorX: number; anchorTime: number }
   } | null>(null)
   const [scrubFine, setScrubFine] = useState(false)
+  const [scrubbing, setScrubbing] = useState(false)
   const seekToClientX = (element: HTMLElement, clientX: number) => {
     if (duration <= 0) return
     const rect = element.getBoundingClientRect()
@@ -476,6 +477,7 @@ export function VideosPage({
     // fighting the advancing playhead. Read the playback state off the media
     // element itself: React's `playing` lags between play() and onPlay.
     scrubState.current = { pointerId: event.pointerId, wasPlaying: video != null && !video.paused }
+    setScrubbing(true)
     video?.pause()
     seekToClientX(event.currentTarget, event.clientX)
   }
@@ -488,7 +490,7 @@ export function VideosPage({
       : event.clientY > rect.bottom
         ? event.clientY - rect.bottom
         : 0
-    if (offBar > PRECISION_SCRUB_THRESHOLD_PX) {
+    if (event.shiftKey || offBar > PRECISION_SCRUB_THRESHOLD_PX) {
       // Pulled away from the bar: 1px of horizontal travel = 1 frame,
       // anchored where precision mode was entered.
       if (!scrub.fine) {
@@ -518,6 +520,7 @@ export function VideosPage({
     if (scrub == null || scrub.pointerId !== event.pointerId) return
     scrubState.current = null
     setScrubFine(false)
+    setScrubbing(false)
     if (event.currentTarget.hasPointerCapture(event.pointerId)) {
       event.currentTarget.releasePointerCapture(event.pointerId)
     }
@@ -1043,13 +1046,15 @@ export function VideosPage({
                 >⏭ᶠ</button>
                 <span className="video-time">
                   {timeLabel(currentTime)} / {timeLabel(duration)}
-                  {scrubFine && <em className="video-scrub-fine">逐帧微调</em>}
+                  {scrubFine
+                    ? <em className="video-scrub-fine">逐帧微调</em>
+                    : scrubbing && <em className="video-scrub-hint">上拉或按住 ⇧ 逐帧</em>}
                 </span>
                 <button
                   type="button"
                   className={`video-progress${scrubFine ? ' fine' : ''}`}
                   aria-label="视频进度"
-                  title="拖动跳转 · 按住拖离进度条进入逐帧微调 · 滚轮逐帧"
+                  title="拖动跳转 · 拖离进度条或按住 ⇧ 逐帧微调 · 滚轮逐帧"
                   onPointerDown={beginScrub}
                   onPointerMove={moveScrub}
                   onPointerUp={endScrub}
