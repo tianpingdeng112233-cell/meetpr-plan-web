@@ -1252,6 +1252,19 @@ textarea {
   touch-action: none;
   cursor: crosshair;
 }
+.video-annotation-note {
+  min-width: 0;
+  flex: 1 1 140px;
+  height: 26px;
+  padding: 0 9px;
+  border: 1px solid var(--play-border);
+  border-radius: var(--r-sm);
+  color: var(--white);
+  background: transparent;
+  font: 12px var(--font-mono);
+}
+.video-annotation-note::placeholder { color: color-mix(in srgb, var(--white) 40%, transparent); }
+.video-annotation-note:focus { border-color: var(--white); outline: none; }
 .video-annotation-tools {
   min-height: 34px;
   padding: 5px;
