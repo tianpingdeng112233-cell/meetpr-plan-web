@@ -19,6 +19,7 @@ export interface OutboxItem {
 export interface ChatOutbox {
   itemsFor(conversationId: string): OutboxItem[]
   enqueue(conversationId: string, body: string): void
+  publishConfirmed(message: ChatMessage): void
   retry(clientId: string): void
   discard(clientId: string): void
   reconcile(conversationId: string, messages: ChatMessage[], myUserId: string): void
@@ -114,6 +115,16 @@ export function createChatOutbox({ send }: {
       }]
       notify()
       void drain(conversationId)
+    },
+    publishConfirmed: (message) => {
+      if (items.some((item) => item.clientId === message.client_id)) return
+      items = [...items, {
+        clientId: message.client_id,
+        conversationId: message.conversation_id,
+        body: message.body ?? '',
+        status: { state: 'confirmed', message },
+      }]
+      notify()
     },
     retry: (clientId) => {
       let conversationId: string | null = null

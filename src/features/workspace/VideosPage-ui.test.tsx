@@ -13,6 +13,10 @@ const api = vi.hoisted(() => ({
   getVideoMarkers: vi.fn(),
   createVideoMarker: vi.fn(),
   deleteVideoMarker: vi.fn(),
+  openConversation: vi.fn(),
+  sendChatImage: vi.fn(),
+  abortChatImage: vi.fn(),
+  publishConfirmed: vi.fn(),
 }))
 vi.mock('../../api/coach', () => ({
   getStudentVideos: api.getStudentVideos,
@@ -24,6 +28,14 @@ vi.mock('../../api/markers', () => ({
   getVideoMarkers: api.getVideoMarkers,
   createVideoMarker: api.createVideoMarker,
   deleteVideoMarker: api.deleteVideoMarker,
+}))
+vi.mock('../../api/chat', () => ({ openConversation: api.openConversation }))
+vi.mock('../../api/uploads', () => ({
+  sendChatImage: api.sendChatImage,
+  abortChatImage: api.abortChatImage,
+}))
+vi.mock('../chat/chatOutbox', () => ({
+  chatOutbox: { publishConfirmed: api.publishConfirmed },
 }))
 
 import { VideosPage, type VideoTarget } from './VideosPage'
@@ -164,6 +176,16 @@ describe('VideosPage master-detail interactions', () => {
     api.getVideoMarkers.mockResolvedValue([initialMarker])
     api.createVideoMarker.mockResolvedValue(initialMarker)
     api.deleteVideoMarker.mockResolvedValue(undefined)
+    api.openConversation.mockResolvedValue({
+      id: 'conversation', other_party: { id: 'student-1', display_name: '学员' },
+      last_message: null, last_message_at: null, unread_count: 0, my_last_read: null, other_last_read: null,
+    })
+    api.sendChatImage.mockResolvedValue({
+      id: 'image-message', conversation_id: 'conversation', seq: 1, sender_id: 'coach', kind: 'image', body: null,
+      attachment_id: 'attachment', image_url: 'https://example.test/image.jpg', image_expires_in: 900,
+      set_ref: null, video_url: null, video_expires_in: null, client_id: 'image-client',
+      created_at: '2026-08-01T12:00:00Z',
+    })
   })
 
   afterEach(() => {
@@ -489,6 +511,27 @@ describe('VideosPage master-detail interactions', () => {
     expect(HTMLMediaElement.prototype.play).toHaveBeenCalledTimes(1)
   })
 
+  it('offers 0.25× and pauses before button or keyboard frame stepping', async () => {
+    await renderHarness()
+    expect([...host.querySelectorAll('.video-speeds button')].map((button) => button.textContent))
+      .toEqual(['0.25×', '0.5×', '1×', '1.5×', '2×'])
+    const video = host.querySelector<HTMLVideoElement>('video')!
+    Object.defineProperties(video, {
+      duration: { configurable: true, value: 2 },
+      currentTime: { configurable: true, value: 1, writable: true },
+    })
+    act(() => video.dispatchEvent(new Event('loadedmetadata')))
+    vi.mocked(HTMLMediaElement.prototype.pause).mockClear()
+
+    click(host.querySelector('[aria-label="下一帧"]'))
+    expect(HTMLMediaElement.prototype.pause).toHaveBeenCalledTimes(1)
+    expect(video.currentTime).toBeCloseTo(1 + 1 / 30)
+
+    act(() => window.dispatchEvent(new KeyboardEvent('keydown', { key: ',', bubbles: true })))
+    expect(HTMLMediaElement.prototype.pause).toHaveBeenCalledTimes(2)
+    expect(video.currentTime).toBeCloseTo(1)
+  })
+
   it('releases the old media source synchronously on switch and again on unmount', async () => {
     await renderHarness()
     const firstVideo = host.querySelector<HTMLVideoElement>('video')!
@@ -514,10 +557,11 @@ describe('VideosPage master-detail interactions', () => {
     expect(HTMLMediaElement.prototype.load).toHaveBeenCalledTimes(1)
   })
 
-  it('a successful URL renewal keeps the freshly signed src on the same element', async () => {
+  it('drops crossOrigin once before renewing a failed URL, without sharing retry budgets', async () => {
     await renderHarness()
     const video = host.querySelector<HTMLVideoElement>('video')!
     expect(video.getAttribute('src')).toBe('https://example.test/video-1')
+    expect(video.getAttribute('crossorigin')).toBe('anonymous')
 
     api.getUploadUrl.mockImplementation((id: string) =>
       Promise.resolve({ url: `https://example.test/${id}-renewed`, expires_in: 60 }))
@@ -526,8 +570,20 @@ describe('VideosPage master-detail interactions', () => {
       await settle()
     })
 
+    const direct = host.querySelector<HTMLVideoElement>('video')!
+    expect(direct.getAttribute('crossorigin')).toBeNull()
+    expect(direct.getAttribute('src')).toBe('https://example.test/video-1')
+    expect(host.querySelector('.video-annotate')).toBeNull()
+    expect(api.getUploadUrl).toHaveBeenCalledTimes(1)
+
+    await act(async () => {
+      direct.dispatchEvent(new Event('error', { bubbles: false }))
+      await settle()
+    })
+
     const renewed = host.querySelector<HTMLVideoElement>('video')!
     expect(renewed.getAttribute('src')).toBe('https://example.test/video-1-renewed')
+    expect(renewed).toBe(direct)
   })
 
   it('a failed URL renewal unmounts the dead player and surfaces the error text', async () => {
@@ -536,6 +592,8 @@ describe('VideosPage master-detail interactions', () => {
     api.getUploadUrl.mockRejectedValue(new Error('expired'))
     await act(async () => {
       video.dispatchEvent(new Event('error', { bubbles: false }))
+      await settle()
+      host.querySelector<HTMLVideoElement>('video')?.dispatchEvent(new Event('error', { bubbles: false }))
       await settle()
     })
 
@@ -611,6 +669,215 @@ describe('VideosPage master-detail interactions', () => {
     })
     expect(feedback.value).toBe('不要丢掉这段反馈')
     expect(host.querySelector('.video-feedback footer span')?.textContent).toBe('反馈发送失败，请稍后重试')
+  })
+
+  it('captures a native frame, blocks global shortcuts, opens a conversation, and publishes the image', async () => {
+    const context = {
+      clearRect: vi.fn(), drawImage: vi.fn(), save: vi.fn(), restore: vi.fn(), beginPath: vi.fn(),
+      moveTo: vi.fn(), lineTo: vi.fn(), stroke: vi.fn(),
+    }
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext')
+      .mockReturnValue(context as unknown as CanvasRenderingContext2D)
+    vi.spyOn(HTMLCanvasElement.prototype, 'toBlob').mockImplementation((callback) => {
+      callback(new Blob(['jpeg'], { type: 'image/jpeg' }))
+    })
+    let releaseConversation = (_value: unknown) => {}
+    api.openConversation.mockImplementation(() => new Promise((resolve) => { releaseConversation = resolve }))
+    await renderHarness()
+    const video = host.querySelector<HTMLVideoElement>('video')!
+    Object.defineProperties(video, {
+      videoWidth: { configurable: true, value: 1080 },
+      videoHeight: { configurable: true, value: 1920 },
+      duration: { configurable: true, value: 40 },
+    })
+    act(() => video.dispatchEvent(new Event('durationchange')))
+    vi.mocked(HTMLMediaElement.prototype.pause).mockClear()
+    vi.mocked(HTMLMediaElement.prototype.play).mockClear()
+
+    click(host.querySelector('.video-annotate'))
+    expect(HTMLMediaElement.prototype.pause).toHaveBeenCalledTimes(1)
+    expect(context.drawImage).toHaveBeenCalledWith(video, 0, 0, 1080, 1920)
+    expect(host.querySelector('.video-annotation-layer')).not.toBeNull()
+
+    act(() => window.dispatchEvent(new KeyboardEvent('keydown', { key: ' ', bubbles: true })))
+    act(() => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true })))
+    expect(HTMLMediaElement.prototype.play).not.toHaveBeenCalled()
+    expect(host.querySelector('.video-detail-head')?.textContent).toContain('深蹲')
+
+    click(buttonWithText(host, '发送到聊天'))
+    await act(settle)
+    expect(buttonWithText(host, '发送中')?.textContent).toBe('发送中…')
+    expect(api.openConversation).toHaveBeenCalledWith('student-1')
+    expect(api.sendChatImage).not.toHaveBeenCalled()
+
+    await act(async () => {
+      releaseConversation({
+        id: 'conversation', other_party: { id: 'student-1', display_name: '学员' },
+        last_message: null, last_message_at: null, unread_count: 0, my_last_read: null, other_last_read: null,
+      })
+      await settle()
+    })
+    expect(api.sendChatImage).toHaveBeenCalledWith(
+      'conversation',
+      expect.objectContaining({ type: 'image/jpeg' }),
+      expect.objectContaining({ clientId: expect.stringMatching(/^web-/) }),
+    )
+    expect(api.publishConfirmed).toHaveBeenCalledWith(expect.objectContaining({ id: 'image-message' }))
+    expect(host.querySelector('.video-annotation-layer')).toBeNull()
+  })
+
+  it('a media error mid-annotation degrades the layer and abandons the session', async () => {
+    // 复审轮3 BLOCKER:CORS 降级关闭标注层的路径必须走统一 abandon 清理,
+    // 否则残留 session 无法通过 UI 取消。删掉 playbackFailed 里的 abandon 时这条必须挂。
+    const context = {
+      clearRect: vi.fn(), drawImage: vi.fn(), save: vi.fn(), restore: vi.fn(), beginPath: vi.fn(),
+      moveTo: vi.fn(), lineTo: vi.fn(), stroke: vi.fn(),
+    }
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext')
+      .mockReturnValue(context as unknown as CanvasRenderingContext2D)
+    await renderHarness()
+    const video = host.querySelector<HTMLVideoElement>('video')!
+    Object.defineProperties(video, {
+      videoWidth: { configurable: true, value: 1080 },
+      videoHeight: { configurable: true, value: 1920 },
+      duration: { configurable: true, value: 40 },
+    })
+    act(() => video.dispatchEvent(new Event('durationchange')))
+    click(host.querySelector('.video-annotate'))
+    expect(host.querySelector('.video-annotation-layer')).not.toBeNull()
+
+    await act(async () => {
+      video.dispatchEvent(new Event('error'))
+      await settle()
+    })
+    expect(host.querySelector('.video-annotation-layer')).toBeNull()
+    expect(host.querySelector('.video-annotate')).toBeNull()
+  })
+
+  it('an orphaned send finishing late must not unlock or abort a newer annotation', async () => {
+    // 复审轮3 BLOCKER:发送标记必须绑定 session——旧视频的发送在切换后结束,
+    // 不得把新标注当作非发送态清理掉。
+    const context = {
+      clearRect: vi.fn(), drawImage: vi.fn(), save: vi.fn(), restore: vi.fn(), beginPath: vi.fn(),
+      moveTo: vi.fn(), lineTo: vi.fn(), stroke: vi.fn(),
+    }
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext')
+      .mockReturnValue(context as unknown as CanvasRenderingContext2D)
+    vi.spyOn(HTMLCanvasElement.prototype, 'toBlob').mockImplementation((callback) => {
+      callback(new Blob(['jpeg'], { type: 'image/jpeg' }))
+    })
+    let rejectFirst = (_error: unknown) => {}
+    api.sendChatImage.mockImplementationOnce(() =>
+      new Promise((_resolve, reject) => { rejectFirst = reject }))
+    api.openConversation.mockResolvedValue({
+      id: 'conversation', other_party: { id: 'student-1', display_name: '学员' },
+      last_message: null, last_message_at: null, unread_count: 0, my_last_read: null, other_last_read: null,
+    })
+    await renderHarness()
+    const prepare = () => {
+      const video = host.querySelector<HTMLVideoElement>('video')!
+      Object.defineProperties(video, {
+        videoWidth: { configurable: true, value: 1080 },
+        videoHeight: { configurable: true, value: 1920 },
+        duration: { configurable: true, value: 40 },
+      })
+      act(() => video.dispatchEvent(new Event('durationchange')))
+    }
+    prepare()
+    click(host.querySelector('.video-annotate'))
+    await act(async () => {
+      buttonWithText(host, '发送到聊天')?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+      await settle()
+    })
+
+    // Switch clips while the first send is still in flight, open a new layer.
+    click(host.querySelectorAll('.video-master-row')[1]!)
+    await act(settle)
+    prepare()
+    click(host.querySelector('.video-annotate'))
+    expect(host.querySelector('.video-annotation-layer')).not.toBeNull()
+
+    api.abortChatImage.mockClear()
+    await act(async () => {
+      rejectFirst(new Error('offline'))
+      await settle()
+    })
+    // The orphan aborts only its own session; the new layer stays editable.
+    expect(api.abortChatImage).toHaveBeenCalledTimes(1)
+    expect(host.querySelector('.video-annotation-layer')).not.toBeNull()
+    expect(buttonWithText(host, '发送到聊天')?.disabled).toBe(false)
+  })
+
+  it('keeps the annotation layer available for retry when sending fails', async () => {
+    const context = {
+      clearRect: vi.fn(), drawImage: vi.fn(), save: vi.fn(), restore: vi.fn(), beginPath: vi.fn(),
+      moveTo: vi.fn(), lineTo: vi.fn(), stroke: vi.fn(),
+    }
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext')
+      .mockReturnValue(context as unknown as CanvasRenderingContext2D)
+    vi.spyOn(HTMLCanvasElement.prototype, 'toBlob').mockImplementation((callback) => {
+      callback(new Blob(['jpeg'], { type: 'image/jpeg' }))
+    })
+    api.sendChatImage.mockRejectedValue(new Error('offline'))
+    const toast = vi.fn()
+    window.addEventListener('meetpr:toast', toast)
+    try {
+      await renderHarness()
+      const video = host.querySelector<HTMLVideoElement>('video')!
+      Object.defineProperties(video, {
+        videoWidth: { configurable: true, value: 1080 },
+        videoHeight: { configurable: true, value: 1920 },
+        duration: { configurable: true, value: 40 },
+      })
+      act(() => video.dispatchEvent(new Event('durationchange')))
+      click(host.querySelector('.video-annotate'))
+      await act(async () => {
+        buttonWithText(host, '发送到聊天')?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+        await settle()
+      })
+      expect(host.querySelector('.video-annotation-layer')).not.toBeNull()
+      expect(buttonWithText(host, '发送到聊天')).not.toBeNull()
+      expect(toast).toHaveBeenCalledWith(expect.objectContaining({ detail: '发送失败' }))
+    } finally {
+      window.removeEventListener('meetpr:toast', toast)
+    }
+  })
+
+  it('degrades safely when a tainted canvas throws SecurityError on export', async () => {
+    const context = {
+      clearRect: vi.fn(), drawImage: vi.fn(), save: vi.fn(), restore: vi.fn(), beginPath: vi.fn(),
+      moveTo: vi.fn(), lineTo: vi.fn(), stroke: vi.fn(),
+    }
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext')
+      .mockReturnValue(context as unknown as CanvasRenderingContext2D)
+    vi.spyOn(HTMLCanvasElement.prototype, 'toBlob').mockImplementation(() => {
+      throw new DOMException('Tainted canvas', 'SecurityError')
+    })
+    const toast = vi.fn()
+    window.addEventListener('meetpr:toast', toast)
+    try {
+      await renderHarness()
+      const video = host.querySelector<HTMLVideoElement>('video')!
+      Object.defineProperties(video, {
+        videoWidth: { configurable: true, value: 1080 },
+        videoHeight: { configurable: true, value: 1920 },
+        duration: { configurable: true, value: 40 },
+      })
+      act(() => video.dispatchEvent(new Event('durationchange')))
+      click(host.querySelector('.video-annotate'))
+      await act(async () => {
+        buttonWithText(host, '发送到聊天')?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+        await settle()
+      })
+      expect(host.querySelector('.video-annotation-layer')).toBeNull()
+      expect(host.querySelector('.video-annotate')).toBeNull()
+      expect(toast).toHaveBeenCalledWith(expect.objectContaining({
+        detail: '当前视频无法安全捕获画面，标注已停用',
+      }))
+      expect(api.openConversation).not.toHaveBeenCalled()
+    } finally {
+      window.removeEventListener('meetpr:toast', toast)
+    }
   })
 
   it('hides the marker card and add action when marker GET has a network error', async () => {

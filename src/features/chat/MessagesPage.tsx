@@ -413,6 +413,10 @@ function ConversationThread({
   const [error, setError] = useState('')
   const initialized = useRef(false)
   const alive = useRef(true)
+  // Server-fetch watermark for since_seq polling. Locally confirmed sends
+  // (text or annotation images) merge into the view but must never advance
+  // this: their seq can lie beyond other-party messages not yet pulled.
+  const pollSeq = useRef(0)
   const scrollRef = useRef<HTMLDivElement>(null)
   // Scrolling has to wait for React to commit the new bubbles: a bare rAF can run before the
   // commit, so scrollHeight is still the pre-render value and a 50-message page lands at the
@@ -635,7 +639,7 @@ function ConversationThread({
   useVisiblePolling(async () => {
     if (sessionDead) return
     try {
-      if (!initialized.current || maxSeq(messagesRef.current) === 0) {
+      if (!initialized.current || pollSeq.current === 0) {
         const page = await getMessages(conversation.id, { mode: 'latest', limit: 50 })
         // A response landing after unmount (the coach switched students) must
         // not issue read receipts for the conversation they just left.
@@ -643,6 +647,7 @@ function ConversationThread({
         initialized.current = true
         setHasMoreHistory(page.meta.has_more)
         setError('')
+        pollSeq.current = Math.max(pollSeq.current, maxSeq(page.messages))
         const next = mergePage(page.messages, page.meta.other_last_read, true)
         await markReadIfNeeded(next)
         return 5_000
@@ -653,8 +658,9 @@ function ConversationThread({
         const page = await getMessages(conversation.id, { mode: 'since', seq: afterSeq, limit: 50 })
         otherLastRead = newerCursor(otherLastRead, page.meta.other_last_read)
         return page
-      }, maxSeq(messagesRef.current))
+      }, pollSeq.current)
       if (!alive.current) return
+      pollSeq.current = Math.max(pollSeq.current, maxSeq(result.messages))
       const next = result.messages.length > 0
         ? mergePage(result.messages, otherLastRead, isNearBottom())
         : messagesRef.current
