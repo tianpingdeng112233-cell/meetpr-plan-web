@@ -77,3 +77,40 @@ export function drawAnnotationStrokes(
   }
   context.restore()
 }
+
+/**
+ * Burn the frame's video timestamp into the captured base as a small pill
+ * (bottom-left). WYSIWYG: the editor previews exactly what the student
+ * receives, and the context survives forwarding with zero schema changes.
+ */
+export function drawTimeBadge(
+  context: CanvasRenderingContext2D,
+  frameWidth: number,
+  frameHeight: number,
+  label: string,
+) {
+  const fontSize = Math.max(18, Math.round(frameHeight * 0.024))
+  const paddingX = Math.round(fontSize * 0.6)
+  const height = Math.round(fontSize * 1.7)
+  const margin = Math.round(frameHeight * 0.018)
+  context.save()
+  context.font = `600 ${fontSize}px "SF Mono", ui-monospace, monospace`
+  const width = Math.round(context.measureText(label).width) + paddingX * 2
+  const x = margin
+  const y = frameHeight - margin - height
+  const radius = Math.round(height / 4)
+  context.beginPath()
+  context.moveTo(x + radius, y)
+  context.arcTo(x + width, y, x + width, y + height, radius)
+  context.arcTo(x + width, y + height, x, y + height, radius)
+  context.arcTo(x, y + height, x, y, radius)
+  context.arcTo(x, y, x + width, y, radius)
+  context.closePath()
+  context.fillStyle = 'rgba(0, 0, 0, 0.66)'
+  context.fill()
+  context.fillStyle = '#FFFFFF'
+  context.textBaseline = 'middle'
+  context.fillText(label, x + paddingX, y + height / 2 + 1)
+  context.restore()
+  void frameWidth
+}
