@@ -64,6 +64,23 @@ describe('chatOutbox', () => {
     expect(outbox.itemsFor('conversation')).toEqual([])
   })
 
+  it('把播放器已发送的图片交给当前聊天线程', () => {
+    const outbox = createChatOutbox({ send: vi.fn() })
+    const confirmed = {
+      ...message('image-client'),
+      kind: 'image',
+      body: null,
+      attachment_id: 'attachment',
+    }
+
+    outbox.publishConfirmed(confirmed)
+
+    expect(outbox.itemsFor('conversation')).toEqual([expect.objectContaining({
+      clientId: 'image-client',
+      status: { state: 'confirmed', message: confirmed },
+    })])
+  })
+
   it('轮询先拉到正文时摘掉 pending，迟到的 POST 成功响应不会复活', async () => {
     const request = deferred<ChatMessage>()
     const outbox = createChatOutbox({ send: vi.fn(() => request.promise) })

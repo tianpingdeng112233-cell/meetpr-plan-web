@@ -607,6 +607,41 @@ describe('MessagesPage', () => {
     }
   })
 
+  it('本地确认的发送不推进 since_seq 轮询水位，晚到的对端消息仍会被拉取', async () => {
+    // 复审 BLOCKER:标注图(或任何 outbox 确认消息)带回的 seq 可能领先于尚未拉取的对端消息。
+    // 若用 maxSeq(本地消息) 当轮询游标,中间的对端消息会被永久跳过。删掉水位逻辑时这条必须挂。
+    vi.useFakeTimers()
+    try {
+      await act(async () => { root.render(<Harness initial={[conversation(0)]} />) })
+      await act(async () => { await vi.advanceTimersByTimeAsync(50) })
+      expect(chatApi.getMessages).toHaveBeenCalledWith('conversation', { mode: 'latest', limit: 50 })
+
+      // 本地确认一条 seq 远超水位的图片消息(标注发送路径)
+      await act(async () => {
+        chatOutbox.publishConfirmed(message({
+          id: 'annotation-image', seq: 96, kind: 'image', body: null,
+          client_id: 'web-annotation',
+        }))
+        await Promise.resolve()
+      })
+
+      chatApi.getMessages.mockClear()
+      chatApi.getMessages.mockResolvedValue({
+        messages: [],
+        meta: { other_last_read: null, has_more: false },
+      })
+      await act(async () => { await vi.advanceTimersByTimeAsync(5_000) })
+
+      // 游标必须仍是服务端水位(seq 1),而不是本地确认消息的 96
+      expect(chatApi.getMessages).toHaveBeenCalledWith(
+        'conversation',
+        { mode: 'since', seq: 1, limit: 50 },
+      )
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('未知 kind 前向兼容降级，不让整个线程崩掉', async () => {
     chatApi.getMessages.mockResolvedValue({
       messages: [message({ kind: 'future_set_card', sender_id: 'coach' })],

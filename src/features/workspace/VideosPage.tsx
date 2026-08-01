@@ -1,11 +1,28 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { ApiException } from '../../api/client'
+import { openConversation } from '../../api/chat'
 import { getUploadUrl, patchCoachRpe, postCoachFeedback } from '../../api/coach'
 import { createVideoMarker, deleteVideoMarker, getVideoMarkers } from '../../api/markers'
-import type { StudentVideo, VideoMarker } from '../../api/types'
+import { abortChatImage, sendChatImage, type ChatImageSendSession } from '../../api/uploads'
+import type { ChatConversation, StudentVideo, VideoMarker } from '../../api/types'
+import { chatOutbox } from '../chat/chatOutbox'
+import { newClientId } from '../chat/chatModel'
 import { kg } from './WorkspaceCommon'
+import {
+  annotationLineWidth,
+  beginStroke,
+  clearStrokes,
+  commitStroke,
+  displayPointToFrame,
+  drawAnnotationStrokes,
+  moveStroke,
+  undoStroke,
+  type AnnotationStroke,
+  type AnnotationTool,
+} from './annotationDrawing'
 import { usePersistentCollapse } from './usePersistentCollapse'
 import { useGlobalKeyboardHandler } from './globalKeyboard'
+import { frameStepTime, VIDEO_SPEEDS } from './videoPlayback'
 
 type VideoFilter = 'all' | 'pending' | 'reviewed'
 type MarkerAvailability = 'loading' | 'available' | 'error' | 'unavailable'
@@ -43,6 +60,12 @@ const releaseVideo = (video: HTMLVideoElement | null) => {
   video.removeAttribute('src')
   video.load()
 }
+const toast = (message: string) => {
+  window.dispatchEvent(new CustomEvent('meetpr:toast', { detail: message }))
+}
+const isSecurityError = (error: unknown) => (
+  error instanceof DOMException && error.name === 'SecurityError'
+)
 
 export const moveVideoIndex = (index: number, direction: -1 | 1, total: number) =>
   Math.max(0, Math.min(total - 1, index + direction))
@@ -74,10 +97,20 @@ export interface VideoTarget {
   setIndex: number
 }
 
-export function VideosPage({ studentId, videos, onRefreshVideos, target, onDetailOpenChange }: {
+export function VideosPage({
+  studentId,
+  videos,
+  onRefreshVideos,
+  conversation = null,
+  onConversationOpened,
+  target,
+  onDetailOpenChange,
+}: {
   studentId: string
   videos: StudentVideo[]
   onRefreshVideos: (studentId: string) => Promise<void>
+  conversation?: ChatConversation | null
+  onConversationOpened?: (conversation: ChatConversation) => void
   target?: VideoTarget | null
   onDetailOpenChange?: (open: boolean) => void
 }) {
@@ -90,6 +123,13 @@ export function VideosPage({ studentId, videos, onRefreshVideos, target, onDetai
   const [playing, setPlaying] = useState(false)
   const [currentTime, setCurrentTime] = useState(0)
   const [duration, setDuration] = useState(0)
+  const [crossOriginEnabled, setCrossOriginEnabled] = useState(true)
+  const [annotateUnavailable, setAnnotateUnavailable] = useState(false)
+  const [annotationOpen, setAnnotationOpen] = useState(false)
+  const [annotationTool, setAnnotationTool] = useState<AnnotationTool>('freehand')
+  const [annotationStrokes, setAnnotationStrokes] = useState<AnnotationStroke[]>([])
+  const [activeStroke, setActiveStroke] = useState<AnnotationStroke | null>(null)
+  const [annotationSending, setAnnotationSending] = useState(false)
   const [feedback, setFeedback] = useState('')
   const [feedbackState, setFeedbackState] = useState<'idle' | 'sending' | 'sent'>('idle')
   const [feedbackError, setFeedbackError] = useState('')
@@ -104,7 +144,33 @@ export function VideosPage({ studentId, videos, onRefreshVideos, target, onDetai
   const [markerError, setMarkerError] = useState('')
 
   const retried = useRef(false)
+  const crossOriginRetried = useRef(false)
   const videoRef = useRef<HTMLVideoElement>(null)
+  const annotationCanvasRef = useRef<HTMLCanvasElement>(null)
+  const annotationBaseRef = useRef<HTMLCanvasElement | null>(null)
+  const annotationPointer = useRef<number | null>(null)
+  const annotationSession = useRef<ChatImageSendSession | null>(null)
+  const annotationGeneration = useRef(0)
+  const sendingSessionRef = useRef<ChatImageSendSession | null>(null)
+  // Any stroke change after a failed send: the recorded upload no longer
+  // matches the canvas — drop it (keeping the clientId) so the retry
+  // uploads the current image instead of resending the stale attachment.
+  const invalidateAnnotationUpload = () => {
+    const session = annotationSession.current
+    if (!session || !session.attachmentId) return
+    abortChatImage(session)
+    annotationSession.current = { clientId: session.clientId }
+  }
+  // Unified abandon: every path that walks away from the annotation layer
+  // (close, video switch, unmount, CORS degrade) funnels here. A session
+  // that is mid-send is left to its own request: on success it publishes,
+  // on generation-mismatch failure it aborts itself.
+  const abandonAnnotationSession = () => {
+    annotationGeneration.current += 1
+    const session = annotationSession.current
+    if (session && session !== sendingSessionRef.current) abortChatImage(session)
+    annotationSession.current = null
+  }
   const urlRequest = useRef(0)
   const markerRequest = useRef(0)
   const feedbackRequest = useRef(0)
@@ -201,12 +267,23 @@ export function VideosPage({ studentId, videos, onRefreshVideos, target, onDetai
   useEffect(() => {
     const request = ++urlRequest.current
     retried.current = false
+    crossOriginRetried.current = false
     setVideoSource(null)
     setRate(1)
     setPlaybackError('')
     setPlaying(false)
     setCurrentTime(0)
     setDuration(0)
+    setCrossOriginEnabled(true)
+    setAnnotateUnavailable(false)
+    setAnnotationOpen(false)
+    setAnnotationTool('freehand')
+    setAnnotationStrokes([])
+    setActiveStroke(null)
+    abandonAnnotationSession()
+    setAnnotationSending(false)
+    annotationBaseRef.current = null
+    annotationPointer.current = null
     resetFeedback()
     if (!active) return
     void getUploadUrl(active.id)
@@ -295,16 +372,44 @@ export function VideosPage({ studentId, videos, onRefreshVideos, target, onDetai
         event.preventDefault()
         togglePlayback()
         return true
+      } else if (event.key === ',' || event.key === '.') {
+        event.preventDefault()
+        stepFrame(event.key === ',' ? -1 : 1)
+        return true
       }
       return false
   }, 10)
 
+  // The annotation surface is an editing mode even when the canvas itself is
+  // not a native editable element. Consume app-wide shortcuts before any
+  // screen-level registration can navigate, play, or mutate hidden content —
+  // except Esc, which closes the layer (unless a send is in flight).
+  useGlobalKeyboardHandler(({ event }) => {
+    if (!annotationOpen) return false
+    if (event.key === 'Escape') {
+      event.preventDefault()
+      if (!annotationSending) closeAnnotation()
+    }
+    return true
+  }, 1000)
+
   useEffect(() => () => {
     if (sentTimer.current != null) window.clearTimeout(sentTimer.current)
+    abandonAnnotationSession()
   }, [])
 
   const playbackFailed = () => {
+    if (crossOriginEnabled && !crossOriginRetried.current) {
+      crossOriginRetried.current = true
+      setCrossOriginEnabled(false)
+      setAnnotateUnavailable(true)
+      setAnnotationOpen(false)
+      annotationBaseRef.current = null
+      abandonAnnotationSession()
+      return
+    }
     if (!active || retried.current) {
+      setVideoSource(null)
       setPlaybackError('视频播放失败')
       return
     }
@@ -337,6 +442,17 @@ export function VideosPage({ studentId, videos, onRefreshVideos, target, onDetai
     const next = Math.max(0, Math.min(duration || video.duration || seconds, seconds))
     video.currentTime = next
     setCurrentTime(next)
+  }
+  const stepFrame = (direction: -1 | 1) => {
+    const video = videoRef.current
+    if (!video) return
+    const next = frameStepTime(video.currentTime, direction, duration || video.duration)
+    if (next == null) return
+    // Stepping means "stay paused": an in-flight scrub must not resume
+    // playback on release after the coach has stepped to a frame.
+    if (scrubState.current) scrubState.current.wasPlaying = false
+    video.pause()
+    seekTo(next)
   }
   const scrubState = useRef<{ pointerId: number; wasPlaying: boolean } | null>(null)
   const seekToClientX = (element: HTMLElement, clientX: number) => {
@@ -384,6 +500,166 @@ export function VideosPage({ studentId, videos, onRefreshVideos, target, onDetai
     if (!fullscreenSupported) return
     if (document.fullscreenElement === playerBoxRef.current) void document.exitFullscreen()
     else void playerBoxRef.current?.requestFullscreen()
+  }
+
+  const degradeAnnotation = () => {
+    setAnnotateUnavailable(true)
+    setAnnotationOpen(false)
+    setActiveStroke(null)
+    annotationBaseRef.current = null
+    annotationPointer.current = null
+    abandonAnnotationSession()
+    toast('当前视频无法安全捕获画面，标注已停用')
+  }
+
+  const openAnnotation = () => {
+    if (annotateUnavailable || annotationOpen || annotationSending) return
+    annotationGeneration.current += 1
+    annotationSession.current = { clientId: newClientId() }
+    const video = videoRef.current
+    if (!video || video.videoWidth <= 0 || video.videoHeight <= 0) {
+      toast('视频画面尚未就绪')
+      return
+    }
+    video.pause()
+    const base = document.createElement('canvas')
+    base.width = video.videoWidth
+    base.height = video.videoHeight
+    const context = base.getContext('2d')
+    if (!context) {
+      toast('帧捕获失败，请重试')
+      return
+    }
+    try {
+      context.drawImage(video, 0, 0, base.width, base.height)
+    } catch (caught) {
+      if (isSecurityError(caught)) degradeAnnotation()
+      else toast('帧捕获失败，请重试')
+      return
+    }
+    annotationBaseRef.current = base
+    setAnnotationTool('freehand')
+    setAnnotationStrokes([])
+    setActiveStroke(null)
+    setAnnotationOpen(true)
+  }
+
+  useEffect(() => {
+    if (!annotationOpen) return
+    const canvas = annotationCanvasRef.current
+    const base = annotationBaseRef.current
+    if (!canvas || !base) return
+    if (canvas.width !== base.width) canvas.width = base.width
+    if (canvas.height !== base.height) canvas.height = base.height
+    const context = canvas.getContext('2d')
+    if (!context) return
+    context.clearRect(0, 0, canvas.width, canvas.height)
+    context.drawImage(base, 0, 0)
+    drawAnnotationStrokes(
+      context,
+      activeStroke ? [...annotationStrokes, activeStroke] : annotationStrokes,
+      annotationLineWidth(canvas.width),
+    )
+  }, [activeStroke, annotationOpen, annotationStrokes])
+
+  const annotationPoint = (event: React.PointerEvent<HTMLCanvasElement>) => {
+    const base = annotationBaseRef.current
+    if (!base) return null
+    const rect = event.currentTarget.getBoundingClientRect()
+    return displayPointToFrame(
+      { x: event.clientX, y: event.clientY },
+      rect,
+      base.width,
+      base.height,
+    )
+  }
+  const beginAnnotationStroke = (event: React.PointerEvent<HTMLCanvasElement>) => {
+    if (annotationPointer.current != null || annotationSending) return
+    const point = annotationPoint(event)
+    if (!point) return
+    annotationPointer.current = event.pointerId
+    event.currentTarget.setPointerCapture(event.pointerId)
+    setActiveStroke(beginStroke(annotationTool, point))
+  }
+  const moveAnnotationStroke = (event: React.PointerEvent<HTMLCanvasElement>) => {
+    if (annotationPointer.current !== event.pointerId) return
+    const point = annotationPoint(event)
+    if (!point) return
+    setActiveStroke((current) => current ? moveStroke(current, point) : current)
+  }
+  const endAnnotationStroke = (event: React.PointerEvent<HTMLCanvasElement>) => {
+    if (annotationPointer.current !== event.pointerId) return
+    annotationPointer.current = null
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId)
+    }
+    setActiveStroke((current) => {
+      setAnnotationStrokes((strokes) => commitStroke(strokes, current))
+      return null
+    })
+    invalidateAnnotationUpload()
+  }
+  const closeAnnotation = () => {
+    if (annotationSending) return
+    // A half-uploaded attachment from a failed send is cleaned up on abandon.
+    abandonAnnotationSession()
+    setAnnotationOpen(false)
+    setActiveStroke(null)
+    annotationBaseRef.current = null
+    annotationPointer.current = null
+  }
+  const annotationBlob = () => new Promise<Blob>((resolve, reject) => {
+    const canvas = annotationCanvasRef.current
+    if (!canvas) { reject(new Error('ANNOTATION_CANVAS_MISSING')); return }
+    try {
+      canvas.toBlob((blob) => {
+        if (blob) resolve(blob)
+        else reject(new Error('ANNOTATION_EXPORT_FAILED'))
+      }, 'image/jpeg', 0.9)
+    } catch (caught) {
+      reject(caught)
+    }
+  })
+  const sendAnnotation = async () => {
+    if (annotationSending) return
+    const generation = annotationGeneration.current
+    const session = annotationSession.current ?? { clientId: newClientId() }
+    annotationSession.current = session
+    setAnnotationSending(true)
+    sendingSessionRef.current = session
+    try {
+      const image = await annotationBlob()
+      if (image.size > 10 * 1024 * 1024) {
+        toast('标注图片超过 10MB，无法发送')
+        return
+      }
+      let targetConversation = conversation
+      if (!targetConversation) {
+        targetConversation = await openConversation(studentId)
+        onConversationOpened?.(targetConversation)
+      }
+      const message = await sendChatImage(targetConversation.id, image, session)
+      // Publishing belongs to the request that produced it — but the editing
+      // state may already belong to a newer annotation; never touch that.
+      chatOutbox.publishConfirmed(message)
+      if (generation !== annotationGeneration.current) return
+      annotationSession.current = null
+      setAnnotationOpen(false)
+      setActiveStroke(null)
+      annotationBaseRef.current = null
+      annotationPointer.current = null
+    } catch (caught) {
+      if (generation !== annotationGeneration.current) {
+        // The UI moved on; this orphaned attempt owns its cleanup.
+        abortChatImage(session)
+        return
+      }
+      if (isSecurityError(caught)) degradeAnnotation()
+      else toast('发送失败')
+    } finally {
+      if (sendingSessionRef.current === session) sendingSessionRef.current = null
+      if (generation === annotationGeneration.current) setAnnotationSending(false)
+    }
   }
 
   const sendFeedback = async () => {
@@ -567,8 +843,9 @@ export function VideosPage({ studentId, videos, onRefreshVideos, target, onDetai
                 <div className="video-portrait">
                   {url ? (
                     <video
-                      key={active?.id}
+                      key={`${active?.id}:${crossOriginEnabled ? 'cors' : 'direct'}`}
                       ref={videoRef}
+                      crossOrigin={crossOriginEnabled ? 'anonymous' : undefined}
                       src={url}
                       autoPlay
                       playsInline
@@ -584,6 +861,66 @@ export function VideosPage({ studentId, videos, onRefreshVideos, target, onDetai
                   ) : (
                     <div className="video-loading">{playbackError || '正在获取播放链接…'}</div>
                   )}
+                  {annotationOpen && annotationBaseRef.current && (
+                    <div className="video-annotation-layer" aria-label="冻结帧标注编辑器">
+                      <div
+                        className="video-annotation-frame"
+                      >
+                        <canvas
+                          ref={annotationCanvasRef}
+                          width={annotationBaseRef.current.width}
+                          height={annotationBaseRef.current.height}
+                          onPointerDown={beginAnnotationStroke}
+                          onPointerMove={moveAnnotationStroke}
+                          onPointerUp={endAnnotationStroke}
+                          onPointerCancel={endAnnotationStroke}
+                          onLostPointerCapture={endAnnotationStroke}
+                        />
+                        <div className="video-annotation-tools">
+                          <span className="video-annotation-toolset" aria-label="标注工具">
+                            <button
+                              type="button"
+                              className={annotationTool === 'freehand' ? 'active' : ''}
+                              aria-pressed={annotationTool === 'freehand'}
+                              disabled={annotationSending}
+                              onClick={() => setAnnotationTool('freehand')}
+                            >画笔</button>
+                            <button
+                              type="button"
+                              className={annotationTool === 'line' ? 'active' : ''}
+                              aria-pressed={annotationTool === 'line'}
+                              disabled={annotationSending}
+                              onClick={() => setAnnotationTool('line')}
+                            >直线</button>
+                          </span>
+                          <button
+                            type="button"
+                            disabled={annotationStrokes.length === 0 || annotationSending}
+                            onClick={() => {
+                              setAnnotationStrokes((strokes) => undoStroke(strokes))
+                              invalidateAnnotationUpload()
+                            }}
+                          >撤销</button>
+                          <button
+                            type="button"
+                            disabled={annotationStrokes.length === 0 || annotationSending}
+                            onClick={() => {
+                              setAnnotationStrokes(clearStrokes())
+                              invalidateAnnotationUpload()
+                            }}
+                          >清空</button>
+                          <span className="video-annotation-spacer" />
+                          <button type="button" disabled={annotationSending} onClick={closeAnnotation}>取消</button>
+                          <button
+                            type="button"
+                            className="video-annotation-send"
+                            disabled={annotationSending}
+                            onClick={() => void sendAnnotation()}
+                          >{annotationSending ? '发送中…' : '发送到聊天'}</button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
               <div className="video-controls">
@@ -593,6 +930,20 @@ export function VideosPage({ studentId, videos, onRefreshVideos, target, onDetai
                   aria-label={playing ? '暂停' : '播放'}
                   onClick={togglePlayback}
                 >{playing ? 'Ⅱ' : '▶'}</button>
+                <button
+                  type="button"
+                  className="video-frame-step"
+                  aria-label="上一帧"
+                  disabled={duration <= 0}
+                  onClick={() => stepFrame(-1)}
+                >⏮ᶠ</button>
+                <button
+                  type="button"
+                  className="video-frame-step"
+                  aria-label="下一帧"
+                  disabled={duration <= 0}
+                  onClick={() => stepFrame(1)}
+                >⏭ᶠ</button>
                 <span className="video-time">{timeLabel(currentTime)} / {timeLabel(duration)}</span>
                 <button
                   type="button"
@@ -622,7 +973,7 @@ export function VideosPage({ studentId, videos, onRefreshVideos, target, onDetai
                   onClick={toggleFullscreen}
                 >{fullscreen ? '⤡' : '⤢'}</button>}
                 <span className="video-speeds" aria-label="播放速度">
-                  {[0.5, 1, 1.5, 2].map((speed) => (
+                  {VIDEO_SPEEDS.map((speed) => (
                     <button
                       type="button"
                       className={rate === speed ? 'active' : ''}
@@ -631,6 +982,14 @@ export function VideosPage({ studentId, videos, onRefreshVideos, target, onDetai
                     >{speed}×</button>
                   ))}
                 </span>
+                {!annotateUnavailable && (
+                  <button
+                    type="button"
+                    className="video-annotate"
+                    disabled={duration <= 0 || annotationOpen || annotationSending}
+                    onClick={openAnnotation}
+                  >✏️ 标注</button>
+                )}
                 {markerServiceVisible && (
                   <button
                     type="button"
