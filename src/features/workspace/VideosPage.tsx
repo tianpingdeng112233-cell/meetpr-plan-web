@@ -437,6 +437,11 @@ export function VideosPage({
   }
 
   const togglePlayback = () => {
+    // The annotation editor freezes a frame OVER the video: playing under it
+    // would be audio-only with a stuck picture. The passive viewer simply
+    // yields to playback.
+    if (annotationOpen) return
+    if (viewingAnnotation) setViewingAnnotation(null)
     const video = videoRef.current
     if (!video) return
     if (video.paused) void video.play()
@@ -450,6 +455,7 @@ export function VideosPage({
     setCurrentTime(next)
   }
   const stepFrame = (direction: -1 | 1) => {
+    if (annotationOpen) return
     const video = videoRef.current
     if (!video) return
     const next = frameStepTime(video.currentTime, direction, duration || video.duration)
@@ -475,7 +481,7 @@ export function VideosPage({
   }
   const beginScrub = (event: React.PointerEvent<HTMLButtonElement>) => {
     // Single active pointer: a second finger must not hijack the gesture.
-    if (duration <= 0 || scrubState.current != null) return
+    if (annotationOpen || duration <= 0 || scrubState.current != null) return
     const video = videoRef.current
     event.currentTarget.setPointerCapture(event.pointerId)
     // Pause while dragging so the thumb follows the pointer instead of
@@ -533,7 +539,7 @@ export function VideosPage({
   }
   const wheelFrame = useRef<(delta: number) => void>(() => {})
   wheelFrame.current = (delta: number) => {
-    if (duration <= 0 || scrubState.current != null || delta === 0) return
+    if (annotationOpen || duration <= 0 || scrubState.current != null || delta === 0) return
     stepFrame(delta > 0 ? 1 : -1)
   }
   const wheelCleanup = useRef<(() => void) | null>(null)
@@ -1102,20 +1108,21 @@ export function VideosPage({
                   type="button"
                   className="video-play-toggle"
                   aria-label={playing ? '暂停' : '播放'}
+                  disabled={annotationOpen}
                   onClick={togglePlayback}
                 >{playing ? 'Ⅱ' : '▶'}</button>
                 <button
                   type="button"
                   className="video-frame-step"
                   aria-label="上一帧"
-                  disabled={duration <= 0}
+                  disabled={duration <= 0 || annotationOpen}
                   onClick={() => stepFrame(-1)}
                 >⏮ᶠ</button>
                 <button
                   type="button"
                   className="video-frame-step"
                   aria-label="下一帧"
-                  disabled={duration <= 0}
+                  disabled={duration <= 0 || annotationOpen}
                   onClick={() => stepFrame(1)}
                 >⏭ᶠ</button>
                 <span className="video-time">
