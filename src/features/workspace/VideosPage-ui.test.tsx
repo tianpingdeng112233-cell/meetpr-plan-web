@@ -180,12 +180,16 @@ describe('VideosPage master-detail interactions', () => {
       id: 'conversation', other_party: { id: 'student-1', display_name: '学员' },
       last_message: null, last_message_at: null, unread_count: 0, my_last_read: null, other_last_read: null,
     })
-    api.sendChatImage.mockResolvedValue({
+    api.sendChatImage.mockImplementation((_conversationId: string, _image: Blob, session: { attachmentId?: string }) => {
+      session.attachmentId = 'attachment'
+      return Promise.resolve(sentImageMessage)
+    })
+    const sentImageMessage = {
       id: 'image-message', conversation_id: 'conversation', seq: 1, sender_id: 'coach', kind: 'image', body: null,
       attachment_id: 'attachment', image_url: 'https://example.test/image.jpg', image_expires_in: 900,
       set_ref: null, video_url: null, video_expires_in: null, client_id: 'image-client',
       created_at: '2026-08-01T12:00:00Z',
-    })
+    }
   })
 
   afterEach(() => {
@@ -286,6 +290,27 @@ describe('VideosPage master-detail interactions', () => {
     await act(settle)
     expect(host.querySelector('.videos-detail')).toBeNull()
     expect(host.querySelector('.video-master-row.selected')).toBeNull()
+  })
+
+  it('annotated markers carry a badge and open the drawn frame overlay', async () => {
+    api.getVideoMarkers.mockResolvedValue([{
+      ...initialMarker,
+      attachment_id: 'attachment',
+      annotation_url: 'https://oss.test/annotation.jpg',
+      annotation_expires_in: 900,
+    }])
+    await renderHarness()
+    expect(host.querySelector('.video-marker-annotated')).not.toBeNull()
+
+    click(host.querySelector('.video-marker-seek'))
+    await act(settle)
+    const viewer = host.querySelector<HTMLButtonElement>('.video-annotation-view')
+    expect(viewer).not.toBeNull()
+    expect(viewer?.querySelector('img')?.src).toBe('https://oss.test/annotation.jpg')
+
+    click(viewer)
+    await act(settle)
+    expect(host.querySelector('.video-annotation-view')).toBeNull()
   })
 
   it('never falls back to day/exercise/set matching when the target has a set_log_id', async () => {
@@ -730,6 +755,7 @@ describe('VideosPage master-detail interactions', () => {
     expect(api.createVideoMarker).toHaveBeenCalledWith('video-1', {
       time_ms: 0,
       note: '✏️ 标注',
+      attachment_id: 'attachment',
     })
     expect(host.querySelector('.video-annotation-layer')).toBeNull()
   })
