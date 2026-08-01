@@ -338,11 +338,52 @@ export function VideosPage({ studentId, videos, onRefreshVideos, target, onDetai
     video.currentTime = next
     setCurrentTime(next)
   }
-  const seekFromProgress = (event: React.MouseEvent<HTMLButtonElement>) => {
+  const scrubState = useRef<{ pointerId: number; wasPlaying: boolean } | null>(null)
+  const seekToClientX = (element: HTMLElement, clientX: number) => {
     if (duration <= 0) return
-    const rect = event.currentTarget.getBoundingClientRect()
+    const rect = element.getBoundingClientRect()
     if (rect.width <= 0) return
-    seekTo((event.clientX - rect.left) / rect.width * duration)
+    seekTo((clientX - rect.left) / rect.width * duration)
+  }
+  const beginScrub = (event: React.PointerEvent<HTMLButtonElement>) => {
+    // Single active pointer: a second finger must not hijack the gesture.
+    if (duration <= 0 || scrubState.current != null) return
+    const video = videoRef.current
+    event.currentTarget.setPointerCapture(event.pointerId)
+    // Pause while dragging so the thumb follows the pointer instead of
+    // fighting the advancing playhead. Read the playback state off the media
+    // element itself: React's `playing` lags between play() and onPlay.
+    scrubState.current = { pointerId: event.pointerId, wasPlaying: video != null && !video.paused }
+    video?.pause()
+    seekToClientX(event.currentTarget, event.clientX)
+  }
+  const moveScrub = (event: React.PointerEvent<HTMLButtonElement>) => {
+    if (scrubState.current?.pointerId !== event.pointerId) return
+    seekToClientX(event.currentTarget, event.clientX)
+  }
+  const endScrub = (event: React.PointerEvent<HTMLButtonElement>) => {
+    const scrub = scrubState.current
+    if (scrub == null || scrub.pointerId !== event.pointerId) return
+    scrubState.current = null
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId)
+    }
+    if (scrub.wasPlaying) void videoRef.current?.play()
+  }
+  const playerBoxRef = useRef<HTMLDivElement>(null)
+  const [fullscreen, setFullscreen] = useState(false)
+  useEffect(() => {
+    const sync = () => setFullscreen(document.fullscreenElement === playerBoxRef.current)
+    document.addEventListener('fullscreenchange', sync)
+    return () => document.removeEventListener('fullscreenchange', sync)
+  }, [])
+  const fullscreenSupported = typeof document !== 'undefined'
+    && typeof document.documentElement.requestFullscreen === 'function'
+    && document.fullscreenEnabled !== false
+  const toggleFullscreen = () => {
+    if (!fullscreenSupported) return
+    if (document.fullscreenElement === playerBoxRef.current) void document.exitFullscreen()
+    else void playerBoxRef.current?.requestFullscreen()
   }
 
   const sendFeedback = async () => {
@@ -521,7 +562,7 @@ export function VideosPage({ studentId, videos, onRefreshVideos, target, onDetai
               </span>
             </header>
 
-            <div className="video-player">
+            <div className="video-player" ref={playerBoxRef}>
               <div className="video-player-stage">
                 <div className="video-portrait">
                   {url ? (
@@ -557,7 +598,11 @@ export function VideosPage({ studentId, videos, onRefreshVideos, target, onDetai
                   type="button"
                   className="video-progress"
                   aria-label="视频进度"
-                  onClick={seekFromProgress}
+                  onPointerDown={beginScrub}
+                  onPointerMove={moveScrub}
+                  onPointerUp={endScrub}
+                  onPointerCancel={endScrub}
+                  onLostPointerCapture={endScrub}
                 >
                   <span style={{ width: `${duration > 0 ? markerPositionPercent(currentTime * 1000, duration) : 0}%` }} />
                   {markerAvailability === 'available' && markers.map((marker) => (
@@ -569,6 +614,13 @@ export function VideosPage({ studentId, videos, onRefreshVideos, target, onDetai
                     />
                   ))}
                 </button>
+                {fullscreenSupported && <button
+                  type="button"
+                  className="video-fullscreen-toggle"
+                  aria-label={fullscreen ? '退出全屏' : '全屏观看'}
+                  title={fullscreen ? '退出全屏 (Esc)' : '全屏观看'}
+                  onClick={toggleFullscreen}
+                >{fullscreen ? '⤡' : '⤢'}</button>}
                 <span className="video-speeds" aria-label="播放速度">
                   {[0.5, 1, 1.5, 2].map((speed) => (
                     <button
