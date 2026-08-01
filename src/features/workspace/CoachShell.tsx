@@ -16,7 +16,7 @@ type Badge = { count: number; tone: 'danger' | 'muted'; label: string }
 const NAV_ITEMS: { id: CoachView; label: string; short: string }[] = [
   { id: 'board', label: '总览', short: '总' },
   { id: 'editor', label: '计划编排', short: '编' },
-  { id: 'messages', label: '学员', short: '学' },
+  { id: 'messages', label: '反馈工作区', short: '反' },
   { id: 'catalog', label: '动作库', short: '动' },
   { id: 'requests', label: '学员申请', short: '申' },
 ]
@@ -32,7 +32,7 @@ const VIEW_SHORTCUTS: Record<CoachView, string> = {
 const VIEW_CRUMBS: Record<CoachView, string> = {
   board: '总览',
   editor: '计划编排',
-  messages: '学员',
+  messages: '反馈工作区',
   catalog: '动作库',
   requests: '学员申请',
 }

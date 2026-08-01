@@ -111,13 +111,11 @@ describe('set_ref v1 shared golden fixtures', () => {
     expect(host.querySelector('.set-ref-kicker')?.textContent).toBe(
       setRef.source === 'logged' ? '学员记录的一组' : '学员今天的计划',
     )
-    expect(host.querySelector('.set-ref-load>span')?.textContent).toBe('WEIGHT × REPS')
-    expect(host.querySelector('.set-ref-load strong')?.textContent)
-      .toBe(`${setRef.weight_kg ?? '-'}kg×${setRef.reps ?? '-'}${setRef.reps_max === null
-        ? ''
-        : `-${setRef.reps_max}`}`)
-    expect(host.querySelector('.set-ref-rpe>span')?.textContent).toBe('RPE')
-    expect(host.querySelector('.set-ref-rpe strong')?.textContent).toBe(setRef.rpe ?? '—')
+    const line = host.querySelector('.set-ref-line')!
+    const reps = `${setRef.reps ?? '-'}${setRef.reps_max === null ? '' : `-${setRef.reps_max}`}`
+    expect(line.textContent).toBe(
+      `${setRef.weight_kg ?? '-'}kg×${reps}${setRef.rpe === null ? '' : `@RPE ${setRef.rpe}`}`,
+    )
     expect(host.querySelector('.set-ref-card>header time')?.textContent).toBe('21:38')
   })
 

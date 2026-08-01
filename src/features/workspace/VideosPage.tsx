@@ -889,6 +889,7 @@ export function VideosPage({
                       autoPlay
                       playsInline
                       onClick={togglePlayback}
+                      onDoubleClick={toggleFullscreen}
                       onPlay={() => setPlaying(true)}
                       onPause={() => setPlaying(false)}
                       onTimeUpdate={(event) => setCurrentTime(event.currentTarget.currentTime)}
