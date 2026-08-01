@@ -840,6 +840,28 @@ export function VideosPage({
 
             <div className="video-player" ref={playerBoxRef}>
               <div className="video-player-stage">
+                {(!annotateUnavailable || markerServiceVisible) && (
+                  <div className="video-stage-actions">
+                    {!annotateUnavailable && (
+                      <button
+                        type="button"
+                        className="video-annotate"
+                        disabled={duration <= 0 || annotationOpen || annotationSending}
+                        onClick={openAnnotation}
+                      ><i>✏️</i>标注</button>
+                    )}
+                    {markerServiceVisible && (
+                      <button
+                        type="button"
+                        className="video-add-marker"
+                        onClick={() => {
+                          setMarkerOpen(true)
+                          setMarkerError('')
+                        }}
+                      ><i>＋</i>在此处打点</button>
+                    )}
+                  </div>
+                )}
                 <div className="video-portrait">
                   {url ? (
                     <video
@@ -982,24 +1004,6 @@ export function VideosPage({
                     >{speed}×</button>
                   ))}
                 </span>
-                {!annotateUnavailable && (
-                  <button
-                    type="button"
-                    className="video-annotate"
-                    disabled={duration <= 0 || annotationOpen || annotationSending}
-                    onClick={openAnnotation}
-                  >✏️ 标注</button>
-                )}
-                {markerServiceVisible && (
-                  <button
-                    type="button"
-                    className="video-add-marker"
-                    onClick={() => {
-                      setMarkerOpen(true)
-                      setMarkerError('')
-                    }}
-                  >＋ 在此处打点</button>
-                )}
               </div>
               {markerServiceVisible && markerOpen && (
                 <div className="video-marker-editor">
