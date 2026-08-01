@@ -142,6 +142,7 @@ export function VideosPage({
   const [markerNote, setMarkerNote] = useState('')
   const [markerSaving, setMarkerSaving] = useState(false)
   const [markerError, setMarkerError] = useState('')
+  const [deletingMarkerIds, setDeletingMarkerIds] = useState<ReadonlySet<string>>(new Set())
 
   const retried = useRef(false)
   const crossOriginRetried = useRef(false)
@@ -749,14 +750,30 @@ export function VideosPage({
     }
   }
   const removeMarker = async (marker: VideoMarker) => {
-    if (!active) return
+    if (!active || deletingMarkerIds.has(marker.id)) return
     const videoId = active.id
+    setDeletingMarkerIds((current) => new Set(current).add(marker.id))
     try {
       await deleteVideoMarker(videoId, marker.id)
       if (activeVideoIdRef.current !== videoId) return
       setMarkers((current) => current.filter((item) => item.id !== marker.id))
-    } catch {
-      if (activeVideoIdRef.current === videoId) setMarkerError('打点删除失败，请稍后重试')
+      setMarkerError('')
+    } catch (caught) {
+      if (activeVideoIdRef.current !== videoId) return
+      // A 404 means the marker is already gone (double click, another tab):
+      // that IS the desired end state, not a failure to surface.
+      if (caught instanceof ApiException && caught.status === 404) {
+        setMarkers((current) => current.filter((item) => item.id !== marker.id))
+        setMarkerError('')
+      } else {
+        setMarkerError('打点删除失败，请稍后重试')
+      }
+    } finally {
+      setDeletingMarkerIds((current) => {
+        const next = new Set(current)
+        next.delete(marker.id)
+        return next
+      })
     }
   }
 
@@ -1109,6 +1126,7 @@ export function VideosPage({
                                 type="button"
                                 className="video-marker-delete"
                                 aria-label={`删除 ${timeLabel(marker.time_ms / 1000)} 打点`}
+                                disabled={deletingMarkerIds.has(marker.id)}
                                 onClick={() => void removeMarker(marker)}
                               >×</button>
                             </div>

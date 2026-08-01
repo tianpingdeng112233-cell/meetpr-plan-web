@@ -979,6 +979,37 @@ describe('VideosPage master-detail interactions', () => {
     expect(host.querySelector('[data-time-ms]')).toBeNull()
   })
 
+  it('double-clicking delete fires one request and a late 404 still reads as deleted', async () => {
+    // 走查实况:慢网络下连点删除,第二个 DELETE 到达时标记已被删,后端 404,
+    // 旧实现把它当失败报「删除失败」——但其实删成功了。
+    let releaseDelete = () => {}
+    api.deleteVideoMarker.mockImplementationOnce(() =>
+      new Promise<void>((resolve) => { releaseDelete = resolve }))
+    await renderHarness()
+    const trash = host.querySelector<HTMLButtonElement>('[aria-label="删除 0:04 打点"]')!
+    click(trash)
+    await act(settle)
+    // In-flight: the button is disabled and a second click is a no-op.
+    expect(trash.disabled).toBe(true)
+    click(trash)
+    await act(async () => { releaseDelete(); await settle() })
+    expect(api.deleteVideoMarker).toHaveBeenCalledTimes(1)
+    expect(host.textContent).not.toContain('打点删除失败')
+    expect(host.querySelector('.video-marker-row')).toBeNull()
+
+    // And a 404 from another surface having deleted it first is success too.
+    api.getVideoMarkers.mockResolvedValue([initialMarker])
+    api.deleteVideoMarker.mockRejectedValueOnce(new ApiException(404, 'VIDEO_MARKER_NOT_FOUND'))
+    click(host.querySelectorAll('.video-master-row')[1]!)
+    await act(settle)
+    click(host.querySelectorAll('.video-master-row')[0]!)
+    await act(settle)
+    click(host.querySelector('[aria-label="删除 0:04 打点"]'))
+    await act(settle)
+    expect(host.textContent).not.toContain('打点删除失败')
+    expect(host.querySelector('.video-marker-row')).toBeNull()
+  })
+
   it('renders marker seek and delete as sibling native buttons', async () => {
     await renderHarness()
     const row = host.querySelector('.video-marker-row')!
