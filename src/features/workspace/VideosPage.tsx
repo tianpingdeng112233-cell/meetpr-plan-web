@@ -22,7 +22,7 @@ import {
 } from './annotationDrawing'
 import { usePersistentCollapse } from './usePersistentCollapse'
 import { useGlobalKeyboardHandler } from './globalKeyboard'
-import { frameStepTime, VIDEO_SPEEDS } from './videoPlayback'
+import { frameStepTime, precisionScrubTime, PRECISION_SCRUB_THRESHOLD_PX, VIDEO_SPEEDS } from './videoPlayback'
 
 type VideoFilter = 'all' | 'pending' | 'reviewed'
 type MarkerAvailability = 'loading' | 'available' | 'error' | 'unavailable'
@@ -455,7 +455,12 @@ export function VideosPage({
     video.pause()
     seekTo(next)
   }
-  const scrubState = useRef<{ pointerId: number; wasPlaying: boolean } | null>(null)
+  const scrubState = useRef<{
+    pointerId: number
+    wasPlaying: boolean
+    fine?: { anchorX: number; anchorTime: number }
+  } | null>(null)
+  const [scrubFine, setScrubFine] = useState(false)
   const seekToClientX = (element: HTMLElement, clientX: number) => {
     if (duration <= 0) return
     const rect = element.getBoundingClientRect()
@@ -475,17 +480,69 @@ export function VideosPage({
     seekToClientX(event.currentTarget, event.clientX)
   }
   const moveScrub = (event: React.PointerEvent<HTMLButtonElement>) => {
-    if (scrubState.current?.pointerId !== event.pointerId) return
+    const scrub = scrubState.current
+    if (scrub?.pointerId !== event.pointerId) return
+    const rect = event.currentTarget.getBoundingClientRect()
+    const offBar = event.clientY < rect.top
+      ? rect.top - event.clientY
+      : event.clientY > rect.bottom
+        ? event.clientY - rect.bottom
+        : 0
+    if (offBar > PRECISION_SCRUB_THRESHOLD_PX) {
+      // Pulled away from the bar: 1px of horizontal travel = 1 frame,
+      // anchored where precision mode was entered.
+      if (!scrub.fine) {
+        scrub.fine = {
+          anchorX: event.clientX,
+          anchorTime: videoRef.current?.currentTime ?? currentTime,
+        }
+        setScrubFine(true)
+      }
+      const fineTime = precisionScrubTime(
+        scrub.fine.anchorTime,
+        scrub.fine.anchorX,
+        event.clientX,
+        duration,
+      )
+      if (fineTime != null) seekTo(fineTime)
+      return
+    }
+    if (scrub.fine) {
+      scrub.fine = undefined
+      setScrubFine(false)
+    }
     seekToClientX(event.currentTarget, event.clientX)
   }
   const endScrub = (event: React.PointerEvent<HTMLButtonElement>) => {
     const scrub = scrubState.current
     if (scrub == null || scrub.pointerId !== event.pointerId) return
     scrubState.current = null
+    setScrubFine(false)
     if (event.currentTarget.hasPointerCapture(event.pointerId)) {
       event.currentTarget.releasePointerCapture(event.pointerId)
     }
     if (scrub.wasPlaying) void videoRef.current?.play()
+  }
+  const wheelFrame = useRef<(delta: number) => void>(() => {})
+  wheelFrame.current = (delta: number) => {
+    if (duration <= 0 || scrubState.current != null || delta === 0) return
+    stepFrame(delta > 0 ? 1 : -1)
+  }
+  const wheelCleanup = useRef<(() => void) | null>(null)
+  // The bar mounts on demand with the player, so a mount-once effect would
+  // miss it: a callback ref attaches the native non-passive wheel listener
+  // whenever the element appears and cleans up when it goes. (React 18's
+  // synthetic wheel listener is passive; preventDefault there is a no-op.)
+  const progressRef = (element: HTMLButtonElement | null) => {
+    wheelCleanup.current?.()
+    wheelCleanup.current = null
+    if (!element) return
+    const onWheel = (event: WheelEvent) => {
+      event.preventDefault()
+      wheelFrame.current(event.deltaY !== 0 ? event.deltaY : event.deltaX)
+    }
+    element.addEventListener('wheel', onWheel, { passive: false })
+    wheelCleanup.current = () => element.removeEventListener('wheel', onWheel)
   }
   const playerBoxRef = useRef<HTMLDivElement>(null)
   const [fullscreen, setFullscreen] = useState(false)
@@ -984,16 +1041,21 @@ export function VideosPage({
                   disabled={duration <= 0}
                   onClick={() => stepFrame(1)}
                 >⏭ᶠ</button>
-                <span className="video-time">{timeLabel(currentTime)} / {timeLabel(duration)}</span>
+                <span className="video-time">
+                  {timeLabel(currentTime)} / {timeLabel(duration)}
+                  {scrubFine && <em className="video-scrub-fine">逐帧微调</em>}
+                </span>
                 <button
                   type="button"
-                  className="video-progress"
+                  className={`video-progress${scrubFine ? ' fine' : ''}`}
                   aria-label="视频进度"
+                  title="拖动跳转 · 按住拖离进度条进入逐帧微调 · 滚轮逐帧"
                   onPointerDown={beginScrub}
                   onPointerMove={moveScrub}
                   onPointerUp={endScrub}
                   onPointerCancel={endScrub}
                   onLostPointerCapture={endScrub}
+                  ref={progressRef}
                 >
                   <span style={{ width: `${duration > 0 ? markerPositionPercent(currentTime * 1000, duration) : 0}%` }} />
                   {markerAvailability === 'available' && markers.map((marker) => (
