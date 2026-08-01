@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   annotationLineWidth,
+  drawTimeBadge,
   beginStroke,
   clearStrokes,
   commitStroke,
@@ -42,5 +43,26 @@ describe('annotation drawing model', () => {
     expect(clearStrokes()).toEqual([])
     expect(annotationLineWidth(720)).toBe(4)
     expect(annotationLineWidth(1920)).toBe(8)
+  })
+})
+
+describe('drawTimeBadge', () => {
+  it('burns the timestamp label with a scaled mono font and a backing pill', () => {
+    const calls: string[] = []
+    const context = {
+      save: () => calls.push('save'),
+      restore: () => calls.push('restore'),
+      beginPath: () => {}, moveTo: () => {}, arcTo: () => {}, closePath: () => {},
+      fill: () => calls.push('fill'),
+      fillText: (text: string) => calls.push(`text:${text}`),
+      measureText: () => ({ width: 60 }),
+      set font(value: string) { calls.push(`font:${value}`) },
+      set fillStyle(_v: string) {},
+      set textBaseline(_v: string) {},
+    } as unknown as CanvasRenderingContext2D
+    drawTimeBadge(context, 1080, 1920, '0:26')
+    expect(calls).toContain('text:0:26')
+    expect(calls).toContain('fill')
+    expect(calls.some((c) => c.startsWith('font:600 46px'))).toBe(true)
   })
 })

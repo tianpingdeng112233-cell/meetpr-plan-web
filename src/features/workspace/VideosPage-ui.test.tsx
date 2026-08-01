@@ -675,6 +675,8 @@ describe('VideosPage master-detail interactions', () => {
     const context = {
       clearRect: vi.fn(), drawImage: vi.fn(), save: vi.fn(), restore: vi.fn(), beginPath: vi.fn(),
       moveTo: vi.fn(), lineTo: vi.fn(), stroke: vi.fn(),
+      arcTo: vi.fn(), closePath: vi.fn(), fill: vi.fn(), fillText: vi.fn(),
+      measureText: vi.fn(() => ({ width: 60 })),
     }
     vi.spyOn(HTMLCanvasElement.prototype, 'getContext')
       .mockReturnValue(context as unknown as CanvasRenderingContext2D)
@@ -732,6 +734,8 @@ describe('VideosPage master-detail interactions', () => {
     const context = {
       clearRect: vi.fn(), drawImage: vi.fn(), save: vi.fn(), restore: vi.fn(), beginPath: vi.fn(),
       moveTo: vi.fn(), lineTo: vi.fn(), stroke: vi.fn(),
+      arcTo: vi.fn(), closePath: vi.fn(), fill: vi.fn(), fillText: vi.fn(),
+      measureText: vi.fn(() => ({ width: 60 })),
     }
     vi.spyOn(HTMLCanvasElement.prototype, 'getContext')
       .mockReturnValue(context as unknown as CanvasRenderingContext2D)
@@ -760,6 +764,8 @@ describe('VideosPage master-detail interactions', () => {
     const context = {
       clearRect: vi.fn(), drawImage: vi.fn(), save: vi.fn(), restore: vi.fn(), beginPath: vi.fn(),
       moveTo: vi.fn(), lineTo: vi.fn(), stroke: vi.fn(),
+      arcTo: vi.fn(), closePath: vi.fn(), fill: vi.fn(), fillText: vi.fn(),
+      measureText: vi.fn(() => ({ width: 60 })),
     }
     vi.spyOn(HTMLCanvasElement.prototype, 'getContext')
       .mockReturnValue(context as unknown as CanvasRenderingContext2D)
@@ -812,6 +818,8 @@ describe('VideosPage master-detail interactions', () => {
     const context = {
       clearRect: vi.fn(), drawImage: vi.fn(), save: vi.fn(), restore: vi.fn(), beginPath: vi.fn(),
       moveTo: vi.fn(), lineTo: vi.fn(), stroke: vi.fn(),
+      arcTo: vi.fn(), closePath: vi.fn(), fill: vi.fn(), fillText: vi.fn(),
+      measureText: vi.fn(() => ({ width: 60 })),
     }
     vi.spyOn(HTMLCanvasElement.prototype, 'getContext')
       .mockReturnValue(context as unknown as CanvasRenderingContext2D)
@@ -847,6 +855,8 @@ describe('VideosPage master-detail interactions', () => {
     const context = {
       clearRect: vi.fn(), drawImage: vi.fn(), save: vi.fn(), restore: vi.fn(), beginPath: vi.fn(),
       moveTo: vi.fn(), lineTo: vi.fn(), stroke: vi.fn(),
+      arcTo: vi.fn(), closePath: vi.fn(), fill: vi.fn(), fillText: vi.fn(),
+      measureText: vi.fn(() => ({ width: 60 })),
     }
     vi.spyOn(HTMLCanvasElement.prototype, 'getContext')
       .mockReturnValue(context as unknown as CanvasRenderingContext2D)

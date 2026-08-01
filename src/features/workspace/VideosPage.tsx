@@ -10,6 +10,7 @@ import { newClientId } from '../chat/chatModel'
 import { kg } from './WorkspaceCommon'
 import {
   annotationLineWidth,
+  drawTimeBadge,
   beginStroke,
   clearStrokes,
   commitStroke,
@@ -593,6 +594,7 @@ export function VideosPage({
     }
     try {
       context.drawImage(video, 0, 0, base.width, base.height)
+      drawTimeBadge(context, base.width, base.height, timeLabel(video.currentTime))
     } catch (caught) {
       if (isSecurityError(caught)) degradeAnnotation()
       else toast('帧捕获失败，请重试')
