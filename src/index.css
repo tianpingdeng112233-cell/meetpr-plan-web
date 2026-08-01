@@ -1064,6 +1064,7 @@ textarea {
   min-height: 0;
   padding: 14px;
   flex: 1;
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1183,19 +1184,43 @@ textarea {
   background: var(--white);
   font-weight: 700;
 }
+.video-stage-actions {
+  position: absolute;
+  top: 50%;
+  right: 14px;
+  z-index: 6;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  transform: translateY(-50%);
+}
 .video-add-marker,
 .video-annotate {
-  height: 26px;
-  padding: 0 10px;
-  flex: 0 0 auto;
+  width: 96px;
+  padding: 12px 10px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
   border: 1px solid color-mix(in srgb, var(--white) 34%, transparent);
-  border-radius: var(--r-sm);
+  border-radius: 10px;
   color: var(--white);
-  background: transparent;
-  font-size: 12px;
+  background: color-mix(in srgb, var(--play-surface) 78%, transparent);
+  font-size: 13px;
   cursor: pointer;
 }
+.video-add-marker>i,
+.video-annotate>i {
+  font-size: 20px;
+  font-style: normal;
+  line-height: 1;
+}
+.video-add-marker:hover,
+.video-annotate:hover { border-color: var(--white); }
+.video-add-marker:disabled,
+.video-annotate:disabled { opacity: .4; cursor: default; }
 .video-annotate { border-color: color-mix(in srgb, #F59E0B 64%, transparent); }
+.video-annotate:hover { border-color: #F59E0B; }
 .video-annotation-layer {
   position: absolute;
   inset: 0;
