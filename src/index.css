@@ -1042,6 +1042,24 @@ textarea {
   flex-direction: column;
   background: var(--play-bg);
 }
+/* Fullscreen keeps the custom chrome (progress + markers + speeds) on top of
+   a black stage; the portrait frame drops its card border. */
+.video-player:fullscreen { background: #000; }
+.video-player:fullscreen .video-player-stage { padding: 24px; }
+.video-player:fullscreen .video-portrait { border: none; border-radius: 0; background: #000; }
+.video-fullscreen-toggle {
+  width: 26px;
+  height: 26px;
+  flex: 0 0 auto;
+  border: 1px solid var(--play-border);
+  border-radius: var(--r-sm);
+  color: color-mix(in srgb, var(--white) 68%, transparent);
+  background: transparent;
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+}
+.video-fullscreen-toggle:hover { color: var(--white); border-color: var(--white); }
 .video-player-stage {
   min-height: 0;
   padding: 14px;
@@ -1105,6 +1123,7 @@ textarea {
   font: 500 12px var(--font-mono);
 }
 .video-progress {
+  touch-action: none;
   height: 4px;
   min-width: 24px;
   padding: 0;
