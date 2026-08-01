@@ -131,6 +131,8 @@ export function VideosPage({
   const [annotationStrokes, setAnnotationStrokes] = useState<AnnotationStroke[]>([])
   const [activeStroke, setActiveStroke] = useState<AnnotationStroke | null>(null)
   const [annotationSending, setAnnotationSending] = useState(false)
+  const [annotationNote, setAnnotationNote] = useState('')
+  const annotationTimeMs = useRef(0)
   const [feedback, setFeedback] = useState('')
   const [feedbackState, setFeedbackState] = useState<'idle' | 'sending' | 'sent'>('idle')
   const [feedbackError, setFeedbackError] = useState('')
@@ -578,6 +580,7 @@ export function VideosPage({
     if (annotateUnavailable || annotationOpen || annotationSending) return
     annotationGeneration.current += 1
     annotationSession.current = { clientId: newClientId() }
+    setAnnotationNote('')
     const video = videoRef.current
     if (!video || video.videoWidth <= 0 || video.videoHeight <= 0) {
       toast('视频画面尚未就绪')
@@ -595,6 +598,7 @@ export function VideosPage({
     try {
       context.drawImage(video, 0, 0, base.width, base.height)
       drawTimeBadge(context, base.width, base.height, timeLabel(video.currentTime))
+      annotationTimeMs.current = Math.max(0, Math.round(video.currentTime * 1000))
     } catch (caught) {
       if (isSecurityError(caught)) degradeAnnotation()
       else toast('帧捕获失败，请重试')
@@ -683,8 +687,30 @@ export function VideosPage({
       reject(caught)
     }
   })
+  const dropAnnotationMarker = async (videoId: string, timeMs: number, note: string) => {
+    // The marker surface may be hidden (endpoint 404) — then skip silently,
+    // matching the rest of the optional-marker contract.
+    if (markerAvailability !== 'available') return
+    try {
+      const marker = await createVideoMarker(videoId, {
+        time_ms: timeMs,
+        note: note.trim().slice(0, 500) || '✏️ 标注',
+      })
+      if (activeVideoIdRef.current !== videoId) return
+      setMarkers((current) => (current.some((item) => item.id === marker.id)
+        ? current
+        : [...current, marker].sort((left, right) => left.time_ms - right.time_ms)))
+    } catch {
+      if (activeVideoIdRef.current === videoId) {
+        toast('标注已发送，但打点创建失败')
+      }
+    }
+  }
+
   const sendAnnotation = async () => {
     if (annotationSending) return
+    const videoId = activeVideoIdRef.current
+    if (videoId == null) return
     const generation = annotationGeneration.current
     const session = annotationSession.current ?? { clientId: newClientId() }
     annotationSession.current = session
@@ -705,6 +731,7 @@ export function VideosPage({
       // Publishing belongs to the request that produced it — but the editing
       // state may already belong to a newer annotation; never touch that.
       chatOutbox.publishConfirmed(message)
+      await dropAnnotationMarker(videoId, annotationTimeMs.current, annotationNote)
       if (generation !== annotationGeneration.current) return
       annotationSession.current = null
       setAnnotationOpen(false)
@@ -1011,6 +1038,14 @@ export function VideosPage({
                               invalidateAnnotationUpload()
                             }}
                           >清空</button>
+                          <input
+                            className="video-annotation-note"
+                            maxLength={500}
+                            value={annotationNote}
+                            placeholder="打点备注（选填）"
+                            disabled={annotationSending}
+                            onChange={(event) => setAnnotationNote(event.target.value)}
+                          />
                           <span className="video-annotation-spacer" />
                           <button type="button" disabled={annotationSending} onClick={closeAnnotation}>取消</button>
                           <button

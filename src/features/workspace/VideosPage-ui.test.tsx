@@ -725,6 +725,12 @@ describe('VideosPage master-detail interactions', () => {
       expect.objectContaining({ clientId: expect.stringMatching(/^web-/) }),
     )
     expect(api.publishConfirmed).toHaveBeenCalledWith(expect.objectContaining({ id: 'image-message' }))
+    // A sent annotation drops a marker on the frozen moment so the student
+    // can tap straight to it from the player's marker list.
+    expect(api.createVideoMarker).toHaveBeenCalledWith('video-1', {
+      time_ms: 0,
+      note: '✏️ 标注',
+    })
     expect(host.querySelector('.video-annotation-layer')).toBeNull()
   })
 
