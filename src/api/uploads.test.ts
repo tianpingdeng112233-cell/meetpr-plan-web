@@ -38,9 +38,14 @@ describe('chat image upload pipeline', () => {
     expect(client.post).toHaveBeenNthCalledWith(1, '/uploads/initiate', {
       kind: 'chat_image', size_bytes: image.size, content_type: 'image/jpeg', part_count: 1,
     })
-    expect(put).toHaveBeenCalledWith('https://oss.test/part', {
-      method: 'PUT', headers: { 'Content-Type': 'image/jpeg' }, body: image,
-    })
+    const putArgs = put.mock.calls[0]
+    expect(putArgs[0]).toBe('https://oss.test/part')
+    expect(putArgs[1].method).toBe('PUT')
+    expect(putArgs[1].headers).toBeUndefined()
+    expect(putArgs[1].body).toBeInstanceOf(Blob)
+    // A typeless wrapper: fetch must not auto-append Content-Type, or the
+    // OSS part signature (computed without one) breaks with a 403.
+    expect((putArgs[1].body as Blob).type).toBe('')
     expect(client.post).toHaveBeenNthCalledWith(2, '/uploads/attachment/complete', {
       parts: [{ part_number: 1, etag: '"part-etag"' }],
     })

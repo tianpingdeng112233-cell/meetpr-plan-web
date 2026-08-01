@@ -46,10 +46,14 @@ export async function sendChatImage(
   }
 
   if (!session.etag) {
+    // The presigned part URL is signed WITHOUT a Content-Type header (iOS
+    // part PUTs never send one). fetch auto-appends a typed Blob's MIME and
+    // breaks the signature (403 SignatureDoesNotMatch) — wrap the bytes in a
+    // typeless Blob so no header is sent. The object's MIME type was fixed
+    // server-side at initiate.
     const uploaded = await fetch(session.partUrl, {
       method: 'PUT',
-      headers: { 'Content-Type': 'image/jpeg' },
-      body: image,
+      body: new Blob([image]),
     })
     if (!uploaded.ok) throw new Error(`CHAT_IMAGE_UPLOAD_${uploaded.status}`)
     const etag = uploaded.headers.get('ETag') ?? uploaded.headers.get('etag')
