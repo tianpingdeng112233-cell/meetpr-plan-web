@@ -35,7 +35,7 @@ interface CommandItem {
 const SCREEN_COMMANDS: Array<{ view: CoachView; label: string; aliases: string }> = [
   { view: 'board', label: '总览', aliases: '学员 看板 board' },
   { view: 'editor', label: '计划编排', aliases: '计划 编排器 editor' },
-  { view: 'messages', label: '学员', aliases: '消息 聊天 视频 message video' },
+  { view: 'messages', label: '反馈工作区', aliases: '学员 消息 聊天 视频 message video feedback' },
   { view: 'catalog', label: '动作库', aliases: '动作 catalog' },
   { view: 'requests', label: '学员申请', aliases: '申请 request' },
 ]

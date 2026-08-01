@@ -141,12 +141,7 @@ export function SetRefCard({
     aria-label={setRef.source === 'logged' ? '训练分享' : '训练计划'}
   >
     <header>
-      <span className="set-ref-kicker">
-        <svg viewBox="0 0 24 12" aria-hidden="true">
-          <path d="M1 4v4m3-6v8m3-6v4m0-2h10m0-2v4m3-6v8m3-6v4" />
-        </svg>
-        {sourceLabel}
-      </span>
+      <span className="set-ref-kicker">{sourceLabel}</span>
       <time>{sentAt}</time>
     </header>
     <div className="set-ref-heading">
@@ -156,19 +151,11 @@ export function SetRefCard({
         {setRef.set_total !== null && <> / {setRef.set_total}</>}
       </span>
     </div>
-    <div className="set-ref-metrics">
-      <div className="set-ref-metric set-ref-load">
-        <span>WEIGHT × REPS</span>
-        <strong>
-          <span>{setRef.weight_kg ?? '-'}</span><small>kg</small>
-          <i>×</i>
-          <span>{reps}</span>
-        </strong>
-      </div>
-      <div className="set-ref-metric set-ref-rpe">
-        <span>RPE</span>
-        <strong className={setRef.rpe === null ? 'empty' : ''}>{setRef.rpe ?? '—'}</strong>
-      </div>
+    <div className="set-ref-line">
+      <strong>{setRef.weight_kg ?? '-'}<small>kg</small></strong>
+      <i>×</i>
+      <strong>{reps}</strong>
+      {setRef.rpe !== null && <em>@RPE {setRef.rpe}</em>}
     </div>
     {hasVideo && <button type="button" className="set-ref-play" onClick={onPlayVideo}>
       <span>▶</span> 播放视频

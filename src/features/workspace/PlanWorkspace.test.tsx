@@ -443,7 +443,7 @@ describe('PlanWorkspace editor remount', () => {
     expect(host.querySelector('[data-testid="editor-note"]')?.textContent).toBe('首位学员仍可编辑')
     expect(host.textContent).not.toContain('无法连接后端')
     expect(host.querySelector('.coach-statusbar')?.textContent).toContain('待排 1')
-    const studentTab = [...host.querySelectorAll('button')].find((item) => item.firstElementChild?.textContent === '学员')
+    const studentTab = [...host.querySelectorAll('button')].find((item) => item.firstElementChild?.textContent === '反馈工作区')
     expect(studentTab?.querySelector('.coach-nav-badge')).toBeNull()
   }, 15_000)
 
@@ -651,7 +651,7 @@ describe('PlanWorkspace editor remount', () => {
       await settle()
     })
     await act(async () => {
-      clickNav(host, '学员')
+      clickNav(host, '反馈工作区')
       await settle()
     })
     expect(host.textContent).toContain('刷新前视频')
@@ -719,7 +719,7 @@ describe('PlanWorkspace editor remount', () => {
       await settle()
     })
     await act(async () => {
-      clickNav(host, '学员')
+      clickNav(host, '反馈工作区')
       await settle()
     })
     expect(host.querySelector('.student-hub-page')?.children).toHaveLength(2)
@@ -787,7 +787,7 @@ describe('PlanWorkspace editor remount', () => {
       await settle()
     })
     await act(async () => {
-      clickNav(host, '学员')
+      clickNav(host, '反馈工作区')
       await settle()
     })
     const pendingTab = [...host.querySelectorAll<HTMLButtonElement>('.video-filter-tabs button')]
@@ -818,12 +818,12 @@ describe('PlanWorkspace editor remount', () => {
     })
     expect(host.querySelectorAll('.coach-nav-item')).toHaveLength(5)
     expect([...host.querySelectorAll('.coach-nav-item')].map((item) => item.firstElementChild?.textContent)).toEqual([
-      '总览', '计划编排', '学员', '动作库', '学员申请',
+      '总览', '计划编排', '反馈工作区', '动作库', '学员申请',
     ])
     expect(api.listConversations).not.toHaveBeenCalled()
 
     await act(async () => {
-      clickNav(host, '学员')
+      clickNav(host, '反馈工作区')
       await settle()
     })
 
@@ -956,7 +956,7 @@ describe('PlanWorkspace editor remount', () => {
       await settle()
     })
     await act(async () => {
-      clickNav(host, '学员')
+      clickNav(host, '反馈工作区')
       await settle()
     })
     await act(async () => {
@@ -969,7 +969,7 @@ describe('PlanWorkspace editor remount', () => {
       resolveStale([chatConversation(1)])
       await settle()
     })
-    const messagesTab = [...host.querySelectorAll('button')].find((item) => item.firstElementChild?.textContent === '学员')
+    const messagesTab = [...host.querySelectorAll('button')].find((item) => item.firstElementChild?.textContent === '反馈工作区')
     expect(messagesTab?.querySelector('.coach-nav-badge')).toBeNull()
   }, 15_000)
 
