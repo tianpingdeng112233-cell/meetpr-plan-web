@@ -1,11 +1,13 @@
 import { useEffect, useRef, useState } from 'react'
 import type { CreateCustomExerciseInput } from '../../../api/exercises'
-import type { Equipment, MovementPattern, MuscleGroup } from '../../../api/types'
+import type { Equipment, LiftFamily, MovementPattern, MuscleGroup } from '../../../api/types'
 import { useGlobalKeyboardHandler } from '../../workspace/globalKeyboard'
 
 interface Props {
   open: boolean
   initialName: string
+  /** Seeds 分类: 'main' when the coach adds from the 主项及变式 section. */
+  initialTier?: 'main' | 'aux'
   saving: boolean
   error: string
   onClose: () => void
@@ -41,6 +43,25 @@ const equipmentOptions: { value: Equipment; label: string }[] = [
   { value: 'specialty_bar', label: '特殊杆' },
   { value: 'other', label: '其他' },
 ]
+
+const typeOptions: { value: 'accessory' | 'main_lift_variation'; label: string }[] = [
+  { value: 'accessory', label: '辅助项' },
+  { value: 'main_lift_variation', label: '主项变式' },
+]
+
+const familyOptions: { value: LiftFamily; label: string }[] = [
+  { value: 'squat', label: '深蹲' },
+  { value: 'bench', label: '卧推' },
+  { value: 'deadlift', label: '硬拉' },
+]
+
+export function guessLiftFamily(rawName: string): LiftFamily | null {
+  const name = rawName.toLowerCase()
+  if (/卧推|bench/.test(name)) return 'bench'
+  if (/硬拉|deadlift/.test(name)) return 'deadlift'
+  if (/蹲|squat/.test(name)) return 'squat'
+  return null
+}
 
 const movementOptions: { value: MovementPattern; label: string }[] = [
   { value: 'other', label: '其他' },
@@ -101,8 +122,10 @@ const input: React.CSSProperties = {
   outline: 'none',
 }
 
-export function CustomExerciseDialog({ open, initialName, saving, error, onClose, onSubmit }: Props) {
+export function CustomExerciseDialog({ open, initialName, initialTier, saving, error, onClose, onSubmit }: Props) {
   const [name, setName] = useState('')
+  const [exerciseType, setExerciseType] = useState<'accessory' | 'main_lift_variation'>('accessory')
+  const [mainLiftFamily, setMainLiftFamily] = useState<LiftFamily>('squat')
   const [muscleGroup, setMuscleGroup] = useState<MuscleGroup>('core')
   const [equipment, setEquipment] = useState<Equipment>('bodyweight')
   const [movementPattern, setMovementPattern] = useState<MovementPattern>('other')
@@ -112,12 +135,15 @@ export function CustomExerciseDialog({ open, initialName, saving, error, onClose
     if (!open) return
     const trimmed = initialName.trim()
     const guessed = guessFields(trimmed)
+    const family = guessLiftFamily(trimmed)
     setName(trimmed)
+    setExerciseType(initialTier === 'main' ? 'main_lift_variation' : 'accessory')
+    setMainLiftFamily(family ?? 'squat')
     setMuscleGroup(guessed.muscleGroup ?? 'core')
     setEquipment(guessed.equipment ?? 'bodyweight')
     setMovementPattern(guessed.movementPattern ?? 'other')
     window.setTimeout(() => nameRef.current?.focus(), 0)
-  }, [initialName, open])
+  }, [initialName, initialTier, open])
 
   useGlobalKeyboardHandler(({ event }) => {
     if (!open || saving || event.key !== 'Escape') return false
@@ -146,7 +172,14 @@ export function CustomExerciseDialog({ open, initialName, saving, error, onClose
         onSubmit={(e) => {
           e.preventDefault()
           if (!trimmed || saving) return
-          void onSubmit({ name: trimmed, muscleGroup, equipment, movementPattern })
+          void onSubmit({
+            name: trimmed,
+            exerciseType,
+            mainLiftFamily: exerciseType === 'main_lift_variation' ? mainLiftFamily : undefined,
+            muscleGroup,
+            equipment,
+            movementPattern,
+          })
         }}
         style={{
           width: 420,
@@ -175,6 +208,23 @@ export function CustomExerciseDialog({ open, initialName, saving, error, onClose
             style={input}
           />
         </label>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+          <label style={fieldWrap}>
+            <span style={label}>分类</span>
+            <select value={exerciseType} onChange={(e) => setExerciseType(e.target.value as 'accessory' | 'main_lift_variation')} style={input}>
+              {typeOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
+          </label>
+          {exerciseType === 'main_lift_variation' && (
+            <label style={fieldWrap}>
+              <span style={label}>所属主项</span>
+              <select value={mainLiftFamily} onChange={(e) => setMainLiftFamily(e.target.value as LiftFamily)} style={input}>
+                {familyOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
+            </label>
+          )}
+        </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
           <label style={fieldWrap}>

@@ -1,8 +1,11 @@
 import { api } from './client'
-import type { CreateCustomExerciseBody, Equipment, ExerciseResponse, MovementPattern, MuscleGroup } from './types'
+import type { CreateCustomExerciseBody, Equipment, ExerciseResponse, LiftFamily, MovementPattern, MuscleGroup } from './types'
 
 export interface CreateCustomExerciseInput {
   name: string
+  /** Defaults to accessory; main_lift_variation requires mainLiftFamily. */
+  exerciseType?: 'accessory' | 'main_lift_variation'
+  mainLiftFamily?: LiftFamily
   muscleGroup?: MuscleGroup
   /** Ordered as primary muscle first, followed by synergists. */
   muscleGroups?: MuscleGroup[]
@@ -30,8 +33,11 @@ export function customExerciseBody(input: CreateCustomExerciseInput): CreateCust
     ? input.muscleGroups
     : [input.muscleGroup ?? DEFAULT_CUSTOM_EXERCISE.muscle_groups[0]]
   const equipment = input.equipmentList ?? [input.equipment ?? DEFAULT_CUSTOM_EXERCISE.equipment[0]]
+  const asVariation = input.exerciseType === 'main_lift_variation' && input.mainLiftFamily != null
   return {
     ...DEFAULT_CUSTOM_EXERCISE,
+    exercise_type: asVariation ? 'main_lift_variation' : 'accessory',
+    main_lift_family: asVariation ? input.mainLiftFamily! : null,
     name: input.name.trim(),
     muscle_groups: [...new Set(muscleGroups)],
     equipment: [...new Set(equipment.length ? equipment : DEFAULT_CUSTOM_EXERCISE.equipment)],

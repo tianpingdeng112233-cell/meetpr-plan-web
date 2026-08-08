@@ -37,6 +37,31 @@ describe('createCustomExercise', () => {
     })
   })
 
+  it('builds a main-lift variation payload when the coach picks that 分类', () => {
+    expect(customExerciseBody({
+      name: '高杆节奏蹲310',
+      exerciseType: 'main_lift_variation',
+      mainLiftFamily: 'squat',
+      muscleGroup: 'quad',
+      equipment: 'barbell',
+      movementPattern: 'squat',
+    })).toMatchObject({
+      exercise_type: 'main_lift_variation',
+      main_lift_family: 'squat',
+      is_competition_lift: false,
+    })
+  })
+
+  it('falls back to accessory when a variation is requested without a family', () => {
+    expect(customExerciseBody({
+      name: '节奏无腿卧推530',
+      exerciseType: 'main_lift_variation',
+      muscleGroup: 'chest',
+      equipment: 'barbell',
+      movementPattern: 'horizontal_push',
+    })).toMatchObject({ exercise_type: 'accessory', main_lift_family: null })
+  })
+
   it('keeps the primary muscle first and supports synergists plus multiple equipment', () => {
     expect(customExerciseBody({
       name: '史密斯箭步蹲',

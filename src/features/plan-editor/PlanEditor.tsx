@@ -12,7 +12,7 @@ import { ExercisePopover } from './components/ExercisePopover'
 import { CustomExerciseDialog } from './components/CustomExerciseDialog'
 import type { ExerciseIndex, ExerciseHit } from './exerciseIndex'
 import type { CreateCustomExerciseInput } from '../../api/exercises'
-import type { ExerciseStatsOverview, PlanStatus, StudentOnboardingProfile } from '../../api/types'
+import type { ExerciseResponse, ExerciseStatsOverview, PlanStatus, StudentOnboardingProfile } from '../../api/types'
 import type { ParsedWeek } from './import'
 import {
   LockedRowMutationError, ReconcileConflict, ReconciliationError, type SaveResult,
@@ -887,10 +887,17 @@ export function PlanEditor(props: PlanEditorProps) {
     positionPopAt(el, wnum, dow, rowId, value)
   }
 
-  const bindRowAt = (target: { wnum: number; dow: number; rowId: string }, exerciseId: string, name: string, custom: boolean) => {
+  const bindRowAt = (
+    target: { wnum: number; dow: number; rowId: string },
+    exerciseId: string,
+    name: string,
+    custom: boolean,
+    knownType: ExerciseResponse['exercise_type'] | null = null,
+  ) => {
     // Backfill is_main_lift from the catalog tier so manually picked rows persist
     // the same flag the xlsx-import path infers (main lift or variation → true).
-    const tier = props.exerciseIndex?.typeById(exerciseId) ?? null
+    // knownType covers just-created customs the index hasn't picked up yet.
+    const tier = knownType ?? props.exerciseIndex?.typeById(exerciseId) ?? null
     setWeeksWithHistory((prev) => prev.map((wk) => wk.num !== target.wnum ? wk : {
       ...wk,
       days: wk.days.map((d) => d.dow !== target.dow ? d : {
@@ -1004,6 +1011,15 @@ export function PlanEditor(props: PlanEditorProps) {
     bindRowAt({ wnum: pop.wnum, dow: pop.dow, rowId: pop.rowId }, hit.id, hit.name, false)
     setPop((p) => ({ ...p, visible: false }))
   }
+  // Seed the create dialog's 分类 from the section the blank row lives in, so a
+  // row added under 主项及变式 defaults to a main-lift variation.
+  const tierOfTarget = (target: RowTarget | null): 'main' | 'aux' | undefined => {
+    if (!target) return undefined
+    const row = weeks.find((wk) => wk.num === target.wnum)
+      ?.days.find((d) => d.dow === target.dow)
+      ?.rows.find((r) => r.id === target.rowId)
+    return row ? rowTier(row) : undefined
+  }
   const openCreateExercise = (initialName = '', bindTarget: RowTarget | null = null) => {
     if (!props.onCreateExercise) return
     setCreateExerciseError('')
@@ -1028,7 +1044,10 @@ export function PlanEditor(props: PlanEditorProps) {
       // Only a create that actually lands in a plan row counts as usage — the toolbar
       // "new exercise" flow (bindTarget null) just adds to the catalog.
       if (createExercise.bindTarget) {
-        bindRowAt(createExercise.bindTarget, e.id, e.name, true)
+        const createdType = input.exerciseType === 'main_lift_variation' && input.mainLiftFamily != null
+          ? 'main_lift_variation' as const
+          : 'accessory' as const
+        bindRowAt(createExercise.bindTarget, e.id, e.name, true, createdType)
         props.exerciseIndex?.bump(e.id)
       }
       setStatusText(`已创建动作「${e.name}」`)
@@ -2185,6 +2204,7 @@ export function PlanEditor(props: PlanEditorProps) {
       <CustomExerciseDialog
         open={createExercise.open}
         initialName={createExercise.initialName}
+        initialTier={tierOfTarget(createExercise.bindTarget)}
         saving={creatingExercise}
         error={createExerciseError}
         onClose={closeCreateExercise}
