@@ -9,7 +9,7 @@ import {
 import { usePersistentCollapse } from './usePersistentCollapse'
 import { useGlobalKeyboardHandler } from './globalKeyboard'
 
-export type CoachView = 'board' | 'editor' | 'messages' | 'catalog' | 'requests'
+export type CoachView = 'board' | 'editor' | 'messages' | 'catalog' | 'requests' | 'tracking'
 
 type Badge = { count: number; tone: 'danger' | 'muted'; label: string }
 
@@ -19,6 +19,7 @@ const NAV_ITEMS: { id: CoachView; label: string; short: string }[] = [
   { id: 'messages', label: '反馈工作区', short: '反' },
   { id: 'catalog', label: '动作库', short: '动' },
   { id: 'requests', label: '学员申请', short: '申' },
+  { id: 'tracking', label: '追踪', short: '追' },
 ]
 
 const VIEW_SHORTCUTS: Record<CoachView, string> = {
@@ -27,6 +28,7 @@ const VIEW_SHORTCUTS: Record<CoachView, string> = {
   messages: '⌥1–5 快捷回复 · ↵ 发送 · ← / → 切视频 · 空格播放 · ⌘↵ 反馈',
   catalog: '⌘K 搜动作 / 跳转',
   requests: '',
+  tracking: '',
 }
 
 const VIEW_CRUMBS: Record<CoachView, string> = {
@@ -35,6 +37,7 @@ const VIEW_CRUMBS: Record<CoachView, string> = {
   messages: '反馈工作区',
   catalog: '动作库',
   requests: '学员申请',
+  tracking: '追踪',
 }
 
 export interface CoachShellProps {

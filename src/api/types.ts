@@ -61,8 +61,45 @@ export interface ExerciseStatsOverview {
     bench: { value: string; computed_at: string } | null
     deadlift: { value: string; computed_at: string } | null
   }
+  /** Optional while the tracking-dashboard backend contract rolls out. */
+  e1rm_series?: Record<LiftFamily, E1rmFamilySeries>
+  /** Optional while the tracking-dashboard backend contract rolls out. */
+  weekly_volume?: WeeklyTrainingVolume[]
+  /** Optional while the tracking-dashboard backend contract rolls out. */
+  weekly_family_metrics?: Record<LiftFamily, WeeklyFamilyMetric[]>
+  /** Optional while the tracking-dashboard backend contract rolls out. */
+  intensity_distribution?: Record<LiftFamily, IntensityDistribution>
+  /** Optional while the tracking-dashboard backend contract rolls out. */
+  rep_distribution?: Record<LiftFamily, RepDistributionBucket[]>
   last_trained_at: string | null
   recent_4w: { trained_days: number; total_planned_days: number; completion_rate: number }
+}
+export type E1rmTrend = 'up' | 'flat' | 'down' | 'new'
+export interface E1rmFamilySeries {
+  points: { date: string; value: string }[]
+  trend: E1rmTrend
+}
+export interface WeeklyTrainingVolume {
+  week_start: string
+  volume_kg: string
+  avg_rpe: string | null
+  volume_by_family: Record<LiftFamily | 'other', string>
+}
+export interface WeeklyFamilyMetric {
+  week_start: string
+  volume_kg: string
+  avg_rpe: string | null
+  top_set_intensity: string | null
+}
+export interface IntensityDistribution {
+  lt70: number
+  b70_80: number
+  b80_90: number
+  gte90: number
+}
+export interface RepDistributionBucket {
+  reps: number
+  count: number
 }
 export interface ExerciseStatsDetail {
   rep_prs: { reps: number; weight_kg: string; logged_at: string; source: 'imported' | 'logged' }[]

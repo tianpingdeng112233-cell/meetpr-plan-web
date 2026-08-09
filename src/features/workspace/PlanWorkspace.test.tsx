@@ -448,6 +448,9 @@ describe('PlanWorkspace editor remount', () => {
   }, 15_000)
 
   it('切换学员时清空旧计划挂载，且较早的后台计划响应不能覆盖较新的结果', async () => {
+    // Keep the “next week” expectation stable: these fixtures cover Aug 3–9.
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-07-27T12:00:00Z'))
     const studentAPlan = studentPlan({
       id: 'plan-a',
       studentId: 'student-a',
@@ -816,9 +819,9 @@ describe('PlanWorkspace editor remount', () => {
       root.render(<PlanWorkspace onLogout={vi.fn()} me={me} />)
       await settle()
     })
-    expect(host.querySelectorAll('.coach-nav-item')).toHaveLength(5)
+    expect(host.querySelectorAll('.coach-nav-item')).toHaveLength(6)
     expect([...host.querySelectorAll('.coach-nav-item')].map((item) => item.firstElementChild?.textContent)).toEqual([
-      '总览', '计划编排', '反馈工作区', '动作库', '学员申请',
+      '总览', '计划编排', '反馈工作区', '动作库', '学员申请', '追踪',
     ])
     expect(api.listConversations).not.toHaveBeenCalled()
 
