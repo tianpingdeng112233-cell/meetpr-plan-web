@@ -14,7 +14,8 @@ const FAMILIES: LiftFamily[] = ['squat', 'bench', 'deadlift']
 const FAMILY_META: Record<LiftFamily, { label: string; color: string }> = {
   squat: { label: '深蹲', color: '#276FBF' },
   bench: { label: '卧推', color: '#18855B' },
-  deadlift: { label: '硬拉', color: '#C43B35' },
+  // 品牌金(--gold-500,docs/design/coach-web/tokens):David 2026-08-09 拍板硬拉列弃红用金。
+  deadlift: { label: '硬拉', color: '#F5A623' },
 }
 
 interface ChartDatum {

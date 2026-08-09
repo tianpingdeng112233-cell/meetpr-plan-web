@@ -95,7 +95,7 @@ describe('TrackingDashboard', () => {
     expect(host.textContent).toContain('暂无体态打卡数据')
     expect(host.querySelector('[data-family="squat"] polyline')?.getAttribute('stroke')).toBe('#276FBF')
     expect(host.querySelector('[data-family="bench"] polyline')?.getAttribute('stroke')).toBe('#18855B')
-    expect(host.querySelector('[data-family="deadlift"] polyline')?.getAttribute('stroke')).toBe('#C43B35')
+    expect(host.querySelector('[data-family="deadlift"] polyline')?.getAttribute('stroke')).toBe('#F5A623')
     expect(host.querySelector('[aria-label="深蹲强度分布柱状图"]')?.textContent).toContain('90%+')
     expect(host.querySelector('[aria-label="硬拉次数分布柱状图"]')?.textContent).toContain('8+')
     expect(host.querySelector('[aria-label="深蹲容量占比横条图"]')).not.toBeNull()
