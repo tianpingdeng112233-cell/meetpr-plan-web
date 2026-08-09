@@ -23,6 +23,7 @@ import { StudentHubPage } from './StudentHubPage'
 import { REQUEST_POLL_INTERVAL_MS, RequestsPage } from './RequestsPage'
 import { CatalogPage } from '../catalog/CatalogPage'
 import { navigateCoachView } from './coachViewNavigation'
+import { TrackingDashboard } from './TrackingDashboard'
 import { clearDraftMirror } from '../plan-editor/draftMirror'
 import { listConversations } from '../../api/chat'
 import { isSessionExpired } from '../../api/errors'
@@ -181,6 +182,11 @@ export function PlanWorkspace({ onLogout, me }: Props) {
     if (Object.hasOwn(rosterDataByStudentRef.current[id] ?? {}, 'overview')) return
     updateRosterData(id, { overview })
   }, [updateRosterData])
+
+  // Tracking tab reuses the roster overview cache — one GET per student, ever (rate-limit budget).
+  const ensureTrackingOverview = useCallback((id: string) => {
+    void fetchRosterOverview(id)
+  }, [fetchRosterOverview])
 
   const fetchRosterProfile = useCallback(async (
     id: string,
@@ -925,6 +931,15 @@ export function PlanWorkspace({ onLogout, me }: Props) {
         />
       : <div className="empty-page">接受学员申请后即可查看学员总览</div>)}
     {view === 'requests' && <RequestsPage requests={bindRequests} onRequestsChanged={applyBindRequests} onAccepted={refreshStudentsAfterAccept} />}
+    {view === 'tracking' && (hasStudents
+      ? <TrackingDashboard
+          students={students}
+          selectedStudentId={studentId}
+          onStudentChange={setStudentId}
+          overview={rosterDataByStudent[studentId]?.overview}
+          onEnsureOverview={ensureTrackingOverview}
+        />
+      : <div className="empty-page">接受学员申请后即可查看追踪数据</div>)}
     {view === 'messages' && (hasStudents
       ? <StudentHubPage
           me={me}

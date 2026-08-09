@@ -113,6 +113,8 @@ describe('CoachShell', () => {
     expect(host.querySelectorAll('.coach-nav-item.active')).toHaveLength(1)
     expect(host.querySelector('.coach-nav-item.active')?.firstElementChild?.textContent).toBe('动作库')
     expect(host.querySelector('[data-testid="content"]')?.textContent).toBe('catalog')
+    expect(host.querySelectorAll('.coach-nav-item')).toHaveLength(6)
+    expect(navButton(host, '追踪')).not.toBeNull()
   })
 
   it('derives danger and muted badges from the supplied data counts', async () => {

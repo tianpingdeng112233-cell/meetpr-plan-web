@@ -38,6 +38,7 @@ const SCREEN_COMMANDS: Array<{ view: CoachView; label: string; aliases: string }
   { view: 'messages', label: '反馈工作区', aliases: '学员 消息 聊天 视频 message video feedback' },
   { view: 'catalog', label: '动作库', aliases: '动作 catalog' },
   { view: 'requests', label: '学员申请', aliases: '申请 request' },
+  { view: 'tracking', label: '追踪', aliases: '数据 图表 tracking analytics' },
 ]
 
 const normalized = (value: string) => value.trim().toLocaleLowerCase('zh-CN')
