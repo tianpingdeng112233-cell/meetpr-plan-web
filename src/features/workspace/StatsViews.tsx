@@ -42,7 +42,7 @@ export function SessionDetail({ detail, limit = 6 }: { detail: ExerciseStatsDeta
 // ── 总览（mock 1:1 扫视表）──────────────────────────────────────
 export const ROSTER_GRID_COLUMNS = '150px 104px 116px 84px 78px 156px 80px 1fr'
 
-// ── 花名册 e1RM 徽章(拍板 A,2026-08-09:一列紧凑三项;↑绿 ↓金 →灰)──
+// ── 花名册 e1RM 徽章(拍板 A,2026-08-09:一列紧凑三项;↑绿 ↓红 →灰,红仅点缀不大面积)──
 const E1RM_FAMILIES: LiftFamily[] = ['squat', 'bench', 'deadlift']
 const E1RM_FAMILY_ABBR: Record<LiftFamily, string> = { squat: 'S', bench: 'B', deadlift: 'D' }
 const E1RM_FAMILY_LABELS: Record<LiftFamily, string> = { squat: '深蹲', bench: '卧推', deadlift: '硬拉' }
