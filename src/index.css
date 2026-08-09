@@ -832,6 +832,15 @@ textarea {
 .roster-number { color: var(--txt); font: 500 12px var(--font-mono); text-align: right; white-space: nowrap; }
 .roster-number small { margin-left: 2px; color: var(--faint); font: 10px var(--font-mono); }
 .roster-rpe { color: var(--mut); font-weight: 600; }
+/* e1RM 徽章列(拍板 A):S/B/D 三项紧凑横排;↑绿 ↓红(语义警示,点缀级) →灰;登记值回落态置灰+点状下划线 */
+.roster-e1rm { display: inline-flex; justify-content: flex-end; gap: 9px; white-space: nowrap; }
+.roster-e1rm em { display: inline-flex; align-items: baseline; gap: 2px; color: var(--txt); font: 600 12px var(--font-mono); font-style: normal; }
+.roster-e1rm em small { color: var(--faint); font: 9px var(--font-mono); }
+.roster-e1rm em.registered { color: var(--mut); text-decoration: underline dotted var(--faint); text-underline-offset: 3px; }
+.roster-e1rm em i { font-style: normal; font-weight: 700; }
+.roster-e1rm .trend-up { color: var(--ok); }
+.roster-e1rm .trend-down { color: var(--bad); }
+.roster-e1rm .trend-flat, .roster-e1rm .trend-new { color: var(--faint); }
 .roster-distance { color: var(--mut); font-size: 11px; }
 .roster-plan-cell { min-width: 0; padding-left: 12px; display: flex; align-items: center; gap: 9px; }
 .roster-plan-badge { padding: 2px 8px; flex: 0 0 auto; border-radius: var(--r-pill); font-size: 11px; font-weight: 600; white-space: nowrap; }
