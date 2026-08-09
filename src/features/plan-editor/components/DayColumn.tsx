@@ -8,7 +8,15 @@ import {
   INPUT_GUARD_REASONS,
   intensityReason,
 } from '../inputGuard'
-import { inferredWeightMode, isLegacyRpeRow, materializeIntensityRow, rowIntensity, rowWeightBoxes } from '../intensityModel'
+import {
+  inferredIntensityMode,
+  inferredWeightMode,
+  isSingleValueIntensity,
+  materializeIntensityRow,
+  rowIntensity,
+  rowIntensityBoxes,
+  rowWeightBoxes,
+} from '../intensityModel'
 import type { LoadMode, RowIntensity } from '../types'
 import { compactTonnage, summarizeDaySection, type DaySectionSummary } from '../weeklySummary'
 import {
@@ -87,6 +95,15 @@ function setBoxesLen(boxes: ExerciseRow['boxes'], n: number) {
   // an empty invisible set used to make the displayed count differ from save.
   const last = boxes[boxes.length - 1] ?? { val: '', empty: true }
   return [...boxes, ...Array.from({ length: n - boxes.length }, () => ({ ...last }))]
+}
+
+function resizeRowSets(row: ExerciseRow, n: number): ExerciseRow {
+  return {
+    ...row,
+    boxes: setBoxesLen(row.boxes, n),
+    intensityBoxes: row.intensityBoxes ? setBoxesLen(row.intensityBoxes, n) : row.intensityBoxes,
+    aux: n > 0 ? false : row.aux,
+  }
 }
 
 /** Controlled input whose value passes through a character filter without breaking
@@ -210,13 +227,13 @@ function intensityPlaceholder(intensity: RowIntensity): string {
   }
 }
 
-function EditableIntensity({ row, width, edit, selected, selectCell, cellKey, readOnly }: {
+function EditableIntensity({ row, width, edit, selectedCell, selectCell, cellKey, readOnly }: {
   row: ExerciseRow
   width: number
   edit: (u: (r: ExerciseRow) => ExerciseRow) => void
-  selected: boolean
-  selectCell: () => void
-  cellKey: string
+  selectedCell: (setIndex?: number) => boolean
+  selectCell: (setIndex?: number) => void
+  cellKey: (setIndex?: number) => string
   readOnly?: boolean
 }) {
   if (row.aux) {
@@ -227,9 +244,11 @@ function EditableIntensity({ row, width, edit, selected, selectCell, cellKey, re
     )
   }
   const issue = getBoundRowInputIssue(row)
-  const legacyRpe = isLegacyRpeRow(row)
   const intensity = rowIntensity(row)
-  const invalid = issue?.invalidIntensity ?? false
+  const singleValue = isSingleValueIntensity(intensity)
+  const intensityMode = inferredIntensityMode(row)
+  const intensityBoxes = rowIntensityBoxes(row)
+  const invalid = (issue?.invalidIntensity ?? false) && !singleValue
   const title = invalid && intensity ? intensityReason(intensity.mode) ?? undefined : undefined
   const updateIntensity = (updater: (current: RowIntensity | null) => RowIntensity | null) => {
     edit((current) => {
@@ -237,12 +256,47 @@ function EditableIntensity({ row, width, edit, selected, selectCell, cellKey, re
       return { ...materialized, intensity: updater(rowIntensity(materialized)) }
     })
   }
+  const editIntensityValue = (index: number, value: string) => edit((current) => {
+    const materialized = materializeIntensityRow(current)
+    const currentIntensity = rowIntensity(materialized)
+    if (!isSingleValueIntensity(currentIntensity)) return materialized
+    const mode = inferredIntensityMode(materialized)
+    const boxes = rowIntensityBoxes(materialized).map((box, boxIndex) => (
+      mode === 'uniform' || boxIndex === index ? { val: value, empty: value === '' } : box
+    ))
+    return {
+      ...materialized,
+      intensity: { ...currentIntensity, value: boxes[0]?.val ?? value },
+      intensityMode: mode,
+      intensityBoxes: boxes,
+    }
+  })
+  const toggleIntensityMode = () => edit((current) => {
+    const materialized = materializeIntensityRow(current)
+    const currentIntensity = rowIntensity(materialized)
+    if (!isSingleValueIntensity(currentIntensity)) return materialized
+    const next = inferredIntensityMode(materialized) === 'uniform' ? 'per_set' : 'uniform'
+    if (next === 'per_set') return {
+      ...materialized,
+      intensityMode: next,
+      intensityBoxes: rowIntensityBoxes(materialized).map((box) => ({ ...box })),
+    }
+    const first = rowIntensityBoxes(materialized).find((box) => !box.empty && box.val.trim() !== '')
+      ?? { val: '', empty: true }
+    return {
+      ...materialized,
+      intensity: { ...currentIntensity, value: first.val },
+      intensityMode: next,
+      intensityBoxes: materialized.boxes.map(() => ({ ...first })),
+    }
+  })
   return (
     <div
-      className={`gcell intcell plan-cell${selected ? ' plan-cell-selected' : ''}`}
-      data-c="int" data-plan-cell="intensity" data-plan-cell-key={cellKey}
-      onClick={(event) => { stop(event); selectCell() }}
-      style={{ width, padding: '4px 4px', gap: 3, display: 'flex', alignItems: 'center' }}
+      className={`gcell intcell plan-cell${selectedCell(singleValue ? 0 : undefined) ? ' plan-cell-selected' : ''}`}
+      data-c="int" data-plan-cell="intensity"
+      data-plan-cell-key={!singleValue ? cellKey() : undefined}
+      onClick={(event) => { stop(event); selectCell(singleValue ? 0 : undefined) }}
+      style={{ width, padding: '4px 4px', gap: 3, display: 'flex', flexWrap: 'wrap', alignItems: 'center' }}
     >
       {row.mode === 'bodyweight' ? (
         <span className="mode-badge bodyweight" title={row.hasLogs ? '学员已打卡,此行及其组不可修改' : '自重动作不使用强度体系'}>自重</span>
@@ -250,21 +304,62 @@ function EditableIntensity({ row, width, edit, selected, selectCell, cellKey, re
         <>
           <select
             aria-label="强度类型"
-            value={legacyRpe ? 'legacy_rpe' : intensity?.mode ?? ''}
+            value={intensity?.mode ?? ''}
             disabled={readOnly || row.hasLogs}
             title={row.hasLogs ? '学员已打卡,此行及其组不可修改' : title}
-            onFocus={selectCell}
-            onClick={(event) => { stop(event); selectCell() }}
+            onFocus={() => selectCell(singleValue ? 0 : undefined)}
+            onClick={(event) => { stop(event); selectCell(singleValue ? 0 : undefined) }}
             onChange={(event) => {
               const mode = event.currentTarget.value as LoadMode | ''
-              updateIntensity(() => mode ? { mode, value: '', high: '' } : null)
+              edit((current) => {
+                const materialized = materializeIntensityRow(current)
+                return {
+                  ...materialized,
+                  intensity: mode ? { mode, value: '', high: '' } : null,
+                  intensityMode: mode === 'pct' || mode === 'rpe' || mode === 'rir' ? 'uniform' : undefined,
+                  intensityBoxes: mode === 'pct' || mode === 'rpe' || mode === 'rir'
+                    ? materialized.boxes.map(() => ({ val: '', empty: true }))
+                    : undefined,
+                }
+              })
             }}
           >
-            {legacyRpe && <option value="legacy_rpe" disabled>旧逐组 RPE</option>}
             <option value="">不设强度</option>
             {INTENSITY_OPTIONS.map((option) => <option value={option.mode} key={option.mode}>{option.label}</option>)}
           </select>
-          {intensity && intensity.mode !== 'fixed_weight' && (
+          {singleValue && intensity && (
+            <>
+              <button type="button" className="intensity-mode-toggle"
+                disabled={readOnly || row.hasLogs || row.boxes.length === 0}
+                title={intensityMode === 'uniform' ? '切换为逐组强度值' : '切换为统一强度值'}
+                onClick={(event) => { stop(event); toggleIntensityMode() }}>
+                {intensityMode === 'uniform' ? '逐组' : '统一值'}
+              </button>
+              {(intensityMode === 'uniform' ? intensityBoxes.slice(0, 1) : intensityBoxes).map((box, index) => {
+                const sourceIndex = intensityMode === 'uniform' ? 0 : index
+                const boxInvalid = intensityMode === 'uniform'
+                  ? (issue?.invalidIntensityIndexes.length ?? 0) > 0
+                  : issue?.invalidIntensityIndexes.includes(sourceIndex) ?? false
+                return (
+                  <GuardedInput key={sourceIndex}
+                    value={box.empty ? '' : box.val} inputMode="decimal" placeholder={intensityPlaceholder(intensity)}
+                    className={`${boxInvalid ? 'guard-invalid ' : ''}plan-cell${selectedCell(sourceIndex) ? ' plan-cell-selected' : ''}`}
+                    data-guard-field="intensity" data-set-index={sourceIndex}
+                    data-plan-cell="intensity" data-plan-cell-key={cellKey(sourceIndex)}
+                    data-input-invalid={boxInvalid ? 'true' : undefined}
+                    aria-label={intensityMode === 'uniform' ? '统一强度值' : `第 ${sourceIndex + 1} 组强度值`}
+                    aria-invalid={boxInvalid || undefined} title={boxInvalid ? intensityReason(intensity.mode) ?? undefined : undefined}
+                    disabled={readOnly || row.hasLogs} filter={filterStrengthInput}
+                    onFocus={() => selectCell(sourceIndex)}
+                    onClick={(event) => { stop(event); selectCell(sourceIndex) }}
+                    onValue={(value) => editIntensityValue(sourceIndex, value)}
+                  />
+                )
+              })}
+              <span className="intensity-unit">{intensity.mode === 'pct' ? '%' : ''}</span>
+            </>
+          )}
+          {intensity && !singleValue && intensity.mode !== 'fixed_weight' && (
             <>
               <GuardedInput
                 value={intensity.value} inputMode="decimal" placeholder={intensityPlaceholder(intensity)}
@@ -272,25 +367,21 @@ function EditableIntensity({ row, width, edit, selected, selectCell, cellKey, re
                 data-guard-field="intensity" data-input-invalid={invalid ? 'true' : undefined}
                 aria-invalid={invalid || undefined} title={title}
                 disabled={readOnly || row.hasLogs} filter={filterStrengthInput}
-                onFocus={selectCell} onClick={stop}
+                onFocus={() => selectCell()} onClick={stop}
                 onValue={(value) => updateIntensity((current) => current ? { ...current, value } : current)}
               />
-              {(intensity.mode === 'weight_range' || intensity.mode === 'rpe_range') && (
-                <>
-                  <span className="range-separator">–</span>
-                  <GuardedInput
-                    value={intensity.high} inputMode="decimal"
-                    placeholder={intensity.mode === 'weight_range' ? '175' : '8'}
-                    className={invalid ? 'guard-invalid' : undefined}
-                    data-guard-field="intensity-high" data-input-invalid={invalid ? 'true' : undefined}
-                    aria-invalid={invalid || undefined} title={title}
-                    disabled={readOnly || row.hasLogs} filter={filterStrengthInput}
-                    onFocus={selectCell} onClick={stop}
-                    onValue={(high) => updateIntensity((current) => current ? { ...current, high } : current)}
-                  />
-                </>
-              )}
-              <span className="intensity-unit">{intensity.mode === 'pct' ? '%' : intensity.mode === 'weight_range' ? 'kg' : ''}</span>
+              <span className="range-separator">–</span>
+              <GuardedInput
+                value={intensity.high} inputMode="decimal"
+                placeholder={intensity.mode === 'weight_range' ? '175' : '8'}
+                className={invalid ? 'guard-invalid' : undefined}
+                data-guard-field="intensity-high" data-input-invalid={invalid ? 'true' : undefined}
+                aria-invalid={invalid || undefined} title={title}
+                disabled={readOnly || row.hasLogs} filter={filterStrengthInput}
+                onFocus={() => selectCell()} onClick={stop}
+                onValue={(high) => updateIntensity((current) => current ? { ...current, high } : current)}
+              />
+              <span className="intensity-unit">{intensity.mode === 'weight_range' ? 'kg' : ''}</span>
             </>
           )}
           {intensity?.mode === 'fixed_weight' && <span className="fixed-weight-badge">固定重量</span>}
@@ -321,35 +412,6 @@ function EditableWeight({ row, width, edit, selectedCell, selectCell, cellKey, r
           onClick={(event) => { stop(event); edit((current) => ({ ...current, mode: 'kg', intensity: current.intensity ?? null, weightMode: inferredWeightMode(current) })) }}
         >自重</button>
         <span className="bodyweight-summary">每组 BW</span>
-      </div>
-    )
-  }
-
-  if (isLegacyRpeRow(row)) {
-    return (
-      <div className="gcell weightcell legacy-rpe-cell" data-c="weight" style={{ width, padding: '3px 4px', display: 'flex', flexWrap: 'wrap', alignItems: 'center' }}>
-        <span className="weight-controls"><span className="legacy-rpe-label">逐组 RPE</span></span>
-        {row.boxes.map((box, index) => {
-          const invalid = issue?.invalidStrengthIndexes.includes(index) ?? false
-          return (
-            <GuardedInput
-              key={index} value={box.empty ? '' : box.val} inputMode="decimal" placeholder="RPE"
-              className={`${invalid ? 'guard-invalid ' : ''}plan-cell${selectedCell(index) ? ' plan-cell-selected' : ''}`}
-              data-guard-field="legacy-rpe" data-input-invalid={invalid ? 'true' : undefined}
-              data-plan-cell="weight" data-set-index={index} data-plan-cell-key={cellKey(index)}
-              aria-label={`第 ${index + 1} 组 RPE`} aria-invalid={invalid || undefined}
-              title={invalid ? INPUT_GUARD_REASONS.rpe : '存量逐组 RPE；选择新强度类型后才会转为行级强度'}
-              disabled={readOnly || row.hasLogs} filter={filterStrengthInput}
-              onFocus={() => selectCell(index)} onClick={(event) => { stop(event); selectCell(index) }}
-              onValue={(value) => edit((current) => ({
-                ...current,
-                boxes: current.boxes.map((currentBox, boxIndex) => (
-                  boxIndex === index ? { val: value, empty: value === '' } : currentBox
-                )),
-              }))}
-            />
-          )
-        })}
       </div>
     )
   }
@@ -668,7 +730,7 @@ export function DayColumn({
                   <SetsInput count={row.boxes.length} disabled={readOnly || row.hasLogs} aux={row.aux}
                     onSelect={() => selectCell(row.id, 'sets')}
                     onDraftChange={(draft) => onSetsDraftChange?.(row.id, draft)}
-                    onCommit={(n) => edit((r) => ({ ...r, boxes: setBoxesLen(r.boxes, n), aux: n > 0 ? false : r.aux }))} />
+                    onCommit={(n) => edit((r) => resizeRowSets(r, n))} />
                 </div>
 
                 <div
@@ -697,13 +759,10 @@ export function DayColumn({
                   row={row}
                   width={colW.int}
                   edit={edit}
-                  selected={isCellSelected(row.id, 'intensity')}
-                  selectCell={() => selectCell(row.id, 'intensity')}
-                  cellKey={planCellKey({
-                    weekNumber,
-                    dow: day.dow,
-                    rowId: row.id,
-                    field: 'intensity',
+                  selectedCell={(setIndex) => isCellSelected(row.id, 'intensity', setIndex)}
+                  selectCell={(setIndex) => selectCell(row.id, 'intensity', setIndex)}
+                  cellKey={(setIndex) => planCellKey({
+                    weekNumber, dow: day.dow, rowId: row.id, field: 'intensity', setIndex,
                   })}
                   readOnly={readOnly}
                 />

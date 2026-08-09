@@ -2,8 +2,8 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from 'reac
 import { getExerciseStats } from '../../../api/coach'
 import type { ExerciseStatsDetail, ExerciseStatsOverview, StudentOnboardingProfile } from '../../../api/types'
 import type { DayCol, ExerciseRow } from '../types'
-import { isLegacyRpeRow, rowIntensity, rowWeightBoxes } from '../intensityModel'
-import { isValidIntensity, isValidWeight } from '../inputGuard'
+import { rowWeightBoxes } from '../intensityModel'
+import { getBoundRowInputIssue } from '../inputGuard'
 import { kg, profileLine, shortDate, techniqueStyleLine } from '../../workspace/WorkspaceCommon'
 
 /**
@@ -28,12 +28,7 @@ export function isRowComplete(row: ExerciseRow | null): boolean {
   // Bodyweight sets carry no load at all — mapping and reconcile both store them
   // as empty boxes — so sets plus reps is the whole prescription.
   if (row.mode === 'bodyweight') return true
-  if (isLegacyRpeRow(row)) {
-    return row.boxes.every((box) => !box.empty && box.val.trim() !== '')
-  }
-  const intensity = rowIntensity(row)
-  if (intensity && intensity.mode !== 'fixed_weight' && isValidIntensity(intensity)) return true
-  return rowWeightBoxes(row).every((box) => !box.empty && isValidWeight(box.val))
+  return getBoundRowInputIssue(row) === null
 }
 
 export function profileEmptyMessage(profile: StudentOnboardingProfile | null | undefined): string | null {

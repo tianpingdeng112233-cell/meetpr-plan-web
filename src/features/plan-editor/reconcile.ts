@@ -4,7 +4,7 @@
 // even one logged exercise is reconciled exercise-by-exercise so the immutable rows
 // and their set/history links are never touched.
 
-import type { Week, DayCol, ExerciseRow, RowIntensity, SetBox, WeightMode } from './types'
+import type { Week, DayCol, ExerciseRow, IntensityValueMode, RowIntensity, SetBox, WeightMode } from './types'
 import { isBoundNoSets, isContentfulUnbound } from './types'
 import type {
   PlanWithChildren, PlanDayResponse, PlanExerciseResponse, CreatePlanSetBody,
@@ -15,7 +15,7 @@ import {
 } from '../../api/plans'
 import { ApiException } from '../../api/client'
 import { addDays, type Catalog } from './mapping'
-import { isLegacyRpeRow, rowIntensity, rowWeightBoxes } from './intensityModel'
+import { isLegacyRpeRow, rowIntensity, rowIntensityBoxes, rowWeightBoxes } from './intensityModel'
 
 interface DesiredExercise {
   exercise_id: string
@@ -96,12 +96,13 @@ function assertSupportedServerTree(server: PlanWithChildren): void {
       numNullable(set.weight_low), numNullable(set.weight_high),
     ])
     const firstIntensity = newIntensity(first)
+    const singleValueMode = first.load_mode === 'pct' || first.load_mode === 'rpe' || first.load_mode === 'rir'
     const supported = sets.every((set, index) => (
       set.set_number === index + 1
       && set.target_reps === first.target_reps
       && set.target_reps_max === first.target_reps_max
       && (first.load_mode != null
-        ? set.load_mode != null && newIntensity(set) === firstIntensity
+        ? set.load_mode === first.load_mode && (singleValueMode || newIntensity(set) === firstIntensity)
         : set.load_mode == null && set.intensity_mode === first.intensity_mode)
       && set.rest_seconds == null
       && (bodyweight || set.coach_note == null)
@@ -160,9 +161,8 @@ function rowToDesired(row: ExerciseRow): DesiredExercise | null {
   } else {
     const intensity = rowIntensity(row)
     const weights = rowWeightBoxes(row)
-    const legacyRpeValues = row.mode === 'rpe'
-      ? row.boxes.map((box) => isLegacyRpeRow(row) ? box : ({ val: intensity?.value ?? '', empty: false }))
-      : null
+    const legacyRpeValues = isLegacyRpeRow(row) ? rowIntensityBoxes(row) : null
+    const intensityValues = rowIntensityBoxes(row)
     sets = row.boxes.map((_, i) => {
       if (legacyRpeValues) {
         return {
@@ -175,15 +175,18 @@ function rowToDesired(row: ExerciseRow): DesiredExercise | null {
         }
       }
       const setIntensity = intensity
+      const setIntensityValue = intensityValues[i] && !intensityValues[i].empty
+        ? intensityValues[i].val
+        : ''
       const targetWeight = weights[i] && !weights[i].empty ? numNullable(weights[i].val) : null
       return {
         set_number: i + 1,
         target_reps: reps,
         target_reps_max: repsMax,
         load_mode: setIntensity?.mode ?? null,
-        target_pct: setIntensity?.mode === 'pct' ? numNullable(setIntensity.value) : null,
-        target_rpe: setIntensity?.mode === 'rpe' ? numNullable(setIntensity.value) : null,
-        rir_target: setIntensity?.mode === 'rir' ? numNullable(setIntensity.value) : null,
+        target_pct: setIntensity?.mode === 'pct' ? numNullable(setIntensityValue) : null,
+        target_rpe: setIntensity?.mode === 'rpe' ? numNullable(setIntensityValue) : null,
+        rir_target: setIntensity?.mode === 'rir' ? numNullable(setIntensityValue) : null,
         rpe_low: setIntensity?.mode === 'rpe_range' ? numNullable(setIntensity.value) : null,
         rpe_high: setIntensity?.mode === 'rpe_range' ? numNullable(setIntensity.high) : null,
         weight_low: setIntensity?.mode === 'weight_range' ? numNullable(setIntensity.value) : null,
@@ -266,6 +269,7 @@ function cloneWeeks(weeks: Week[]): Week[] {
       rows: day.rows.map((row) => ({
         ...row,
         intensity: row.intensity ? { ...row.intensity } : row.intensity,
+        intensityBoxes: row.intensityBoxes?.map((box) => ({ ...box })),
         boxes: row.boxes.map((box) => ({ ...box })),
       })),
     })),
@@ -334,12 +338,20 @@ function serverToRow(exercise: PlanExerciseResponse, local: ExerciseRow | undefi
   const legacyRpeSource = !bodyweight && sets.length > 0 && sets.every((set) => (
     set.load_mode == null && set.intensity_mode === 'rpe'
   ))
-  const legacyPerSetRpe = legacyRpeSource && sets.some((set) => (
-    numNullable(set.target_value) !== numNullable(sets[0].target_value)
-  ))
+  const loadMode = sets[0]?.load_mode ?? null
+  const uniformLoadMode = sets.every((set) => (set.load_mode ?? null) === loadMode)
+  const singleValueMode = loadMode === 'pct' || loadMode === 'rpe' || loadMode === 'rir'
+  const intensityBoxes: SetBox[] = sets.map((set) => {
+    const value = legacyRpeSource
+      ? fmtNum(set.target_value)
+      : set.load_mode === 'pct' ? set.target_pct == null ? '' : fmtNum(set.target_pct)
+        : set.load_mode === 'rpe' ? set.target_rpe == null ? '' : fmtNum(set.target_rpe)
+          : set.load_mode === 'rir' ? set.rir_target == null ? '' : fmtNum(set.rir_target)
+            : ''
+    return { val: value, empty: value === '' }
+  })
   const boxes: SetBox[] = sets.map((set) => {
     if (bodyweight) return { val: '', empty: true }
-    if (legacyPerSetRpe) return { val: fmtNum(set.target_value), empty: false }
     const targetWeight = set.target_weight
       ?? (set.load_mode == null && set.intensity_mode === 'weight' ? set.target_value : null)
     return { val: targetWeight == null ? '' : fmtNum(targetWeight), empty: targetWeight == null }
@@ -369,6 +381,9 @@ function serverToRow(exercise: PlanExerciseResponse, local: ExerciseRow | undefi
   const weightMode: WeightMode = new Set(boxes.map((box) => box.empty || box.val === '' ? '<empty>' : box.val)).size > 1
     ? 'per_set'
     : 'uniform'
+  const intensityMode: IntensityValueMode = new Set(intensityBoxes.map((box) => box.empty || box.val === '' ? '<empty>' : box.val)).size > 1
+    ? 'per_set'
+    : 'uniform'
   const baseReps = sets[0]?.target_reps
   const repsMax = sets[0]?.target_reps_max
   const amrap = sets.some((set) => set.set_type === 'amrap')
@@ -388,7 +403,9 @@ function serverToRow(exercise: PlanExerciseResponse, local: ExerciseRow | undefi
       ? `${baseReps}-${repsMax}`
       : `${baseReps}${amrap ? '+' : ''}`,
     mode: bodyweight ? 'bodyweight' : legacyRpeSource ? 'rpe' : 'kg',
-    ...(legacyPerSetRpe ? {} : { intensity, weightMode }),
+    ...(!bodyweight && (legacyRpeSource || singleValueMode) ? { intensityMode, intensityBoxes } : {}),
+    ...(legacyRpeSource ? {} : { intensity: uniformLoadMode ? intensity : null }),
+    weightMode,
     boxes,
     note: exercise.notes ?? '',
   }

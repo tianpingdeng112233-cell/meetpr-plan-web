@@ -2555,6 +2555,7 @@ textarea {
 }
 .weight-controls { width: 100%; display: flex; gap: 3px; margin-bottom: 2px; }
 .weight-mode-toggle,
+.intensity-mode-toggle,
 .bodyweight-toggle {
   min-width: 0;
   padding: 0 3px;
@@ -2568,6 +2569,7 @@ textarea {
 }
 .weight-mode-toggle.active { color: var(--ink); border-color: var(--tint-bd); background: var(--tint); }
 .weight-mode-toggle:disabled,
+.intensity-mode-toggle:disabled,
 .bodyweight-toggle:disabled { opacity: .5; cursor: default; }
 .matrix-warning {
   width: 15px;
@@ -2582,8 +2584,6 @@ textarea {
   cursor: help;
 }
 .bodyweight-summary { color: var(--mut); font: 500 9px var(--font-mono); }
-.legacy-rpe-label { color: var(--warn); font: 600 9px var(--font-sans); }
-.legacy-rpe-cell input { border-color: color-mix(in srgb, var(--warn) 28%, var(--bd)); }
 .bodyweight-cell {
   width: 36px;
   height: 19px;

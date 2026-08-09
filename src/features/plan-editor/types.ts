@@ -5,6 +5,7 @@ export type IntensityMode = 'kg' | 'rpe' | 'bodyweight'
 /** Backend spec 034 v2 prescription form. `null` means a weight-only row. */
 export type LoadMode = LoadModeWire
 export type WeightMode = 'uniform' | 'per_set'
+export type IntensityValueMode = 'uniform' | 'per_set'
 
 /** Row-level intensity. Single-value modes use `value`; ranges use both fields. */
 export interface RowIntensity {
@@ -44,6 +45,10 @@ export interface ExerciseRow {
   mode: IntensityMode
   /** Row-level spec-034 intensity. Omitted only for legacy rows/mirrors. */
   intensity?: RowIntensity | null
+  /** Presentation for pct/rpe/rir values; ranges and fixed_weight stay row-level. */
+  intensityMode?: IntensityValueMode
+  /** One independent intensity-value slot per set for pct/rpe/rir. */
+  intensityBoxes?: SetBox[]
   /** Weight presentation. Omitted legacy rows infer it from their values. */
   weightMode?: WeightMode
   /** One slot per set. In the new model these are concrete target weights. */
@@ -96,6 +101,7 @@ export function isContentfulUnbound(row: ExerciseRow): boolean {
   if (row.exerciseId) return false
   return row.name.trim() !== ''
     || row.boxes.some((b) => !b.empty && b.val !== '')
+    || row.intensityBoxes?.some((b) => !b.empty && b.val !== '') === true
     || !!row.intensity
 }
 

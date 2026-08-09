@@ -31,10 +31,12 @@ let rid = 0
 function mkRow(name: string, opt: RowOpt = {}): ExerciseRow {
   const aux = !!opt.aux
   const vals = opt.vals ?? []
-  const boxes: SetBox[] = vals.map((v) =>
+  const valueBoxes: SetBox[] = vals.map((v) =>
     v === null ? { empty: true, val: '' } : { empty: false, val: String(v) },
   )
-  const hasInt = boxes.length > 0 && !aux
+  const hasInt = valueBoxes.length > 0 && !aux
+  const rpe = hasInt && opt.mode === 'rpe'
+  const boxes = rpe ? valueBoxes.map(() => ({ empty: true, val: '' })) : valueBoxes
   return {
     id: `r${rid++}`,
     serverRowId: null,
@@ -48,7 +50,15 @@ function mkRow(name: string, opt: RowOpt = {}): ExerciseRow {
     isMain: opt.main ?? !aux,
     aux,
     reps: opt.reps != null ? String(opt.reps) : '—',
-    mode: hasInt && opt.mode === 'rpe' ? 'rpe' : 'kg',
+    mode: 'kg',
+    ...(rpe ? {
+      intensity: { mode: 'rpe' as const, value: valueBoxes[0]?.val ?? '', high: '' },
+      intensityMode: new Set(valueBoxes.map((box) => box.empty ? '<empty>' : box.val)).size > 1
+        ? 'per_set' as const
+        : 'uniform' as const,
+      intensityBoxes: valueBoxes,
+      weightMode: 'uniform' as const,
+    } : { intensity: null, weightMode: 'per_set' as const }),
     boxes,
     note: opt.note ?? '',
   }

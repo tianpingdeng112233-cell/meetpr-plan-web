@@ -1,5 +1,5 @@
 import type { PlanWithChildren, PlanExerciseResponse, PlanDayResponse } from '../../api/types'
-import type { Week, DayCol, ExerciseRow, RowIntensity, SetBox, WeightMode } from './types'
+import type { Week, DayCol, ExerciseRow, IntensityValueMode, RowIntensity, SetBox, WeightMode } from './types'
 
 export const DOW_LABELS = ['周一', '周二', '周三', '周四', '周五', '周六', '周日']
 
@@ -33,15 +33,21 @@ function intensityFromSet(set: PlanExerciseResponse['sets'][number]): RowIntensi
   }
 }
 
-function intensitySignature(set: PlanExerciseResponse['sets'][number]): string {
-  if (set.load_mode == null && set.intensity_mode === 'rpe') {
-    return JSON.stringify([null, 'rpe', optionalNum(set.target_value)])
+function singleIntensityValue(set: PlanExerciseResponse['sets'][number]): string {
+  switch (set.load_mode) {
+    case 'pct': return optionalNum(set.target_pct)
+    case 'rpe': return optionalNum(set.target_rpe)
+    case 'rir': return optionalNum(set.rir_target)
+    default: return ''
   }
-  const intensity = intensityFromSet(set)
-  return JSON.stringify([set.load_mode ?? null, intensity?.mode ?? null, intensity?.value ?? '', intensity?.high ?? ''])
 }
 
 function weightModeForBoxes(boxes: SetBox[]): WeightMode {
+  const values = boxes.map((box) => box.empty || box.val === '' ? '<empty>' : box.val)
+  return new Set(values).size > 1 ? 'per_set' : 'uniform'
+}
+
+function intensityModeForBoxes(boxes: SetBox[]): IntensityValueMode {
   const values = boxes.map((box) => box.empty || box.val === '' ? '<empty>' : box.val)
   return new Set(values).size > 1 ? 'per_set' : 'uniform'
 }
@@ -160,11 +166,15 @@ function mapExercise(ex: PlanExerciseResponse, catalog: Catalog): ExerciseRow {
   const legacyRpeSource = !bodyweight && sets.every((set) => (
     set.load_mode == null && set.intensity_mode === 'rpe'
   ))
-  const uniformIntensity = sets.every((set) => intensitySignature(set) === intensitySignature(sets[0]))
-  const legacyPerSetRpe = legacyRpeSource && !uniformIntensity
+  const loadMode = sets[0].load_mode ?? null
+  const uniformLoadMode = sets.every((set) => (set.load_mode ?? null) === loadMode)
+  const singleValueMode = loadMode === 'pct' || loadMode === 'rpe' || loadMode === 'rir'
+  const intensityBoxes: SetBox[] = sets.map((set) => {
+    const value = legacyRpeSource ? optionalNum(set.target_value) : singleIntensityValue(set)
+    return { empty: value === '', val: value }
+  })
   const boxes: SetBox[] = sets.map((s) => {
     if (bodyweight) return { empty: true, val: '' }
-    if (legacyPerSetRpe) return { empty: false, val: fmtNum(s.target_value) }
     const weight = s.target_weight ?? (s.load_mode == null && s.intensity_mode === 'weight' ? s.target_value : null)
     return { empty: weight == null, val: optionalNum(weight) }
   })
@@ -180,15 +190,17 @@ function mapExercise(ex: PlanExerciseResponse, catalog: Catalog): ExerciseRow {
     exerciseId: ex.exercise_id, name, ku: !custom, custom, isMain: ex.is_main_lift,
     aux: false,
     reps,
-    // `mode: rpe` is also provenance for uniform legacy data: reconcile keeps
-    // its load_mode=null wire form until an intensity edit materializes it.
+    // `mode: rpe` is provenance only: reconcile keeps load_mode=null until an
+    // explicit row edit materializes the first-class intensity fields.
     mode: bodyweight ? 'bodyweight' : legacyRpeSource ? 'rpe' : 'kg',
-    ...(legacyPerSetRpe ? {} : {
-      intensity: bodyweight ? null : legacyRpeSource
-        ? { mode: 'rpe', value: fmtNum(sets[0].target_value), high: '' }
-        : uniformIntensity ? intensityFromSet(sets[0]) : null,
-      weightMode: weightModeForBoxes(boxes),
+    ...(!bodyweight && (legacyRpeSource || singleValueMode) ? {
+      intensityMode: intensityModeForBoxes(intensityBoxes),
+      intensityBoxes,
+    } : {}),
+    ...(legacyRpeSource ? {} : {
+      intensity: bodyweight || !uniformLoadMode ? null : intensityFromSet(sets[0]),
     }),
+    weightMode: weightModeForBoxes(boxes),
     boxes,
     note: ex.notes ?? '',
   }

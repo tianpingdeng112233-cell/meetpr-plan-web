@@ -93,12 +93,43 @@ describe('plan editor clipboard rows', () => {
     const serialized = serializeRowsForClipboard([source])
     const parsed = parseClipboardRows(serialized, new ExerciseIndex([exercise('bench', '卧推')]))
 
-    expect(serialized).toContain('旧逐组RPE\t7.5/8')
+    expect(serialized).toContain('rpe\t7.5/8')
+    expect(serialized).not.toContain('旧逐组RPE')
     expect(parsed?.[0]).toMatchObject({
-      mode: 'rpe',
-      boxes: [{ val: '7.5', empty: false }, { val: '8', empty: false }],
+      mode: 'kg',
+      intensity: { mode: 'rpe', value: '7.5', high: '' },
+      intensityMode: 'per_set',
+      intensityBoxes: [{ val: '7.5', empty: false }, { val: '8', empty: false }],
+      boxes: [{ val: '', empty: true }, { val: '', empty: true }],
     })
-    expect(parsed?.[0].intensity).toBeUndefined()
-    expect(parsed?.[0].weightMode).toBeUndefined()
+    expect(parsed?.[0].weightMode).toBe('uniform')
+  })
+
+  it('round-trips sparse per-set single-value intensity without moving it into weight', () => {
+    const source: ExerciseRow = {
+      id: 'pct-sparse', serverRowId: null, serverSortOrder: null, hasLogs: false, conflictMessage: null,
+      exerciseId: 'bench', name: '卧推', ku: true, custom: false, isMain: true,
+      aux: false, reps: '5', mode: 'kg',
+      intensity: { mode: 'pct', value: '70', high: '' },
+      intensityMode: 'per_set',
+      intensityBoxes: [
+        { val: '70', empty: false }, { val: '', empty: true },
+        { val: '75', empty: false }, { val: '', empty: true },
+      ],
+      weightMode: 'uniform',
+      boxes: Array.from({ length: 4 }, () => ({ val: '', empty: true })),
+      note: '',
+    }
+
+    const parsed = parseClipboardRows(serializeRowsForClipboard([source]), new ExerciseIndex([exercise('bench', '卧推')]))
+    expect(parsed?.[0]).toMatchObject({
+      intensity: { mode: 'pct', value: '70', high: '' },
+      intensityMode: 'per_set',
+      intensityBoxes: [
+        { val: '70', empty: false }, { val: '', empty: true },
+        { val: '75', empty: false }, { val: '', empty: true },
+      ],
+      boxes: Array.from({ length: 4 }, () => ({ val: '', empty: true })),
+    })
   })
 })

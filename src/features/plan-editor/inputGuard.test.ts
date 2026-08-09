@@ -137,6 +137,29 @@ describe('spec 034 dual intensity and weight guard', () => {
     }))?.hasIncomplete).toBe(true)
   })
 
+  it('completes and validates single-value intensity independently for each set', () => {
+    expect(getBoundRowInputIssue(row({
+      intensity: { mode: 'rpe', value: '8', high: '' },
+      intensityMode: 'per_set',
+      intensityBoxes: [{ val: '8', empty: false }, { val: '', empty: true }, { val: '7.5', empty: false }],
+      boxes: [{ val: '', empty: true }, { val: '170', empty: false }, { val: '', empty: true }],
+    }))).toBeNull()
+
+    expect(getBoundRowInputIssue(row({
+      intensity: { mode: 'rpe', value: '8', high: '' },
+      intensityMode: 'per_set',
+      intensityBoxes: [{ val: '8', empty: false }, { val: '', empty: true }],
+      boxes: [{ val: '', empty: true }, { val: '', empty: true }],
+    }))?.hasIncomplete).toBe(true)
+
+    expect(getBoundRowInputIssue(row({
+      intensity: { mode: 'rpe', value: '7.3', high: '' },
+      intensityMode: 'per_set',
+      intensityBoxes: [{ val: '7.3', empty: false }, { val: '8', empty: false }],
+      boxes: [{ val: '', empty: true }, { val: '', empty: true }],
+    }))?.invalidIntensityIndexes).toEqual([0])
+  })
+
   it('enforces fixed-weight and weight-range matrix rules before API writes', () => {
     const fixed = getBoundRowInputIssue(row({
       intensity: { mode: 'fixed_weight', value: '', high: '' },

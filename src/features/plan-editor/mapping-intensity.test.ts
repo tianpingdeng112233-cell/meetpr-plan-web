@@ -50,7 +50,7 @@ describe('spec 034 plan read reconstruction', () => {
     const exercises = [
       exercise('dual', [
         set('dual-1', { load_mode: 'rpe', target_rpe: '8.0', target_weight: '170', target_value: '170' }),
-        set('dual-2', { load_mode: 'rpe', target_rpe: '8.0', target_weight: '172.5', target_value: '172.5' }),
+        set('dual-2', { load_mode: 'rpe', target_rpe: '8.5', target_weight: '172.5', target_value: '172.5' }),
       ]),
       exercise('range', [
         set('range-1', { load_mode: 'weight_range', weight_low: '165', weight_high: '175', target_weight: null, target_value: '165' }),
@@ -66,6 +66,8 @@ describe('spec 034 plan read reconstruction', () => {
     const rows = mapPlanToWeeks(plan(exercises), catalog)[0].days[0].rows
     expect(rows[0]).toMatchObject({
       mode: 'kg', intensity: { mode: 'rpe', value: '8', high: '' }, weightMode: 'per_set',
+      intensityMode: 'per_set',
+      intensityBoxes: [{ val: '8', empty: false }, { val: '8.5', empty: false }],
       boxes: [{ val: '170', empty: false }, { val: '172.5', empty: false }],
     })
     expect(rows[1]).toMatchObject({
@@ -90,10 +92,12 @@ describe('spec 034 plan read reconstruction', () => {
 
     expect(rows[0]).toMatchObject({
       mode: 'rpe',
-      boxes: [{ val: '7.5', empty: false }, { val: '8', empty: false }],
+      intensityMode: 'per_set',
+      intensityBoxes: [{ val: '7.5', empty: false }, { val: '8', empty: false }],
+      boxes: [{ val: '', empty: true }, { val: '', empty: true }],
     })
     expect(rows[0].intensity).toBeUndefined()
-    expect(rowIntensity(rows[0])).toBeNull()
+    expect(rowIntensity(rows[0])).toEqual({ mode: 'rpe', value: '7.5', high: '' })
   })
 
   it('aggregates a uniform legacy RPE row without losing its legacy wire provenance', () => {
@@ -108,8 +112,11 @@ describe('spec 034 plan read reconstruction', () => {
 
     expect(row).toMatchObject({
       mode: 'rpe',
-      intensity: { mode: 'rpe', value: '8', high: '' },
+      intensityMode: 'uniform',
+      intensityBoxes: [{ val: '8', empty: false }, { val: '8', empty: false }],
       boxes: [{ val: '', empty: true }, { val: '', empty: true }],
     })
+    expect(row.intensity).toBeUndefined()
+    expect(rowIntensity(row)).toEqual({ mode: 'rpe', value: '8', high: '' })
   })
 })

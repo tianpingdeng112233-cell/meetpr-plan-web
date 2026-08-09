@@ -5,6 +5,7 @@ import { LockedRowMutationError, ReconcileConflict, reconcileImportedPlan, recon
 import type { Week, ExerciseRow, DayCol } from './types'
 import type { PlanDayResponse, PlanExerciseResponse, PlanWithChildren } from '../../api/types'
 import { mapPlanToWeeks } from './mapping'
+import { materializeIntensityRow } from './intensityModel'
 
 vi.mock('../../api/plans')
 
@@ -178,9 +179,27 @@ describe('reconcilePlan — skippedRows counts only contentful unbound rows', ()
     expect(plans.createExercise).not.toHaveBeenCalled()
   })
 
+  it('converts a legacy RPE row to per-set load_mode only after an explicit row edit', async () => {
+    const legacy = legacyRpeExercise('legacy', 'legacy-ex', ['7.5', '8'])
+    const baseline = serverPlan([serverDay([legacy])], 'draft')
+    vi.mocked(plans.getPlan).mockResolvedValue(baseline)
+    mockBatchEcho()
+    const weeks = mapPlanToWeeks(baseline, new Map([['legacy-ex', { name: '旧 RPE', custom: false }]]))
+    weeks[0].days[0].rows[0] = { ...materializeIntensityRow(weeks[0].days[0].rows[0]), reps: '6' }
+
+    await reconcilePlan('p', weeks)
+
+    const sets = vi.mocked(plans.batchDays).mock.calls[0][1].upsert_days[0].exercises[0].sets
+    expect(sets).toEqual([
+      expect.objectContaining({ target_reps: 6, load_mode: 'rpe', target_rpe: '7.5', target_weight: null }),
+      expect.objectContaining({ target_reps: 6, load_mode: 'rpe', target_rpe: '8', target_weight: null }),
+    ])
+    expect(sets.every((set) => set.intensity_mode === undefined && set.target_value === undefined)).toBe(true)
+  })
+
   it('writes all six row-level modes plus independent per-set target weights without client projections', async () => {
     const modes: ExerciseRow[] = [
-      row({ id: 'pct', exerciseId: 'pct', name: 'pct', intensity: { mode: 'pct', value: '72.5', high: '' }, boxes: [{ val: '170', empty: false }, { val: '', empty: true }] }),
+      row({ id: 'pct', exerciseId: 'pct', name: 'pct', intensity: { mode: 'pct', value: '72.5', high: '' }, intensityMode: 'per_set', intensityBoxes: [{ val: '72.5', empty: false }, { val: '75', empty: false }], boxes: [{ val: '170', empty: false }, { val: '', empty: true }] }),
       row({ id: 'rpe', exerciseId: 'rpe', name: 'rpe', intensity: { mode: 'rpe', value: '8', high: '' }, boxes: [{ val: '', empty: true }, { val: '', empty: true }] }),
       row({ id: 'rir', exerciseId: 'rir', name: 'rir', intensity: { mode: 'rir', value: '2', high: '' }, boxes: [{ val: '', empty: true }] }),
       row({ id: 'wr', exerciseId: 'wr', name: 'wr', intensity: { mode: 'weight_range', value: '165', high: '175' }, boxes: [{ val: '', empty: true }] }),
@@ -194,7 +213,7 @@ describe('reconcilePlan — skippedRows counts only contentful unbound rows', ()
     const byId = new Map(exercises.map((exercise) => [exercise.exercise_id, exercise.sets]))
     expect(byId.get('pct')).toEqual([
       expect.objectContaining({ load_mode: 'pct', target_pct: '72.5', target_weight: '170' }),
-      expect.objectContaining({ load_mode: 'pct', target_pct: '72.5', target_weight: null }),
+      expect.objectContaining({ load_mode: 'pct', target_pct: '75', target_weight: null }),
     ])
     expect(byId.get('rpe')?.[0]).toEqual(expect.objectContaining({ load_mode: 'rpe', target_rpe: '8' }))
     expect(byId.get('rir')?.[0]).toEqual(expect.objectContaining({ load_mode: 'rir', rir_target: '2' }))

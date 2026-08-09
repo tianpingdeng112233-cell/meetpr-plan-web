@@ -2,7 +2,13 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import type { ColKey, ColWidths, Week, DayCol, ExerciseRow } from './types'
 import { COL_DEFAULTS, COL_MIN, isContentfulUnbound } from './types'
 import { getBoundRowInputIssue, type BoundRowInputIssue } from './inputGuard'
-import { isLegacyRpeRow, materializeIntensityRow, rowWeightBoxes } from './intensityModel'
+import {
+  isSingleValueIntensity,
+  materializeIntensityRow,
+  rowIntensity,
+  rowIntensityBoxes,
+  rowWeightBoxes,
+} from './intensityModel'
 import { ApiException } from '../../api/client'
 import { TopBar } from './components/TopBar'
 import { Toolbar } from './components/Toolbar'
@@ -125,6 +131,8 @@ function rowContextFingerprint(row: ExerciseRow | null): string {
     row.reps,
     row.mode,
     row.intensity ? `${row.intensity.mode}:${row.intensity.value}:${row.intensity.high}` : '-',
+    row.intensityMode ?? '-',
+    row.intensityBoxes?.map((b) => (b.empty ? '-' : b.val)).join(',') ?? '-',
     row.weightMode ?? '-',
     row.boxes.map((b) => (b.empty ? '-' : b.val)).join(','),
   ].join('|')
@@ -200,15 +208,17 @@ type WeeksUpdate = Week[] | ((prev: Week[]) => Week[])
 interface DayClipboard { rest: boolean; rows: ExerciseRow[] }
 
 function cloneRow(row: ExerciseRow, prefix: string, index: number): ExerciseRow {
+  const source = materializeIntensityRow(row)
   return {
-    ...row,
+    ...source,
     id: `${prefix}-${index}-${Date.now()}-${Math.round(performance.now())}`,
     serverRowId: null,
     serverSortOrder: null,
     hasLogs: false,
     conflictMessage: null,
-    intensity: row.intensity ? { ...row.intensity } : row.intensity,
-    boxes: row.boxes.map((box) => ({ ...box })),
+    intensity: source.intensity ? { ...source.intensity } : source.intensity,
+    intensityBoxes: source.intensityBoxes?.map((box) => ({ ...box })),
+    boxes: source.boxes.map((box) => ({ ...box })),
   }
 }
 
@@ -936,7 +946,10 @@ export function PlanEditor(props: PlanEditorProps) {
   const editRow = (wnum: number, dow: number, rowId: string, updater: (r: ExerciseRow) => ExerciseRow) => {
     setWeeksWithHistory((prev) => prev.map((wk) => wk.num !== wnum ? wk : {
       ...wk,
-      days: wk.days.map((d) => d.dow !== dow ? d : { ...d, rows: d.rows.map((r) => r.id === rowId && !r.hasLogs ? updater(r) : r) }),
+      days: wk.days.map((d) => d.dow !== dow ? d : {
+        ...d,
+        rows: d.rows.map((r) => r.id === rowId && !r.hasLogs ? updater(materializeIntensityRow(r)) : r),
+      }),
     }))
   }
   const deleteRow = (wnum: number, dow: number, rowId: string) => {
@@ -1300,10 +1313,13 @@ export function PlanEditor(props: PlanEditorProps) {
   }
 
   const fillSelectedIntensityDown = () => {
-    if (readOnly || cellSelection?.field !== 'weight' || cellSelection.setIndex == null) return false
+    if (readOnly || !cellSelection || !['intensity', 'weight'].includes(cellSelection.field) || cellSelection.setIndex == null) return false
     const resolved = resolvePlanCell(latestWeeks.current, cellSelection)
-    const legacyRpe = resolved ? isLegacyRpeRow(resolved.row) : false
-    const source = resolved ? (legacyRpe ? resolved.row.boxes : rowWeightBoxes(resolved.row))[cellSelection.setIndex] : undefined
+    const fillsIntensity = cellSelection.field === 'intensity'
+    const source = resolved
+      ? (fillsIntensity ? rowIntensityBoxes(resolved.row) : rowWeightBoxes(resolved.row))[cellSelection.setIndex]
+      : undefined
+    if (fillsIntensity && (!resolved || !isSingleValueIntensity(rowIntensity(resolved.row)))) return false
     if (!resolved || !source || resolved.row.hasLogs || resolved.row.mode === 'bodyweight') return false
     const sourceIndex = cellSelection.setIndex
     setWeeksWithHistory((current) => current.map((week) => {
@@ -1315,13 +1331,20 @@ export function PlanEditor(props: PlanEditorProps) {
           return {
             ...day,
             rows: day.rows.map((row) => row.id !== cellSelection.rowId ? row : (() => {
-              if (isLegacyRpeRow(row)) {
+              const materialized = materializeIntensityRow(row)
+              if (fillsIntensity) {
+                const intensity = rowIntensity(materialized)
+                if (!isSingleValueIntensity(intensity)) return materialized
+                const intensityBoxes = rowIntensityBoxes(materialized).map((box, index) => (
+                  index > sourceIndex ? { ...source } : box
+                ))
                 return {
-                  ...row,
-                  boxes: row.boxes.map((box, index) => index > sourceIndex ? { ...source } : box),
+                  ...materialized,
+                  intensity: { ...intensity, value: intensityBoxes[0]?.val ?? '' },
+                  intensityMode: 'per_set',
+                  intensityBoxes,
                 }
               }
-              const materialized = materializeIntensityRow(row)
               return {
                 ...materialized,
                 weightMode: 'per_set',

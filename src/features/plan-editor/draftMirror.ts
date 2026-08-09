@@ -72,6 +72,11 @@ function isWeek(value: unknown): value is Week {
       && typeof row.reps === 'string'
       && (row.mode === 'kg' || row.mode === 'rpe' || row.mode === 'bodyweight')
       && (row.intensity === undefined || isIntensity(row.intensity))
+      && (row.intensityMode === undefined || row.intensityMode === 'uniform' || row.intensityMode === 'per_set')
+      && (row.intensityBoxes === undefined || (
+        Array.isArray(row.intensityBoxes)
+        && row.intensityBoxes.every((box) => isRecord(box) && typeof box.val === 'string' && typeof box.empty === 'boolean')
+      ))
       && (row.weightMode === undefined || row.weightMode === 'uniform' || row.weightMode === 'per_set')
       && Array.isArray(row.boxes)
       && row.boxes.every((box) => isRecord(box) && typeof box.val === 'string' && typeof box.empty === 'boolean')
@@ -117,6 +122,8 @@ function canonicalContent(content: DraftMirrorContent): unknown {
             value: row.intensity.value,
             high: row.intensity.high,
           },
+          intensityMode: row.intensityMode,
+          intensityBoxes: row.intensityBoxes?.map((box) => ({ val: box.val, empty: box.empty })),
           weightMode: row.weightMode,
           boxes: row.boxes.map((box) => ({ val: box.val, empty: box.empty })),
           note: row.note,

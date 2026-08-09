@@ -138,8 +138,11 @@ describe('exercise history lock UI', () => {
     expect(invalid).toHaveLength(2)
     expect(invalid[0].title).toContain('次数需 1–50')
     expect(invalid[1].title).toContain('RPE 需 1–10 半分档')
-    const emptyLegacyRpe = host.querySelectorAll<HTMLInputElement>('[data-guard-field="legacy-rpe"]')[1]
+    const emptyLegacyRpe = host.querySelectorAll<HTMLInputElement>('[data-guard-field="intensity"]')[1]
     expect(emptyLegacyRpe.className).not.toContain('guard-invalid')
+    expect(host.querySelector<HTMLSelectElement>('[aria-label="强度类型"]')?.value).toBe('rpe')
+    expect([...host.querySelectorAll<HTMLInputElement>('[data-guard-field="weight"]')].map((input) => input.value))
+      .toEqual([''])
   })
 
   it('focuses a filled invalid cell before an empty prescription cell', async () => {
@@ -407,6 +410,15 @@ describe('guarded input filtering ergonomics', () => {
     expect([...select.options].map((option) => option.value).filter(Boolean)).toEqual([
       'pct', 'rpe', 'rir', 'weight_range', 'rpe_range', 'fixed_weight',
     ])
+    expect(select.textContent).not.toContain('旧逐组')
+
+    Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value')?.set?.call(select, 'rpe')
+    act(() => select.dispatchEvent(new Event('change', { bubbles: true })))
+    expect(host.querySelectorAll('[data-guard-field="intensity"]')).toHaveLength(1)
+    const perSetIntensity = [...host.querySelectorAll<HTMLButtonElement>('button')]
+      .find((button) => button.textContent === '逐组')!
+    act(() => perSetIntensity.click())
+    expect(host.querySelectorAll('[data-guard-field="intensity"]')).toHaveLength(2)
 
     const uniform = host.querySelector<HTMLInputElement>('[data-guard-field="weight"]')!
     act(() => setValueWithCaret(uniform, '170', 3))

@@ -296,4 +296,36 @@ describe('plan editor cell selection UI', () => {
     expect([...host.querySelectorAll<HTMLInputElement>('[data-rowid="squat-first"] [data-set-index]')].map((input) => input.value))
       .toEqual(['150', '145', '140'])
   })
+
+  it('selects and fills per-set strength values inside the intensity column', async () => {
+    const source = keyboardWeek()
+    const first = source.days[0].rows[0]
+    first.intensity = { mode: 'rpe', value: '7', high: '' }
+    first.intensityMode = 'per_set'
+    first.intensityBoxes = [
+      { val: '7', empty: false },
+      { val: '', empty: true },
+      { val: '', empty: true },
+    ]
+
+    await act(async () => {
+      root.render(
+        <PlanEditor initialWeeks={[source]} weeksCount={1} studentName="学员" planName="计划" />,
+      )
+    })
+    const firstIntensity = host.querySelector<HTMLInputElement>(
+      '[data-rowid="squat-first"] [data-plan-cell="intensity"][data-set-index="0"]',
+    )!
+    await act(async () => { firstIntensity.focus() })
+    await act(async () => {
+      firstIntensity.dispatchEvent(new KeyboardEvent('keydown', {
+        key: 'd', metaKey: true, bubbles: true, cancelable: true,
+      }))
+    })
+
+    expect([...host.querySelectorAll<HTMLInputElement>(
+      '[data-rowid="squat-first"] [data-plan-cell="intensity"][data-set-index]',
+    )].map((input) => input.value)).toEqual(['7', '7', '7'])
+    expect(host.querySelector('.plan-formula-label')?.textContent).toContain('第 1 组强度')
+  })
 })

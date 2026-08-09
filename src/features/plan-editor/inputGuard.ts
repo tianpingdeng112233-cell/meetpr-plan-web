@@ -1,5 +1,5 @@
 import type { ExerciseRow, IntensityMode, LoadMode, RowIntensity } from './types'
-import { isLegacyRpeRow, rowIntensity, rowWeightBoxes } from './intensityModel'
+import { isSingleValueIntensity, rowIntensity, rowIntensityBoxes, rowWeightBoxes } from './intensityModel'
 
 export const KG_MAX_EXCLUSIVE = 1000
 export const PCT_MIN = 20
@@ -114,10 +114,15 @@ export function isValidIntensity(intensity: RowIntensity): boolean {
   }
 }
 
+export function isValidIntensityValue(mode: 'pct' | 'rpe' | 'rir', value: string): boolean {
+  return isValidIntensity({ mode, value, high: '' })
+}
+
 export interface BoundRowInputIssue {
   hasIncomplete: boolean
   invalidReps: boolean
   invalidIntensity: boolean
+  invalidIntensityIndexes: number[]
   invalidWeightIndexes: number[]
   /** Compatibility alias for the old single-column UI/tests. */
   invalidStrengthIndexes: number[]
@@ -140,6 +145,7 @@ export function getBoundRowInputIssue(row: ExerciseRow): BoundRowInputIssue | nu
       hasIncomplete,
       invalidReps,
       invalidIntensity: false,
+      invalidIntensityIndexes: [],
       invalidWeightIndexes: [],
       invalidStrengthIndexes: [],
       reasons: invalidReps ? [INPUT_GUARD_REASONS.reps] : [],
@@ -147,8 +153,15 @@ export function getBoundRowInputIssue(row: ExerciseRow): BoundRowInputIssue | nu
   }
 
   const intensity = rowIntensity(row)
-  const intensityValid = intensity != null && isValidIntensity(intensity)
-  const invalidIntensity = intensity != null && !intensityValid
+  const singleIntensity = isSingleValueIntensity(intensity) ? intensity : null
+  const intensityBoxes = rowIntensityBoxes(row)
+  const invalidIntensityIndexes = singleIntensity
+    ? intensityBoxes.flatMap((box, index) => (
+      !box.empty && box.val.trim() !== '' && !isValidIntensityValue(singleIntensity.mode, box.val) ? [index] : []
+    ))
+    : []
+  const invalidRowIntensity = intensity != null && !singleIntensity && !isValidIntensity(intensity)
+  const invalidIntensity = invalidRowIntensity || invalidIntensityIndexes.length > 0
   const weights = rowWeightBoxes(row)
   const invalidWeightIndexes = weights.flatMap((box, index) => (
     !box.empty && box.val.trim() !== '' && !isValidWeight(box.val) ? [index] : []
@@ -160,27 +173,20 @@ export function getBoundRowInputIssue(row: ExerciseRow): BoundRowInputIssue | nu
   const rangeConflict = intensity?.mode === 'weight_range' && anyWeight
   const fixedMissingWeight = intensity?.mode === 'fixed_weight' && missingWeightIndexes.length > 0
 
-  // A valid row-level intensity completes every set except fixed_weight, whose
-  // actual prescription lives solely in the concrete-weight column.
-  const intensityHasCompleteShape = intensity != null && intensity.mode !== 'fixed_weight'
+  const rowIntensityPresent = intensity != null && !singleIntensity && intensity.mode !== 'fixed_weight'
     && intensity.value.trim() !== ''
     && (intensity.mode !== 'weight_range' && intensity.mode !== 'rpe_range' || intensity.high.trim() !== '')
-  const legacyRpe = isLegacyRpeRow(row)
-  const incompleteSet = !legacyRpe && !intensityHasCompleteShape && missingWeightIndexes.length > 0
-  const legacyMissingIntensity = legacyRpe
-    && row.boxes.some((box) => box.empty || box.val.trim() === '')
-  const hasIncomplete = missingReps || missingSets || incompleteSet || fixedMissingWeight || legacyMissingIntensity
+  const incompleteSet = row.boxes.some((_, index) => {
+    const hasIntensity = singleIntensity
+      ? !!intensityBoxes[index] && !intensityBoxes[index].empty && intensityBoxes[index].val.trim() !== ''
+      : rowIntensityPresent
+    const hasWeight = !!weights[index] && !weights[index].empty && weights[index].val.trim() !== ''
+    return !hasIntensity && !hasWeight
+  })
+  const hasIncomplete = missingReps || missingSets || incompleteSet || fixedMissingWeight
+  const allInvalidStrengthIndexes = [...new Set([...invalidWeightIndexes, ...invalidIntensityIndexes])]
 
-  // Old per-set RPE is validated in place until the coach edits it into the new
-  // row-level shape, preserving old plans and import behavior without data loss.
-  const legacyInvalidIndexes = legacyRpe
-    ? row.boxes.flatMap((box, index) => (
-      !box.empty && box.val.trim() !== '' && !isValidStrengthValue(box.val, 'rpe') ? [index] : []
-    ))
-    : []
-  const allInvalidWeightIndexes = [...new Set([...invalidWeightIndexes, ...legacyInvalidIndexes])]
-
-  if (!hasIncomplete && !invalidReps && !invalidIntensity && !rangeConflict && allInvalidWeightIndexes.length === 0) return null
+  if (!hasIncomplete && !invalidReps && !invalidIntensity && !rangeConflict && invalidWeightIndexes.length === 0) return null
 
   const reasons: InputGuardReason[] = []
   if (invalidReps) reasons.push(INPUT_GUARD_REASONS.reps)
@@ -188,7 +194,10 @@ export function getBoundRowInputIssue(row: ExerciseRow): BoundRowInputIssue | nu
     const reason = intensityReason(intensity.mode)
     if (reason) reasons.push(reason)
   }
-  if (legacyInvalidIndexes.length > 0) reasons.push(INPUT_GUARD_REASONS.rpe)
+  if (invalidIntensityIndexes.length > 0 && singleIntensity) {
+    const reason = intensityReason(singleIntensity.mode)
+    if (reason) reasons.push(reason)
+  }
   if (invalidWeightIndexes.length > 0) reasons.push(INPUT_GUARD_REASONS.kg)
   if (fixedMissingWeight) reasons.push(INPUT_GUARD_REASONS.fixedWeight)
   if (rangeConflict) reasons.push(INPUT_GUARD_REASONS.weightRangeConflict)
@@ -197,8 +206,9 @@ export function getBoundRowInputIssue(row: ExerciseRow): BoundRowInputIssue | nu
     hasIncomplete,
     invalidReps,
     invalidIntensity,
+    invalidIntensityIndexes,
     invalidWeightIndexes,
-    invalidStrengthIndexes: allInvalidWeightIndexes,
+    invalidStrengthIndexes: allInvalidStrengthIndexes,
     reasons: [...new Set(reasons)],
   }
 }
