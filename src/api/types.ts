@@ -3,6 +3,7 @@
 
 export type UserRole = 'coach' | 'coached_student' | 'self_train_student' | 'admin'
 export type IntensityModeWire = 'weight' | 'rpe'
+export type LoadModeWire = 'pct' | 'rpe' | 'rir' | 'weight_range' | 'rpe_range' | 'fixed_weight'
 export type SetType = 'warmup' | 'working' | 'failed' | 'amrap' | 'backoff'
 export type PlanStatus = 'draft' | 'published' | 'completed' | 'paused'
 
@@ -295,6 +296,15 @@ export interface PlanSetResponse {
   target_reps_max: number | null
   intensity_mode: IntensityModeWire
   target_value: string
+  load_mode?: LoadModeWire | null
+  target_pct?: string | null
+  target_rpe?: string | null
+  rir_target?: number | null
+  rpe_low?: string | null
+  rpe_high?: string | null
+  weight_low?: string | null
+  weight_high?: string | null
+  target_weight?: string | null
   set_type: SetType
   rest_seconds: number | null
   coach_note: string | null
@@ -412,8 +422,18 @@ export interface CreatePlanSetBody {
   set_number: number
   target_reps: number
   target_reps_max?: number | null
-  intensity_mode: IntensityModeWire
-  target_value: string
+  /** Legacy projection inputs are required only when `load_mode` is omitted. */
+  intensity_mode?: IntensityModeWire
+  target_value?: string
+  load_mode?: LoadModeWire | null
+  target_pct?: string | null
+  target_rpe?: string | null
+  rir_target?: string | null
+  rpe_low?: string | null
+  rpe_high?: string | null
+  weight_low?: string | null
+  weight_high?: string | null
+  target_weight?: string | null
   set_type: SetType
   coach_note?: string | null
 }
@@ -422,8 +442,17 @@ export interface BatchPlanSetBody {
   set_number: number
   target_reps: number
   target_reps_max: number | null
-  intensity_mode: IntensityModeWire
-  target_value: string
+  intensity_mode?: IntensityModeWire
+  target_value?: string
+  load_mode?: LoadModeWire | null
+  target_pct?: string | null
+  target_rpe?: string | null
+  rir_target?: string | null
+  rpe_low?: string | null
+  rpe_high?: string | null
+  weight_low?: string | null
+  weight_high?: string | null
+  target_weight?: string | null
   set_type: SetType
   rest_seconds: number | null
   coach_note: string | null

@@ -448,8 +448,8 @@ describe('PlanWorkspace editor remount', () => {
   }, 15_000)
 
   it('切换学员时清空旧计划挂载，且较早的后台计划响应不能覆盖较新的结果', async () => {
-    // Keep the “next week” expectation stable: these fixtures cover Aug 3–9.
-    vi.useFakeTimers()
+// Keep the “next week” expectation stable: these fixtures cover Aug 3–9.
+    vi.useFakeTimers({ shouldAdvanceTime: true })
     vi.setSystemTime(new Date('2026-07-27T12:00:00Z'))
     const studentAPlan = studentPlan({
       id: 'plan-a',

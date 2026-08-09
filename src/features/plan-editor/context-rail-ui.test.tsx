@@ -112,7 +112,7 @@ describe('plan editor context rail', () => {
     act(() => setInput(sets, '1'))
     const reps = exerciseRow.querySelector<HTMLInputElement>('[data-guard-field="reps"]')!
     act(() => setInput(reps, '5'))
-    const strength = exerciseRow.querySelector<HTMLInputElement>('[data-guard-field="strength"]')!
+    const strength = exerciseRow.querySelector<HTMLInputElement>('[data-guard-field="weight"]')!
     act(() => setInput(strength, '100'))
 
     expect(rail()).toBeNull()
@@ -172,7 +172,7 @@ describe('plan editor context rail', () => {
     act(() => setInput(sets, '1'))
     const reps = exerciseRow.querySelector<HTMLInputElement>('[data-guard-field="reps"]')!
     act(() => setInput(reps, '5'))
-    const strength = exerciseRow.querySelector<HTMLInputElement>('[data-guard-field="strength"]')!
+    const strength = exerciseRow.querySelector<HTMLInputElement>('[data-guard-field="weight"]')!
     act(() => setInput(strength, '100'))
     expect(rail()).toBeNull()
 

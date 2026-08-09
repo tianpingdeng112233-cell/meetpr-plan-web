@@ -75,7 +75,7 @@ describe('week-band capacity UI', () => {
     expect([...weekHeader.children].indexOf(summaries[0])).toBe(3)
     expect(host.textContent).not.toContain('LEGACY-WEEK-VOL')
     expect(host.textContent).not.toContain('OTHER-FAKE-VOL')
-    expect(host.querySelectorAll('select')).toHaveLength(0)
+    expect(host.querySelectorAll('[data-week-summary] select')).toHaveLength(0)
   })
 
   it('renders the simplified weekly form while preserving the full lift-family breakdown', () => {

@@ -6,7 +6,10 @@ import {
   filterStrengthInput,
   getBoundRowInputIssue,
   INPUT_GUARD_REASONS,
+  intensityReason,
 } from '../inputGuard'
+import { inferredWeightMode, isLegacyRpeRow, materializeIntensityRow, rowIntensity, rowWeightBoxes } from '../intensityModel'
+import type { LoadMode, RowIntensity } from '../types'
 import { compactTonnage, summarizeDaySection, type DaySectionSummary } from '../weeklySummary'
 import {
   orderRowsForDisplay,
@@ -187,13 +190,33 @@ function TierHeader({ label, accent, width, summary }: { label: string; accent?:
   )
 }
 
-function EditableStrength({ row, width, edit, selectedCell, selectCell, cellKey, readOnly }: {
+const INTENSITY_OPTIONS: { mode: LoadMode; label: string }[] = [
+  { mode: 'pct', label: '%1RM' },
+  { mode: 'rpe', label: 'RPE' },
+  { mode: 'rir', label: 'RIR' },
+  { mode: 'weight_range', label: '重量区间' },
+  { mode: 'rpe_range', label: 'RPE 区间' },
+  { mode: 'fixed_weight', label: '固定重量' },
+]
+
+function intensityPlaceholder(intensity: RowIntensity): string {
+  switch (intensity.mode) {
+    case 'pct': return '72.5'
+    case 'rpe': return '8'
+    case 'rir': return '2'
+    case 'weight_range': return '165'
+    case 'rpe_range': return '7'
+    case 'fixed_weight': return ''
+  }
+}
+
+function EditableIntensity({ row, width, edit, selected, selectCell, cellKey, readOnly }: {
   row: ExerciseRow
   width: number
   edit: (u: (r: ExerciseRow) => ExerciseRow) => void
-  selectedCell: (setIndex: number) => boolean
-  selectCell: (setIndex: number) => void
-  cellKey: (setIndex: number) => string
+  selected: boolean
+  selectCell: () => void
+  cellKey: string
   readOnly?: boolean
 }) {
   if (row.aux) {
@@ -203,59 +226,183 @@ function EditableStrength({ row, width, edit, selectedCell, selectCell, cellKey,
       </div>
     )
   }
-  const nextMode = row.mode === 'kg' ? 'rpe' : row.mode === 'rpe' ? 'bodyweight' : 'kg'
   const issue = getBoundRowInputIssue(row)
+  const legacyRpe = isLegacyRpeRow(row)
+  const intensity = rowIntensity(row)
+  const invalid = issue?.invalidIntensity ?? false
+  const title = invalid && intensity ? intensityReason(intensity.mode) ?? undefined : undefined
+  const updateIntensity = (updater: (current: RowIntensity | null) => RowIntensity | null) => {
+    edit((current) => {
+      const materialized = materializeIntensityRow(current)
+      return { ...materialized, intensity: updater(rowIntensity(materialized)) }
+    })
+  }
   return (
-    <div className="gcell intcell" data-c="int" style={{
-      width, padding: '4px 5px', lineHeight: 1.3, display: 'flex',
-      flexWrap: 'wrap', alignItems: 'center', alignContent: 'center',
-    }}>
-      <span
-        className={`mode-badge ${row.mode}`}
-        title={row.hasLogs ? '学员已打卡,此行及其组不可修改' : '切换 KG / RPE / 自重'}
-        onClick={(e) => { stop(e); if (!row.hasLogs) edit((r) => ({ ...r, mode: nextMode })) }}
-        style={{ cursor: row.hasLogs ? 'default' : 'pointer', opacity: row.hasLogs ? 0.55 : 1 }}
-      >
-        {row.mode === 'rpe' ? 'RPE' : row.mode === 'bodyweight' ? '自重' : 'KG'}
-      </span>
-      {row.mode === 'bodyweight' && row.boxes.length > 0 && (
-        row.boxes.map((_, index) => (
-          <span
-            key={index}
-            className={`bodyweight-cell plan-cell${selectedCell(index) ? ' plan-cell-selected' : ''}`}
-            data-plan-cell="intensity"
-            data-set-index={index}
-            data-plan-cell-key={cellKey(index)}
-            onClick={(event) => { stop(event); selectCell(index) }}
+    <div
+      className={`gcell intcell plan-cell${selected ? ' plan-cell-selected' : ''}`}
+      data-c="int" data-plan-cell="intensity" data-plan-cell-key={cellKey}
+      onClick={(event) => { stop(event); selectCell() }}
+      style={{ width, padding: '4px 4px', gap: 3, display: 'flex', alignItems: 'center' }}
+    >
+      {row.mode === 'bodyweight' ? (
+        <span className="mode-badge bodyweight" title={row.hasLogs ? '学员已打卡,此行及其组不可修改' : '自重动作不使用强度体系'}>自重</span>
+      ) : (
+        <>
+          <select
+            aria-label="强度类型"
+            value={legacyRpe ? 'legacy_rpe' : intensity?.mode ?? ''}
+            disabled={readOnly || row.hasLogs}
+            title={row.hasLogs ? '学员已打卡,此行及其组不可修改' : title}
+            onFocus={selectCell}
+            onClick={(event) => { stop(event); selectCell() }}
+            onChange={(event) => {
+              const mode = event.currentTarget.value as LoadMode | ''
+              updateIntensity(() => mode ? { mode, value: '', high: '' } : null)
+            }}
           >
-            BW
-          </span>
-        ))
+            {legacyRpe && <option value="legacy_rpe" disabled>旧逐组 RPE</option>}
+            <option value="">不设强度</option>
+            {INTENSITY_OPTIONS.map((option) => <option value={option.mode} key={option.mode}>{option.label}</option>)}
+          </select>
+          {intensity && intensity.mode !== 'fixed_weight' && (
+            <>
+              <GuardedInput
+                value={intensity.value} inputMode="decimal" placeholder={intensityPlaceholder(intensity)}
+                className={invalid ? 'guard-invalid' : undefined}
+                data-guard-field="intensity" data-input-invalid={invalid ? 'true' : undefined}
+                aria-invalid={invalid || undefined} title={title}
+                disabled={readOnly || row.hasLogs} filter={filterStrengthInput}
+                onFocus={selectCell} onClick={stop}
+                onValue={(value) => updateIntensity((current) => current ? { ...current, value } : current)}
+              />
+              {(intensity.mode === 'weight_range' || intensity.mode === 'rpe_range') && (
+                <>
+                  <span className="range-separator">–</span>
+                  <GuardedInput
+                    value={intensity.high} inputMode="decimal"
+                    placeholder={intensity.mode === 'weight_range' ? '175' : '8'}
+                    className={invalid ? 'guard-invalid' : undefined}
+                    data-guard-field="intensity-high" data-input-invalid={invalid ? 'true' : undefined}
+                    aria-invalid={invalid || undefined} title={title}
+                    disabled={readOnly || row.hasLogs} filter={filterStrengthInput}
+                    onFocus={selectCell} onClick={stop}
+                    onValue={(high) => updateIntensity((current) => current ? { ...current, high } : current)}
+                  />
+                </>
+              )}
+              <span className="intensity-unit">{intensity.mode === 'pct' ? '%' : intensity.mode === 'weight_range' ? 'kg' : ''}</span>
+            </>
+          )}
+          {intensity?.mode === 'fixed_weight' && <span className="fixed-weight-badge">固定重量</span>}
+        </>
       )}
-      {row.mode !== 'bodyweight' && row.boxes.map((b, i) => {
-        const invalid = issue?.invalidStrengthIndexes.includes(i) ?? false
+    </div>
+  )
+}
+
+function EditableWeight({ row, width, edit, selectedCell, selectCell, cellKey, readOnly }: {
+  row: ExerciseRow
+  width: number
+  edit: (u: (r: ExerciseRow) => ExerciseRow) => void
+  selectedCell: (setIndex: number) => boolean
+  selectCell: (setIndex: number) => void
+  cellKey: (setIndex: number) => string
+  readOnly?: boolean
+}) {
+  if (row.aux) return <div className="gcell" data-c="weight" style={{ width, padding: '4px 5px' }}>—</div>
+  const issue = getBoundRowInputIssue(row)
+  if (row.mode === 'bodyweight') {
+    return (
+      <div className="gcell weightcell" data-c="weight" style={{ width, padding: '4px 4px', display: 'flex', alignItems: 'center', gap: 3 }}>
+        <button
+          type="button" className="weight-mode-toggle active"
+          disabled={readOnly || row.hasLogs}
+          title={row.hasLogs ? '学员已打卡,此行及其组不可修改' : '切回负重动作'}
+          onClick={(event) => { stop(event); edit((current) => ({ ...current, mode: 'kg', intensity: current.intensity ?? null, weightMode: inferredWeightMode(current) })) }}
+        >自重</button>
+        <span className="bodyweight-summary">每组 BW</span>
+      </div>
+    )
+  }
+
+  if (isLegacyRpeRow(row)) {
+    return (
+      <div className="gcell weightcell legacy-rpe-cell" data-c="weight" style={{ width, padding: '3px 4px', display: 'flex', flexWrap: 'wrap', alignItems: 'center' }}>
+        <span className="weight-controls"><span className="legacy-rpe-label">逐组 RPE</span></span>
+        {row.boxes.map((box, index) => {
+          const invalid = issue?.invalidStrengthIndexes.includes(index) ?? false
+          return (
+            <GuardedInput
+              key={index} value={box.empty ? '' : box.val} inputMode="decimal" placeholder="RPE"
+              className={`${invalid ? 'guard-invalid ' : ''}plan-cell${selectedCell(index) ? ' plan-cell-selected' : ''}`}
+              data-guard-field="legacy-rpe" data-input-invalid={invalid ? 'true' : undefined}
+              data-plan-cell="weight" data-set-index={index} data-plan-cell-key={cellKey(index)}
+              aria-label={`第 ${index + 1} 组 RPE`} aria-invalid={invalid || undefined}
+              title={invalid ? INPUT_GUARD_REASONS.rpe : '存量逐组 RPE；选择新强度类型后才会转为行级强度'}
+              disabled={readOnly || row.hasLogs} filter={filterStrengthInput}
+              onFocus={() => selectCell(index)} onClick={(event) => { stop(event); selectCell(index) }}
+              onValue={(value) => edit((current) => ({
+                ...current,
+                boxes: current.boxes.map((currentBox, boxIndex) => (
+                  boxIndex === index ? { val: value, empty: value === '' } : currentBox
+                )),
+              }))}
+            />
+          )
+        })}
+      </div>
+    )
+  }
+
+  const weights = rowWeightBoxes(row)
+  const weightMode = inferredWeightMode(row)
+  const matrixWarning = issue?.reasons.find((reason) => (
+    reason === INPUT_GUARD_REASONS.fixedWeight || reason === INPUT_GUARD_REASONS.weightRangeConflict
+  ))
+  const displayed = weightMode === 'uniform' ? weights.slice(0, 1) : weights
+  const editWeight = (index: number, value: string) => edit((current) => {
+    const materialized = materializeIntensityRow(current)
+    const boxes = materialized.boxes.map((box, boxIndex) => (
+      weightMode === 'uniform' || boxIndex === index ? { val: value, empty: value === '' } : box
+    ))
+    return { ...materialized, boxes, weightMode }
+  })
+  const toggleWeightMode = () => edit((current) => {
+    const materialized = materializeIntensityRow(current)
+    const next = inferredWeightMode(materialized) === 'uniform' ? 'per_set' : 'uniform'
+    if (next === 'per_set') return { ...materialized, weightMode: next }
+    const first = materialized.boxes.find((box) => !box.empty && box.val.trim() !== '') ?? { val: '', empty: true }
+    return { ...materialized, weightMode: next, boxes: materialized.boxes.map(() => ({ ...first })) }
+  })
+  return (
+    <div className="gcell weightcell" data-c="weight" style={{ width, padding: '3px 4px', display: 'flex', flexWrap: 'wrap', alignItems: 'center' }}>
+      <span className="weight-controls">
+        <button type="button" className="weight-mode-toggle" disabled={readOnly || row.hasLogs || row.boxes.length === 0}
+          title={weightMode === 'uniform' ? '切换为逐组标重' : '切换为统一重量'} onClick={(event) => { stop(event); toggleWeightMode() }}>
+          {weightMode === 'uniform' ? '逐组标重' : '统一重量'}
+        </button>
+        <button type="button" className="bodyweight-toggle" disabled={readOnly || row.hasLogs}
+          title="切换为自重动作" onClick={(event) => {
+            stop(event)
+            edit((current) => ({ ...materializeIntensityRow(current), mode: 'bodyweight' }))
+          }}>自重</button>
+        {matrixWarning && <span className="matrix-warning" role="alert" title={matrixWarning}>!</span>}
+      </span>
+      {displayed.map((box, index) => {
+        const sourceIndex = weightMode === 'uniform' ? 0 : index
+        const invalid = weightMode === 'uniform'
+          ? (issue?.invalidWeightIndexes.length ?? 0) !== 0
+          : issue?.invalidWeightIndexes.includes(sourceIndex) ?? false
         return (
           <GuardedInput
-            key={i} value={b.empty ? '' : b.val} inputMode="decimal"
-            className={`${invalid ? 'guard-invalid ' : ''}plan-cell${selectedCell(i) ? ' plan-cell-selected' : ''}`}
-            data-guard-field="strength" data-input-invalid={invalid ? 'true' : undefined}
-            data-plan-cell="intensity" data-set-index={i}
-            data-plan-cell-key={cellKey(i)}
-            aria-invalid={invalid || undefined}
-            title={invalid ? (row.mode === 'rpe' ? INPUT_GUARD_REASONS.rpe : INPUT_GUARD_REASONS.kg) : undefined}
-            disabled={readOnly || row.hasLogs}
-            filter={filterStrengthInput}
-            onFocus={() => selectCell(i)}
-            onClick={(event) => { stop(event); selectCell(i) }}
-            onValue={(value) => {
-              edit((r) => ({ ...r, boxes: r.boxes.map((x, j) => j === i ? { val: value, empty: value === '' } : x) }))
-            }}
-            style={{
-              ...baseInput, width: 36, height: 19, textAlign: 'center', margin: '0 4px 3px 0',
-              color: 'var(--txt)', fontFamily: 'var(--font-mono)', fontWeight: 500,
-              border: '1px solid var(--bd)', background: b.empty ? 'transparent' : 'var(--panel-bg)',
-              opacity: row.hasLogs ? 0.55 : 1,
-            }}
+            key={sourceIndex} value={box.empty ? '' : box.val} inputMode="decimal" placeholder="kg"
+            className={`${invalid ? 'guard-invalid ' : ''}plan-cell${selectedCell(sourceIndex) ? ' plan-cell-selected' : ''}`}
+            data-guard-field="weight" data-input-invalid={invalid ? 'true' : undefined}
+            data-plan-cell="weight" data-set-index={sourceIndex} data-plan-cell-key={cellKey(sourceIndex)}
+            aria-invalid={invalid || undefined} title={invalid ? INPUT_GUARD_REASONS.kg : undefined}
+            disabled={readOnly || row.hasLogs} filter={filterStrengthInput}
+            onFocus={() => selectCell(sourceIndex)} onClick={(event) => { stop(event); selectCell(sourceIndex) }}
+            onValue={(value) => editWeight(sourceIndex, value)}
           />
         )
       })}
@@ -443,6 +590,7 @@ export function DayColumn({
           <div className="gcell" data-c="sets" style={{ width: colW.sets, padding: '4px 4px', textAlign: 'center', ...head }}>组</div>
           <div className="gcell" data-c="reps" style={{ width: colW.reps, padding: '4px 4px', textAlign: 'center', ...head }}>次</div>
           <div className="gcell" data-c="int" style={{ width: colW.int, padding: '4px 6px', ...head }}>强度</div>
+          <div className="gcell" data-c="weight" style={{ width: colW.weight, padding: '4px 6px', ...head }}>重量</div>
           <div className="gcell" data-c="note" style={{ width: colW.note, padding: '4px 6px', ...head }}>备注</div>
         </div>
 
@@ -545,17 +693,32 @@ export function DayColumn({
                     style={{ ...baseInput, width: '100%', textAlign: 'center', color: 'var(--txt)', fontFamily: 'var(--font-mono)', fontWeight: 500 }} />
                 </div>
 
-                <EditableStrength
+                <EditableIntensity
                   row={row}
                   width={colW.int}
                   edit={edit}
-                  selectedCell={(setIndex) => isCellSelected(row.id, 'intensity', setIndex)}
-                  selectCell={(setIndex) => selectCell(row.id, 'intensity', setIndex)}
-                  cellKey={(setIndex) => planCellKey({
+                  selected={isCellSelected(row.id, 'intensity')}
+                  selectCell={() => selectCell(row.id, 'intensity')}
+                  cellKey={planCellKey({
                     weekNumber,
                     dow: day.dow,
                     rowId: row.id,
                     field: 'intensity',
+                  })}
+                  readOnly={readOnly}
+                />
+
+                <EditableWeight
+                  row={row}
+                  width={colW.weight}
+                  edit={edit}
+                  selectedCell={(setIndex) => isCellSelected(row.id, 'weight', setIndex)}
+                  selectCell={(setIndex) => selectCell(row.id, 'weight', setIndex)}
+                  cellKey={(setIndex) => planCellKey({
+                    weekNumber,
+                    dow: day.dow,
+                    rowId: row.id,
+                    field: 'weight',
                     setIndex,
                   })}
                   readOnly={readOnly}

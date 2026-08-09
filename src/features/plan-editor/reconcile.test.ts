@@ -4,6 +4,7 @@ import { ApiException } from '../../api/client'
 import { LockedRowMutationError, ReconcileConflict, reconcileImportedPlan, reconcilePlan } from './reconcile'
 import type { Week, ExerciseRow, DayCol } from './types'
 import type { PlanDayResponse, PlanExerciseResponse, PlanWithChildren } from '../../api/types'
+import { mapPlanToWeeks } from './mapping'
 
 vi.mock('../../api/plans')
 
@@ -38,6 +39,21 @@ function serverExercise(
   }
 }
 
+function legacyRpeExercise(id: string, exerciseId: string, values: string[], hasLogs = false): PlanExerciseResponse {
+  return {
+    ...serverExercise(id, exerciseId, 0, values[0], hasLogs),
+    sets: values.map((value, index) => ({
+      ...serverExercise(id, exerciseId, 0, value, hasLogs).sets[0],
+      id: `s-${id}-${index + 1}`,
+      set_number: index + 1,
+      intensity_mode: 'rpe',
+      target_value: value,
+      load_mode: null,
+      target_weight: null,
+    })),
+  }
+}
+
 function serverDay(exercises: PlanExerciseResponse[], id = 'day1'): PlanDayResponse {
   return { id, plan_id: 'p', day_of_week: 1, week_number: 1, sort_order: 0, shifted_to_date: null, exercises }
 }
@@ -64,6 +80,10 @@ function serverDaysFromBatch(days: Parameters<typeof plans.batchDays>[1]['upsert
         has_logs: false,
         sets: exercise.sets.map((set, setIndex) => ({
           ...set,
+          intensity_mode: set.intensity_mode ?? (set.target_weight != null ? 'weight' : 'rpe'),
+          target_value: set.target_value ?? set.target_weight ?? set.target_rpe ?? set.rpe_low
+            ?? set.weight_low ?? set.target_pct ?? set.rir_target ?? '1',
+          rir_target: set.rir_target == null ? null : Number(set.rir_target),
           id: `batch-set-${day.week_number}-${day.day_of_week}-${exerciseIndex}-${setIndex}`,
           plan_exercise_id: `batch-ex-${day.week_number}-${day.day_of_week}-${exerciseIndex}`,
           created_at: '',
@@ -140,9 +160,53 @@ describe('reconcilePlan — skippedRows counts only contentful unbound rows', ()
     await reconcilePlan('p', [weekWithMondayRows(rows)])
 
     expect(vi.mocked(plans.batchDays).mock.calls[0][1].upsert_days[0].exercises[0].sets[0]).toEqual({
-      set_number: 1, target_reps: 10, target_reps_max: 12, intensity_mode: 'rpe',
-      target_value: '9', set_type: 'working', rest_seconds: null, coach_note: null,
+      set_number: 1, target_reps: 10, target_reps_max: 12,
+      intensity_mode: 'rpe', target_value: '9',
+      set_type: 'working', rest_seconds: null, coach_note: null,
     })
+  })
+
+  it('opens a legacy per-set RPE row without autosave rewriting load_mode', async () => {
+    const legacy = legacyRpeExercise('legacy', 'legacy-ex', ['7.5', '8'])
+    const baseline = serverPlan([serverDay([legacy])], 'draft')
+    vi.mocked(plans.getPlan).mockResolvedValue(baseline)
+    const weeks = mapPlanToWeeks(baseline, new Map([['legacy-ex', { name: '旧 RPE', custom: false }]]))
+
+    await expect(reconcilePlan('p', weeks)).resolves.toMatchObject({ changedDays: 0 })
+    expect(plans.batchDays).not.toHaveBeenCalled()
+    expect(plans.deleteExercise).not.toHaveBeenCalled()
+    expect(plans.createExercise).not.toHaveBeenCalled()
+  })
+
+  it('writes all six row-level modes plus independent per-set target weights without client projections', async () => {
+    const modes: ExerciseRow[] = [
+      row({ id: 'pct', exerciseId: 'pct', name: 'pct', intensity: { mode: 'pct', value: '72.5', high: '' }, boxes: [{ val: '170', empty: false }, { val: '', empty: true }] }),
+      row({ id: 'rpe', exerciseId: 'rpe', name: 'rpe', intensity: { mode: 'rpe', value: '8', high: '' }, boxes: [{ val: '', empty: true }, { val: '', empty: true }] }),
+      row({ id: 'rir', exerciseId: 'rir', name: 'rir', intensity: { mode: 'rir', value: '2', high: '' }, boxes: [{ val: '', empty: true }] }),
+      row({ id: 'wr', exerciseId: 'wr', name: 'wr', intensity: { mode: 'weight_range', value: '165', high: '175' }, boxes: [{ val: '', empty: true }] }),
+      row({ id: 'rr', exerciseId: 'rr', name: 'rr', intensity: { mode: 'rpe_range', value: '7', high: '8.5' }, boxes: [{ val: '170', empty: false }] }),
+      row({ id: 'fixed', exerciseId: 'fixed', name: 'fixed', intensity: { mode: 'fixed_weight', value: '', high: '' }, boxes: [{ val: '170', empty: false }, { val: '172.5', empty: false }], weightMode: 'per_set' }),
+    ]
+
+    await reconcilePlan('p', [weekWithMondayRows(modes)])
+
+    const exercises = vi.mocked(plans.batchDays).mock.calls[0][1].upsert_days[0].exercises
+    const byId = new Map(exercises.map((exercise) => [exercise.exercise_id, exercise.sets]))
+    expect(byId.get('pct')).toEqual([
+      expect.objectContaining({ load_mode: 'pct', target_pct: '72.5', target_weight: '170' }),
+      expect.objectContaining({ load_mode: 'pct', target_pct: '72.5', target_weight: null }),
+    ])
+    expect(byId.get('rpe')?.[0]).toEqual(expect.objectContaining({ load_mode: 'rpe', target_rpe: '8' }))
+    expect(byId.get('rir')?.[0]).toEqual(expect.objectContaining({ load_mode: 'rir', rir_target: '2' }))
+    expect(byId.get('wr')?.[0]).toEqual(expect.objectContaining({ load_mode: 'weight_range', weight_low: '165', weight_high: '175', target_weight: null }))
+    expect(byId.get('rr')?.[0]).toEqual(expect.objectContaining({ load_mode: 'rpe_range', rpe_low: '7', rpe_high: '8.5', target_weight: '170' }))
+    expect(byId.get('fixed')).toEqual([
+      expect.objectContaining({ load_mode: 'fixed_weight', target_weight: '170' }),
+      expect.objectContaining({ load_mode: 'fixed_weight', target_weight: '172.5' }),
+    ])
+    expect(exercises.flatMap((exercise) => exercise.sets).every((set) => (
+      set.intensity_mode === undefined && set.target_value === undefined
+    ))).toBe(true)
   })
 
   it('persists bodyweight rows as publishable sets with a bodyweight coach note', async () => {
@@ -204,7 +268,7 @@ describe('reconcilePlan — skippedRows counts only contentful unbound rows', ()
   })
 
   it.each([
-    ['out-of-range KG', { boxes: [{ val: '600', empty: false }] }],
+    ['out-of-range KG', { boxes: [{ val: '1000', empty: false }] }],
     ['off-step RPE', { mode: 'rpe' as const, boxes: [{ val: '7.3', empty: false }] }],
     ['out-of-range reps', { reps: '99', boxes: [{ val: '100', empty: false }] }],
   ])('rejects %s through the shared guard before replacing any server day', async (_label, partial) => {
@@ -307,6 +371,18 @@ describe('reconcilePlan — exercise-granularity history locks', () => {
     expect(plans.createExercise).not.toHaveBeenCalled()
   })
 
+  it('does not treat an untouched locked legacy per-set RPE row as a mutation', async () => {
+    const locked = legacyRpeExercise('locked-legacy', 'legacy-ex', ['7.5', '8'], true)
+    const baseline = serverPlan([serverDay([locked])])
+    vi.mocked(plans.getPlan).mockResolvedValue(baseline)
+    const weeks = mapPlanToWeeks(baseline, new Map([['legacy-ex', { name: '旧 RPE', custom: false }]]))
+
+    await expect(reconcilePlan('p', weeks)).resolves.toMatchObject({ changedDays: 0 })
+    expect(plans.batchDays).not.toHaveBeenCalled()
+    expect(plans.deleteExercise).not.toHaveBeenCalled()
+    expect(plans.createExercise).not.toHaveBeenCalled()
+  })
+
   it('routes a day without logs through whole-day batch upsert', async () => {
     const original = serverExercise('old', 'ex', 0, '100')
     vi.mocked(plans.getPlan).mockResolvedValue(serverPlan([serverDay([original])], 'draft'))
@@ -388,8 +464,10 @@ describe('reconcilePlan — batch payload and errors', () => {
         exercises: [{
           exercise_id: 'change-ex', is_main_lift: false, sort_order: 0, notes: null,
           sets: [{
-            set_number: 1, target_reps: 5, target_reps_max: null, intensity_mode: 'weight',
-            target_value: '105', set_type: 'working', rest_seconds: null, coach_note: null,
+            set_number: 1, target_reps: 5, target_reps_max: null, load_mode: null,
+            target_pct: null, target_rpe: null, rir_target: null, rpe_low: null, rpe_high: null,
+            weight_low: null, weight_high: null, target_weight: '105',
+            set_type: 'working', rest_seconds: null, coach_note: null,
           }],
         }],
       }],

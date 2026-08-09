@@ -60,4 +60,45 @@ describe('plan editor clipboard rows', () => {
       note: '暂停 2 秒',
     })
   })
+
+  it('round-trips a row-level range even when the optional weight and note cells are empty', () => {
+    const source: ExerciseRow = {
+      id: 'row-range', serverRowId: null, serverSortOrder: null, hasLogs: false, conflictMessage: null,
+      exerciseId: 'bench', name: '卧推', ku: true, custom: false, isMain: true,
+      aux: false, reps: '5', mode: 'kg',
+      intensity: { mode: 'rpe_range', value: '7', high: '8.5' },
+      weightMode: 'uniform',
+      boxes: [{ val: '', empty: true }, { val: '', empty: true }],
+      note: '',
+    }
+
+    const parsed = parseClipboardRows(serializeRowsForClipboard([source]), new ExerciseIndex([exercise('bench', '卧推')]))
+    expect(parsed?.[0]).toMatchObject({
+      mode: 'kg',
+      intensity: { mode: 'rpe_range', value: '7', high: '8.5' },
+      weightMode: 'uniform',
+      boxes: [{ val: '', empty: true }, { val: '', empty: true }],
+    })
+  })
+
+  it('round-trips legacy per-set RPE values without turning them into weights', () => {
+    const source: ExerciseRow = {
+      id: 'legacy-rpe', serverRowId: 'server-legacy', serverSortOrder: 0, hasLogs: false, conflictMessage: null,
+      exerciseId: 'bench', name: '卧推', ku: true, custom: false, isMain: true,
+      aux: false, reps: '5', mode: 'rpe',
+      boxes: [{ val: '7.5', empty: false }, { val: '8', empty: false }],
+      note: '',
+    }
+
+    const serialized = serializeRowsForClipboard([source])
+    const parsed = parseClipboardRows(serialized, new ExerciseIndex([exercise('bench', '卧推')]))
+
+    expect(serialized).toContain('旧逐组RPE\t7.5/8')
+    expect(parsed?.[0]).toMatchObject({
+      mode: 'rpe',
+      boxes: [{ val: '7.5', empty: false }, { val: '8', empty: false }],
+    })
+    expect(parsed?.[0].intensity).toBeUndefined()
+    expect(parsed?.[0].weightMode).toBeUndefined()
+  })
 })
