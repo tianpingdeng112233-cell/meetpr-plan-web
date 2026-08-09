@@ -1,6 +1,6 @@
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest'
 import type {
   ChatConversation,
   CoachStudent,
@@ -249,5 +249,40 @@ describe('RosterBoard overview', () => {
       input.dispatchEvent(new KeyboardEvent('keydown', { key: 'j', bubbles: true }))
     })
     expect(onSelect).toHaveBeenCalledTimes(calls)
+  })
+
+  it('renders e1RM badges from the backend trend, falling back to registered values', async () => {
+    const original = { a: dataByStudent.a.overview, b: dataByStudent.b.overview }
+    onTestFinished(() => {
+      dataByStudent.a.overview = original.a
+      dataByStudent.b.overview = original.b
+    })
+    // 甲:有实测序列——数值在涨但后端 trend=down,必须显示 ↓(锁「趋势不在前端重算」)。
+    dataByStudent.a.overview = {
+      ...overview(.9),
+      one_rm: { squat: '140', bench: null, deadlift: null },
+      e1rm_series: {
+        squat: { trend: 'down', points: [{ date: '2026-07-01', value: '150' }, { date: '2026-07-20', value: '155.4' }] },
+        bench: { trend: 'new', points: [{ date: '2026-07-20', value: '99.6' }] },
+        deadlift: { trend: 'up', points: [{ date: '2026-07-20', value: '180.2' }] },
+      },
+    }
+    // 乙:老后端无 e1rm_series——回落登记值置灰;丙:两者皆无——显示 —。
+    dataByStudent.b.overview = { ...overview(.7), one_rm: { squat: '120', bench: '80', deadlift: '150' } }
+    await renderBoard()
+
+    const badge = (row: number, family: string) => host
+      .querySelectorAll('.roster-overview-row')[row]!
+      .querySelector(`[data-testid="roster-e1rm-${family}"]`)!
+    expect(badge(0, 'squat').textContent).toBe('S155↓')
+    expect(badge(0, 'squat').querySelector('.trend-down')).not.toBeNull()
+    expect(badge(0, 'bench').textContent).toBe('B100')      // trend=new 不显示箭头
+    expect(badge(0, 'deadlift').querySelector('.trend-up')?.textContent).toBe('↑')
+    expect(badge(1, 'squat').textContent).toBe('S120')
+    expect(badge(1, 'squat').classList.contains('registered')).toBe(true)
+    expect(badge(1, 'squat').getAttribute('title')).toContain('登记值')
+    expect(badge(2, 'deadlift').textContent).toBe('D—')
+    // 纯无数据态不带 .registered——三态视觉不合并。
+    expect(badge(2, 'deadlift').classList.contains('registered')).toBe(false)
   })
 })

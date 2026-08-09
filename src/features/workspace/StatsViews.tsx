@@ -4,8 +4,10 @@ import { getStudentOnboarding } from '../../api/plans'
 import type {
   ChatConversation,
   CoachStudent,
+  E1rmTrend,
   ExerciseStatsDetail,
   ExerciseStatsOverview,
+  LiftFamily,
   PlanResponse,
   StudentOnboardingProfile,
 } from '../../api/types'
@@ -38,7 +40,34 @@ export function SessionDetail({ detail, limit = 6 }: { detail: ExerciseStatsDeta
 }
 
 // ── 总览（mock 1:1 扫视表）──────────────────────────────────────
-export const ROSTER_GRID_COLUMNS = '150px 104px 116px 84px 78px 80px 1fr'
+export const ROSTER_GRID_COLUMNS = '150px 104px 116px 84px 78px 156px 80px 1fr'
+
+// ── 花名册 e1RM 徽章(拍板 A,2026-08-09:一列紧凑三项;↑绿 ↓金 →灰)──
+const E1RM_FAMILIES: LiftFamily[] = ['squat', 'bench', 'deadlift']
+const E1RM_FAMILY_ABBR: Record<LiftFamily, string> = { squat: 'S', bench: 'B', deadlift: 'D' }
+const E1RM_FAMILY_LABELS: Record<LiftFamily, string> = { squat: '深蹲', bench: '卧推', deadlift: '硬拉' }
+const E1RM_TREND_ARROWS: Record<E1rmTrend, string> = { up: '↑', flat: '→', down: '↓', new: '' }
+/** 趋势方向一律采用后端 e1rm_series[family].trend,前端不重算。 */
+export const e1rmTrendArrow = (trend: E1rmTrend | undefined): string => trend ? E1RM_TREND_ARROWS[trend] : ''
+
+export function RosterE1rmBadges({ overview }: { overview: ExerciseStatsOverview | null | undefined }) {
+  return <span className="roster-e1rm">{E1RM_FAMILIES.map((family) => {
+    const series = overview?.e1rm_series?.[family]
+    const point = series?.points.length ? series.points[series.points.length - 1] : null
+    if (point && Number.isFinite(Number(point.value))) {
+      return <em key={family} data-testid={`roster-e1rm-${family}`} title={`${E1RM_FAMILY_LABELS[family]}最新实测 e1RM · ${shortDate(point.date)}`}>
+        <small>{E1RM_FAMILY_ABBR[family]}</small><b>{Math.round(Number(point.value))}</b>
+        {e1rmTrendArrow(series?.trend) && <i className={`trend-${series?.trend}`} aria-label={`趋势${series?.trend}`}>{e1rmTrendArrow(series?.trend)}</i>}
+      </em>
+    }
+    // 无实测回落登记值并视觉降级——「没数据」和「数据是学员自填的」对教练是两回事,
+    // 所以 .registered(点状下划线)只标登记值,纯无数据态不带。
+    const registered = overview?.one_rm[family]
+    return <em key={family} className={registered == null ? undefined : 'registered'} data-testid={`roster-e1rm-${family}`} title={registered == null ? `${E1RM_FAMILY_LABELS[family]}尚无实测或登记值` : `${E1RM_FAMILY_LABELS[family]}登记值,尚无实测`}>
+      <small>{E1RM_FAMILY_ABBR[family]}</small><b>{registered == null ? '—' : Math.round(Number(registered))}</b>
+    </em>
+  })}</span>
+}
 
 export interface RosterBoardProps {
   students: CoachStudent[]
@@ -142,6 +171,7 @@ export function RosterBoard({
         <span>完成率</span>
         <span>周总量</span>
         <span>RPE</span>
+        <span>e1RM</span>
         <span>距赛</span>
         <span>下周计划</span>
       </div>
@@ -179,6 +209,7 @@ export function RosterBoard({
               <span className="roster-number">{tonnage ?? '—'}{tonnage != null && <small>t</small>}</span>
               {/* No roster-level RPE aggregate exists yet; keep the shared thresholds ready for the backend field. */}
               <span className="roster-number roster-rpe">—</span>
+              <RosterE1rmBadges overview={row.data.overview} />
               <span className="roster-number roster-distance">{distance}</span>
               <span className="roster-plan-cell">
                 <span className={`roster-plan-badge ${row.pending == null ? 'unknown' : row.pending ? 'pending' : 'planned'}`}>
