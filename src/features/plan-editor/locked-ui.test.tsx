@@ -145,16 +145,26 @@ describe('exercise history lock UI', () => {
       .toEqual([''])
   })
 
-  it('shows old pure-weight rows as fixed weight while keeping kg in the weight column', () => {
+  it('renders stored pure kg, weight_range, and fixed_weight in the weight column', () => {
     act(() => root?.render(
       <DayColumn
         day={{
           dow: 0, dowLabel: '周一', dateLabel: '1/1', rest: false,
-          rows: [row('legacy-weight', {
-            legacyWeightSource: true,
-            intensity: null,
-            boxes: [{ val: '170', empty: false }],
-          })],
+          rows: [
+            row('legacy-weight', {
+              legacyWeightSource: true,
+              intensity: null,
+              boxes: [{ val: '170', empty: false }],
+            }),
+            row('stored-range', {
+              intensity: { mode: 'weight_range', value: '165', high: '175' },
+              boxes: [{ val: '', empty: true }],
+            }),
+            row('stored-fixed', {
+              intensity: { mode: 'fixed_weight', value: '', high: '' },
+              boxes: [{ val: '180', empty: false }],
+            }),
+          ],
         }}
         colW={{ name: 92, sets: 26, reps: 26, int: 142, weight: 118, note: 36 }} selected
         onSelect={vi.fn()} onResizeStart={vi.fn()} onNameFocus={vi.fn()}
@@ -163,9 +173,19 @@ describe('exercise history lock UI', () => {
       />,
     ))
 
-    expect(host.querySelector<HTMLSelectElement>('[aria-label="强度类型"]')?.value).toBe('fixed_weight')
-    expect(host.querySelector('.fixed-weight-badge')?.textContent).toBe('固定重量')
-    expect(host.querySelector<HTMLInputElement>('[data-guard-field="weight"]')?.value).toBe('170')
+    const legacyRow = host.querySelector<HTMLElement>('[data-rowid="legacy-weight"]')!
+    const rangeRow = host.querySelector<HTMLElement>('[data-rowid="stored-range"]')!
+    const fixedRow = host.querySelector<HTMLElement>('[data-rowid="stored-fixed"]')!
+    expect(legacyRow.querySelector<HTMLSelectElement>('[aria-label="强度类型"]')?.value).toBe('')
+    expect(legacyRow.querySelector<HTMLSelectElement>('[aria-label="重量模式"]')?.value).toBe('fixed_weight')
+    expect(legacyRow.querySelector<HTMLInputElement>('[data-guard-field="weight"]')?.value).toBe('170')
+    expect(rangeRow.querySelector<HTMLSelectElement>('[aria-label="强度类型"]')?.value).toBe('')
+    expect(rangeRow.querySelector<HTMLSelectElement>('[aria-label="重量模式"]')?.value).toBe('weight_range')
+    expect([...rangeRow.querySelectorAll<HTMLInputElement>('[data-guard-field^="weight-range"]')].map((input) => input.value))
+      .toEqual(['165', '175'])
+    expect(fixedRow.querySelector<HTMLSelectElement>('[aria-label="强度类型"]')?.value).toBe('')
+    expect(fixedRow.querySelector<HTMLSelectElement>('[aria-label="重量模式"]')?.value).toBe('fixed_weight')
+    expect(fixedRow.querySelector<HTMLInputElement>('[data-guard-field="weight"]')?.value).toBe('180')
     expect(host.querySelector('[role="alert"]')).toBeNull()
     expect(host.querySelector('.guard-invalid')).toBeNull()
   })
@@ -384,6 +404,23 @@ describe('guarded input filtering ergonomics', () => {
     input.dispatchEvent(new Event('input', { bubbles: true }))
   }
 
+  it('edits one stored per-set fixed_weight value without overwriting the other sets', () => {
+    act(() => root?.render(<GuardHarness initial={row('stored-fixed-per-set', {
+      intensity: { mode: 'fixed_weight', value: '', high: '' },
+      weightMode: 'per_set',
+      boxes: [{ val: '170', empty: false }, { val: '172.5', empty: false }],
+    })} />))
+
+    expect(host.querySelector<HTMLSelectElement>('[aria-label="重量模式"]')?.value).toBe('per_set')
+    const inputs = host.querySelectorAll<HTMLInputElement>('[data-guard-field="weight"]')
+    expect([...inputs].map((input) => input.value)).toEqual(['170', '172.5'])
+
+    act(() => setValueWithCaret(inputs[1], '175', 3))
+
+    expect([...host.querySelectorAll<HTMLInputElement>('[data-guard-field="weight"]')].map((input) => input.value))
+      .toEqual(['170', '175'])
+  })
+
   it('keeps the caret at the kept prefix when filtering drops pasted characters mid-value', () => {
     act(() => root?.render(<GuardHarness initial={row('r1')} />))
     const input = strengthInput()
@@ -421,7 +458,7 @@ describe('guarded input filtering ergonomics', () => {
     expect(reps.value).toBe('8-10')
   })
 
-  it('offers six intensity types and preserves the uniform-to-per-set weight handoff', () => {
+  it('offers five intensity choices and switches all four weight-column modes', () => {
     act(() => root?.render(<GuardHarness initial={row('r1', {
       intensity: null,
       weightMode: 'uniform',
@@ -429,10 +466,12 @@ describe('guarded input filtering ergonomics', () => {
     })} />))
 
     const select = host.querySelector<HTMLSelectElement>('[aria-label="强度类型"]')!
-    expect([...select.options].map((option) => option.value).filter(Boolean)).toEqual([
-      'pct', 'rpe', 'rir', 'weight_range', 'rpe_range', 'fixed_weight',
+    expect([...select.options].map((option) => option.value)).toEqual([
+      '', 'pct', 'rpe', 'rir', 'rpe_range',
     ])
-    expect(select.textContent).not.toContain('旧逐组')
+    expect([...select.options].map((option) => option.textContent)).toEqual([
+      '不设强度', '%1RM', 'RPE', 'RIR', 'RPE 区间',
+    ])
 
     Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value')?.set?.call(select, 'rpe')
     act(() => select.dispatchEvent(new Event('change', { bubbles: true })))
@@ -446,27 +485,44 @@ describe('guarded input filtering ergonomics', () => {
     act(() => setValueWithCaret(uniform, '170', 3))
     expect(host.querySelectorAll('[data-guard-field="weight"]')).toHaveLength(1)
 
-    const perSet = [...host.querySelectorAll<HTMLButtonElement>('button')]
-      .find((button) => button.textContent === '逐组标重')!
-    act(() => perSet.click())
+    const weightSelect = host.querySelector<HTMLSelectElement>('[aria-label="重量模式"]')!
+    expect([...weightSelect.options].map((option) => option.value)).toEqual([
+      'fixed_weight', 'per_set', 'weight_range', 'bodyweight',
+    ])
+    expect([...weightSelect.options].map((option) => option.textContent)).toEqual([
+      '固定重量', '逐组标重', '重量区间', '自重',
+    ])
+    Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value')?.set?.call(weightSelect, 'per_set')
+    act(() => weightSelect.dispatchEvent(new Event('change', { bubbles: true })))
     expect([...host.querySelectorAll<HTMLInputElement>('[data-guard-field="weight"]')].map((input) => input.value))
       .toEqual(['170', '170'])
+
+    Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value')?.set?.call(weightSelect, 'weight_range')
+    act(() => weightSelect.dispatchEvent(new Event('change', { bubbles: true })))
+    expect(host.querySelectorAll('[data-guard-field="weight"]')).toHaveLength(0)
+    expect(host.querySelectorAll('[data-guard-field^="weight-range"]')).toHaveLength(2)
+    expect(host.querySelector<HTMLSelectElement>('[aria-label="强度类型"]')?.value).toBe('')
+
+    Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value')?.set?.call(weightSelect, 'bodyweight')
+    act(() => weightSelect.dispatchEvent(new Event('change', { bubbles: true })))
+    expect(host.querySelector('.bodyweight-summary')?.textContent).toBe('每组 BW')
   })
 
-  it('surfaces the weight-range conflict directly in the row', () => {
+  it('edits and validates a weight range in the weight column', () => {
     act(() => root?.render(<GuardHarness initial={row('r1', {
       intensity: null,
       weightMode: 'uniform',
       boxes: [{ val: '170', empty: false }],
     })} />))
-    const select = host.querySelector<HTMLSelectElement>('[aria-label="强度类型"]')!
+    const select = host.querySelector<HTMLSelectElement>('[aria-label="重量模式"]')!
     Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value')?.set?.call(select, 'weight_range')
     act(() => select.dispatchEvent(new Event('change', { bubbles: true })))
-    const inputs = host.querySelectorAll<HTMLInputElement>('[data-guard-field^="intensity"]')
-    act(() => setValueWithCaret(inputs[0], '165', 3))
-    act(() => setValueWithCaret(inputs[1], '175', 3))
+    const inputs = host.querySelectorAll<HTMLInputElement>('[data-guard-field^="weight-range"]')
+    act(() => setValueWithCaret(inputs[0], '175', 3))
+    act(() => setValueWithCaret(inputs[1], '165', 3))
+    expect([...inputs].every((input) => input.title === '重量区间需两值有效且下限小于上限')).toBe(true)
 
-    expect(host.querySelector<HTMLElement>('.matrix-warning')?.title)
-      .toBe('重量区间不能同时填写重量列')
+    act(() => setValueWithCaret(inputs[0], '160', 3))
+    expect(host.querySelector('[data-input-invalid="true"]')).toBeNull()
   })
 })

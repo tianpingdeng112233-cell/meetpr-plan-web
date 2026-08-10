@@ -224,10 +224,16 @@ export function alignWeeksByExercise(
   })
 }
 
-export const WEEKDAY_LABELS = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'] as const
-
-export function anchoredWeekday(anchorWeekday: number | null | undefined, dayOrdinal: number): string | null {
-  if (anchorWeekday == null || anchorWeekday < 1 || anchorWeekday > 7) return null
-  const weekday = ((anchorWeekday - 1 + dayOrdinal - 1) % 7 + 7) % 7
-  return WEEKDAY_LABELS[weekday]
+/**
+ * Display-only training-day ordinal within one week. Empty/rest positions do
+ * not consume a D number; storage and all day_of_week semantics stay intact.
+ */
+export function trainingDayOrdinal(week: Pick<Week, 'days'>, dow: number): number | null {
+  let ordinal = 0
+  for (const day of week.days) {
+    const hasActions = day.rows.length > 0
+    if (hasActions) ordinal += 1
+    if (day.dow === dow) return hasActions ? ordinal : null
+  }
+  return null
 }

@@ -10,8 +10,8 @@ import {
 } from '../inputGuard'
 import {
   displayedRowIntensity,
+  displayedWeightMode,
   inferredIntensityMode,
-  inferredWeightMode,
   isSingleValueIntensity,
   materializeIntensityRow,
   rowIntensity,
@@ -40,11 +40,9 @@ export interface WeekBandDayView {
   rows: ReadonlyMap<string, ExerciseRow>
   badgeFor: (slot: WeekBandSlot) => WeekBandBadge | null
   onQuickAdd: (slot: WeekBandSlot) => void
-  dayOrdinal: number
+  /** Display-only ordinal among this week's non-empty training days. */
+  trainingDayOrdinal: number | null
   weekdayLabel: string | null
-  anchorWeekday: number | null
-  anchorSaving?: boolean
-  onAnchorWeekdayChange?: (weekday: number | null) => void
 }
 
 interface Props {
@@ -103,6 +101,18 @@ function ShiftBadge({ day }: { day: DayCol }) {
       }}
     >
       顺延
+    </span>
+  )
+}
+
+function WeekBandCalendarLabel({ weekdayLabel, dateLabel }: {
+  weekdayLabel: string | null
+  dateLabel: string
+}) {
+  return (
+    <span className="dayhead-calendar" data-day-calendar-label="">
+      {weekdayLabel && <span className="dayhead-weekday">{weekdayLabel}</span>}
+      <span className="dayhead-date">{dateLabel}</span>
     </span>
   )
 }
@@ -235,9 +245,7 @@ const INTENSITY_OPTIONS: { mode: LoadMode; label: string }[] = [
   { mode: 'pct', label: '%1RM' },
   { mode: 'rpe', label: 'RPE' },
   { mode: 'rir', label: 'RIR' },
-  { mode: 'weight_range', label: '重量区间' },
   { mode: 'rpe_range', label: 'RPE 区间' },
-  { mode: 'fixed_weight', label: '固定重量' },
 ]
 
 function intensityPlaceholder(intensity: RowIntensity): string {
@@ -245,8 +253,8 @@ function intensityPlaceholder(intensity: RowIntensity): string {
     case 'pct': return '72.5'
     case 'rpe': return '8'
     case 'rir': return '2'
-    case 'weight_range': return '165'
     case 'rpe_range': return '7'
+    case 'weight_range': return '165'
     case 'fixed_weight': return ''
   }
 }
@@ -383,7 +391,7 @@ function EditableIntensity({ row, width, edit, selectedCell, selectCell, cellKey
               <span className="intensity-unit">{intensity.mode === 'pct' ? '%' : ''}</span>
             </>
           )}
-          {intensity && !singleValue && intensity.mode !== 'fixed_weight' && (
+          {intensity && !singleValue && (
             <>
               <GuardedInput
                 value={intensity.value} inputMode="decimal" placeholder={intensityPlaceholder(intensity)}
@@ -397,7 +405,7 @@ function EditableIntensity({ row, width, edit, selectedCell, selectCell, cellKey
               <span className="range-separator">–</span>
               <GuardedInput
                 value={intensity.high} inputMode="decimal"
-                placeholder={intensity.mode === 'weight_range' ? '175' : '8'}
+                placeholder="8"
                 className={invalid ? 'guard-invalid' : undefined}
                 data-guard-field="intensity-high" data-input-invalid={invalid ? 'true' : undefined}
                 aria-invalid={invalid || undefined} title={title}
@@ -405,10 +413,9 @@ function EditableIntensity({ row, width, edit, selectedCell, selectCell, cellKey
                 onFocus={() => selectCell()} onClick={stop}
                 onValue={(high) => updateIntensity((current) => current ? { ...current, high } : current)}
               />
-              <span className="intensity-unit">{intensity.mode === 'weight_range' ? 'kg' : ''}</span>
+              <span className="intensity-unit" />
             </>
           )}
-          {intensity?.mode === 'fixed_weight' && <span className="fixed-weight-badge">固定重量</span>}
         </>
       )}
     </div>
@@ -426,57 +433,100 @@ function EditableWeight({ row, width, edit, selectedCell, selectCell, cellKey, r
 }) {
   if (row.aux) return <div className="gcell" data-c="weight" style={{ width, padding: '4px 5px' }}>—</div>
   const issue = getBoundRowInputIssue(row)
-  if (row.mode === 'bodyweight') {
-    return (
-      <div className="gcell weightcell" data-c="weight" style={{ width, padding: '4px 4px', display: 'flex', alignItems: 'center', gap: 3 }}>
-        <button
-          type="button" className="weight-mode-toggle active"
-          disabled={readOnly || row.hasLogs}
-          title={row.hasLogs ? '学员已打卡,此行及其组不可修改' : '切回负重动作'}
-          onClick={(event) => { stop(event); edit((current) => ({ ...current, mode: 'kg', intensity: current.intensity ?? null, weightMode: inferredWeightMode(current) })) }}
-        >自重</button>
-        <span className="bodyweight-summary">每组 BW</span>
-      </div>
-    )
-  }
-
   const weights = rowWeightBoxes(row)
-  const weightMode = inferredWeightMode(row)
-  const matrixWarning = issue?.reasons.find((reason) => (
-    reason === INPUT_GUARD_REASONS.fixedWeight || reason === INPUT_GUARD_REASONS.weightRangeConflict
-  ))
-  const displayed = weightMode === 'uniform' ? weights.slice(0, 1) : weights
+  const displayMode = displayedWeightMode(row)
+  const displayed = displayMode === 'fixed_weight' ? weights.slice(0, 1)
+    : displayMode === 'per_set' ? weights
+      : []
   const editWeight = (index: number, value: string) => edit((current) => {
+    const currentDisplayMode = displayedWeightMode(current)
     const materialized = materializeIntensityRow(current)
     const boxes = materialized.boxes.map((box, boxIndex) => (
-      weightMode === 'uniform' || boxIndex === index ? { val: value, empty: value === '' } : box
+      currentDisplayMode === 'fixed_weight' || boxIndex === index ? { val: value, empty: value === '' } : box
     ))
-    return { ...materialized, boxes, weightMode }
+    return { ...materialized, boxes, weightMode: currentDisplayMode === 'per_set' ? 'per_set' : 'uniform' }
   })
-  const toggleWeightMode = () => edit((current) => {
+  const setWeightMode = (next: ReturnType<typeof displayedWeightMode>) => edit((current) => {
+    if (displayedWeightMode(current) === next) return current
     const materialized = materializeIntensityRow(current)
-    const next = inferredWeightMode(materialized) === 'uniform' ? 'per_set' : 'uniform'
-    if (next === 'per_set') return { ...materialized, weightMode: next }
+    const currentIntensity = rowIntensity(materialized)
+    if (next === 'bodyweight') return { ...materialized, mode: 'bodyweight' }
+    if (next === 'weight_range') return {
+      ...materialized,
+      mode: 'kg',
+      intensity: { mode: 'weight_range', value: '', high: '' },
+      weightMode: 'uniform',
+      boxes: materialized.boxes.map(() => ({ val: '', empty: true })),
+    }
+    const intensity = currentIntensity?.mode === 'weight_range' || currentIntensity?.mode === 'fixed_weight'
+      ? null
+      : currentIntensity
+    if (next === 'per_set') return { ...materialized, mode: 'kg', intensity, weightMode: 'per_set' }
     const first = materialized.boxes.find((box) => !box.empty && box.val.trim() !== '') ?? { val: '', empty: true }
-    return { ...materialized, weightMode: next, boxes: materialized.boxes.map(() => ({ ...first })) }
+    return {
+      ...materialized,
+      mode: 'kg',
+      intensity,
+      weightMode: 'uniform',
+      boxes: materialized.boxes.map(() => ({ ...first })),
+    }
+  })
+  const range = rowIntensity(row)?.mode === 'weight_range' ? rowIntensity(row) : null
+  const invalidRange = issue?.invalidIntensity ?? false
+  const updateRange = (field: 'value' | 'high', value: string) => edit((current) => {
+    const materialized = materializeIntensityRow(current)
+    const currentIntensity = rowIntensity(materialized)
+    if (currentIntensity?.mode !== 'weight_range') return materialized
+    return { ...materialized, intensity: { ...currentIntensity, [field]: value } }
   })
   return (
     <div className="gcell weightcell" data-c="weight" style={{ width, padding: '3px 4px', display: 'flex', flexWrap: 'wrap', alignItems: 'center' }}>
       <span className="weight-controls">
-        <button type="button" className="weight-mode-toggle" disabled={readOnly || row.hasLogs || row.boxes.length === 0}
-          title={weightMode === 'uniform' ? '切换为逐组标重' : '切换为统一重量'} onClick={(event) => { stop(event); toggleWeightMode() }}>
-          {weightMode === 'uniform' ? '逐组标重' : '统一重量'}
-        </button>
-        <button type="button" className="bodyweight-toggle" disabled={readOnly || row.hasLogs}
-          title="切换为自重动作" onClick={(event) => {
-            stop(event)
-            edit((current) => ({ ...materializeIntensityRow(current), mode: 'bodyweight' }))
-          }}>自重</button>
-        {matrixWarning && <span className="matrix-warning" role="alert" title={matrixWarning}>!</span>}
+        <select
+          aria-label="重量模式"
+          value={displayMode}
+          disabled={readOnly || row.hasLogs}
+          title={row.hasLogs ? '学员已打卡,此行及其组不可修改' : undefined}
+          onClick={stop}
+          onChange={(event) => setWeightMode(event.currentTarget.value as ReturnType<typeof displayedWeightMode>)}
+        >
+          <option value="fixed_weight">固定重量</option>
+          <option value="per_set">逐组标重</option>
+          <option value="weight_range">重量区间</option>
+          <option value="bodyweight">自重</option>
+        </select>
       </span>
+      {displayMode === 'bodyweight' && <span className="bodyweight-summary">每组 BW</span>}
+      {displayMode === 'weight_range' && range && (
+        <span className="weight-range-inputs">
+          <GuardedInput
+            value={range.value} inputMode="decimal" placeholder="165"
+            className={invalidRange ? 'guard-invalid' : undefined}
+            data-guard-field="weight-range-low" data-input-invalid={invalidRange ? 'true' : undefined}
+            data-plan-cell="weight" data-plan-cell-key={cellKey(0)}
+            aria-label="重量区间下限" aria-invalid={invalidRange || undefined}
+            title={invalidRange ? INPUT_GUARD_REASONS.weightRange : undefined}
+            disabled={readOnly || row.hasLogs} filter={filterStrengthInput}
+            onFocus={() => selectCell(0)} onClick={(event) => { stop(event); selectCell(0) }}
+            onValue={(value) => updateRange('value', value)}
+          />
+          <span className="range-separator">–</span>
+          <GuardedInput
+            value={range.high} inputMode="decimal" placeholder="175"
+            className={invalidRange ? 'guard-invalid' : undefined}
+            data-guard-field="weight-range-high" data-input-invalid={invalidRange ? 'true' : undefined}
+            aria-label="重量区间上限" aria-invalid={invalidRange || undefined}
+            title={invalidRange ? INPUT_GUARD_REASONS.weightRange : undefined}
+            disabled={readOnly || row.hasLogs} filter={filterStrengthInput}
+            onFocus={() => selectCell(0)} onClick={(event) => { stop(event); selectCell(0) }}
+            onValue={(value) => updateRange('high', value)}
+          />
+          <span className="intensity-unit">kg</span>
+        </span>
+      )}
       {displayed.map((box, index) => {
-        const sourceIndex = weightMode === 'uniform' ? 0 : index
-        const invalid = weightMode === 'uniform'
+        const sourceIndex = displayMode === 'fixed_weight' ? 0 : index
+        const invalid = displayMode === 'fixed_weight'
           ? (issue?.invalidWeightIndexes.length ?? 0) !== 0
           : issue?.invalidWeightIndexes.includes(sourceIndex) ?? false
         return (
@@ -653,42 +703,23 @@ export function DayColumn({
     return (
       <div className={`day restday week-band-rest-card${selected ? ' sel' : ''}${dayMoveClass}`}
         data-dow={day.dow} data-derived-rest="true" onClick={onSelect}>
-        <div className="dayhead" data-day-move-handle="" title={dayMoveTitle} onMouseDown={onDayMoveStart}
+        <div className="dayhead week-band-rest-line" data-day-move-handle="" title={dayMoveTitle} onMouseDown={onDayMoveStart}
           style={{ cursor: dayMoveCursor }}>
           <span className="dayhead-line">
             {!dayMoveDisabledHint && <span className="day-move-grip" aria-hidden="true">⋮</span>}
-            <span className="dayhead-primary">D{weekBand.dayOrdinal}</span>
-            {weekBand.weekdayLabel && <span className="dayhead-weekday">{weekBand.weekdayLabel}</span>}
-            {weekBand.dayOrdinal === 1 && (
-              <select
-                className="anchor-weekday-select"
-                aria-label={weekBand.anchorWeekday == null ? '设置 D1 周几' : '修改 D1 周几'}
-                title="D1 周几锚（仅影响标签显示）"
-                value={weekBand.anchorWeekday ?? ''}
-                disabled={readOnly || weekBand.anchorSaving || !weekBand.onAnchorWeekdayChange}
-                onMouseDown={stop}
-                onClick={stop}
-                onChange={(event) => weekBand.onAnchorWeekdayChange?.(event.currentTarget.value ? Number(event.currentTarget.value) : null)}
-              >
-                <option value="">设周几</option>
-                {['周一', '周二', '周三', '周四', '周五', '周六', '周日'].map((label, index) => (
-                  <option value={index + 1} key={label}>{label}</option>
-                ))}
-              </select>
-            )}
-            <span className="dayhead-date">{day.dateLabel}</span>
+            <WeekBandCalendarLabel weekdayLabel={weekBand.weekdayLabel} dateLabel={day.dateLabel} />
             <ShiftBadge day={day} />
             {columnLetter && <kbd className="day-column-key">{columnLetter}</kbd>}
           </span>
           <span className="week-band-rest-label">休息</span>
           {headerContext}
+          {!readOnly && (
+            <button type="button" className="week-band-rest-add" data-add-tier="main"
+              onMouseDown={stop} onClick={(event) => { stop(event); onAddRow('main') }}>
+              <span aria-hidden="true">＋</span> 加动作
+            </button>
+          )}
         </div>
-        {!readOnly && (
-          <button type="button" className="week-band-rest-add" data-add-tier="main"
-            onMouseDown={stop} onClick={(event) => { stop(event); onAddRow('main') }}>
-            <span aria-hidden="true">＋</span> 加主项
-          </button>
-        )}
       </div>
     )
   }
@@ -704,26 +735,9 @@ export function DayColumn({
         style={{ cursor: dayMoveCursor }}>
         <span className="dayhead-line">
           {!dayMoveDisabledHint && <span className="day-move-grip" aria-hidden="true">⋮</span>}
-          <span className="dayhead-primary">{weekBand ? `D${weekBand.dayOrdinal}` : day.dowLabel}</span>
-          {weekBand?.weekdayLabel && <span className="dayhead-weekday">{weekBand.weekdayLabel}</span>}
-          {weekBand && weekBand.dayOrdinal === 1 && (
-            <select
-              className="anchor-weekday-select"
-              aria-label={weekBand.anchorWeekday == null ? '设置 D1 周几' : '修改 D1 周几'}
-              title="D1 周几锚（仅影响标签显示）"
-              value={weekBand.anchorWeekday ?? ''}
-              disabled={readOnly || weekBand.anchorSaving || !weekBand.onAnchorWeekdayChange}
-              onMouseDown={stop}
-              onClick={stop}
-              onChange={(event) => weekBand.onAnchorWeekdayChange?.(event.currentTarget.value ? Number(event.currentTarget.value) : null)}
-            >
-              <option value="">设周几</option>
-              {['周一', '周二', '周三', '周四', '周五', '周六', '周日'].map((label, index) => (
-                <option value={index + 1} key={label}>{label}</option>
-              ))}
-            </select>
-          )}
-          <span className="dayhead-date">{day.dateLabel}</span>
+          <span className="dayhead-primary">{weekBand ? `D${weekBand.trainingDayOrdinal}` : day.dowLabel}</span>
+          {weekBand && <WeekBandCalendarLabel weekdayLabel={weekBand.weekdayLabel} dateLabel={day.dateLabel} />}
+          {!weekBand && <span className="dayhead-date">{day.dateLabel}</span>}
           <ShiftBadge day={day} />
           {columnLetter && <kbd className="day-column-key">{columnLetter}</kbd>}
         </span>
@@ -943,7 +957,7 @@ export function DayColumn({
         const addWeekBandRowEntry = (tier: 'main' | 'aux') => !readOnly && (
           <button type="button" className="week-band-section-add" data-add-tier={tier}
             onClick={(event) => { event.stopPropagation(); onAddRow(tier) }}>
-            <span aria-hidden="true">＋</span> {tier === 'main' ? '加主项' : '加辅助'}
+            <span aria-hidden="true">＋</span> {tier === 'main' ? '主项/主项变式' : '辅助项'}
           </button>
         )
         if (weekBand) {

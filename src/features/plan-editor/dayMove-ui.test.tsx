@@ -73,12 +73,14 @@ describe('whole-day column dragging', () => {
 
   it('starts after the threshold, previews both columns, then moves into a rest day', () => {
     act(() => root?.render(
-      <PlanEditor initialWeeks={[week(1, { 0: [row('squat')] })]} weeksCount={1}
+      <PlanEditor initialWeeks={[week(1, { 0: [row('squat')], 1: [row('bench')] })]} weeksCount={1}
         studentName="学员" planName="计划" />,
     ))
 
     const source = dayAt(host, 1, 0)
     const target = dayAt(host, 1, 2)
+    expect(source.querySelector('.dayhead-primary')?.textContent).toBe('D1')
+    expect(dayAt(host, 1, 1).querySelector('.dayhead-primary')?.textContent).toBe('D2')
     pointAt(target)
     act(() => source.querySelector<HTMLElement>('[data-day-move-handle]')!
       .dispatchEvent(new MouseEvent('mousedown', { bubbles: true, button: 0, clientX: 0, clientY: 0 })))
@@ -90,11 +92,17 @@ describe('whole-day column dragging', () => {
 
     act(() => window.dispatchEvent(new MouseEvent('mouseup', { clientX: 8, clientY: 0 })))
     expect(dayAt(host, 1, 0).className).toContain('restday')
+    expect(dayAt(host, 1, 0).querySelector('.dayhead-primary')).toBeNull()
+    expect(dayAt(host, 1, 1).querySelector('.dayhead-primary')?.textContent).toBe('D1')
     expect(dayAt(host, 1, 2).querySelector('[data-rowid="squat"]')).not.toBeNull()
+    expect(dayAt(host, 1, 2).querySelector('.dayhead-primary')?.textContent).toBe('D2')
     expect(dayAt(host, 1, 2).className).toContain('sel')
+    expect(host.textContent).toContain('已移动 D1 · 周1 7/20 至 D2 · 周3 7/22')
 
     act(() => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', metaKey: true, bubbles: true })))
     expect(dayAt(host, 1, 0).querySelector('[data-rowid="squat"]')).not.toBeNull()
+    expect(dayAt(host, 1, 0).querySelector('.dayhead-primary')?.textContent).toBe('D1')
+    expect(dayAt(host, 1, 1).querySelector('.dayhead-primary')?.textContent).toBe('D2')
     expect(dayAt(host, 1, 2).className).toContain('restday')
   })
 
@@ -173,7 +181,7 @@ describe('whole-day column dragging', () => {
     expect(confirm).toHaveBeenCalledOnce()
     expect(dayAt(host, 1, 2).querySelector('[data-rowid="squat"]')).not.toBeNull()
     expect(host.querySelector('[data-shift-badge]')).toBeNull()
-    expect(dayAt(host, 1, 2).textContent).toContain('D3')
+    expect(dayAt(host, 1, 2).textContent).toContain('D1')
     expect(dayAt(host, 1, 2).textContent).toContain('7/22')
 
     act(() => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', metaKey: true, bubbles: true })))

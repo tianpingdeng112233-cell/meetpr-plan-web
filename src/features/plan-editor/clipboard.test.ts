@@ -82,6 +82,28 @@ describe('plan editor clipboard rows', () => {
     })
   })
 
+  it('round-trips a weight range through the weight columns, not intensity', () => {
+    const source: ExerciseRow = {
+      id: 'weight-range', serverRowId: null, serverSortOrder: null, hasLogs: false, conflictMessage: null,
+      exerciseId: 'bench', name: '卧推', ku: true, custom: false, isMain: true,
+      aux: false, reps: '5', mode: 'kg',
+      intensity: { mode: 'weight_range', value: '165', high: '175' },
+      weightMode: 'uniform',
+      boxes: [{ val: '', empty: true }, { val: '', empty: true }],
+      note: '',
+    }
+
+    const serialized = serializeRowsForClipboard([source])
+    const parsed = parseClipboardRows(serialized, new ExerciseIndex([exercise('bench', '卧推')]))
+
+    expect(serialized).toContain('\t无\t\t重量区间\t165-175\t')
+    expect(parsed?.[0]).toMatchObject({
+      intensity: { mode: 'weight_range', value: '165', high: '175' },
+      weightMode: 'uniform',
+      boxes: [{ val: '', empty: true }, { val: '', empty: true }],
+    })
+  })
+
   it('round-trips legacy per-set RPE values without turning them into weights', () => {
     const source: ExerciseRow = {
       id: 'legacy-rpe', serverRowId: 'server-legacy', serverSortOrder: 0, hasLogs: false, conflictMessage: null,

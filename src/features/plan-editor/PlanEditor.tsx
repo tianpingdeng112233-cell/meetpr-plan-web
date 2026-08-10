@@ -49,10 +49,10 @@ import { useGlobalKeyboardHandler } from '../workspace/globalKeyboard'
 import { MUSCLE_LABEL } from '../catalog/catalogModel'
 import {
   alignWeeksByExercise,
-  anchoredWeekday,
   closestWeekToViewportCenter,
   orderWeeksByWeekBand,
   reorderWeekBandSkeleton,
+  trainingDayOrdinal,
   type WeekBandSlot,
 } from './weekBandModel'
 import type { WeekBandBadge } from './components/DayColumn'
@@ -131,9 +131,6 @@ export interface PlanEditorProps {
   planStartDate?: string
   onChangeStartDate?: (startDate: string) => Promise<void>
   onChangePlanWeeks?: (planWeeks: number) => Promise<void>
-  /** Plan-level display anchor introduced by backend migration 0060. */
-  anchorWeekday?: number | null
-  onChangeAnchorWeekday?: (anchorWeekday: number | null) => Promise<void>
 }
 
 function hasGridContent(weeks: Week[]): boolean {
@@ -246,8 +243,9 @@ function cloneDayClipboard(day: DayCol): DayClipboard {
   return { rows: cloneRows(day.rows, 'clip') }
 }
 
-function dayDisplay(day: DayCol): string {
-  return `${day.dowLabel} ${day.dateLabel}`
+function dayDisplay(week: Week, day: DayCol): string {
+  const ordinal = trainingDayOrdinal(week, day.dow)
+  return `${ordinal == null ? '' : `D${ordinal} · `}${day.dowLabel} ${day.dateLabel}`
 }
 
 function singleRowSelection(anchor: RowTarget | null): RowSelection {
@@ -352,6 +350,7 @@ export function PlanEditor(props: PlanEditorProps) {
   const currentPlanStart = useRef<string | null>(props.planStartDate ?? null)
   const persistedPlanStart = useRef<string | null>(props.planStartDate ?? null)
   const pendingPlanStart = useRef<string | null>(null)
+  const [planStartDate, setPlanStartDate] = useState<string | null>(props.planStartDate ?? null)
   // Kept with the import token so an autosave retry reuses the coach's explicit
   // answer rather than prompting again or silently changing historical data.
   const importedPastHistory = useRef(false)
@@ -390,8 +389,6 @@ export function PlanEditor(props: PlanEditorProps) {
   const [dayMoveVisual, setDayMoveVisual] = useState<DayMoveVisual | null>(null)
   const initialVisibleWeekIndex = Math.max(0, initialWeeks.findIndex((week) => week.isCurrent))
   const [visibleWeekIndex, setVisibleWeekIndex] = useState(initialVisibleWeekIndex)
-  const [anchorWeekday, setAnchorWeekday] = useState<number | null>(props.anchorWeekday ?? null)
-  const [anchorSaving, setAnchorSaving] = useState(false)
 
   const rootRef = useRef<HTMLDivElement>(null)
   const scrollerRef = useRef<HTMLDivElement>(null)
@@ -412,8 +409,6 @@ export function PlanEditor(props: PlanEditorProps) {
   const visibleWeekRef = useRef<number | null>(null)
   useEffect(() => () => dayMoveCleanupRef.current?.(false), [])
 
-  useEffect(() => setAnchorWeekday(props.anchorWeekday ?? null), [props.anchorWeekday])
-
   useEffect(() => {
     setFormulaCellDraft((current) => (
       current && samePlanCell(current.selection, cellSelection) ? current : null
@@ -431,6 +426,7 @@ export function PlanEditor(props: PlanEditorProps) {
     if (pendingPlanStart.current === null) {
       currentPlanStart.current = props.planStartDate ?? null
       persistedPlanStart.current = props.planStartDate ?? null
+      setPlanStartDate(props.planStartDate ?? null)
     }
   }, [props.planStartDate])
 
@@ -512,6 +508,7 @@ export function PlanEditor(props: PlanEditorProps) {
     const metadataChanged = content.planStartDate !== persistedPlanStart.current
       || content.weeksCount !== initialServerMirrorContent.current.weeksCount
     currentPlanStart.current = content.planStartDate
+    setPlanStartDate(content.planStartDate)
     pendingPlanStart.current = metadataChanged ? content.planStartDate : null
     saveDraftMirror(mirrorPlanId, content)
     setRecoveryMirror(null)
@@ -749,19 +746,21 @@ export function PlanEditor(props: PlanEditorProps) {
             )
             if (confirmed) {
               const swapped = !isRestDay(targetDay)
+              const displayedMovedWeek = moveDayInWeek(sourceWeek, day.dow, currentTarget.dow)
               setWeeksWithHistory((previous) => {
                 const index = previous.findIndex((week) => week.num === wnum)
                 if (index < 0) return previous
-                const moved = moveDayInWeek(previous[index], day.dow, currentTarget!.dow)
-                if (moved === previous[index]) return previous
+                const movedWeek = moveDayInWeek(previous[index], day.dow, currentTarget!.dow)
+                if (movedWeek === previous[index]) return previous
                 const next = [...previous]
-                next[index] = moved
+                next[index] = movedWeek
                 return next
               })
               handleSelect(wnum, currentTarget.dow)
+              const movedTarget = displayedMovedWeek.days.find((candidate) => candidate.dow === currentTarget!.dow)!
               setStatusText(swapped
-                ? `已交换 ${dayDisplay(sourceDay)} 与 ${dayDisplay(targetDay)}`
-                : `已移动 ${dayDisplay(sourceDay)} 至 ${dayDisplay(targetDay)}`)
+                ? `已交换 ${dayDisplay(sourceWeek, sourceDay)} 与 ${dayDisplay(sourceWeek, targetDay)}`
+                : `已移动 ${dayDisplay(sourceWeek, sourceDay)} 至 ${dayDisplay(displayedMovedWeek, movedTarget)}`)
             }
           }
         }
@@ -1161,7 +1160,8 @@ export function PlanEditor(props: PlanEditorProps) {
 
   const copySelectedDay = useCallback(async () => {
     const day = selectedDay()
-    if (!day) return
+    const week = sel ? weeks.find((candidate) => candidate.num === sel.wnum) : null
+    if (!day || !week) return
     const text = serializeDayForClipboard(day)
     dayClipboardRef.current = cloneDayClipboard(day)
     rowClipboardRef.current = null
@@ -1169,8 +1169,8 @@ export function PlanEditor(props: PlanEditorProps) {
     clipboardTextRef.current = text
     setHasRowClipboard(false)
     try { await navigator.clipboard?.writeText(text) } catch { /* internal clipboard still works */ }
-    setStatusText(`已复制 ${dayDisplay(day)}`)
-  }, [selectedDay])
+    setStatusText(`已复制 ${dayDisplay(week, day)}`)
+  }, [sel, selectedDay, weeks])
 
   const copySelectedRow = useCallback(async () => {
     const rows = selectedRowsValue()
@@ -1201,7 +1201,14 @@ export function PlanEditor(props: PlanEditorProps) {
     }))
     setRowSelection(singleRowSelection({ wnum: sel.wnum, dow: sel.dow, rowId: inserted[0].id }))
     const target = weeks.find((week) => week.num === sel.wnum)?.days.find((day) => day.dow === sel.dow)
-    setStatusText(target ? `已粘贴动作到 ${dayDisplay(target)}` : '已粘贴动作')
+    const targetWeek = weeks.find((week) => week.num === sel.wnum)
+    const displayedWeek = target && targetWeek ? {
+      ...targetWeek,
+      days: targetWeek.days.map((day) => day.dow === target.dow
+        ? { ...day, rows: [...day.rows, ...inserted] }
+        : day),
+    } : null
+    setStatusText(target && displayedWeek ? `已粘贴动作到 ${dayDisplay(displayedWeek, target)}` : '已粘贴动作')
   }, [sel, setWeeksWithHistory, weeks])
 
   const pasteSelectedRows = useCallback(async () => {
@@ -1248,7 +1255,16 @@ export function PlanEditor(props: PlanEditorProps) {
     }))
     setRowSelection(singleRowSelection(null))
     const target = weeks.find((week) => week.num === sel.wnum)?.days.find((day) => day.dow === sel.dow)
-    setStatusText(target ? `已粘贴到 ${dayDisplay(target)}` : '已粘贴')
+    const targetWeek = weeks.find((week) => week.num === sel.wnum)
+    const displayedTarget = target ? {
+      ...target,
+      rows: [...target.rows.filter((row) => row.hasLogs), ...clip.rows],
+    } : null
+    const displayedWeek = displayedTarget && targetWeek ? {
+      ...targetWeek,
+      days: targetWeek.days.map((day) => day.dow === displayedTarget.dow ? displayedTarget : day),
+    } : null
+    setStatusText(displayedTarget && displayedWeek ? `已粘贴到 ${dayDisplay(displayedWeek, displayedTarget)}` : '已粘贴')
   }, [pasteRowsIntoSelection, props.exerciseIndex, sel, setWeeksWithHistory, weeks])
 
   const undoWeeks = useCallback(() => {
@@ -1260,6 +1276,7 @@ export function PlanEditor(props: PlanEditorProps) {
     const prevStart = historyStartRef.current.pop() ?? null
     const currentStart = currentPlanStart.current
     currentPlanStart.current = prevStart
+    setPlanStartDate(prevStart)
     pendingPlanStart.current = prevStart === persistedPlanStart.current ? null : prevStart
     setWeeks((current) => {
       redoRef.current = [...redoRef.current.slice(-49), current]
@@ -1275,6 +1292,7 @@ export function PlanEditor(props: PlanEditorProps) {
     const nextStart = redoStartRef.current.pop() ?? null
     const currentStart = currentPlanStart.current
     currentPlanStart.current = nextStart
+    setPlanStartDate(nextStart)
     pendingPlanStart.current = nextStart === persistedPlanStart.current ? null : nextStart
     setWeeks((current) => {
       historyRef.current = [...historyRef.current.slice(-49), current]
@@ -1503,6 +1521,13 @@ export function PlanEditor(props: PlanEditorProps) {
     // structured prescription grid and participate in the publish input guard.
     // `aux` is reserved for explicitly imported notes-only actions.
     row.aux = false
+    const currentWeek = latestWeeks.current.find((week) => week.num === wnum)
+    const displayedWeek = currentWeek ? {
+      ...currentWeek,
+      days: currentWeek.days.map((day) => day.dow === dow
+        ? { ...day, rest: false, rows: [...day.rows, row] }
+        : day),
+    } : null
     setWeeksWithHistory((prev) => prev.map((week) => week.num !== wnum ? week : {
       ...week,
       days: week.days.map((day) => day.dow !== dow ? day : {
@@ -1514,7 +1539,8 @@ export function PlanEditor(props: PlanEditorProps) {
     setSel({ wnum, dow })
     setRowSelection(singleRowSelection({ wnum, dow, rowId: row.id }))
     setCellSelection({ weekNumber: wnum, dow, rowId: row.id, field: 'sets' })
-    setStatusText(`已添加「${row.name}」到 W${String(wnum).padStart(2, '0')} · D${dow + 1}`)
+    const ordinal = displayedWeek ? trainingDayOrdinal(displayedWeek, dow) : null
+    setStatusText(`已添加「${row.name}」到 W${String(wnum).padStart(2, '0')}${ordinal == null ? '' : ` · D${ordinal}`}`)
   }
 
   const handleClearDay = () => {
@@ -1532,25 +1558,6 @@ export function PlanEditor(props: PlanEditorProps) {
   }
 
   const [saving, setSaving] = useState(false)
-
-  const handleAnchorWeekdayChange = useCallback(async (next: number | null) => {
-    if (readOnly || anchorSaving || !props.onChangeAnchorWeekday) return
-    const previous = anchorWeekday
-    setAnchorWeekday(next)
-    setAnchorSaving(true)
-    setStatusText('正在更新 D1 周几…')
-    try {
-      await props.onChangeAnchorWeekday(next)
-      setAnchorWeekday(next)
-      setStatusText(next == null ? '已取消 D1 周几锚' : `D1 已设为 ${anchoredWeekday(next, 1)}`)
-    } catch (error) {
-      setAnchorWeekday(previous)
-      setStatusText('D1 周几更新失败 · 请重试')
-      throw error
-    } finally {
-      setAnchorSaving(false)
-    }
-  }, [anchorSaving, anchorWeekday, props.onChangeAnchorWeekday, readOnly])
 
   // --- 保存与草稿自动保存 --------------------------------------------------------------------
   // All persistence funnels through one serialized controller: the manual button, the debounced
@@ -1572,28 +1579,43 @@ export function PlanEditor(props: PlanEditorProps) {
     ? '已发布计划的周期与日期不可修改'
     : '计划内已有学员打卡动作，不能修改周期与日期'
 
-  const handleChangeStartDate = useCallback(async (nextStart: string) => {
-    if (!props.onChangeStartDate || calendarLocked || saving || publishing.current) throw new Error('CALENDAR_LOCKED')
+  const applyStartDate = useCallback(async (nextStart: string) => {
+    if (!props.onChangeStartDate || readOnly || saving || publishing.current
+      || calendarLocked) throw new Error('CALENDAR_LOCKED')
+    if (nextStart === currentPlanStart.current) return
     if (!(await saver.current.flush())) throw new Error('SAVE_FAILED')
+    const weeksAtRequest = latestWeeks.current
+    const hadUnsavedContent = unsavedRef.current
     setSaving(true)
     setStatusText('正在更新起始日期…')
     try {
       await props.onChangeStartDate(nextStart)
-      skipNextAutosave.current = true
       const nextWeeks = relabelWeeksForStartDate(latestWeeks.current, nextStart)
+      const contentChangedDuringRequest = latestWeeks.current !== weeksAtRequest
+      skipNextAutosave.current = !hadUnsavedContent && !contentChangedDuringRequest
       setWeeks(nextWeeks)
       currentPlanStart.current = nextStart
       persistedPlanStart.current = nextStart
+      setPlanStartDate(nextStart)
       pendingPlanStart.current = null
-      markMirrorCovered(mirrorContent(nextWeeks, nextStart, nextWeeks.length || props.weeksCount))
-      setStatusText(`草稿 · 起始日期已更新为 ${nextStart}`)
+      // The metadata PATCH does not persist row edits. Only advance the mirror's
+      // server baseline when the calendar change is the sole outstanding change.
+      if (!hadUnsavedContent && !contentChangedDuringRequest) {
+        markMirrorCovered(mirrorContent(nextWeeks, nextStart, nextWeeks.length || props.weeksCount))
+      }
+      setStatusText(`${published ? '已发布' : '草稿'} · 起始日期已更新为 ${nextStart}`)
     } catch (error) {
       setStatusText('起始日期更新失败 · 请重试')
       throw error
     } finally {
       setSaving(false)
     }
-  }, [calendarLocked, markMirrorCovered, props.onChangeStartDate, props.weeksCount, saving])
+  }, [calendarLocked, markMirrorCovered, props.onChangeStartDate, props.weeksCount, published, readOnly, saving])
+
+  const handleChangeStartDate = useCallback(
+    (nextStart: string) => applyStartDate(nextStart),
+    [applyStartDate],
+  )
 
   const handleChangePlanWeeks = useCallback(async (nextCount: number) => {
     if (!props.onChangePlanWeeks || calendarLocked || saving || publishing.current) throw new Error('CALENDAR_LOCKED')
@@ -1939,7 +1961,8 @@ export function PlanEditor(props: PlanEditorProps) {
 
   const handleImport = async (file: File) => {
     if (readOnly) return
-    if (!props.exerciseIndex || !props.planStartDate) {
+    const currentStart = currentPlanStart.current
+    if (!props.exerciseIndex || !currentStart) {
       setStatusText('导入失败 · 计划或动作库未就绪')
       return
     }
@@ -1976,7 +1999,7 @@ export function PlanEditor(props: PlanEditorProps) {
         days: Array.from({ length: 7 }, (_, day) => importer.parseDay(grid, block.contentRows, day, offset)),
       }))
       const sourceWeekCount = parsedWeeks.filter(hasParsedWeekContent).length
-      const { weeks: nextWeeks, startDate: importStart } = importer.buildWeeks(parsedWeeks, props.exerciseIndex, props.planStartDate)
+      const { weeks: nextWeeks, startDate: importStart } = importer.buildWeeks(parsedWeeks, props.exerciseIndex, currentStart)
 
       if (nextWeeks.length === 0) {
         window.alert('没识别出训练周，请确认选的是计划表')
@@ -1990,6 +2013,7 @@ export function PlanEditor(props: PlanEditorProps) {
       const markPastAsAssumedComplete = isPastISODate(importStart)
       setWeeksWithHistory(nextWeeks)
       currentPlanStart.current = importStart
+      setPlanStartDate(importStart)
       pendingPlanStart.current = importStart
       importedPastHistory.current = markPastAsAssumedComplete
       const targetWeek = nextWeeks.find((week) => week.isCurrent) ?? nextWeeks[0]
@@ -2098,7 +2122,7 @@ export function PlanEditor(props: PlanEditorProps) {
     if (!sel) return ''
     const wk = weeks.find((w) => w.num === sel.wnum)
     const d = wk?.days.find((x) => x.dow === sel.dow)
-    return d ? `${d.dowLabel} ${d.dateLabel}（第 ${sel.wnum} 周）` : ''
+    return d && wk ? `${dayDisplay(wk, d)}（第 ${sel.wnum} 周）` : ''
   })()
   const copyTargetHasLockedRows = (() => {
     if (!sel) return false
@@ -2157,11 +2181,11 @@ export function PlanEditor(props: PlanEditorProps) {
           }
         } : undefined}
         onSave={!readOnly && props.onSave ? handleSave : undefined} saving={saving}
-        onImport={!readOnly && props.exerciseIndex && props.planStartDate ? handleImport : undefined}
-        planStartDate={props.planStartDate}
+        onImport={!readOnly && props.exerciseIndex && planStartDate ? handleImport : undefined}
+        planStartDate={planStartDate ?? undefined}
         calendarLocked={calendarLocked || !props.onChangeStartDate}
         calendarLockedHint={calendarLocked ? calendarLockedHint : '当前模式不可修改计划日期'}
-        onChangeStartDate={props.planStartDate ? (props.onChangeStartDate ? handleChangeStartDate : async () => {}) : undefined}
+        onChangeStartDate={planStartDate ? (props.onChangeStartDate ? handleChangeStartDate : async () => {}) : undefined}
         onNewExercise={!readOnly && props.onCreateExercise ? () => openCreateExercise() : undefined}
         issueCount={readOnly ? 0 : issues.length} issueHint={issueHint} onJumpIssue={jumpToNextIssue}
         totalShiftDays={props.totalShiftDays}
@@ -2322,13 +2346,8 @@ export function PlanEditor(props: PlanEditorProps) {
                             rows: alignment?.rowsByWeek.get(wk.num) ?? new Map(),
                             badgeFor: weekBandBadge,
                             onQuickAdd: (slot) => quickAddAlignedExercise(wk.num, day.dow, slot),
-                            dayOrdinal: dayIndex + 1,
-                            weekdayLabel: anchoredWeekday(anchorWeekday, dayIndex + 1),
-                            anchorWeekday,
-                            anchorSaving,
-                            onAnchorWeekdayChange: props.onChangeAnchorWeekday
-                              ? (weekday) => { void handleAnchorWeekdayChange(weekday).catch(() => undefined) }
-                              : undefined,
+                            trainingDayOrdinal: trainingDayOrdinal(wk, day.dow),
+                            weekdayLabel: day.dowLabel,
                           }
                         })()}
                       />

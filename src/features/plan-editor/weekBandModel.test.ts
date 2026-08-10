@@ -2,10 +2,10 @@ import { describe, expect, it } from 'vitest'
 import type { DayCol, ExerciseRow, Week } from './types'
 import {
   alignWeeksByExercise,
-  anchoredWeekday,
   closestWeekToViewportCenter,
   orderWeeksByWeekBand,
   reorderWeekBandSkeleton,
+  trainingDayOrdinal,
 } from './weekBandModel'
 
 function row(id: string, exerciseId: string, isMain = true): ExerciseRow {
@@ -93,13 +93,7 @@ describe('week-band scroll spy', () => {
   })
 })
 
-describe('D1 weekday anchor', () => {
-  it('cycles past seven ordinal days and leaves unset anchors blank', () => {
-    expect(anchoredWeekday(1, 1)).toBe('周一')
-    expect(anchoredWeekday(7, 2)).toBe('周一')
-    expect(anchoredWeekday(3, 10)).toBe('周五')
-    expect(anchoredWeekday(null, 1)).toBeNull()
-  })
+describe('week-band mutations', () => {
   it('derives alignment and the logged-row lock from the weeks it is given (no stale snapshot)', () => {
     const stale = [
       week(1, [row('a1', 'a'), row('b1', 'b')]),
@@ -137,5 +131,24 @@ describe('D1 weekday anchor', () => {
     expect(aligned.main.map((slot) => slot.key)).toEqual(['name:低杆深蹲:0', 'name:卧推:0', 'row:w2c:0'])
     expect(aligned.rowsByWeek.get(1)?.get('name:低杆深蹲:0')?.id).toBe('w1a')
     expect(aligned.rowsByWeek.get(2)?.get('name:低杆深蹲:0')?.id).toBe('w2a')
+  })
+})
+
+describe('training-day display ordinal', () => {
+  it('skips rest positions without changing their stored dow values', () => {
+    const sparse = week(1, [])
+    sparse.days = Array.from({ length: 7 }, (_, dow): DayCol => ({
+      dow,
+      dowLabel: `周${dow + 1}`,
+      dateLabel: `1/${dow + 1}`,
+      rest: dow !== 1 && dow !== 5,
+      rows: dow === 1 ? [row('a', 'squat')] : dow === 5 ? [row('b', 'bench')] : [],
+    }))
+
+    expect(trainingDayOrdinal(sparse, 0)).toBeNull()
+    expect(trainingDayOrdinal(sparse, 1)).toBe(1)
+    expect(trainingDayOrdinal(sparse, 4)).toBeNull()
+    expect(trainingDayOrdinal(sparse, 5)).toBe(2)
+    expect(sparse.days.map((day) => day.dow)).toEqual([0, 1, 2, 3, 4, 5, 6])
   })
 })

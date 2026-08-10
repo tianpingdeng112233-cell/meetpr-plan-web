@@ -1,4 +1,4 @@
-import type { ExerciseRow, IntensityValueMode, RowIntensity, SetBox, WeightMode } from './types'
+import type { DisplayWeightMode, ExerciseRow, IntensityValueMode, RowIntensity, SetBox, WeightMode } from './types'
 
 export function isSingleValueIntensity(
   intensity: RowIntensity | null,
@@ -23,12 +23,11 @@ export function rowIntensity(row: ExerciseRow): RowIntensity | null {
   return null
 }
 
-/** Selector-only compatibility projection for old pure-weight rows. Persistence
- * must keep using `rowIntensity`, so merely opening one never migrates load_mode. */
+/** Strength-column projection. Weight-only wire modes deliberately render as
+ * "no intensity" while persistence keeps using `rowIntensity` unchanged. */
 export function displayedRowIntensity(row: ExerciseRow): RowIntensity | null {
-  return rowIntensity(row) ?? (row.legacyWeightSource
-    ? { mode: 'fixed_weight', value: '', high: '' }
-    : null)
+  const intensity = rowIntensity(row)
+  return intensity?.mode === 'weight_range' || intensity?.mode === 'fixed_weight' ? null : intensity
 }
 
 export function rowWeightBoxes(row: ExerciseRow): SetBox[] {
@@ -38,10 +37,30 @@ export function rowWeightBoxes(row: ExerciseRow): SetBox[] {
   return row.boxes
 }
 
-export function inferredWeightMode(row: ExerciseRow): WeightMode {
-  if (row.weightMode) return row.weightMode
+function weightModeForBoxes(row: ExerciseRow): WeightMode {
   const values = rowWeightBoxes(row).map((box) => box.empty || box.val.trim() === '' ? '<empty>' : box.val.trim())
   return new Set(values).size > 1 ? 'per_set' : 'uniform'
+}
+
+export function inferredWeightMode(row: ExerciseRow): WeightMode {
+  if (row.weightMode) return row.weightMode
+  return weightModeForBoxes(row)
+}
+
+/** Four weight-column modes. The backend's weight_range/fixed_weight values
+ * remain in row.intensity for wire compatibility, but their UI belongs here. */
+export function displayedWeightMode(row: ExerciseRow): DisplayWeightMode {
+  if (row.mode === 'bodyweight') return 'bodyweight'
+  const intensity = rowIntensity(row)
+  if (intensity?.mode === 'weight_range') return 'weight_range'
+  // Stored fixed_weight and old pure-kg rows predate the UI's explicit
+  // uniform/per-set choice. Their wire values are authoritative: a differing
+  // set must stay individually visible and editable instead of being folded
+  // into the first set by the fixed-weight presentation.
+  if (intensity?.mode === 'fixed_weight' || row.legacyWeightSource) {
+    return weightModeForBoxes(row) === 'per_set' ? 'per_set' : 'fixed_weight'
+  }
+  return inferredWeightMode(row) === 'per_set' ? 'per_set' : 'fixed_weight'
 }
 
 /** Concrete pct/rpe/rir values, one slot per set. Older row-level shapes are

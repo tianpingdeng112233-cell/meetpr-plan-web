@@ -160,12 +160,12 @@ describe('spec 034 dual intensity and weight guard', () => {
     }))?.invalidIntensityIndexes).toEqual([0])
   })
 
-  it('enforces fixed-weight and weight-range matrix rules before API writes', () => {
+  it('keeps the any-intensity-or-weight gate without cross-column weight-mode rules', () => {
     const fixed = getBoundRowInputIssue(row({
       intensity: { mode: 'fixed_weight', value: '', high: '' },
       boxes: [{ val: '', empty: true }],
     }))
-    expect(fixed?.reasons).toContain(INPUT_GUARD_REASONS.fixedWeight)
+    expect(fixed).toMatchObject({ hasIncomplete: true, reasons: [] })
 
     expect(getBoundRowInputIssue(row({
       intensity: { mode: 'fixed_weight', value: '', high: '' },
@@ -176,7 +176,7 @@ describe('spec 034 dual intensity and weight guard', () => {
       intensity: { mode: 'weight_range', value: '165', high: '175' },
       boxes: [{ val: '170', empty: false }],
     }))
-    expect(conflict?.reasons).toContain(INPUT_GUARD_REASONS.weightRangeConflict)
+    expect(conflict).toBeNull()
   })
 
   it.each([

@@ -19,8 +19,6 @@ export const INPUT_GUARD_REASONS = {
   rir: `RIR 需 ${RIR_MIN}–${RIR_MAX} 的整数`,
   weightRange: `重量区间需两值有效且下限小于上限`,
   rpeRange: `RPE 区间需 1–10 半分档且下限小于上限`,
-  fixedWeight: '固定重量必须为每组填写重量',
-  weightRangeConflict: '重量区间不能同时填写重量列',
   reps: `次数需 ${REPS_MIN}–${REPS_MAX}`,
 } as const
 
@@ -166,13 +164,6 @@ export function getBoundRowInputIssue(row: ExerciseRow): BoundRowInputIssue | nu
   const invalidWeightIndexes = weights.flatMap((box, index) => (
     !box.empty && box.val.trim() !== '' && !isValidWeight(box.val) ? [index] : []
   ))
-  const anyWeight = weights.some((box) => !box.empty && box.val.trim() !== '')
-  const missingWeightIndexes = weights.flatMap((box, index) => (
-    box.empty || box.val.trim() === '' ? [index] : []
-  ))
-  const rangeConflict = intensity?.mode === 'weight_range' && anyWeight
-  const fixedMissingWeight = intensity?.mode === 'fixed_weight' && missingWeightIndexes.length > 0
-
   const rowIntensityPresent = intensity != null && !singleIntensity && intensity.mode !== 'fixed_weight'
     && intensity.value.trim() !== ''
     && (intensity.mode !== 'weight_range' && intensity.mode !== 'rpe_range' || intensity.high.trim() !== '')
@@ -183,10 +174,10 @@ export function getBoundRowInputIssue(row: ExerciseRow): BoundRowInputIssue | nu
     const hasWeight = !!weights[index] && !weights[index].empty && weights[index].val.trim() !== ''
     return !hasIntensity && !hasWeight
   })
-  const hasIncomplete = missingReps || missingSets || incompleteSet || fixedMissingWeight
+  const hasIncomplete = missingReps || missingSets || incompleteSet
   const allInvalidStrengthIndexes = [...new Set([...invalidWeightIndexes, ...invalidIntensityIndexes])]
 
-  if (!hasIncomplete && !invalidReps && !invalidIntensity && !rangeConflict && invalidWeightIndexes.length === 0) return null
+  if (!hasIncomplete && !invalidReps && !invalidIntensity && invalidWeightIndexes.length === 0) return null
 
   const reasons: InputGuardReason[] = []
   if (invalidReps) reasons.push(INPUT_GUARD_REASONS.reps)
@@ -199,9 +190,6 @@ export function getBoundRowInputIssue(row: ExerciseRow): BoundRowInputIssue | nu
     if (reason) reasons.push(reason)
   }
   if (invalidWeightIndexes.length > 0) reasons.push(INPUT_GUARD_REASONS.kg)
-  if (fixedMissingWeight) reasons.push(INPUT_GUARD_REASONS.fixedWeight)
-  if (rangeConflict) reasons.push(INPUT_GUARD_REASONS.weightRangeConflict)
-
   return {
     hasIncomplete,
     invalidReps,

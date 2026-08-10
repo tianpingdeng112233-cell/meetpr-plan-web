@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { PlanExerciseResponse, PlanSetResponse, PlanWithChildren } from '../../api/types'
 import { mapPlanToWeeks, type Catalog } from './mapping'
-import { displayedRowIntensity, rowIntensity } from './intensityModel'
+import { displayedRowIntensity, displayedWeightMode, rowIntensity } from './intensityModel'
 
 function set(id: string, patch: Partial<PlanSetResponse>): PlanSetResponse {
   return {
@@ -61,6 +61,18 @@ describe('spec 034 plan read reconstruction', () => {
         set('weight-1', { load_mode: null, target_weight: '100.0', target_value: '100' }),
         set('weight-2', { load_mode: null, target_weight: '100.0', target_value: '100' }),
       ]),
+      exercise('fixed-wire', [
+        set('fixed-1', { load_mode: 'fixed_weight', target_weight: '120', target_value: '120' }),
+        set('fixed-2', { load_mode: 'fixed_weight', target_weight: '120', target_value: '120' }),
+      ]),
+      exercise('fixed-wire-per-set', [
+        set('fixed-per-set-1', { load_mode: 'fixed_weight', target_weight: '170', target_value: '170' }),
+        set('fixed-per-set-2', { load_mode: 'fixed_weight', target_weight: '172.5', target_value: '172.5' }),
+      ]),
+      exercise('legacy-weight-per-set', [
+        set('legacy-weight-1', { load_mode: null, target_weight: null, target_value: '170' }),
+        set('legacy-weight-2', { load_mode: null, target_weight: null, target_value: '172.5' }),
+      ]),
     ]
     const catalog: Catalog = new Map(exercises.map((item) => [item.exercise_id, { name: item.exercise_id, custom: false }]))
 
@@ -80,7 +92,28 @@ describe('spec 034 plan read reconstruction', () => {
       boxes: [{ val: '100', empty: false }, { val: '100', empty: false }],
     })
     expect(rowIntensity(rows[2])).toBeNull()
-    expect(displayedRowIntensity(rows[2])).toEqual({ mode: 'fixed_weight', value: '', high: '' })
+    expect(displayedRowIntensity(rows[2])).toBeNull()
+    expect(displayedWeightMode(rows[1])).toBe('weight_range')
+    expect(displayedWeightMode(rows[2])).toBe('fixed_weight')
+    expect(rows[3]).toMatchObject({
+      intensity: { mode: 'fixed_weight', value: '', high: '' },
+      boxes: [{ val: '120', empty: false }, { val: '120', empty: false }],
+    })
+    expect(displayedRowIntensity(rows[3])).toBeNull()
+    expect(displayedWeightMode(rows[3])).toBe('fixed_weight')
+    expect(rows[4]).toMatchObject({
+      intensity: { mode: 'fixed_weight', value: '', high: '' },
+      weightMode: 'per_set',
+      boxes: [{ val: '170', empty: false }, { val: '172.5', empty: false }],
+    })
+    expect(displayedWeightMode(rows[4])).toBe('per_set')
+    expect(rows[5]).toMatchObject({
+      legacyWeightSource: true,
+      intensity: null,
+      weightMode: 'per_set',
+      boxes: [{ val: '170', empty: false }, { val: '172.5', empty: false }],
+    })
+    expect(displayedWeightMode(rows[5])).toBe('per_set')
   })
 
   it('keeps old load_mode-null RPE sets in the lossless compatibility shape', () => {

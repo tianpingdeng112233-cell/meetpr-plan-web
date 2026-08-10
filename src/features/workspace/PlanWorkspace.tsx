@@ -775,7 +775,6 @@ export function PlanWorkspace({ onLogout, me }: Props) {
         exerciseStatsOverview={rosterDataByStudent[studentId]?.overview}
         planName={loaded?.plan.name ?? '（暂无计划）'}
         planStartDate={loaded?.plan.start_date}
-        anchorWeekday={loaded?.plan.anchor_weekday ?? null}
         planStatus={loaded?.plan.status}
         totalShiftDays={loaded?.plan.total_shift_days}
         readOnly={historicalReadOnly}
@@ -838,12 +837,18 @@ export function PlanWorkspace({ onLogout, me }: Props) {
           updateStudentPlans(updated.trainee_id, (prev) => prev.map((p) => (p.id === updated.id ? updated : p)))
           setLoaded((prev) => (prev && prev.plan.id === updated.id ? { ...prev, plan: { ...prev.plan, ...updated } } : prev))
         } : undefined}
-        onChangeStartDate={loaded ? async (startDate) => {
-          if (loaded.plan.status !== 'draft') throw new Error('PLAN_NOT_DRAFT')
-          const updated = await patchPlan(loaded.plan.id, { start_date: startDate })
-          updateStudentPlans(updated.trainee_id, (prev) => prev.map((plan) => plan.id === updated.id ? updated : plan))
-          setLoaded((prev) => prev && prev.plan.id === updated.id
-            ? { ...prev, plan: { ...prev.plan, ...updated } }
+        onChangeStartDate={loaded && planContentEditable ? async (startDate) => {
+          const calendar = {
+            start_date: startDate,
+            end_date: planEndISO(startDate, loaded.plan.plan_weeks),
+          }
+          const updated = await patchPlan(loaded.plan.id, calendar)
+          const nextPlan = { ...updated, ...calendar }
+          updateStudentPlans(loaded.plan.trainee_id, (prev) => prev.map((plan) => (
+            plan.id === loaded.plan.id ? { ...plan, ...nextPlan } : plan
+          )))
+          setLoaded((prev) => prev && prev.plan.id === loaded.plan.id
+            ? { ...prev, plan: { ...prev.plan, ...nextPlan } }
             : prev)
         } : undefined}
         onChangePlanWeeks={loaded ? async (planWeeks) => {
@@ -860,13 +865,6 @@ export function PlanWorkspace({ onLogout, me }: Props) {
                 },
                 weeksCount: planWeeks,
               }
-            : prev)
-        } : undefined}
-        onChangeAnchorWeekday={loaded && planContentEditable ? async (anchorWeekday) => {
-          const updated = await patchPlan(loaded.plan.id, { anchor_weekday: anchorWeekday })
-          updateStudentPlans(updated.trainee_id, (prev) => prev.map((plan) => plan.id === updated.id ? updated : plan))
-          setLoaded((prev) => prev && prev.plan.id === updated.id
-            ? { ...prev, plan: { ...prev.plan, ...updated, anchor_weekday: updated.anchor_weekday ?? anchorWeekday } }
             : prev)
         } : undefined}
         onRenameStudent={studentId ? async (name) => {
