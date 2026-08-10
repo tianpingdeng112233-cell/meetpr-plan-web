@@ -278,6 +278,8 @@ export interface PlanResponse {
   start_date: string
   end_date: string
   plan_weeks: number
+  /** Display-only D1 weekday anchor: 1=Monday … 7=Sunday. */
+  anchor_weekday?: number | null
   source: string
   source_template_id: string | null
   status: PlanStatus

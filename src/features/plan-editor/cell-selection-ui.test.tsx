@@ -128,7 +128,7 @@ describe('plan editor cell selection UI', () => {
     expect(host.querySelector('.plan-formula-bar output')?.textContent).toBe('/')
   })
 
-  it('clears old-week selections when jumping to another visible week', () => {
+  it('clears old-week selections when a week tab activates another week', () => {
     act(() => root.render(
       <PlanEditor initialWeeks={[week(31), week(32)]} weeksCount={2} studentName="学员" planName="计划" />,
     ))
@@ -137,12 +137,9 @@ describe('plan editor cell selection UI', () => {
     act(() => week31Name.dispatchEvent(new MouseEvent('click', { bubbles: true })))
     expect(host.querySelector('[data-cell-reference]')?.textContent).toBe('A1 · W31')
 
-    const jump = [...host.querySelectorAll<HTMLElement>('span')]
-      .find((element) => element.childNodes[0]?.textContent?.trim() === '跳到周')!
-    act(() => jump.dispatchEvent(new MouseEvent('click', { bubbles: true })))
-    const week32Jump = [...host.querySelectorAll<HTMLElement>('.popitem')]
+    const week32Tab = [...host.querySelectorAll<HTMLButtonElement>('.week-tabs button')]
       .find((element) => element.textContent === 'W32')!
-    act(() => week32Jump.dispatchEvent(new MouseEvent('click', { bubbles: true })))
+    act(() => week32Tab.dispatchEvent(new MouseEvent('click', { bubbles: true })))
 
     expect(host.querySelector('.day.sel')).toBeNull()
     expect(host.querySelector('.exrow.row-sel')).toBeNull()

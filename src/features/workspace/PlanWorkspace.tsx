@@ -755,6 +755,7 @@ export function PlanWorkspace({ onLogout, me }: Props) {
         exerciseStatsOverview={rosterDataByStudent[studentId]?.overview}
         planName={loaded?.plan.name ?? '（暂无计划）'}
         planStartDate={loaded?.plan.start_date}
+        anchorWeekday={loaded?.plan.anchor_weekday ?? null}
         planStatus={loaded?.plan.status}
         totalShiftDays={loaded?.plan.total_shift_days}
         readOnly={historicalReadOnly}
@@ -839,6 +840,13 @@ export function PlanWorkspace({ onLogout, me }: Props) {
                 },
                 weeksCount: planWeeks,
               }
+            : prev)
+        } : undefined}
+        onChangeAnchorWeekday={loaded && planContentEditable ? async (anchorWeekday) => {
+          const updated = await patchPlan(loaded.plan.id, { anchor_weekday: anchorWeekday })
+          updateStudentPlans(updated.trainee_id, (prev) => prev.map((plan) => plan.id === updated.id ? updated : plan))
+          setLoaded((prev) => prev && prev.plan.id === updated.id
+            ? { ...prev, plan: { ...prev.plan, ...updated, anchor_weekday: updated.anchor_weekday ?? anchorWeekday } }
             : prev)
         } : undefined}
         onRenameStudent={studentId ? async (name) => {

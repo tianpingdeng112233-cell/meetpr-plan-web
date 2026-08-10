@@ -151,6 +151,16 @@ export class ExerciseIndex {
     } : null
   }
 
+  /** Catalog fields used by the frozen week-band skeleton badge. */
+  bandMetadataById(id: string): Pick<ExerciseResponse, 'exercise_type' | 'main_lift_family' | 'muscle_groups'> | null {
+    const exercise = this.byId.get(id)
+    return exercise ? {
+      exercise_type: exercise.exercise_type,
+      main_lift_family: exercise.main_lift_family,
+      muscle_groups: exercise.muscle_groups,
+    } : null
+  }
+
   /** Metadata needed by the editor's inline history/e1RM information row. */
   infoMetadataById(id: string): {
     mainLiftFamily: ExerciseResponse['main_lift_family']

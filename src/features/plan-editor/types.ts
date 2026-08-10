@@ -83,8 +83,9 @@ export type ColKey = 'name' | 'sets' | 'reps' | 'int' | 'weight' | 'note'
 export type ColWidths = Record<ColKey, number>
 
 export const COLS: ColKey[] = ['name', 'sets', 'reps', 'int', 'weight', 'note']
-export const COL_DEFAULTS: ColWidths = { name: 92, sets: 26, reps: 26, int: 142, weight: 118, note: 36 }
-export const COL_MIN: ColWidths = { name: 60, sets: 22, reps: 22, int: 112, weight: 82, note: 28 }
+/** Focused week-band defaults: one prescription spans the available canvas. */
+export const COL_DEFAULTS: ColWidths = { name: 156, sets: 40, reps: 48, int: 170, weight: 150, note: 80 }
+export const COL_MIN: ColWidths = { name: 92, sets: 28, reps: 32, int: 112, weight: 82, note: 48 }
 
 /** Derived: number of working sets shown in the 组 column. */
 export function setCount(row: ExerciseRow): string {

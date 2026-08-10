@@ -2727,6 +2727,154 @@ textarea {
 .exrow:hover .rowdel { opacity: 1; }
 .rowdel:hover { background: var(--brand-red-soft); color: var(--brand-red); }
 
+/* Spec 037: focused horizontal week band. Every slot has the same width so
+   virtual placeholders preserve exact scroll geometry. */
+.week-tabs {
+  height: 40px;
+  padding: 0 14px;
+  box-sizing: border-box;
+  display: flex;
+  align-items: end;
+  gap: 3px;
+  flex: none;
+  overflow-x: auto;
+  overflow-y: hidden;
+  border-bottom: 1px solid var(--bd);
+  background: var(--card-bg);
+  scrollbar-width: thin;
+}
+.week-tabs button {
+  height: 32px;
+  padding: 0 11px;
+  flex: none;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  color: var(--mut);
+  background: transparent;
+  font: 600 11px var(--font-mono);
+  cursor: pointer;
+}
+.week-tabs button:hover { color: var(--txt); background: var(--panel-bg); }
+.week-tabs button.active { border-bottom-color: var(--ink); color: var(--ink); background: var(--ink-soft); }
+.week-tabs .week-tab-add { margin-left: 5px; border: 1px dashed var(--bd); border-bottom-style: dashed; border-radius: var(--r-sm) var(--r-sm) 0 0; font-family: var(--font-sans); }
+.week-tabs button:disabled { opacity: .42; cursor: default; }
+
+.week-band-track {
+  --week-band-width: clamp(760px, calc(100vw - 360px), 920px);
+  width: max-content;
+  min-height: 100%;
+  display: flex;
+  align-items: flex-start;
+  background: var(--page-bg);
+}
+.week-band-slot {
+  width: var(--week-band-width);
+  min-width: var(--week-band-width);
+  flex: 0 0 var(--week-band-width);
+  border-top: 0;
+  border-right: 1px solid var(--bd);
+  box-sizing: border-box;
+  scroll-snap-align: start;
+}
+.weekband-spacer { min-height: 1px; align-self: stretch; contain: strict; }
+.week-band-track .weekrow { display: flex; flex-direction: column; align-items: stretch; }
+.week-band-track .day {
+  width: 100%;
+  min-width: 100%;
+  border-right: 0;
+  border-bottom: 1px solid var(--bd);
+  box-sizing: border-box;
+}
+.week-band-track .day.restday { width: 100%; min-width: 100%; display: block; }
+.week-band-track .dayhead,
+.week-band-track .restday .dayhead {
+  height: 88px;
+  min-height: 88px;
+  padding: 7px 9px;
+  align-items: stretch;
+  overflow: visible;
+}
+.dayhead-weekday {
+  padding: 1px 5px;
+  border: 1px solid var(--tint-bd);
+  border-radius: 999px;
+  color: var(--sec);
+  font: 600 9px var(--font-mono);
+}
+.anchor-weekday-select {
+  height: 21px;
+  max-width: 78px;
+  border: 1px solid var(--tint-bd);
+  border-radius: var(--r-sm);
+  color: var(--ink);
+  background: var(--card-bg);
+  font: 600 9px var(--font-sans);
+  cursor: pointer;
+}
+.dayhead-actions { margin-top: auto; display: flex; gap: 5px; }
+.dayhead-actions button {
+  height: 20px;
+  padding: 0 6px;
+  border: 1px solid var(--tint-bd);
+  border-radius: var(--r-sm);
+  color: var(--sec);
+  background: var(--card-bg);
+  font: 500 9px var(--font-sans);
+  cursor: pointer;
+}
+.dayhead-actions button:disabled { opacity: .4; cursor: default; }
+.week-band-day .daygrid { width: 100% !important; min-width: 0; }
+.week-band-day .gridhead,
+.week-band-day .exercise-row-main { min-width: max-content; }
+.week-band-day .exercise-row-main { height: 58px; min-height: 58px; }
+.week-band-day .exercise-row-main > .gcell { height: 58px; min-height: 58px; overflow: hidden; }
+.week-band-day .tierhead { height: 28px; min-height: 28px; }
+.week-band-frozen {
+  position: sticky;
+  z-index: 9;
+  flex: none;
+  border-right: 1px solid var(--line);
+  background: var(--card-bg);
+}
+.gridhead .week-band-frozen { z-index: 11; background: var(--tint) !important; }
+.week-band-index { left: 0; justify-content: center; color: var(--faint); font: 500 9px var(--font-mono); }
+.week-band-target { left: 28px; }
+.week-band-day [data-c="name"] { position: sticky; left: 104px; z-index: 8; flex: none; border-right: 1px solid var(--bd); background: var(--card-bg); }
+.week-band-day .gridhead [data-c="name"] { z-index: 10; background: var(--tint); }
+.week-band-badge {
+  max-width: 66px;
+  padding: 2px 6px;
+  overflow: hidden;
+  border: 1px solid var(--bd);
+  border-radius: 999px;
+  color: var(--sec);
+  background: var(--panel-bg);
+  font: 600 9px var(--font-sans);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.week-band-badge.squat { border-color: color-mix(in srgb, #276fbf 36%, var(--bd)); color: #276fbf; background: color-mix(in srgb, #276fbf 9%, var(--card-bg)); }
+.week-band-badge.bench { border-color: color-mix(in srgb, #18855b 36%, var(--bd)); color: #18855b; background: color-mix(in srgb, #18855b 9%, var(--card-bg)); }
+.week-band-badge.deadlift { border-color: color-mix(in srgb, #f5a623 45%, var(--bd)); color: #a96700; background: color-mix(in srgb, #f5a623 11%, var(--card-bg)); }
+.week-band-empty-row {
+  width: 100%;
+  padding: 0;
+  display: block;
+  border: 0;
+  border-bottom: 1px solid var(--line-2);
+  color: var(--faint);
+  background: var(--card-bg);
+  text-align: left;
+  cursor: pointer;
+}
+.week-band-empty-row:hover { background: var(--ink-soft); }
+.week-band-empty-row:disabled { cursor: default; }
+.week-band-empty-name { color: var(--faint); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.week-band-empty-prescription { height: 58px; padding: 0 12px; box-sizing: border-box; display: flex; align-items: center; color: var(--faint); font: 500 10px var(--font-mono); }
+.week-band-rest-empty { height: 58px; display: grid; place-items: center; color: var(--faint); background: var(--panel-bg); font: 500 10px var(--font-mono); letter-spacing: .18em; }
+.week-band-track .weekband-head { height: 40px; min-height: 40px; }
+.scroller { overscroll-behavior: contain; }
+
 /* Filled prescription cells that fail the shared plan-editor input guard. */
 .guard-invalid {
   border-color: var(--bad) !important;

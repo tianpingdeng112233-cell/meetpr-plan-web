@@ -24,7 +24,14 @@ export const getPlan = (planId: string) => api.get<PlanWithChildren>(`/plans/${p
 export const createPlan = (body: CreatePlanBody) => api.post<PlanResponse>('/plans', body)
 export const patchPlan = (
   planId: string,
-  body: { name?: string; start_date?: string; end_date?: string; plan_weeks?: number; status?: 'completed' },
+  body: {
+    name?: string
+    start_date?: string
+    end_date?: string
+    plan_weeks?: number
+    anchor_weekday?: number | null
+    status?: 'completed'
+  },
 ) => api.patch<PlanResponse>(`/plans/${planId}`, body)
 export const deletePlan = (planId: string) => api.del<void>(`/plans/${planId}`)
 export const publishPlan = (planId: string) => api.post<PlanResponse>(`/plans/${planId}/publish`)
