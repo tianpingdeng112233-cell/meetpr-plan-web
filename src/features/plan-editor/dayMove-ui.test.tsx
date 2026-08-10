@@ -173,7 +173,7 @@ describe('whole-day column dragging', () => {
     expect(confirm).toHaveBeenCalledOnce()
     expect(dayAt(host, 1, 2).querySelector('[data-rowid="squat"]')).not.toBeNull()
     expect(host.querySelector('[data-shift-badge]')).toBeNull()
-    expect(dayAt(host, 1, 2).textContent).toContain('周三')
+    expect(dayAt(host, 1, 2).textContent).toContain('D3')
     expect(dayAt(host, 1, 2).textContent).toContain('7/22')
 
     act(() => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', metaKey: true, bubbles: true })))

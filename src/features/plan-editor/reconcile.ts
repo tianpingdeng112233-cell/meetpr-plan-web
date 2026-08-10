@@ -5,7 +5,7 @@
 // and their set/history links are never touched.
 
 import type { Week, DayCol, ExerciseRow, IntensityValueMode, RowIntensity, SetBox, WeightMode } from './types'
-import { isBoundNoSets, isContentfulUnbound } from './types'
+import { isBoundNoSets, isContentfulUnbound, isRestDay } from './types'
 import type {
   PlanWithChildren, PlanDayResponse, PlanExerciseResponse, CreatePlanSetBody,
   BatchPlanDayBody, BatchPlanDaysBody, SetType,
@@ -196,7 +196,12 @@ function rowToDesired(row: ExerciseRow): DesiredExercise | null {
       }
     })
   }
-  return { exercise_id: row.exerciseId, is_main_lift: row.isMain, notes: row.note || null, sets }
+  return {
+    exercise_id: row.exerciseId,
+    is_main_lift: row.isMain,
+    notes: row.note || null,
+    sets,
+  }
 }
 
 function canonicalSet(set: CreatePlanSetBody | PlanExerciseResponse['sets'][number]): unknown[] {
@@ -281,7 +286,7 @@ function dayAt(weeks: Week[], weekNumber: number, dow: number): DayCol | undefin
 }
 
 function desiredEntries(day: DayCol | undefined, countSkipped: () => void): DesiredEntry[] {
-  if (!day || day.rest) return []
+  if (!day || isRestDay(day)) return []
   const entries: DesiredEntry[] = []
   for (const row of day.rows) {
     if (!row.hasLogs && row.exerciseId && isBoundNoSets(row)) {

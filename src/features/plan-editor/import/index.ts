@@ -689,7 +689,7 @@ export function buildWeeks(
         dateLabel: planDayDateLabel(effectiveStart, weekNumber, dow),
         shiftedToDate: null,
         shiftBadge: null,
-        rest: rows.length === 0 || parsedDay?.rest === true,
+        rest: rows.length === 0,
         rows,
       })
     }

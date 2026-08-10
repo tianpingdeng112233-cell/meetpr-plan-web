@@ -2,6 +2,7 @@ import { act, useEffect } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AuthUser, ChatConversation, ChatMessage, CoachBindRequest, ExerciseResponse, PlanResponse, PlanWithChildren, StudentVideo } from '../../api/types'
+import { ApiException } from '../../api/client'
 import type { Week } from '../plan-editor/types'
 import { setRefFirstLine } from '../chat/setRef'
 
@@ -10,6 +11,8 @@ const api = vi.hoisted(() => ({
   getStudentPlans: vi.fn(),
   getPlan: vi.fn(),
   publishPlan: vi.fn(),
+  createPlan: vi.fn(),
+  patchPlan: vi.fn(),
   getStudentOnboarding: vi.fn(),
   getBindRequests: vi.fn(),
   getStudentVideos: vi.fn(),
@@ -43,8 +46,8 @@ vi.mock('../../api/plans', () => ({
   getPlan: api.getPlan,
   getStudentOnboarding: api.getStudentOnboarding,
   publishPlan: api.publishPlan,
-  createPlan: vi.fn(),
-  patchPlan: vi.fn(),
+  createPlan: api.createPlan,
+  patchPlan: api.patchPlan,
   markImportedHistory: vi.fn(),
   renameCoachStudent: vi.fn(),
   deletePlan: vi.fn(),
@@ -181,7 +184,7 @@ function plan(note: string, status: PlanWithChildren['status'] = 'draft'): PlanW
       shifted_to_date: null,
       exercises: [{
         id: 'plan-exercise', plan_day_id: 'day', exercise_id: 'exercise', is_main_lift: true,
-        sort_order: 0, notes: note, sets: [{
+        sort_order: 0, target: null, notes: note, sets: [{
           id: 'set', plan_exercise_id: 'plan-exercise', set_number: 1, target_reps: 5,
           target_reps_max: null, intensity_mode: 'weight', target_value: '100', set_type: 'working',
           rest_seconds: null, coach_note: null, created_at: '2026-01-01T00:00:00Z',
@@ -330,6 +333,58 @@ describe('PlanWorkspace editor remount', () => {
     vi.clearAllMocks()
     vi.restoreAllMocks()
   })
+
+  async function submitMondayPlan(): Promise<void> {
+    await act(async () => {
+      root.render(<PlanWorkspace onLogout={vi.fn()} me={me} />)
+      await settle()
+    })
+    await act(async () => clickButton(host, '新建计划'))
+    const startDate = host.querySelector<HTMLInputElement>('[aria-label="开始日期"]')!
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(startDate, '2026-08-10')
+      startDate.dispatchEvent(new Event('change', { bubbles: true }))
+    })
+    await act(async () => {
+      clickButton(host, '创建计划')
+      await settle()
+    })
+  }
+
+  it('sends the selected D1 weekday in the create-plan request', async () => {
+    const created = studentPlan({ id: 'new-plan', studentId: 'student', name: '新计划', startDate: '2026-08-10' })
+    api.getStudentPlans.mockResolvedValue([])
+    api.createPlan.mockResolvedValue(created)
+    api.getPlan.mockResolvedValue(created)
+
+    await submitMondayPlan()
+
+    expect(api.createPlan).toHaveBeenCalledTimes(1)
+    expect(api.createPlan).toHaveBeenCalledWith(expect.objectContaining({
+      start_date: '2026-08-10',
+      anchor_weekday: 1,
+    }))
+    expect(api.patchPlan).not.toHaveBeenCalled()
+  }, 15_000)
+
+  it('falls back to legacy create then patches the weekday when create validation rejects anchor_weekday', async () => {
+    const created = studentPlan({ id: 'legacy-plan', studentId: 'student', name: '新计划', startDate: '2026-08-10' })
+    api.getStudentPlans.mockResolvedValue([])
+    api.createPlan
+      .mockRejectedValueOnce(new ApiException(400, 'VALIDATION_ERROR', {
+        issues: [{ path: ['body', 'anchor_weekday'], message: 'unexpected field' }],
+      }))
+      .mockResolvedValueOnce(created)
+    api.patchPlan.mockResolvedValue({ ...created, anchor_weekday: 1 })
+    api.getPlan.mockResolvedValue({ ...created, anchor_weekday: 1 })
+
+    await submitMondayPlan()
+
+    expect(api.createPlan).toHaveBeenCalledTimes(2)
+    expect(api.createPlan.mock.calls[0]?.[0]).toEqual(expect.objectContaining({ anchor_weekday: 1 }))
+    expect(api.createPlan.mock.calls[1]?.[0]).not.toHaveProperty('anchor_weekday')
+    expect(api.patchPlan).toHaveBeenCalledWith('legacy-plan', { anchor_weekday: 1 })
+  }, 15_000)
 
   it('re-fetches the current plan and mounts the editor from the latest server weeks', async () => {
     api.getPlan
@@ -572,6 +627,7 @@ describe('PlanWorkspace editor remount', () => {
           exercise_id: exercise.id,
           is_main_lift: true,
           sort_order: 0,
+          target: null,
           notes: null,
           sets: [{
             id: 'tonnage-set',

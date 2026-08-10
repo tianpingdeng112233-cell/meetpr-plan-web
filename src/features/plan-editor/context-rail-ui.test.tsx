@@ -1,9 +1,8 @@
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { StudentOnboardingProfile } from '../../api/types'
+import type { ExerciseStatsDetail, StudentOnboardingProfile } from '../../api/types'
 import { PlanEditor } from './PlanEditor'
-import { RAIL_MODE_KEY } from './components/ContextRail'
 import type { DayCol, ExerciseRow, Week } from './types'
 
 const api = vi.hoisted(() => ({ getExerciseStats: vi.fn() }))
@@ -16,7 +15,7 @@ function row(id = 'squat', name = '竞技深蹲', isMain = true): ExerciseRow {
   return {
     id, serverRowId: null, serverSortOrder: null, hasLogs: false, conflictMessage: null,
     exerciseId: id, name, ku: true, custom: false, isMain, aux: false,
-    reps: '—', mode: 'kg', boxes: [], note: '',
+    reps: '5', mode: 'kg', boxes: [{ val: '100', empty: false }], note: '',
   }
 }
 
@@ -35,29 +34,31 @@ const profile = {
   competition_date: null, target_weight_class: null, note_to_coach: '',
 } as unknown as StudentOnboardingProfile
 
-function setInput(input: HTMLInputElement, value: string): void {
-  Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(input, value)
-  input.dispatchEvent(new Event('input', { bubbles: true }))
+function detail(recent = true): ExerciseStatsDetail {
+  return {
+    one_rm_reference: '240',
+    e1rm: recent ? { value: '221.5', computed_at: '2026-07-27' } : null,
+    rep_prs: [], by_set_count: {},
+    recent_sessions: recent ? [{
+      date: '2026-07-27',
+      sets: [
+        { set_index: 1, weight_kg: '185', reps: 5, rpe: '8', completed: true, failed: false, assumed: false, has_video: false },
+        { set_index: 2, weight_kg: '185', reps: 5, rpe: '8.5', completed: true, failed: false, assumed: false, has_video: false },
+        { set_index: 3, weight_kg: '185', reps: 5, rpe: '9', completed: true, failed: false, assumed: false, has_video: false },
+      ],
+    }] : [],
+  }
 }
 
-describe('plan editor context rail', () => {
+// v1.3 页眉集成试验：原 rail 交互测试改为生产入口与页眉上下文口径；
+// ContextRail 的纯视图/定位测试保留，方便试验回滚。
+describe('plan editor day-header context experiment', () => {
   let host: HTMLDivElement
   let root: Root
 
   beforeEach(() => {
-    const stored = new Map<string, string>()
-    Object.defineProperty(window, 'localStorage', {
-      configurable: true,
-      value: {
-        getItem: (key: string) => stored.get(key) ?? null,
-        setItem: (key: string, value: string) => { stored.set(key, value) },
-        removeItem: (key: string) => { stored.delete(key) },
-        clear: () => stored.clear(),
-        key: (index: number) => [...stored.keys()][index] ?? null,
-        get length() { return stored.size },
-      } satisfies Storage,
-    })
-    api.getExerciseStats.mockReturnValue(new Promise(() => {}))
+    api.getExerciseStats.mockReset()
+    api.getExerciseStats.mockResolvedValue(detail())
     host = document.createElement('div')
     document.body.appendChild(host)
     root = createRoot(host)
@@ -67,7 +68,6 @@ describe('plan editor context rail', () => {
   afterEach(() => {
     act(() => root.unmount())
     host.remove()
-    window.localStorage.clear()
     vi.restoreAllMocks()
   })
 
@@ -83,124 +83,64 @@ describe('plan editor context rail', () => {
     act(() => day.dispatchEvent(new MouseEvent('click', { bubbles: true })))
   }
 
-  function rail(): HTMLElement | null {
-    return host.querySelector<HTMLElement>('[data-context-rail]')
+  async function selectRow(id = 'squat') {
+    const exerciseRow = host.querySelector<HTMLElement>(`[data-rowid="${id}"]`)!
+    await act(async () => {
+      exerciseRow.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, button: 0 }))
+      await Promise.resolve()
+    })
   }
 
-  it('shows the selected student profile and onboarding maxes without inline tokens', () => {
+  it('shows the student summary and expands profile details only on demand when no row is selected', () => {
     renderEditor()
-    expect(rail()).toBeNull()
+    expect(host.querySelector('[data-dayhead-context]')).toBeNull()
 
     selectDay()
 
-    expect(rail()?.textContent).toContain('吕子豪')
-    expect(rail()?.textContent).toContain('学员画像')
-    expect(rail()?.textContent).toContain('240')
-    expect(rail()?.textContent).toContain('100')
-    expect(rail()?.textContent).toContain('270')
-    expect(host.querySelector('[data-exercise-info-tokens]')).toBeNull()
+    const context = host.querySelector<HTMLElement>('[data-dayhead-context]')!
+    const disclosure = context.querySelector<HTMLDetailsElement>('details')!
+    expect(context.dataset.contextState).toBe('student')
+    expect(disclosure.querySelector('summary')?.textContent).toContain('吕子豪· 画像')
+    expect(disclosure.open).toBe(false)
+
+    act(() => disclosure.querySelector('summary')?.dispatchEvent(new MouseEvent('click', { bubbles: true })))
+    expect(disclosure.open).toBe(true)
+    expect(disclosure.textContent).toContain('S 240 / B 100 / D 270')
   })
 
-  it('auto-collapses a complete row and returns when strength is cleared', () => {
+  it('shows the selected exercise recent-session summary and e1RM in the day header', async () => {
     renderEditor()
     selectDay()
+    await selectRow()
 
-    const exerciseRow = host.querySelector<HTMLElement>('[data-rowid="squat"]')!
-    act(() => exerciseRow.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, button: 0 })))
-
-    const sets = exerciseRow.querySelector<HTMLInputElement>('[data-c="sets"] input')!
-    act(() => setInput(sets, '1'))
-    const reps = exerciseRow.querySelector<HTMLInputElement>('[data-guard-field="reps"]')!
-    act(() => setInput(reps, '5'))
-    const strength = exerciseRow.querySelector<HTMLInputElement>('[data-guard-field="weight"]')!
-    act(() => setInput(strength, '100'))
-
-    expect(rail()).toBeNull()
-
-    // Recall re-opens the row the coach came back for, not the day-level profile.
-    const recall = host.querySelector<HTMLButtonElement>('.day.sel .context-recall')!
-    act(() => recall.dispatchEvent(new MouseEvent('click', { bubbles: true })))
-    expect(rail()?.dataset.contextState).toBe('4')
-    expect(rail()?.textContent).toContain('竞技深蹲')
-    expect(host.querySelector('.exrow.row-sel')).not.toBeNull()
-
-    act(() => setInput(strength, ''))
-    expect(rail()).not.toBeNull()
+    const context = host.querySelector<HTMLElement>('[data-dayhead-context]')!
+    expect(context.dataset.contextState).toBe('exercise')
+    expect(context.textContent).toContain('竞技深蹲')
+    expect(context.textContent).toContain('上次 07/27 · 3×5 @ 185kg / RPE 9')
+    expect(context.textContent).toContain('e1RM 221.5kg')
+    expect(api.getExerciseStats).toHaveBeenCalledWith('student-1', 'squat')
   })
 
-  it('recalls a manually closed rail from the selected day head', () => {
+  it('shows the no-history empty state for an exercise without records', async () => {
+    api.getExerciseStats.mockResolvedValue(detail(false))
     renderEditor()
     selectDay()
+    await selectRow()
 
-    const close = rail()?.querySelector<HTMLButtonElement>('[aria-label="关闭上下文栏"]')
-    act(() => close?.dispatchEvent(new MouseEvent('click', { bubbles: true })))
-    expect(rail()).toBeNull()
-
-    const recall = host.querySelector<HTMLButtonElement>('.day.sel .context-recall')
-    expect(recall).not.toBeNull()
-    act(() => recall?.dispatchEvent(new MouseEvent('click', { bubbles: true })))
-    expect(rail()).not.toBeNull()
+    const context = host.querySelector<HTMLElement>('[data-dayhead-context]')!
+    expect(context.textContent).toContain('竞技深蹲')
+    expect(context.textContent).toContain('暂无训练记录')
+    expect(context.textContent).not.toContain('e1RM')
   })
 
-  it('follows the selection instead of the day when a rail was dismissed', () => {
+  it('does not render the retired rail or its recall/placement controls', async () => {
     renderEditor()
     selectDay()
+    await selectRow()
 
-    const squat = host.querySelector<HTMLElement>('[data-rowid="squat"]')!
-    act(() => squat.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, button: 0 })))
-    act(() => squat.querySelector<HTMLInputElement>('[data-plan-cell="name"] input')!
-      .dispatchEvent(new MouseEvent('click', { bubbles: true })))
-    const close = rail()!.querySelector<HTMLButtonElement>('[aria-label="关闭上下文栏"]')!
-    act(() => close.dispatchEvent(new MouseEvent('click', { bubbles: true })))
-    expect(rail()).toBeNull()
-
-    // Keyboard navigation goes through moveCellSelection, which touches neither
-    // selection handler — the rail must still follow it to the next row.
-    expect(host.querySelector('.plan-cell-selected')).not.toBeNull()
-    act(() => { window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true })) })
-    expect(host.querySelector('[data-rowid="bench"].row-sel')).not.toBeNull()
-    expect(rail()?.textContent).toContain('竞技卧推')
-  })
-
-  it('drops the recall override once the recalled row is edited again', () => {
-    renderEditor()
-    selectDay()
-
-    const exerciseRow = host.querySelector<HTMLElement>('[data-rowid="squat"]')!
-    act(() => exerciseRow.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, button: 0 })))
-    const sets = exerciseRow.querySelector<HTMLInputElement>('[data-c="sets"] input')!
-    act(() => setInput(sets, '1'))
-    const reps = exerciseRow.querySelector<HTMLInputElement>('[data-guard-field="reps"]')!
-    act(() => setInput(reps, '5'))
-    const strength = exerciseRow.querySelector<HTMLInputElement>('[data-guard-field="weight"]')!
-    act(() => setInput(strength, '100'))
-    expect(rail()).toBeNull()
-
-    const recall = host.querySelector<HTMLButtonElement>('.day.sel .context-recall')!
-    act(() => recall.dispatchEvent(new MouseEvent('click', { bubbles: true })))
-    expect(rail()).not.toBeNull()
-
-    // Editing the recalled row hands control back to the auto-collapse rule.
-    act(() => setInput(strength, '105'))
-    expect(rail()).toBeNull()
-  })
-
-  it('toggles between follow and right-edge modes and persists the preference', () => {
-    renderEditor()
-    selectDay()
-
-    expect(rail()?.classList.contains('floating')).toBe(true)
-    const dock = rail()?.querySelector<HTMLButtonElement>('[aria-label="改为固定在右缘"]')
-    expect(dock?.textContent).toBe('⇥')
-    act(() => dock?.dispatchEvent(new MouseEvent('click', { bubbles: true })))
-
-    expect(rail()?.classList.contains('floating')).toBe(false)
-    expect(host.querySelector('.plan-with-rail.rail-open')).not.toBeNull()
-    expect(window.localStorage.getItem(RAIL_MODE_KEY)).toBe('dock')
-
-    const follow = rail()?.querySelector<HTMLButtonElement>('[aria-label="改为跟着选中日"]')
-    act(() => follow?.dispatchEvent(new MouseEvent('click', { bubbles: true })))
-    expect(rail()?.classList.contains('floating')).toBe(true)
-    expect(window.localStorage.getItem(RAIL_MODE_KEY)).toBe('follow')
+    expect(host.querySelector('[data-context-rail]')).toBeNull()
+    expect(host.querySelector('.context-recall')).toBeNull()
+    expect(host.querySelector('.plan-with-rail.rail-open')).toBeNull()
+    expect(host.textContent).not.toContain('显示撰写上下文')
   })
 })

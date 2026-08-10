@@ -29,7 +29,7 @@ const fullPlan: AdminPlanWithChildren = {
   created_at: '2026-06-30T00:00:00Z', updated_at: '2026-07-01T00:00:00Z',
   total_shift_days: 0, latest_shift_created_at: null,
   days: [{ id: 'd1', plan_id: 'p1', day_of_week: 1, week_number: 1, sort_order: 0, shifted_to_date: null, exercises: [{
-    id: 'pe1', plan_day_id: 'd1', exercise_id: 'e1', exercise_name: '竞技深蹲', is_main_lift: true, sort_order: 0, notes: null,
+    id: 'pe1', plan_day_id: 'd1', exercise_id: 'e1', exercise_name: '竞技深蹲', is_main_lift: true, sort_order: 0, target: null, notes: null,
     sets: [{ id: 'set1', plan_exercise_id: 'pe1', set_number: 1, target_reps: 5, target_reps_max: null, intensity_mode: 'weight', target_value: '140.00', set_type: 'working', rest_seconds: null, coach_note: null, created_at: '2026-07-01T00:00:00Z' }],
   }] }],
 }

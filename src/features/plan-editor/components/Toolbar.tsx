@@ -7,18 +7,12 @@ interface Props {
   onChangeWeeks?: (weeks: number) => Promise<void>
   removalSummary?: (weeks: number) => { days: number; exercises: number }
   curWeekLabel: string
-  zoomLabel: string
-  /** Week numbers present in the plan; enables the 跳到周 dropdown. */
-  weekNums?: number[]
-  onJumpWeek?: (num: number) => void
 }
 
-export function Toolbar({ weeksCount, calendarLocked = false, calendarLockedHint, onChangeWeeks, removalSummary, curWeekLabel, zoomLabel, weekNums, onJumpWeek }: Props) {
+export function Toolbar({ weeksCount, calendarLocked = false, calendarLockedHint, onChangeWeeks, removalSummary, curWeekLabel }: Props) {
   const [weeksOpen, setWeeksOpen] = useState(false)
-  const [jumpOpen, setJumpOpen] = useState(false)
   const [draftWeeks, setDraftWeeks] = useState(weeksCount)
   const [applying, setApplying] = useState(false)
-  const canJump = !!onJumpWeek && (weekNums?.length ?? 0) > 0
   const canResize = !!onChangeWeeks
   const lockedHint = calendarLocked ? calendarLockedHint ?? '已发布计划的周期与日期不可修改' : undefined
   const removal = draftWeeks < weeksCount ? removalSummary?.(draftWeeks) : undefined
@@ -34,7 +28,7 @@ export function Toolbar({ weeksCount, calendarLocked = false, calendarLockedHint
           type="button"
           disabled={!canResize || calendarLocked || applying}
           title={lockedHint}
-          onClick={() => { setJumpOpen(false); setDraftWeeks(weeksCount); setWeeksOpen((value) => !value) }}
+          onClick={() => { setDraftWeeks(weeksCount); setWeeksOpen((value) => !value) }}
           style={{
             display: 'inline-flex', alignItems: 'center', gap: 7, padding: '4px 8px',
             border: '1px solid transparent', borderRadius: 'var(--r-md)', background: 'transparent',
@@ -88,38 +82,7 @@ export function Toolbar({ weeksCount, calendarLocked = false, calendarLockedHint
         {curWeekLabel}
       </span>
       <span style={{ flex: 1 }} />
-      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, color: 'var(--mut)' }}>
-        <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '.08em', textTransform: 'uppercase' }}>缩放</span>
-        <b style={{ color: 'var(--sec)', fontFamily: 'var(--font-mono)', fontWeight: 500, minWidth: 34, display: 'inline-block' }}>{zoomLabel}</b>
-      </span>
-      <span className="t-hint" style={{ color: 'var(--mut)', fontSize: 11 }}>Ctrl+滚轮缩放 · 中键拖动平移</span>
-      {canJump && (
-        <>
-          <span style={{ width: 1, height: 16, background: 'var(--line)' }} />
-          <span onClick={() => { setWeeksOpen(false); setJumpOpen((value) => !value) }} style={{
-            display: 'inline-flex', alignItems: 'center', gap: 7, padding: '4px 10px', position: 'relative',
-            border: '1px solid var(--bd)', borderRadius: 'var(--r-sm)', cursor: 'pointer', color: 'var(--sec)',
-          }}>
-            跳到周 <span style={{ color: 'var(--mut)', fontSize: 9 }}>▼</span>
-            {jumpOpen && (
-              <span style={{
-                position: 'absolute', top: '100%', right: 0, marginTop: 6, zIndex: 80, padding: 4,
-                display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 2, width: 176,
-                background: 'var(--card-bg)', border: '1px solid var(--bd)', borderRadius: 'var(--r-sm)',
-                boxShadow: 'var(--elev-modal)',
-              }}>
-                {weekNums!.map((n) => (
-                  <span key={n} className="popitem" onClick={(e) => { e.stopPropagation(); setJumpOpen(false); onJumpWeek!(n) }}
-                    style={{ padding: '6px 0', textAlign: 'center', borderRadius: 'var(--r-sm)', fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--sec)' }}>
-                    W{String(n).padStart(2, '0')}
-                  </span>
-                ))}
-              </span>
-            )}
-          </span>
-          {jumpOpen && <span onClick={() => setJumpOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 70 }} />}
-        </>
-      )}
+      <span className="t-hint" style={{ color: 'var(--mut)', fontSize: 11 }}>横向滚动切换周 · 周内训练日纵向排列</span>
     </div>
   )
 }

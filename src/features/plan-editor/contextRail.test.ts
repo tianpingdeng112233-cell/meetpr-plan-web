@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import {
   RAIL_MODE_KEY,
+  RAIL_MIN_GRID_WIDTH,
   RAIL_WIDTH,
   contextRailLevel,
   isMainLiftDetail,
   isRowComplete,
   metricCells,
+  recentSessionSummary,
   railPlacement,
   topSetWeight,
 } from './components/ContextRail'
@@ -24,6 +26,7 @@ function row(patch: Partial<ExerciseRow> = {}): ExerciseRow {
     ku: true,
     custom: false,
     isMain: true,
+
     aux: false,
     reps: '3',
     mode: 'kg',
@@ -96,6 +99,17 @@ describe('railPlacement', () => {
     const placement = railPlacement({ left: 0, right: 1430 }, container)
     expect(placement.left).toBe(container - RAIL_WIDTH)
   })
+
+  it('uses viewport-relative bounds when the editor is wider than the viewport', () => {
+    const placement = railPlacement(
+      { left: 100, right: 900 },
+      1440,
+      { left: 0, right: 802 },
+    )
+    expect(placement.left).toBe(802 - RAIL_WIDTH)
+    expect(placement.left + RAIL_WIDTH).toBeLessThanOrEqual(802)
+    expect(RAIL_WIDTH + RAIL_MIN_GRID_WIDTH).toBeGreaterThan(802)
+  })
 })
 
 const overview = {
@@ -146,6 +160,17 @@ describe('topSetWeight', () => {
     expect(topSetWeight(row({ boxes: [{ val: '180', empty: false }, { val: '215', empty: false }] }))).toBe(215)
     expect(topSetWeight(row({ mode: 'rpe' }))).toBeNull()
     expect(topSetWeight(null)).toBeNull()
+  })
+})
+
+describe('recentSessionSummary', () => {
+  it('compresses the latest session to date, sets×reps, top weight and peak RPE', () => {
+    const stats = detail({ recent_sessions: [{ date: '2026-07-27', sets: [
+      { set_index: 1, weight_kg: '185', reps: 5, rpe: '8', completed: true, failed: false, assumed: false, has_video: false },
+      { set_index: 2, weight_kg: '185', reps: 5, rpe: '9', completed: true, failed: false, assumed: false, has_video: false },
+    ] }] })
+    expect(recentSessionSummary(stats)).toBe('07/27 · 2×5 @ 185kg / RPE 9')
+    expect(recentSessionSummary(detail({ recent_sessions: [] }))).toBeNull()
   })
 })
 

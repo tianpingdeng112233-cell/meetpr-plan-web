@@ -46,6 +46,15 @@ describe('moveDayInWeek', () => {
     expect(moved.days[1]).toMatchObject({ rest: false, rows: original.days[0].rows })
   })
 
+  it('treats a legacy rest-marked day with rows as populated and swaps it losslessly', () => {
+    const legacyPopulated = day(0, [row('squat')], true)
+    const target = day(1, [row('bench')], false)
+    const moved = moveDayInWeek(week([legacyPopulated, target]), 0, 1)
+
+    expect(moved.days[0]).toMatchObject({ rest: false, rows: target.rows })
+    expect(moved.days[1]).toMatchObject({ rest: false, rows: legacyPopulated.rows })
+  })
+
   it('swaps two populated training days without changing day order or anchors', () => {
     const monday = day(0, [row('squat')], false)
     const friday = day(4, [row('deadlift')], false)

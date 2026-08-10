@@ -34,6 +34,7 @@ describe('plan editor clipboard rows', () => {
       ku: true,
       custom: false,
       isMain: true,
+
       aux: false,
       reps: '5',
       mode: 'kg',

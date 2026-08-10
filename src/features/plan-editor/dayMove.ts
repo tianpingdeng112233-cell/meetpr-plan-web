@@ -1,4 +1,5 @@
 import type { DayCol, Week } from './types'
+import { isRestDay } from './types'
 import { addDays, dowLabel, mdLabel } from './mapping'
 
 export const DAY_MOVE_STATUS_LOCKED_HINT = '已完成/已停用的计划不可移动训练日'
@@ -37,13 +38,13 @@ export function moveDayInWeek(week: Week, fromDow: number, toDow: number): Week 
   }
   if (source.rows.length === 0 && target.rows.length === 0) return week
 
-  const targetHasTraining = !target.rest && target.rows.length > 0
+  const targetHasTraining = !isRestDay(target)
   const nextSource: DayCol = clearShiftSnapshot(targetHasTraining
-    ? { ...source, rest: target.rest, rows: target.rows, releasedSortOrders: [] }
+    ? { ...source, rest: false, rows: target.rows, releasedSortOrders: [] }
     : { ...source, rest: true, rows: [], releasedSortOrders: [] })
   const nextTarget: DayCol = clearShiftSnapshot({
     ...target,
-    rest: source.rest,
+    rest: isRestDay(source),
     rows: source.rows,
     releasedSortOrders: [],
   })

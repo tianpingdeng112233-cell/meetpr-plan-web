@@ -161,7 +161,7 @@ describe('exercise history lock UI', () => {
     expect(document.activeElement).toBe(host.querySelector('[data-guard-field="reps"]'))
   })
 
-  it('disables copy/rest conversion on a mixed day and clear-day removes only unlocked rows', () => {
+  it('disables copy on a mixed day and clear-day removes only unlocked rows', () => {
     const locked = row('locked', { serverRowId: 'pe-lock', serverSortOrder: 0, hasLogs: true })
     const editable = row('editable', { serverRowId: 'pe-edit', serverSortOrder: 1 })
     act(() => root?.render(
@@ -172,15 +172,12 @@ describe('exercise history lock UI', () => {
     act(() => targetDay.dispatchEvent(new MouseEvent('click', { bubbles: true })))
 
     const copy = elementByText(host, '复制上周计划到本周')
-    const rest = elementByText(host, '设为休息')
     expect(copy.className).toContain('disabled')
     expect(copy.title).toContain('已打卡')
-    expect(rest.className).toContain('disabled')
-    expect(rest.title).toContain('已打卡')
+    expect(host.textContent).not.toContain('设为休息')
 
     act(() => {
       copy.dispatchEvent(new MouseEvent('click', { bubbles: true }))
-      rest.dispatchEvent(new MouseEvent('click', { bubbles: true }))
       elementByText(host, '清空本日').dispatchEvent(new MouseEvent('click', { bubbles: true }))
     })
     const remaining = host.querySelectorAll('.weekband[data-wnum="2"] [data-rowid]')

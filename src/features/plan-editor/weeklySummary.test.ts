@@ -16,6 +16,7 @@ function row(id: string, patch: Partial<ExerciseRow> = {}): ExerciseRow {
     ku: true,
     custom: false,
     isMain: false,
+
     aux: false,
     reps: '5',
     mode: 'kg',

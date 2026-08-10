@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useState, type CSSProperties } from 'react'
 import { getExerciseStats } from '../../../api/coach'
 import type { ExerciseStatsDetail, ExerciseStatsOverview, StudentOnboardingProfile } from '../../../api/types'
 import type { DayCol, ExerciseRow } from '../types'
@@ -38,6 +38,8 @@ export function profileEmptyMessage(profile: StudentOnboardingProfile | null | u
 }
 
 export const RAIL_WIDTH = 260
+/** The week band itself bottoms out at 760px; below this combined width the rail docks. */
+export const RAIL_MIN_GRID_WIDTH = 760
 const RAIL_GAP = 8
 
 export type RailMode = 'follow' | 'dock'
@@ -74,12 +76,23 @@ export function useRailMode() {
 export function railPlacement(
   dayRect: { left: number; right: number },
   containerWidth: number,
+  viewport = { left: 0, right: containerWidth },
 ): { left: number } {
+  const visibleLeft = Math.max(0, viewport.left)
+  const visibleRight = Math.min(containerWidth, viewport.right)
   const right = dayRect.right + RAIL_GAP
   const left = dayRect.left - RAIL_GAP - RAIL_WIDTH
-  const fitsRight = right + RAIL_WIDTH <= containerWidth
-  const preferred = fitsRight || left < 0 ? right : left
-  return { left: Math.max(0, Math.min(preferred, containerWidth - RAIL_WIDTH)) }
+  if (right >= visibleLeft && right + RAIL_WIDTH <= visibleRight) return { left: right }
+  if (left >= visibleLeft && left + RAIL_WIDTH <= visibleRight) return { left }
+  // Neither side fits: keep the whole rail visible by pinning it to the
+  // viewport's right edge (expressed in container-relative coordinates).
+  return { left: Math.max(visibleLeft, visibleRight - RAIL_WIDTH) }
+}
+
+export interface RailLayout {
+  style?: CSSProperties
+  /** May temporarily differ from the saved preference on a narrow viewport. */
+  placementMode: RailMode
 }
 
 /**
@@ -91,16 +104,42 @@ export function useRailPlacement(
   active: boolean,
   containerRef: { current: HTMLElement | null },
   selectionKey: string,
-): { left: number } | undefined {
-  const [placement, setPlacement] = useState<{ left: number } | null>(null)
+): RailLayout {
+  const [layout, setLayout] = useState<RailLayout>({ placementMode: mode })
   useLayoutEffect(() => {
     const wrap = containerRef.current
-    if (mode !== 'follow' || !active || !wrap) { setPlacement(null); return }
+    if (!active || !wrap) { setLayout({ placementMode: mode }); return }
     const place = () => {
+      const wr = wrap.getBoundingClientRect()
+      const viewportWidth = window.innerWidth || document.documentElement.clientWidth
+      const viewport = {
+        left: Math.max(0, -wr.left),
+        right: Math.min(wr.width, viewportWidth - wr.left),
+      }
+      const narrow = viewportWidth < RAIL_WIDTH + RAIL_MIN_GRID_WIDTH
+      if (mode === 'dock' || narrow) {
+        const normalDockLeft = wr.width - RAIL_WIDTH
+        const normalDockFits = normalDockLeft >= viewport.left
+          && normalDockLeft + RAIL_WIDTH <= viewport.right
+        setLayout({
+          placementMode: 'dock',
+          style: normalDockFits
+            ? undefined
+            : { left: Math.max(viewport.left, viewport.right - RAIL_WIDTH), right: 'auto' },
+        })
+        return
+      }
       const dayEl = wrap.querySelector<HTMLElement>('.day.sel')
       if (!dayEl) return
-      const wr = wrap.getBoundingClientRect(), dr = dayEl.getBoundingClientRect()
-      setPlacement(railPlacement({ left: dr.left - wr.left, right: dr.right - wr.left }, wr.width))
+      const dr = dayEl.getBoundingClientRect()
+      setLayout({
+        placementMode: 'follow',
+        style: railPlacement(
+          { left: dr.left - wr.left, right: dr.right - wr.left },
+          wr.width,
+          viewport,
+        ),
+      })
     }
     place()
     const scroller = wrap.querySelector('.scroller')
@@ -108,7 +147,7 @@ export function useRailPlacement(
     window.addEventListener('resize', place)
     return () => { scroller?.removeEventListener('scroll', place); window.removeEventListener('resize', place) }
   }, [mode, active, containerRef, selectionKey])
-  return placement ?? undefined
+  return layout
 }
 
 /** Main lift = the backend supplies a 登记 1RM reference (null for accessories). */
@@ -123,6 +162,82 @@ export function topSetWeight(row: ExerciseRow | null): number | null {
 }
 
 interface MetricCell { value: string; label: string; tone?: 'accent' }
+
+/** One-line history used by the v1.3 day-header context experiment. */
+export function recentSessionSummary(detail: ExerciseStatsDetail | null): string | null {
+  const session = detail?.recent_sessions[0]
+  if (!session || session.sets.length === 0) return null
+  const reps = session.sets.map((set) => set.reps).filter((value) => Number.isFinite(value))
+  const weights = session.sets.map((set) => Number(set.weight_kg)).filter((value) => Number.isFinite(value) && value > 0)
+  const rpes = session.sets.map((set) => Number(set.rpe)).filter((value) => Number.isFinite(value) && value > 0)
+  const repLabel = reps.length > 0 && reps.every((value) => value === reps[0])
+    ? String(reps[0])
+    : reps.length > 0 ? `${Math.min(...reps)}–${Math.max(...reps)}` : '—'
+  const loadLabel = weights.length > 0 ? ` @ ${kg(String(Math.max(...weights)))}kg` : ''
+  const rpeLabel = rpes.length > 0 ? ` / RPE ${Math.max(...rpes)}` : ''
+  return `${shortDate(session.date)} · ${session.sets.length}×${repLabel}${loadLabel}${rpeLabel}`
+}
+
+/**
+ * Compact context mounted inside the selected training-day header. It intentionally
+ * shares the rail's existing history endpoint and profile renderer, while keeping
+ * disclosure to at most two header lines.
+ */
+export function DayHeaderContext({ studentId, studentName, row, profile }: {
+  studentId: string
+  studentName: string
+  row: ExerciseRow | null
+  profile: StudentOnboardingProfile | null | undefined
+}) {
+  const [cache, setCache] = useState<Record<string, ExerciseStatsDetail>>({})
+  const [failedId, setFailedId] = useState('')
+  const exerciseId = row?.exerciseId ?? null
+  const hasDetail = exerciseId != null && Object.prototype.hasOwnProperty.call(cache, exerciseId)
+  const detail = exerciseId && hasDetail ? cache[exerciseId] : null
+
+  useEffect(() => {
+    if (!exerciseId || hasDetail) return
+    let cancelled = false
+    setFailedId('')
+    void getExerciseStats(studentId, exerciseId)
+      .then((next) => {
+        if (!cancelled) setCache((current) => ({ ...current, [exerciseId]: next }))
+      })
+      .catch(() => {
+        if (!cancelled) setFailedId(exerciseId)
+      })
+    return () => { cancelled = true }
+  }, [studentId, exerciseId, hasDetail])
+
+  if (!row) {
+    return (
+      <div className="dayhead-context student" data-dayhead-context="" data-context-state="student">
+        <details className="dayhead-profile">
+          <summary onMouseDown={(event) => event.stopPropagation()} onClick={(event) => event.stopPropagation()}>
+            <b>{studentName}</b><span>· 画像</span>
+          </summary>
+          <div className="dayhead-profile-popover" onMouseDown={(event) => event.stopPropagation()} onClick={(event) => event.stopPropagation()}>
+            <Profile profile={profile} compact />
+          </div>
+        </details>
+      </div>
+    )
+  }
+
+  const summary = recentSessionSummary(detail)
+  const pending = !!exerciseId && !hasDetail && failedId !== exerciseId
+  return (
+    <div className="dayhead-context exercise" data-dayhead-context="" data-context-state="exercise" title={row.name || '未命名动作'}>
+      <b className="dayhead-context-name">{row.name || '未命名动作'}</b>
+      <span className="dayhead-context-history">
+        {pending ? '训练记录载入中…'
+          : failedId === exerciseId ? '记录载入失败'
+            : summary ? `上次 ${summary}` : '暂无训练记录'}
+      </span>
+      {detail?.e1rm && <span className="dayhead-context-e1rm">e1RM {kg(detail.e1rm.value)}kg</span>}
+    </div>
+  )
+}
 
 /**
  * The band is the one thing the coach must read at a glance, so it always fills
@@ -169,7 +284,7 @@ export function metricCells(args: {
 
 /** Presentational rail: no data fetching, so mocks and tests can drive every state. */
 export function ContextRailView({
-  studentName, day, row, profile, detail, overview = null, loading = false, style, mode = 'follow', onToggleMode, onClose,
+  studentName, day, row, profile, detail, overview = null, loading = false, style, mode = 'follow', placementMode = mode, onToggleMode, onClose,
 }: {
   studentName: string
   day: DayCol
@@ -181,6 +296,7 @@ export function ContextRailView({
   /** Placement override; absent = docked to the editor's right edge. */
   style?: React.CSSProperties
   mode?: RailMode
+  placementMode?: RailMode
   onToggleMode?: () => void
   onClose: () => void
 }) {
@@ -196,7 +312,7 @@ export function ContextRailView({
   const bucket = detail?.by_set_count[String(sets)] ?? []
 
   return (
-    <aside className={`context-rail${style?.left != null ? ' floating' : ''}`} style={style} data-context-rail="" data-context-state={level}>
+    <aside className={`context-rail${placementMode === 'follow' ? ' floating' : ''}`} style={style} data-context-rail="" data-context-state={level}>
       <header className="rail-head">
         <span className="rail-title">
           <b>{studentName}</b>
@@ -310,6 +426,7 @@ export function ContextRail({ studentId, ...rest }: {
   overview?: ExerciseStatsOverview | null
   style?: React.CSSProperties
   mode?: RailMode
+  placementMode?: RailMode
   onToggleMode?: () => void
   onClose: () => void
 }) {

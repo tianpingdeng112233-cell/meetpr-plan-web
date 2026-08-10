@@ -97,7 +97,7 @@ describe('isBoundNoSets shared predicate regressions and exemptions', () => {
     expect(isBoundNoSets(row({ reps: '99' }))).toBe(true)
   })
 
-  it('preserves hasLogs, aux, bodyweight-strength, unbound, and rest-day exemptions', () => {
+  it('preserves row-level exemptions and does not let a stale rest flag hide populated-day issues', () => {
     expect(isBoundNoSets(row({ hasLogs: true, reps: '99', boxes: [{ val: '1000', empty: false }] }))).toBe(false)
     expect(isBoundNoSets(row({ aux: true, reps: '99', boxes: [] }))).toBe(false)
     expect(isBoundNoSets(row({ mode: 'bodyweight', boxes: [{ val: '', empty: true }] }))).toBe(false)
@@ -106,7 +106,7 @@ describe('isBoundNoSets shared predicate regressions and exemptions', () => {
     const invalidRestRow = row({ reps: '99' })
     expect(findIssueRows([week({
       dow: 0, dowLabel: '周一', dateLabel: '', rest: true, rows: [invalidRestRow],
-    })])).toEqual([])
+    })])).toEqual([{ rowId: invalidRestRow.id, kind: 'noSets' }])
   })
 })
 

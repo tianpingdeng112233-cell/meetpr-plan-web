@@ -1,6 +1,6 @@
 import { useLayoutEffect, useRef, useState } from 'react'
 import type { DayCol, ColWidths, ColKey, ExerciseRow } from '../types'
-import { COLS } from '../types'
+import { COLS, isRestDay } from '../types'
 import {
   filterRepsInput,
   filterStrengthInput,
@@ -26,6 +26,25 @@ import {
   type PlanCellField,
   type PlanCellSelection,
 } from '../selectionModel'
+import type { WeekBandSlot } from '../weekBandModel'
+
+export interface WeekBandBadge {
+  label: string
+  tone: 'squat' | 'bench' | 'deadlift' | 'muscle' | 'neutral'
+}
+
+export interface WeekBandDayView {
+  main: WeekBandSlot[]
+  aux: WeekBandSlot[]
+  rows: ReadonlyMap<string, ExerciseRow>
+  badgeFor: (slot: WeekBandSlot) => WeekBandBadge | null
+  onQuickAdd: (slot: WeekBandSlot) => void
+  dayOrdinal: number
+  weekdayLabel: string | null
+  anchorWeekday: number | null
+  anchorSaving?: boolean
+  onAnchorWeekdayChange?: (weekday: number | null) => void
+}
 
 interface Props {
   weekNumber?: number
@@ -36,8 +55,9 @@ interface Props {
   selectedRowId?: string | null
   selectedRowIds?: ReadonlySet<string>
   cellSelection?: PlanCellSelection | null
+  /** v1.3 experiment: selected-day context rendered in the dark day header. */
+  headerContext?: React.ReactNode
   onSelect: () => void
-  onRecallContext?: () => void
   onSelectRow?: (rowId: string, modifiers?: { toggle: boolean; range: boolean }) => void
   onSelectCell?: (rowId: string, field: PlanCellField, setIndex?: number) => void
   onSetsDraftChange?: (rowId: string, draft: string | null) => void
@@ -55,9 +75,12 @@ interface Props {
   onAddRow: (tier: 'main' | 'aux') => void
   /** Display tier resolver (catalog exercise_type based); absent = flat legacy list. */
   rowTier?: (row: ExerciseRow) => 'main' | 'aux'
+  rowReorderDisabledHint?: string | null
   onEditRow: (rowId: string, updater: (r: ExerciseRow) => ExerciseRow) => void
   onReorderRow?: (dragRowId: string, targetRowId: string, position: 'before' | 'after') => void
   onDeleteRow: (rowId: string) => void
+  /** Spec 037 aligned week-band rendering; omitted for the legacy standalone view/tests. */
+  weekBand?: WeekBandDayView
 }
 
 const head: React.CSSProperties = {
@@ -482,8 +505,8 @@ export function DayColumn({
   selectedRowId,
   selectedRowIds,
   cellSelection,
+  headerContext,
   onSelect,
-  onRecallContext,
   onSelectRow,
   onSelectCell,
   onSetsDraftChange,
@@ -500,22 +523,19 @@ export function DayColumn({
   onNameBlur,
   onAddRow,
   rowTier,
+  rowReorderDisabledHint,
   onEditRow,
   onReorderRow,
   onDeleteRow,
+  weekBand,
 }: Props) {
   const [dragRowId, setDragRowId] = useState<string | null>(null)
   const [dropTarget, setDropTarget] = useState<{ rowId: string; position: 'before' | 'after' } | null>(null)
-  const dragDisabled = day.rows.some((row) => row.hasLogs)
+  const dragDisabled = !!rowReorderDisabledHint || day.rows.some((row) => row.hasLogs)
+  const dragDisabledTitle = rowReorderDisabledHint ?? '该日含学员已打卡动作，整天不可拖排'
   const dayMoveClass = dayMoveState ? ` day-move-${dayMoveState}` : ''
   const dayMoveTitle = dayMoveDisabledHint ?? '拖动搬到本周其他日期 / 点击选中日'
   const dayMoveCursor = dayMoveDisabledHint ? 'not-allowed' : 'grab'
-  // Brings the context rail back after the coach dismisses it for this day.
-  const contextRecall = selected && onRecallContext ? (
-    <button className="context-recall" title="显示撰写上下文"
-      onMouseDown={(e) => e.stopPropagation()}
-      onClick={(e) => { e.stopPropagation(); onRecallContext() }}>▤</button>
-  ) : null
   const resolveTier = (row: ExerciseRow) => rowTier?.(row) ?? (row.isMain ? 'main' : 'aux')
   const displayRows = orderRowsForDisplay(day.rows, rowTier)
   const mainRowsForDay = day.rows.filter((row) => resolveTier(row) === 'main')
@@ -609,7 +629,7 @@ export function DayColumn({
     window.addEventListener('mouseup', onUp)
   }
 
-  if (day.rest) {
+  if (isRestDay(day) && !weekBand) {
     return (
       <div className={`day restday${selected ? ' sel' : ''}${dayMoveClass}`} data-dow={day.dow} onClick={onSelect}>
         <div className="dayhead" data-day-move-handle="" title={dayMoveTitle} onMouseDown={onDayMoveStart}
@@ -617,7 +637,6 @@ export function DayColumn({
           <span className="dayhead-primary">{!dayMoveDisabledHint && <span className="day-move-grip" aria-hidden="true">⋮ </span>}{day.dowLabel}</span>
           <span className="dayhead-date">{day.dateLabel}</span>
           <ShiftBadge day={day} />
-          {contextRecall}
         </div>
         <div className="restday-body">
           <span>休息</span>
@@ -626,29 +645,96 @@ export function DayColumn({
     )
   }
 
-  const total = COLS.reduce((s, k) => s + colW[k], 0)
-  let acc = 0
+  // In the week-band view, rest is presentation derived solely from whether
+  // the day has action rows. The stored flag remains readable for legacy data,
+  // but cannot hide rows or force a populated day into a rest presentation.
+  if (weekBand && isRestDay(day)) {
+    return (
+      <div className={`day restday week-band-rest-card${selected ? ' sel' : ''}${dayMoveClass}`}
+        data-dow={day.dow} data-derived-rest="true" onClick={onSelect}>
+        <div className="dayhead" data-day-move-handle="" title={dayMoveTitle} onMouseDown={onDayMoveStart}
+          style={{ cursor: dayMoveCursor }}>
+          <span className="dayhead-line">
+            {!dayMoveDisabledHint && <span className="day-move-grip" aria-hidden="true">⋮</span>}
+            <span className="dayhead-primary">D{weekBand.dayOrdinal}</span>
+            {weekBand.weekdayLabel && <span className="dayhead-weekday">{weekBand.weekdayLabel}</span>}
+            {weekBand.dayOrdinal === 1 && (
+              <select
+                className="anchor-weekday-select"
+                aria-label={weekBand.anchorWeekday == null ? '设置 D1 周几' : '修改 D1 周几'}
+                title="D1 周几锚（仅影响标签显示）"
+                value={weekBand.anchorWeekday ?? ''}
+                disabled={readOnly || weekBand.anchorSaving || !weekBand.onAnchorWeekdayChange}
+                onMouseDown={stop}
+                onClick={stop}
+                onChange={(event) => weekBand.onAnchorWeekdayChange?.(event.currentTarget.value ? Number(event.currentTarget.value) : null)}
+              >
+                <option value="">设周几</option>
+                {['周一', '周二', '周三', '周四', '周五', '周六', '周日'].map((label, index) => (
+                  <option value={index + 1} key={label}>{label}</option>
+                ))}
+              </select>
+            )}
+            <span className="dayhead-date">{day.dateLabel}</span>
+            <ShiftBadge day={day} />
+            {columnLetter && <kbd className="day-column-key">{columnLetter}</kbd>}
+          </span>
+          <span className="week-band-rest-label">休息</span>
+          {headerContext}
+        </div>
+        {!readOnly && (
+          <button type="button" className="week-band-rest-add" data-add-tier="main"
+            onMouseDown={stop} onClick={(event) => { stop(event); onAddRow('main') }}>
+            <span aria-hidden="true">＋</span> 加主项
+          </button>
+        )}
+      </div>
+    )
+  }
+
+  const frozenWidth = weekBand ? 28 : 0
+  const total = COLS.reduce((s, k) => s + colW[k], 0) + frozenWidth
+  let acc = frozenWidth
   const dividers = COLS.map((k) => { acc += colW[k]; return { col: k, left: acc } })
 
   return (
-    <div className={`day${selected ? ' sel' : ''}${dayMoveClass}`} data-dow={day.dow} onClick={onSelect}>
+    <div className={`day${selected ? ' sel' : ''}${dayMoveClass}${weekBand ? ' week-band-day' : ''}`} data-dow={day.dow} onClick={onSelect}>
       <div className="dayhead" data-day-move-handle="" title={dayMoveTitle} onMouseDown={onDayMoveStart}
         style={{ cursor: dayMoveCursor }}>
         <span className="dayhead-line">
           {!dayMoveDisabledHint && <span className="day-move-grip" aria-hidden="true">⋮</span>}
-          <span className="dayhead-primary">{day.dowLabel}</span>
+          <span className="dayhead-primary">{weekBand ? `D${weekBand.dayOrdinal}` : day.dowLabel}</span>
+          {weekBand?.weekdayLabel && <span className="dayhead-weekday">{weekBand.weekdayLabel}</span>}
+          {weekBand && weekBand.dayOrdinal === 1 && (
+            <select
+              className="anchor-weekday-select"
+              aria-label={weekBand.anchorWeekday == null ? '设置 D1 周几' : '修改 D1 周几'}
+              title="D1 周几锚（仅影响标签显示）"
+              value={weekBand.anchorWeekday ?? ''}
+              disabled={readOnly || weekBand.anchorSaving || !weekBand.onAnchorWeekdayChange}
+              onMouseDown={stop}
+              onClick={stop}
+              onChange={(event) => weekBand.onAnchorWeekdayChange?.(event.currentTarget.value ? Number(event.currentTarget.value) : null)}
+            >
+              <option value="">设周几</option>
+              {['周一', '周二', '周三', '周四', '周五', '周六', '周日'].map((label, index) => (
+                <option value={index + 1} key={label}>{label}</option>
+              ))}
+            </select>
+          )}
           <span className="dayhead-date">{day.dateLabel}</span>
           <ShiftBadge day={day} />
           {columnLetter && <kbd className="day-column-key">{columnLetter}</kbd>}
-          {contextRecall}
         </span>
         <span className="dayhead-theme">{dayTheme}</span>
         <span className="dayhead-meta">{dayMeta}</span>
+        {headerContext}
       </div>
 
       <div className="daygrid" style={{ width: total, fontVariantNumeric: 'tabular-nums' }}>
         <div className="gridhead" style={{ display: 'flex', alignItems: 'stretch', background: 'var(--card-bg)', borderBottom: '1px solid var(--line)' }}>
-          <div className="gcell" data-c="name" style={{ width: colW.name, padding: '4px 6px', ...head }}>动作</div>
+          {weekBand && <div className="gcell week-band-frozen week-band-index" data-c="index" style={{ width: 28, padding: '4px 3px', textAlign: 'center', ...head }}>#</div>}
+          <div className={`gcell${weekBand ? ' week-band-frozen' : ''}`} data-c="name" style={{ width: colW.name, padding: '4px 6px', ...head }}>动作</div>
           <div className="gcell" data-c="sets" style={{ width: colW.sets, padding: '4px 4px', textAlign: 'center', ...head }}>组</div>
           <div className="gcell" data-c="reps" style={{ width: colW.reps, padding: '4px 4px', textAlign: 'center', ...head }}>次</div>
           <div className="gcell" data-c="int" style={{ width: colW.int, padding: '4px 6px', ...head }}>强度</div>
@@ -657,11 +743,12 @@ export function DayColumn({
         </div>
 
         {(() => {
-        const renderRow = (row: ExerciseRow) => {
+        const renderRow = (row: ExerciseRow, slot?: WeekBandSlot, rowNumber?: number) => {
           const edit = (u: (r: ExerciseRow) => ExerciseRow) => onEditRow(row.id, u)
           const inputIssue = getBoundRowInputIssue(row)
           const isSelectedRow = selectedRowIds?.has(row.id) ?? selectedRowId === row.id
           const dropPosition = dropTarget?.rowId === row.id ? dropTarget.position : null
+          const badge = weekBand && slot ? weekBand.badgeFor(slot) : null
           return (
             <div
               key={row.id}
@@ -675,8 +762,13 @@ export function DayColumn({
               onClick={(e) => e.stopPropagation()}
             >
               <div className="exercise-row-main">
+                {weekBand && (
+                  <div className="gcell week-band-frozen week-band-index" data-c="index" style={{ width: 28 }}>
+                    {rowNumber}
+                  </div>
+                )}
                 <div
-                  className={`gcell plan-cell${isCellSelected(row.id, 'name') ? ' plan-cell-selected' : ''}`}
+                  className={`gcell plan-cell${weekBand ? ' week-band-frozen' : ''}${isCellSelected(row.id, 'name') ? ' plan-cell-selected' : ''}`}
                   data-c="name"
                   data-plan-cell="name"
                   data-plan-cell-key={planCellKey({ weekNumber, dow: day.dow, rowId: row.id, field: 'name' })}
@@ -684,7 +776,7 @@ export function DayColumn({
                 >
                   <span
                     className="rowdrag"
-                    title={dragDisabled ? '该日含学员已打卡动作，整天不可拖排' : '拖动调整顺序 / 点击选中动作'}
+                    title={dragDisabled ? dragDisabledTitle : '拖动调整顺序 / 点击选中动作'}
                     onMouseDown={(e) => startRowDrag(e, row.id)}
                     onClick={(e) => {
                       e.stopPropagation()
@@ -694,6 +786,7 @@ export function DayColumn({
                   >
                     ⋮
                   </span>
+                  {badge && <span className={`week-band-badge ${badge.tone}`}>{badge.label}</span>}
                   <input
                     value={row.name} placeholder="输入动作…"
                     disabled={readOnly || row.hasLogs}
@@ -797,16 +890,79 @@ export function DayColumn({
             </div>
           )
         }
+        const renderEmptySlot = (slot: WeekBandSlot, rowNumber: number) => {
+          const badge = weekBand!.badgeFor(slot)
+          const missingName = slot.exemplar.name.trim() === ''
+          const quickAddDisabled = readOnly || missingName
+          return (
+            <div
+              key={`empty-${slot.key}`}
+              className="exrow week-band-empty-row"
+              data-empty-exercise-id={slot.exerciseId ?? undefined}
+              title={missingName
+                ? '未命名动作不可添加，请先完善动作名称'
+                : `本周无「${slot.exemplar.name}」，点击快速添加`}
+              role="button"
+              tabIndex={quickAddDisabled ? -1 : 0}
+              aria-disabled={quickAddDisabled}
+              onClick={(event) => { event.stopPropagation(); if (!quickAddDisabled) weekBand!.onQuickAdd(slot) }}
+              onKeyDown={(event) => {
+                if (event.target !== event.currentTarget) return
+                if (!quickAddDisabled && (event.key === 'Enter' || event.key === ' ')) {
+                  event.preventDefault()
+                  weekBand!.onQuickAdd(slot)
+                }
+              }}
+            >
+              <span className="exercise-row-main">
+                <span className="gcell week-band-frozen week-band-index" data-c="index" style={{ width: 28 }}>{rowNumber}</span>
+                <span className="gcell week-band-frozen week-band-empty-name" data-c="name" style={{ width: colW.name }}>
+                  {badge && <span className={`week-band-badge ${badge.tone}`}>{badge.label}</span>}
+                  <span className="week-band-empty-name-label">{slot.exemplar.name || '未命名动作'}</span>
+                </span>
+                <span className="week-band-empty-prescription" style={{ width: total - frozenWidth - colW.name }}>
+                  {missingName ? '—　不可添加' : '—　点击添加'}
+                </span>
+              </span>
+            </div>
+          )
+        }
         const addRowEntry = (tier: 'main' | 'aux') => (
           <div className="popitem" data-add-tier={tier} onClick={(e) => { e.stopPropagation(); onAddRow(tier) }}
             style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 8px', borderTop: '1px dashed var(--bd)', color: 'var(--mut)', cursor: 'pointer', fontSize: 11 }}>
             <span style={{ color: 'var(--ink)', fontWeight: 700 }}>＋</span> 加动作
           </div>
         )
+        const addWeekBandRowEntry = (tier: 'main' | 'aux') => !readOnly && (
+          <button type="button" className="week-band-section-add" data-add-tier={tier}
+            onClick={(event) => { event.stopPropagation(); onAddRow(tier) }}>
+            <span aria-hidden="true">＋</span> {tier === 'main' ? '加主项' : '加辅助'}
+          </button>
+        )
+        if (weekBand) {
+          const mainSummary = summarizeDaySection(day.rows.filter((row) => resolveTier(row) === 'main'))
+          const auxSummary = summarizeDaySection(day.rows.filter((row) => resolveTier(row) === 'aux'))
+          let rowNumber = 0
+          const renderSlots = (slots: WeekBandSlot[]) => slots.map((slot) => {
+            rowNumber += 1
+            const row = weekBand.rows.get(slot.key)
+            return row ? renderRow(row, slot, rowNumber) : renderEmptySlot(slot, rowNumber)
+          })
+          return (
+            <>
+              {(weekBand.main.length > 0 || !readOnly) && <TierHeader label="主项及变式" accent width={total} summary={mainSummary} />}
+              {renderSlots(weekBand.main)}
+              {addWeekBandRowEntry('main')}
+              {(weekBand.aux.length > 0 || !readOnly) && <TierHeader label="辅助项" width={total} summary={auxSummary} />}
+              {renderSlots(weekBand.aux)}
+              {addWeekBandRowEntry('aux')}
+            </>
+          )
+        }
         if (!rowTier) {
           return (
             <>
-              {displayRows.map(renderRow)}
+              {displayRows.map((row) => renderRow(row))}
               {selected && addRowEntry('aux')}
             </>
           )
@@ -818,20 +974,20 @@ export function DayColumn({
         return (
           <>
             {(mainRows.length > 0 || selected) && <TierHeader label="主项及变式" accent width={total} summary={mainSummary} />}
-            {mainRows.map(renderRow)}
+            {mainRows.map((row) => renderRow(row))}
             {selected && addRowEntry('main')}
             {(auxRows.length > 0 || selected) && <TierHeader label="辅助项" width={total} summary={auxSummary} />}
-            {auxRows.map(renderRow)}
+            {auxRows.map((row) => renderRow(row))}
             {selected && addRowEntry('aux')}
           </>
         )
         })()}
-      </div>
 
-      {dividers.map((d) => (
-        <div key={d.col} className="coldiv" style={{ left: d.left }}
-          onMouseDown={(e) => onResizeStart(d.col, e)} onClick={(e) => e.stopPropagation()} />
-      ))}
+        {dividers.map((d) => (
+          <div key={d.col} className="coldiv" style={{ left: d.left }}
+            onMouseDown={(e) => onResizeStart(d.col, e)} onClick={(e) => e.stopPropagation()} />
+        ))}
+      </div>
     </div>
   )
 }

@@ -13,7 +13,7 @@ function plan(hasLogs?: boolean): PlanWithChildren {
       shifted_to_date: null,
       exercises: [{
         id: 'pe', plan_day_id: 'd', exercise_id: 'ex', is_main_lift: false,
-        sort_order: 4, ...(hasLogs === undefined ? {} : { has_logs: hasLogs }), notes: null, sets: [],
+        sort_order: 4, target: 'retired-value', ...(hasLogs === undefined ? {} : { has_logs: hasLogs }), notes: null, sets: [],
       }],
     }],
   }
@@ -30,5 +30,9 @@ describe('mapPlanToWeeks history-lock wire compatibility', () => {
 
   it('treats a missing pre-rollout has_logs field as false without crashing', () => {
     expect(mapPlanToWeeks(plan(), catalog)[0].days[0].rows[0].hasLogs).toBe(false)
+  })
+
+  it('ignores the dormant plan_exercises target on read', () => {
+    expect(mapPlanToWeeks(plan(false), catalog)[0].days[0].rows[0]).not.toHaveProperty('target')
   })
 })

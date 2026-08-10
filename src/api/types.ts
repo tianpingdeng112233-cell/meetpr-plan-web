@@ -278,6 +278,8 @@ export interface PlanResponse {
   start_date: string
   end_date: string
   plan_weeks: number
+  /** Display-only D1 weekday anchor: 1=Monday … 7=Sunday. */
+  anchor_weekday?: number | null
   source: string
   source_template_id: string | null
   status: PlanStatus
@@ -316,6 +318,7 @@ export interface PlanExerciseResponse {
   exercise_id: string
   is_main_lift: boolean
   sort_order: number
+  target: string | null
   /** backend spec 016; optional while production rolls out the new contract */
   has_logs?: boolean
   notes: string | null
@@ -409,6 +412,8 @@ export interface CreatePlanBody {
   start_date: string // YYYY-MM-DD
   end_date: string
   plan_weeks: number
+  /** Display-only D1 weekday anchor: 1=Monday … 7=Sunday. */
+  anchor_weekday?: number | null
   source: 'coach'
   kind?: 'regular'
 }

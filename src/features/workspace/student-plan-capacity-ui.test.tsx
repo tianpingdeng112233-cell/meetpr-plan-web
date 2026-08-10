@@ -89,9 +89,9 @@ function publishedPlan(): PlanWithChildren {
       sort_order: 0,
       shifted_to_date: null,
       exercises: [
-        { id: 'squat-row', plan_day_id: 'day', exercise_id: 'squat', is_main_lift: true, sort_order: 0, notes: null, sets: sets('squat', 2) },
-        { id: 'bench-row', plan_day_id: 'day', exercise_id: 'bench', is_main_lift: true, sort_order: 1, notes: null, sets: sets('bench', 17) },
-        { id: 'deadlift-row', plan_day_id: 'day', exercise_id: 'deadlift', is_main_lift: true, sort_order: 2, notes: null, sets: sets('deadlift', 4) },
+        { id: 'squat-row', plan_day_id: 'day', exercise_id: 'squat', is_main_lift: true, sort_order: 0, target: null, notes: null, sets: sets('squat', 2) },
+        { id: 'bench-row', plan_day_id: 'day', exercise_id: 'bench', is_main_lift: true, sort_order: 1, target: null, notes: null, sets: sets('bench', 17) },
+        { id: 'deadlift-row', plan_day_id: 'day', exercise_id: 'deadlift', is_main_lift: true, sort_order: 2, target: null, notes: null, sets: sets('deadlift', 4) },
       ],
     }],
   }
