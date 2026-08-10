@@ -1,11 +1,11 @@
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { CompletePlanDialog } from './PlanDialogs'
+import { CompletePlanDialog, NewPlanDialog } from './PlanDialogs'
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
-describe('CompletePlanDialog', () => {
+describe('PlanDialogs', () => {
   let host: HTMLDivElement
   let root: Root
 
@@ -34,5 +34,17 @@ describe('CompletePlanDialog', () => {
     expect(confirm?.style.background).toBe('var(--green)')
     act(() => confirm?.dispatchEvent(new MouseEvent('click', { bubbles: true })))
     expect(onComplete).toHaveBeenCalledOnce()
+  })
+
+  it('keeps the Day 1 weekday selector in the new-plan dialog', () => {
+    act(() => root.render(
+      <NewPlanDialog open studentName="学员" onClose={() => {}} onCreate={vi.fn()} />,
+    ))
+
+    expect(host.textContent).toContain('Day 1 从周几开始')
+    expect(host.querySelector<HTMLInputElement>('[aria-label="开始日期"]')).not.toBeNull()
+    expect([...host.querySelectorAll<HTMLButtonElement>('button')]
+      .filter((button) => ['周一', '周二', '周三', '周四', '周五', '周六', '周日'].includes(button.textContent ?? '')))
+      .toHaveLength(7)
   })
 })

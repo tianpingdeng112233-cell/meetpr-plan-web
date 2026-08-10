@@ -42,12 +42,7 @@ export interface WeekBandDayView {
   onQuickAdd: (slot: WeekBandSlot) => void
   /** Display-only ordinal among this week's non-empty training days. */
   trainingDayOrdinal: number | null
-  /** Position 1 owns the start-date weekday shortcut even when it is a rest day. */
-  isFirstPosition: boolean
   weekdayLabel: string | null
-  anchorWeekday: number | null
-  anchorSaving?: boolean
-  onAnchorWeekdayChange?: (weekday: number | null) => void
 }
 
 interface Props {
@@ -713,23 +708,6 @@ export function DayColumn({
           <span className="dayhead-line">
             {!dayMoveDisabledHint && <span className="day-move-grip" aria-hidden="true">⋮</span>}
             <WeekBandCalendarLabel weekdayLabel={weekBand.weekdayLabel} dateLabel={day.dateLabel} />
-            {weekBand.isFirstPosition && (
-              <select
-                className="anchor-weekday-select"
-                aria-label={weekBand.anchorWeekday == null ? '设置每周第一天周几' : '修改每周第一天周几'}
-                title="选择周几后，起始日期会向后调整到最近的该周几"
-                value={weekBand.anchorWeekday ?? ''}
-                disabled={readOnly || weekBand.anchorSaving || !weekBand.onAnchorWeekdayChange}
-                onMouseDown={stop}
-                onClick={stop}
-                onChange={(event) => weekBand.onAnchorWeekdayChange?.(event.currentTarget.value ? Number(event.currentTarget.value) : null)}
-              >
-                <option value="">设周几</option>
-                {['周一', '周二', '周三', '周四', '周五', '周六', '周日'].map((label, index) => (
-                  <option value={index + 1} key={label}>{label}</option>
-                ))}
-              </select>
-            )}
             <ShiftBadge day={day} />
             {columnLetter && <kbd className="day-column-key">{columnLetter}</kbd>}
           </span>
@@ -759,23 +737,6 @@ export function DayColumn({
           {!dayMoveDisabledHint && <span className="day-move-grip" aria-hidden="true">⋮</span>}
           <span className="dayhead-primary">{weekBand ? `D${weekBand.trainingDayOrdinal}` : day.dowLabel}</span>
           {weekBand && <WeekBandCalendarLabel weekdayLabel={weekBand.weekdayLabel} dateLabel={day.dateLabel} />}
-          {weekBand?.isFirstPosition && (
-            <select
-              className="anchor-weekday-select"
-              aria-label={weekBand.anchorWeekday == null ? '设置每周第一天周几' : '修改每周第一天周几'}
-                title="选择周几后，起始日期会向后调整到最近的该周几"
-              value={weekBand.anchorWeekday ?? ''}
-              disabled={readOnly || weekBand.anchorSaving || !weekBand.onAnchorWeekdayChange}
-              onMouseDown={stop}
-              onClick={stop}
-              onChange={(event) => weekBand.onAnchorWeekdayChange?.(event.currentTarget.value ? Number(event.currentTarget.value) : null)}
-            >
-              <option value="">设周几</option>
-              {['周一', '周二', '周三', '周四', '周五', '周六', '周日'].map((label, index) => (
-                <option value={index + 1} key={label}>{label}</option>
-              ))}
-            </select>
-          )}
           {!weekBand && <span className="dayhead-date">{day.dateLabel}</span>}
           <ShiftBadge day={day} />
           {columnLetter && <kbd className="day-column-key">{columnLetter}</kbd>}

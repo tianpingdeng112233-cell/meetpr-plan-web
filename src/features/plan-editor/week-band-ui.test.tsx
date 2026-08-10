@@ -285,9 +285,12 @@ describe('spec 037 week-band UI', () => {
     expect(days[0].querySelector('[data-day-calendar-label]')?.textContent).toBe('周一8/10')
     expect(days[1].querySelector('[data-day-calendar-label]')?.textContent).toBe('周二8/11')
     expect(host.querySelectorAll('.weekband[data-wnum="1"] .dayhead-weekday')).toHaveLength(7)
+    expect(host.querySelector('.anchor-weekday-select')).toBeNull()
+    expect(host.querySelector('[aria-label="设置每周第一天周几"]')).toBeNull()
+    expect(host.querySelector('[aria-label="修改每周第一天周几"]')).toBeNull()
   })
 
-  it('keeps the weekday anchor on the first position even when it is a rest day', () => {
+  it('keeps the start_date-derived weekday label on the first position even when it is a rest day', () => {
     const anchored = datedWeeks('2026-08-10')[0]
     anchored.days[3] = { ...anchored.days[3], rest: false, rows: [row('sq', 'sq', '深蹲', true)] }
     act(() => root.render(
@@ -295,11 +298,7 @@ describe('spec 037 week-band UI', () => {
         studentName="学员" planName="计划" planStartDate="2026-08-10" onChangeStartDate={vi.fn()} />,
     ))
 
-    const select = host.querySelector<HTMLSelectElement>('[aria-label="修改每周第一天周几"]')!
-    expect(select.value).toBe('1')
-    expect(select.selectedOptions[0]?.textContent).toBe('周一')
-    expect(select.closest('.day')?.getAttribute('data-dow')).toBe('0')
-    expect(host.querySelectorAll('.anchor-weekday-select')).toHaveLength(1)
+    expect(host.querySelector('.day[data-dow="0"] [data-day-calendar-label]')?.textContent).toBe('周一8/10')
     expect(host.querySelector('.day[data-dow="3"] .dayhead-primary')?.textContent).toBe('D1')
   })
 
@@ -571,89 +570,4 @@ describe('spec 037 week-band UI', () => {
     Reflect.deleteProperty(document, 'elementsFromPoint')
   })
 
-  it('uses weekday selection to move start_date forward and relabel the full chain', async () => {
-    const onChange = vi.fn().mockResolvedValue(undefined)
-    await act(async () => root.render(
-      <PlanEditor initialWeeks={datedWeeks('2026-08-10', 2)} weeksCount={2} studentName="学员" planName="计划"
-        planStartDate="2026-08-10" onChangeStartDate={onChange} />,
-    ))
-    const select = host.querySelector<HTMLSelectElement>('[aria-label="修改每周第一天周几"]')!
-    expect(select.value).toBe('1')
-    await act(async () => {
-      select.value = '3'
-      select.dispatchEvent(new Event('change', { bubbles: true }))
-      await Promise.resolve()
-      await Promise.resolve()
-    })
-    expect(onChange).toHaveBeenCalledWith('2026-08-12')
-    expect(select.value).toBe('3')
-    expect([...host.querySelectorAll<HTMLElement>('[data-day-calendar-label]')].map((label) => label.textContent))
-      .toEqual([
-        '周三8/12', '周四8/13', '周五8/14', '周六8/15', '周日8/16', '周一8/17', '周二8/18',
-        '周三8/19', '周四8/20', '周五8/21', '周六8/22', '周日8/23', '周一8/24', '周二8/25',
-      ])
-    expect([...host.querySelectorAll('button')].find((button) => button.textContent?.includes('起始'))?.textContent)
-      .toContain('08-12')
-  })
-
-  it('does not persist when the selected weekday already matches start_date', async () => {
-    const onChange = vi.fn().mockResolvedValue(undefined)
-    act(() => root.render(
-      <PlanEditor initialWeeks={datedWeeks('2026-08-10')} weeksCount={1} studentName="学员" planName="计划"
-        planStartDate="2026-08-10" onChangeStartDate={onChange} />,
-    ))
-    const select = host.querySelector<HTMLSelectElement>('[aria-label="修改每周第一天周几"]')!
-    act(() => {
-      select.value = '1'
-      select.dispatchEvent(new Event('change', { bubbles: true }))
-    })
-    expect(onChange).not.toHaveBeenCalled()
-    expect(select.value).toBe('1')
-  })
-
-  it('derives the weekday dropdown from a directly changed start date', async () => {
-    const onChange = vi.fn().mockResolvedValue(undefined)
-    act(() => root.render(
-      <PlanEditor initialWeeks={datedWeeks('2026-08-10')} weeksCount={1} studentName="学员" planName="计划"
-        planStartDate="2026-08-10" onChangeStartDate={onChange} />,
-    ))
-    const startButton = [...host.querySelectorAll<HTMLButtonElement>('button')]
-      .find((button) => button.textContent?.includes('起始'))!
-    act(() => startButton.click())
-    const input = host.querySelector<HTMLInputElement>('[aria-label="开始日期"]')!
-    act(() => {
-      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(input, '2026-08-13')
-      input.dispatchEvent(new Event('change', { bubbles: true }))
-    })
-    await act(async () => {
-      const apply = [...host.querySelectorAll<HTMLButtonElement>('button')]
-        .find((button) => button.textContent === '应用')!
-      apply.click()
-      await Promise.resolve()
-      await Promise.resolve()
-    })
-    expect(onChange).toHaveBeenCalledWith('2026-08-13')
-    expect(host.querySelector<HTMLSelectElement>('[aria-label="修改每周第一天周几"]')?.value).toBe('4')
-    expect([...host.querySelectorAll<HTMLButtonElement>('button')]
-      .find((button) => button.textContent?.includes('起始'))?.textContent).toContain('08-13')
-  })
-
-  it('confirms once before changing a published plan weekday', async () => {
-    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
-    const onChange = vi.fn().mockResolvedValue(undefined)
-    act(() => root.render(
-      <PlanEditor initialWeeks={datedWeeks('2026-08-10')} weeksCount={1} studentName="学员" planName="已发布"
-        planStartDate="2026-08-10" planStatus="published" initialPublished onChangeStartDate={onChange} />,
-    ))
-    const select = host.querySelector<HTMLSelectElement>('[aria-label="修改每周第一天周几"]')!
-    await act(async () => {
-      select.value = '3'
-      select.dispatchEvent(new Event('change', { bubbles: true }))
-      await Promise.resolve()
-      await Promise.resolve()
-    })
-    expect(confirm).toHaveBeenCalledOnce()
-    expect(confirm).toHaveBeenCalledWith('调整起始日期会同步改变学员端显示的日期,确认?')
-    expect(onChange).toHaveBeenCalledWith('2026-08-12')
-  })
 })

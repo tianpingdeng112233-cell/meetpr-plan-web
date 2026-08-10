@@ -56,7 +56,6 @@ import {
   type WeekBandSlot,
 } from './weekBandModel'
 import type { WeekBandBadge } from './components/DayColumn'
-import { nearestWeekdayISO, weekdayIndex } from './components/PlanCalendarControls'
 
 interface Sel { wnum: number; dow: number }
 interface PopState { visible: boolean; x: number; y: number; wnum: number; dow: number; rowId: string; query: string }
@@ -390,8 +389,6 @@ export function PlanEditor(props: PlanEditorProps) {
   const [dayMoveVisual, setDayMoveVisual] = useState<DayMoveVisual | null>(null)
   const initialVisibleWeekIndex = Math.max(0, initialWeeks.findIndex((week) => week.isCurrent))
   const [visibleWeekIndex, setVisibleWeekIndex] = useState(initialVisibleWeekIndex)
-  const anchorWeekday = planStartDate == null ? null : weekdayIndex(planStartDate) + 1
-  const [anchorSaving, setAnchorSaving] = useState(false)
 
   const rootRef = useRef<HTMLDivElement>(null)
   const scrollerRef = useRef<HTMLDivElement>(null)
@@ -1582,12 +1579,10 @@ export function PlanEditor(props: PlanEditorProps) {
     ? '已发布计划的周期与日期不可修改'
     : '计划内已有学员打卡动作，不能修改周期与日期'
 
-  const applyStartDate = useCallback(async (nextStart: string, weekdayShortcut = false) => {
+  const applyStartDate = useCallback(async (nextStart: string) => {
     if (!props.onChangeStartDate || readOnly || saving || publishing.current
-      || (!weekdayShortcut && calendarLocked)) throw new Error('CALENDAR_LOCKED')
+      || calendarLocked) throw new Error('CALENDAR_LOCKED')
     if (nextStart === currentPlanStart.current) return
-    if (weekdayShortcut && published
-      && !window.confirm('调整起始日期会同步改变学员端显示的日期,确认?')) return
     if (!(await saver.current.flush())) throw new Error('SAVE_FAILED')
     const weeksAtRequest = latestWeeks.current
     const hadUnsavedContent = unsavedRef.current
@@ -1621,18 +1616,6 @@ export function PlanEditor(props: PlanEditorProps) {
     (nextStart: string) => applyStartDate(nextStart),
     [applyStartDate],
   )
-
-  const handleAnchorWeekdayChange = useCallback(async (next: number | null) => {
-    if (next == null || readOnly || anchorSaving || !currentPlanStart.current) return
-    const nextStart = nearestWeekdayISO(next - 1, currentPlanStart.current)
-    if (nextStart === currentPlanStart.current) return
-    setAnchorSaving(true)
-    try {
-      await applyStartDate(nextStart, true)
-    } finally {
-      setAnchorSaving(false)
-    }
-  }, [anchorSaving, applyStartDate, readOnly])
 
   const handleChangePlanWeeks = useCallback(async (nextCount: number) => {
     if (!props.onChangePlanWeeks || calendarLocked || saving || publishing.current) throw new Error('CALENDAR_LOCKED')
@@ -2364,13 +2347,7 @@ export function PlanEditor(props: PlanEditorProps) {
                             badgeFor: weekBandBadge,
                             onQuickAdd: (slot) => quickAddAlignedExercise(wk.num, day.dow, slot),
                             trainingDayOrdinal: trainingDayOrdinal(wk, day.dow),
-                            isFirstPosition: dayIndex === 0,
                             weekdayLabel: day.dowLabel,
-                            anchorWeekday,
-                            anchorSaving,
-                            onAnchorWeekdayChange: props.onChangeStartDate && planStartDate
-                              ? (weekday) => { void handleAnchorWeekdayChange(weekday).catch(() => undefined) }
-                              : undefined,
                           }
                         })()}
                       />

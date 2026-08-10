@@ -14,7 +14,7 @@ import { PlanEditor } from '../plan-editor/PlanEditor'
 import { buildWeeks as buildSampleWeeks } from '../plan-editor/sampleData'
 import { SamplePreviewBanner } from './SamplePreviewBanner'
 import type { Week } from '../plan-editor/types'
-import { planEndISO, todayISO, weekdayIndex } from '../plan-editor/components/PlanCalendarControls'
+import { planEndISO, todayISO } from '../plan-editor/components/PlanCalendarControls'
 import { BackfillHistoryDialog, CompletePlanDialog, DeletePlanDialog, NewPlanDialog } from './PlanDialogs'
 import { getBindRequests, getExerciseStatsOverview, getStudentVideos, refreshCoachStudents } from '../../api/coach'
 import { CoachShell, type CoachView } from './CoachShell'
@@ -841,7 +841,6 @@ export function PlanWorkspace({ onLogout, me }: Props) {
           const calendar = {
             start_date: startDate,
             end_date: planEndISO(startDate, loaded.plan.plan_weeks),
-            anchor_weekday: weekdayIndex(startDate) + 1,
           }
           const updated = await patchPlan(loaded.plan.id, calendar)
           const nextPlan = { ...updated, ...calendar }

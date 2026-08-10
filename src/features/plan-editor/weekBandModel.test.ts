@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest'
 import type { DayCol, ExerciseRow, Week } from './types'
 import {
   alignWeeksByExercise,
-  anchoredWeekday,
   closestWeekToViewportCenter,
   orderWeeksByWeekBand,
   reorderWeekBandSkeleton,
@@ -94,13 +93,7 @@ describe('week-band scroll spy', () => {
   })
 })
 
-describe('D1 weekday anchor', () => {
-  it('cycles past seven ordinal days and leaves unset anchors blank', () => {
-    expect(anchoredWeekday(1, 1)).toBe('周一')
-    expect(anchoredWeekday(7, 2)).toBe('周一')
-    expect(anchoredWeekday(3, 10)).toBe('周五')
-    expect(anchoredWeekday(null, 1)).toBeNull()
-  })
+describe('week-band mutations', () => {
   it('derives alignment and the logged-row lock from the weeks it is given (no stale snapshot)', () => {
     const stale = [
       week(1, [row('a1', 'a'), row('b1', 'b')]),

@@ -1074,7 +1074,6 @@ describe('PlanWorkspace editor remount', () => {
     expect(api.patchPlan).toHaveBeenCalledWith('plan', {
       start_date: '2026-01-07',
       end_date: '2026-01-13',
-      anchor_weekday: 3,
     })
     const latestProps = api.captureEditorProps.mock.calls.at(-1)?.[0] as {
       planStartDate: string

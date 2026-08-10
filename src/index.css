@@ -2868,7 +2868,6 @@ textarea {
 }
 .week-band-track .day.week-band-rest-card > .week-band-rest-line:hover { background: transparent !important; }
 .week-band-track .day.week-band-rest-card > .week-band-rest-line:hover .day-move-grip { color: var(--mut); }
-.week-band-rest-line .anchor-weekday-select,
 .week-band-rest-line .day-column-key,
 .week-band-rest-line .dayhead-weekday {
   border-color: color-mix(in srgb, var(--bd) 65%, transparent);
@@ -3023,16 +3022,6 @@ textarea {
   border-radius: 999px;
   color: var(--sec);
   font: 600 9px var(--font-mono);
-}
-.anchor-weekday-select {
-  height: 21px;
-  max-width: 78px;
-  border: 1px solid var(--tint-bd);
-  border-radius: var(--r-sm);
-  color: var(--ink);
-  background: var(--card-bg);
-  font: 600 9px var(--font-sans);
-  cursor: pointer;
 }
 .week-band-day .daygrid { width: 100% !important; min-width: 0; }
 .week-band-day .gridhead,
