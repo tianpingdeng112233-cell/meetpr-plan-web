@@ -4,17 +4,18 @@
 // even one logged exercise is reconciled exercise-by-exercise so the immutable rows
 // and their set/history links are never touched.
 
-import type { Week, DayCol, ExerciseRow, SetBox } from './types'
+import type { Week, DayCol, ExerciseRow, IntensityValueMode, RowIntensity, SetBox, WeightMode } from './types'
 import { isBoundNoSets, isContentfulUnbound } from './types'
 import type {
   PlanWithChildren, PlanDayResponse, PlanExerciseResponse, CreatePlanSetBody,
-  BatchPlanDayBody, BatchPlanDaysBody, IntensityModeWire, SetType,
+  BatchPlanDayBody, BatchPlanDaysBody, SetType,
 } from '../../api/types'
 import {
   getPlan, batchDays, deleteDay, createExercise, deleteExercise, createSet, patchPlan,
 } from '../../api/plans'
 import { ApiException } from '../../api/client'
 import { addDays, type Catalog } from './mapping'
+import { isLegacyRpeRow, rowIntensity, rowIntensityBoxes, rowWeightBoxes } from './intensityModel'
 
 interface DesiredExercise {
   exercise_id: string
@@ -88,11 +89,21 @@ function assertSupportedServerTree(server: PlanWithChildren): void {
     if (sets.length === 0) continue
     const first = sets[0]
     const bodyweight = sets.every((set) => /自重|bodyweight/i.test(set.coach_note ?? ''))
+    const newIntensity = (set: typeof first) => JSON.stringify([
+      set.load_mode ?? null,
+      numNullable(set.target_pct), numNullable(set.target_rpe), numNullable(set.rir_target),
+      numNullable(set.rpe_low), numNullable(set.rpe_high),
+      numNullable(set.weight_low), numNullable(set.weight_high),
+    ])
+    const firstIntensity = newIntensity(first)
+    const singleValueMode = first.load_mode === 'pct' || first.load_mode === 'rpe' || first.load_mode === 'rir'
     const supported = sets.every((set, index) => (
       set.set_number === index + 1
       && set.target_reps === first.target_reps
       && set.target_reps_max === first.target_reps_max
-      && set.intensity_mode === first.intensity_mode
+      && (first.load_mode != null
+        ? set.load_mode === first.load_mode && (singleValueMode || newIntensity(set) === firstIntensity)
+        : set.load_mode == null && set.intensity_mode === first.intensity_mode)
       && set.rest_seconds == null
       && (bodyweight || set.coach_note == null)
       && (set.set_type === 'working' || (index === sets.length - 1 && set.set_type === 'amrap'))
@@ -101,9 +112,13 @@ function assertSupportedServerTree(server: PlanWithChildren): void {
   }
 }
 
-function numStr(v: string): string {
+function numStr(v: string | number): string {
   const n = Number(v)
-  return Number.isNaN(n) ? v : String(n)
+  return Number.isNaN(n) ? String(v) : String(n)
+}
+
+function numNullable(v: string | number | null | undefined): string | null {
+  return v == null || v === '' ? null : numStr(v)
 }
 
 function canonCoachNote(note: string | null | undefined): string | null {
@@ -111,9 +126,9 @@ function canonCoachNote(note: string | null | undefined): string | null {
   return /自重|bodyweight/i.test(note) ? 'bodyweight' : note
 }
 
-function fmtNum(v: string): string {
+function fmtNum(v: string | number): string {
   const n = Number(v)
-  return Number.isNaN(n) ? v : String(Number(n.toFixed(2)))
+  return Number.isNaN(n) ? String(v) : String(Number(n.toFixed(2)))
 }
 
 function parseReps(reps: string): { reps: number; repsMax: number | null; amrap: boolean } {
@@ -131,29 +146,93 @@ function parseReps(reps: string): { reps: number; repsMax: number | null; amrap:
 /** A bound row -> desired backend exercise. Unbound rows (no exerciseId) -> null. */
 function rowToDesired(row: ExerciseRow): DesiredExercise | null {
   if (!row.exerciseId) return null
-  const mode: IntensityModeWire = row.mode === 'rpe' || row.mode === 'bodyweight' ? 'rpe' : 'weight'
-  const filled = row.mode === 'bodyweight'
-    ? row.boxes.map(() => ({ val: '10', empty: false }))
-    : row.boxes.filter((b) => !b.empty && b.val !== '')
   const { reps, repsMax, amrap } = parseReps(row.reps)
-  const sets: CreatePlanSetBody[] = filled.map((b, i) => ({
-    set_number: i + 1,
-    target_reps: reps,
-    target_reps_max: repsMax,
-    intensity_mode: mode,
-    target_value: numStr(b.val),
-    set_type: (amrap && i === filled.length - 1 ? 'amrap' : 'working') as SetType,
-    coach_note: row.mode === 'bodyweight' ? '自重' : undefined,
-  }))
+  let sets: CreatePlanSetBody[]
+  if (row.mode === 'bodyweight') {
+    sets = row.boxes.map((_, i) => ({
+      set_number: i + 1,
+      target_reps: reps,
+      target_reps_max: repsMax,
+      intensity_mode: 'rpe',
+      target_value: '10',
+      set_type: (amrap && i === row.boxes.length - 1 ? 'amrap' : 'working') as SetType,
+      coach_note: '自重',
+    }))
+  } else {
+    const intensity = rowIntensity(row)
+    const weights = rowWeightBoxes(row)
+    const legacyRpeValues = isLegacyRpeRow(row) ? rowIntensityBoxes(row) : null
+    const intensityValues = rowIntensityBoxes(row)
+    sets = row.boxes.map((_, i) => {
+      if (legacyRpeValues) {
+        return {
+          set_number: i + 1,
+          target_reps: reps,
+          target_reps_max: repsMax,
+          intensity_mode: 'rpe',
+          target_value: numNullable(legacyRpeValues[i]?.val ?? '') ?? '',
+          set_type: (amrap && i === row.boxes.length - 1 ? 'amrap' : 'working') as SetType,
+        }
+      }
+      const setIntensity = intensity
+      const setIntensityValue = intensityValues[i] && !intensityValues[i].empty
+        ? intensityValues[i].val
+        : ''
+      const targetWeight = weights[i] && !weights[i].empty ? numNullable(weights[i].val) : null
+      return {
+        set_number: i + 1,
+        target_reps: reps,
+        target_reps_max: repsMax,
+        load_mode: setIntensity?.mode ?? null,
+        target_pct: setIntensity?.mode === 'pct' ? numNullable(setIntensityValue) : null,
+        target_rpe: setIntensity?.mode === 'rpe' ? numNullable(setIntensityValue) : null,
+        rir_target: setIntensity?.mode === 'rir' ? numNullable(setIntensityValue) : null,
+        rpe_low: setIntensity?.mode === 'rpe_range' ? numNullable(setIntensity.value) : null,
+        rpe_high: setIntensity?.mode === 'rpe_range' ? numNullable(setIntensity.high) : null,
+        weight_low: setIntensity?.mode === 'weight_range' ? numNullable(setIntensity.value) : null,
+        weight_high: setIntensity?.mode === 'weight_range' ? numNullable(setIntensity.high) : null,
+        target_weight: targetWeight,
+        set_type: (amrap && i === row.boxes.length - 1 ? 'amrap' : 'working') as SetType,
+      }
+    })
+  }
   return { exercise_id: row.exerciseId, is_main_lift: row.isMain, notes: row.note || null, sets }
+}
+
+function canonicalSet(set: CreatePlanSetBody | PlanExerciseResponse['sets'][number]): unknown[] {
+  const bodyweight = /自重|bodyweight/i.test(set.coach_note ?? '')
+  const useNewShape = !bodyweight && (
+    set.load_mode != null
+    || (set.intensity_mode === 'weight' && set.target_value !== undefined)
+    // A desired new weight-only row explicitly carries load_mode:null and no
+    // legacy projection. A server legacy RPE row also carries null, but keeps
+    // intensity_mode/target_value and must stay in the legacy canonical branch.
+    || (set.load_mode !== undefined && set.intensity_mode === undefined)
+  )
+  if (useNewShape) {
+    const legacyWeight = set.load_mode === undefined && set.intensity_mode === 'weight'
+      ? numNullable(set.target_value)
+      : null
+    return [
+      set.set_number, set.target_reps, set.target_reps_max ?? null,
+      set.load_mode ?? null,
+      numNullable(set.target_pct), numNullable(set.target_rpe), numNullable(set.rir_target),
+      numNullable(set.rpe_low), numNullable(set.rpe_high),
+      numNullable(set.weight_low), numNullable(set.weight_high),
+      numNullable(set.target_weight) ?? legacyWeight,
+      set.set_type, null,
+    ]
+  }
+  return [
+    set.set_number, set.target_reps, set.target_reps_max ?? null,
+    set.intensity_mode, numNullable(set.target_value), set.set_type, canonCoachNote(set.coach_note),
+  ]
 }
 
 function canonDesiredOne(e: DesiredExercise): string {
   return JSON.stringify({
     x: e.exercise_id, m: e.is_main_lift, n: e.notes ?? '',
-    s: e.sets.map((s) => [
-      s.set_number, s.target_reps, s.target_reps_max ?? null, s.intensity_mode, numStr(s.target_value), s.set_type, canonCoachNote(s.coach_note),
-    ]),
+    s: e.sets.map(canonicalSet),
   })
 }
 
@@ -161,9 +240,7 @@ function canonServerOne(e: PlanExerciseResponse): string {
   return JSON.stringify({
     x: e.exercise_id, m: e.is_main_lift, n: e.notes ?? '',
     s: [...e.sets].sort((a, b) => a.set_number - b.set_number)
-      .map((s) => [
-        s.set_number, s.target_reps, s.target_reps_max ?? null, s.intensity_mode, numStr(s.target_value), s.set_type, canonCoachNote(s.coach_note),
-      ]),
+      .map(canonicalSet),
   })
 }
 
@@ -189,7 +266,12 @@ function cloneWeeks(weeks: Week[]): Week[] {
     days: week.days.map((day) => ({
       ...day,
       releasedSortOrders: day.releasedSortOrders ? [...day.releasedSortOrders] : undefined,
-      rows: day.rows.map((row) => ({ ...row, boxes: row.boxes.map((box) => ({ ...box })) })),
+      rows: day.rows.map((row) => ({
+        ...row,
+        intensity: row.intensity ? { ...row.intensity } : row.intensity,
+        intensityBoxes: row.intensityBoxes?.map((box) => ({ ...box })),
+        boxes: row.boxes.map((box) => ({ ...box })),
+      })),
     })),
   }))
 }
@@ -253,9 +335,55 @@ function serverToRow(exercise: PlanExerciseResponse, local: ExerciseRow | undefi
   const custom = catalogEntry?.custom ?? (local?.exerciseId === exercise.exercise_id ? local.custom : false)
   const sets = [...exercise.sets].sort((a, b) => a.set_number - b.set_number)
   const bodyweight = sets.length > 0 && sets.every((set) => /自重|bodyweight/i.test(set.coach_note ?? ''))
-  const boxes: SetBox[] = sets.map((set) => (
-    bodyweight ? { val: '', empty: true } : { val: fmtNum(set.target_value), empty: false }
+  const legacyRpeSource = !bodyweight && sets.length > 0 && sets.every((set) => (
+    set.load_mode == null && set.intensity_mode === 'rpe'
   ))
+  const loadMode = sets[0]?.load_mode ?? null
+  const uniformLoadMode = sets.every((set) => (set.load_mode ?? null) === loadMode)
+  const singleValueMode = loadMode === 'pct' || loadMode === 'rpe' || loadMode === 'rir'
+  const intensityBoxes: SetBox[] = sets.map((set) => {
+    const value = legacyRpeSource
+      ? fmtNum(set.target_value)
+      : set.load_mode === 'pct' ? set.target_pct == null ? '' : fmtNum(set.target_pct)
+        : set.load_mode === 'rpe' ? set.target_rpe == null ? '' : fmtNum(set.target_rpe)
+          : set.load_mode === 'rir' ? set.rir_target == null ? '' : fmtNum(set.rir_target)
+            : ''
+    return { val: value, empty: value === '' }
+  })
+  const boxes: SetBox[] = sets.map((set) => {
+    if (bodyweight) return { val: '', empty: true }
+    const targetWeight = set.target_weight
+      ?? (set.load_mode == null && set.intensity_mode === 'weight' ? set.target_value : null)
+    return { val: targetWeight == null ? '' : fmtNum(targetWeight), empty: targetWeight == null }
+  })
+  const intensity: RowIntensity | null = (() => {
+    const set = sets[0]
+    if (!set || bodyweight) return null
+    if (legacyRpeSource) return { mode: 'rpe', value: fmtNum(set.target_value), high: '' }
+    switch (set.load_mode) {
+      case 'pct': return { mode: 'pct', value: set.target_pct == null ? '' : fmtNum(set.target_pct), high: '' }
+      case 'rpe': return { mode: 'rpe', value: set.target_rpe == null ? '' : fmtNum(set.target_rpe), high: '' }
+      case 'rir': return { mode: 'rir', value: set.rir_target == null ? '' : fmtNum(set.rir_target), high: '' }
+      case 'weight_range': return {
+        mode: 'weight_range',
+        value: set.weight_low == null ? '' : fmtNum(set.weight_low),
+        high: set.weight_high == null ? '' : fmtNum(set.weight_high),
+      }
+      case 'rpe_range': return {
+        mode: 'rpe_range',
+        value: set.rpe_low == null ? '' : fmtNum(set.rpe_low),
+        high: set.rpe_high == null ? '' : fmtNum(set.rpe_high),
+      }
+      case 'fixed_weight': return { mode: 'fixed_weight', value: '', high: '' }
+      default: return null
+    }
+  })()
+  const weightMode: WeightMode = new Set(boxes.map((box) => box.empty || box.val === '' ? '<empty>' : box.val)).size > 1
+    ? 'per_set'
+    : 'uniform'
+  const intensityMode: IntensityValueMode = new Set(intensityBoxes.map((box) => box.empty || box.val === '' ? '<empty>' : box.val)).size > 1
+    ? 'per_set'
+    : 'uniform'
   const baseReps = sets[0]?.target_reps
   const repsMax = sets[0]?.target_reps_max
   const amrap = sets.some((set) => set.set_type === 'amrap')
@@ -274,7 +402,10 @@ function serverToRow(exercise: PlanExerciseResponse, local: ExerciseRow | undefi
     reps: sets.length === 0 ? '—' : repsMax != null && repsMax > baseReps
       ? `${baseReps}-${repsMax}`
       : `${baseReps}${amrap ? '+' : ''}`,
-    mode: bodyweight ? 'bodyweight' : sets[0]?.intensity_mode === 'rpe' ? 'rpe' : 'kg',
+    mode: bodyweight ? 'bodyweight' : legacyRpeSource ? 'rpe' : 'kg',
+    ...(!bodyweight && (legacyRpeSource || singleValueMode) ? { intensityMode, intensityBoxes } : {}),
+    ...(legacyRpeSource ? {} : { intensity: uniformLoadMode ? intensity : null }),
+    weightMode,
     boxes,
     note: exercise.notes ?? '',
   }
@@ -525,8 +656,19 @@ function workToBatchDay(work: DayWork): BatchPlanDayBody {
         set_number: set.set_number,
         target_reps: set.target_reps,
         target_reps_max: set.target_reps_max ?? null,
-        intensity_mode: set.intensity_mode,
-        target_value: set.target_value,
+        ...(set.intensity_mode !== undefined ? { intensity_mode: set.intensity_mode } : {}),
+        ...(set.target_value !== undefined ? { target_value: set.target_value } : {}),
+        ...(set.load_mode !== undefined ? {
+          load_mode: set.load_mode,
+          target_pct: set.target_pct ?? null,
+          target_rpe: set.target_rpe ?? null,
+          rir_target: set.rir_target ?? null,
+          rpe_low: set.rpe_low ?? null,
+          rpe_high: set.rpe_high ?? null,
+          weight_low: set.weight_low ?? null,
+          weight_high: set.weight_high ?? null,
+          target_weight: set.target_weight ?? null,
+        } : {}),
         set_type: set.set_type,
         rest_seconds: null,
         coach_note: set.coach_note ?? null,

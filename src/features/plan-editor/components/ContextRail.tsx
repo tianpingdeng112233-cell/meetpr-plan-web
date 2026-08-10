@@ -2,6 +2,8 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from 'reac
 import { getExerciseStats } from '../../../api/coach'
 import type { ExerciseStatsDetail, ExerciseStatsOverview, StudentOnboardingProfile } from '../../../api/types'
 import type { DayCol, ExerciseRow } from '../types'
+import { rowWeightBoxes } from '../intensityModel'
+import { getBoundRowInputIssue } from '../inputGuard'
 import { kg, profileLine, shortDate, techniqueStyleLine } from '../../workspace/WorkspaceCommon'
 
 /**
@@ -26,8 +28,7 @@ export function isRowComplete(row: ExerciseRow | null): boolean {
   // Bodyweight sets carry no load at all — mapping and reconcile both store them
   // as empty boxes — so sets plus reps is the whole prescription.
   if (row.mode === 'bodyweight') return true
-  const live = row.boxes.filter((b) => !b.empty)
-  return live.length > 0 && live.every((b) => b.val.trim() !== '')
+  return getBoundRowInputIssue(row) === null
 }
 
 export function profileEmptyMessage(profile: StudentOnboardingProfile | null | undefined): string | null {
@@ -116,8 +117,8 @@ export function isMainLiftDetail(detail: ExerciseStatsDetail | null): boolean {
 }
 
 export function topSetWeight(row: ExerciseRow | null): number | null {
-  if (row?.mode !== 'kg') return null
-  const values = row.boxes.filter((b) => !b.empty).map((b) => Number(b.val)).filter((v) => Number.isFinite(v) && v > 0)
+  if (!row || row.mode === 'bodyweight') return null
+  const values = rowWeightBoxes(row).filter((b) => !b.empty).map((b) => Number(b.val)).filter((v) => Number.isFinite(v) && v > 0)
   return values.length > 0 ? Math.max(...values) : null
 }
 

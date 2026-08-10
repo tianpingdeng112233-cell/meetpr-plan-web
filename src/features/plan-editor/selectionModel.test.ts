@@ -41,10 +41,10 @@ describe('plan cell selection model', () => {
       weekNumber: 31, dow: 0, rowId: 'a1', field: 'name',
     })?.reference).toBe('A1 · W31')
     expect(resolvePlanCell(weeks, {
-      weekNumber: 31, dow: 1, rowId: 'b1', field: 'intensity', setIndex: 0,
+      weekNumber: 31, dow: 1, rowId: 'b1', field: 'weight', setIndex: 0,
     })).toMatchObject({
       reference: 'B3 · W31',
-      label: '周2 · 第 1 组强度 · 硬拉',
+      label: '周2 · 统一重量 · 硬拉',
       value: '150 kg',
     })
   })
@@ -55,7 +55,7 @@ describe('plan cell selection model', () => {
       weekNumber: 31, dow: 0, rowId: 'missing', field: 'name',
     })).toBeNull()
     expect(resolvePlanCell(weeks, {
-      weekNumber: 31, dow: 0, rowId: 'a1', field: 'intensity', setIndex: 4,
+      weekNumber: 31, dow: 0, rowId: 'a1', field: 'weight', setIndex: 4,
     })).toBeNull()
   })
 

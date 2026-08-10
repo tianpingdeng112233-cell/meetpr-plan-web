@@ -15,7 +15,7 @@ function row(id: string, partial: Partial<ExerciseRow> = {}): ExerciseRow {
   }
 }
 
-const COLW = { name: 92, sets: 26, reps: 26, int: 110, note: 36 }
+const COLW = { name: 92, sets: 26, reps: 26, int: 142, weight: 118, note: 36 }
 const noop = {
   onSelect: vi.fn(), onResizeStart: vi.fn(), onNameFocus: vi.fn(), onNameChange: vi.fn(),
   onNameBlur: vi.fn(), onAddRow: vi.fn(), onEditRow: vi.fn(), onDeleteRow: vi.fn(),

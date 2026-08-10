@@ -1,5 +1,6 @@
 import type { ExerciseType, LiftFamily } from '../../api/types'
 import type { ExerciseRow, Week } from './types'
+import { rowWeightBoxes } from './intensityModel'
 
 export interface CatalogClassification {
   exerciseType: ExerciseType
@@ -48,11 +49,11 @@ export function rowSetCount(row: ExerciseRow): number {
 }
 
 export function rowTonnage(row: ExerciseRow): number {
-  if (row.mode !== 'kg') return 0
+  if (row.mode === 'bodyweight') return 0
   const reps = parseTargetReps(row.reps)
   if (reps == null) return 0
 
-  return row.boxes.reduce((total, box) => {
+  return rowWeightBoxes(row).reduce((total, box) => {
     if (box.val.trim() === '') return total
     const weight = Number(box.val)
     return Number.isFinite(weight) ? total + weight * reps : total

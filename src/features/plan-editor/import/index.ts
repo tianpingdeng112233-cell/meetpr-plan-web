@@ -593,7 +593,11 @@ function rowFromParsed(exercise: ParsedExercise, resolved: ExerciseResponse | nu
   const values = exercise.values.length > 0
     ? exercise.values
     : Array.from({ length: exercise.setCount }, () => '')
-  const boxes: SetBox[] = values.map((value) => ({ val: value, empty: value.trim() === '' }))
+  const parsedBoxes: SetBox[] = values.map((value) => ({ val: value, empty: value.trim() === '' }))
+  const rpe = exercise.mode === 'rpe'
+  const boxes: SetBox[] = rpe
+    ? parsedBoxes.map(() => ({ val: '', empty: true }))
+    : parsedBoxes
   return {
     id,
     serverRowId: null,
@@ -607,7 +611,15 @@ function rowFromParsed(exercise: ParsedExercise, resolved: ExerciseResponse | nu
     isMain: resolved ? resolved.is_competition_lift || resolved.main_lift_family != null : false,
     aux: boxes.length === 0,
     reps: exercise.reps,
-    mode: exercise.mode,
+    mode: rpe ? 'kg' : exercise.mode,
+    ...(rpe ? {
+      intensity: { mode: 'rpe' as const, value: parsedBoxes[0]?.val ?? '', high: '' },
+      intensityMode: new Set(parsedBoxes.map((box) => box.empty ? '<empty>' : box.val)).size > 1
+        ? 'per_set' as const
+        : 'uniform' as const,
+      intensityBoxes: parsedBoxes,
+      weightMode: 'uniform' as const,
+    } : { intensity: null, weightMode: 'per_set' as const }),
     boxes,
     note: exercise.note,
   }

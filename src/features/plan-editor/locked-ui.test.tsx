@@ -71,7 +71,7 @@ describe('exercise history lock UI', () => {
     act(() => root?.render(
       <DayColumn
         day={{ dow: 0, dowLabel: '周一', dateLabel: '1/1', rest: false, rows: [locked] }}
-        colW={{ name: 92, sets: 26, reps: 26, int: 110, note: 36 }} selected
+        colW={{ name: 92, sets: 26, reps: 26, int: 142, weight: 118, note: 36 }} selected
         onSelect={vi.fn()} onResizeStart={vi.fn()} onNameFocus={vi.fn()}
         onNameChange={vi.fn()} onNameBlur={vi.fn()} onAddRow={vi.fn()}
         onEditRow={vi.fn()} onDeleteRow={vi.fn()}
@@ -92,7 +92,7 @@ describe('exercise history lock UI', () => {
           dow: 0, dowLabel: '周一', dateLabel: '1/1', rest: false,
           rows: [row('editable'), row('locked', { hasLogs: true })],
         }}
-        colW={{ name: 92, sets: 26, reps: 26, int: 110, note: 36 }} selected
+        colW={{ name: 92, sets: 26, reps: 26, int: 142, weight: 118, note: 36 }} selected
         onSelect={vi.fn()} onSelectRow={vi.fn()} onResizeStart={vi.fn()} onNameFocus={vi.fn()}
         onNameChange={vi.fn()} onNameBlur={vi.fn()} onAddRow={vi.fn()}
         onEditRow={vi.fn()} onReorderRow={reorder} onDeleteRow={vi.fn()}
@@ -127,7 +127,7 @@ describe('exercise history lock UI', () => {
             reps: '99', mode: 'rpe', boxes: [{ val: '7.3', empty: false }, { val: '', empty: true }],
           })],
         }}
-        colW={{ name: 92, sets: 26, reps: 26, int: 110, note: 36 }} selected
+        colW={{ name: 92, sets: 26, reps: 26, int: 142, weight: 118, note: 36 }} selected
         onSelect={vi.fn()} onResizeStart={vi.fn()} onNameFocus={vi.fn()}
         onNameChange={vi.fn()} onNameBlur={vi.fn()} onAddRow={vi.fn()}
         onEditRow={vi.fn()} onDeleteRow={vi.fn()}
@@ -138,8 +138,11 @@ describe('exercise history lock UI', () => {
     expect(invalid).toHaveLength(2)
     expect(invalid[0].title).toContain('次数需 1–50')
     expect(invalid[1].title).toContain('RPE 需 1–10 半分档')
-    const missingStrength = host.querySelectorAll<HTMLInputElement>('[data-guard-field="strength"]')[1]
-    expect(missingStrength.className).not.toContain('guard-invalid')
+    const emptyLegacyRpe = host.querySelectorAll<HTMLInputElement>('[data-guard-field="intensity"]')[1]
+    expect(emptyLegacyRpe.className).not.toContain('guard-invalid')
+    expect(host.querySelector<HTMLSelectElement>('[aria-label="强度类型"]')?.value).toBe('rpe')
+    expect([...host.querySelectorAll<HTMLInputElement>('[data-guard-field="weight"]')].map((input) => input.value))
+      .toEqual([''])
   })
 
   it('focuses a filled invalid cell before an empty prescription cell', async () => {
@@ -341,7 +344,7 @@ describe('guarded input filtering ergonomics', () => {
     return (
       <DayColumn
         day={{ dow: 0, dowLabel: '周一', dateLabel: '1/1', rest: false, rows: [current] }}
-        colW={{ name: 92, sets: 26, reps: 26, int: 110, note: 36 }} selected
+        colW={{ name: 92, sets: 26, reps: 26, int: 142, weight: 118, note: 36 }} selected
         onSelect={vi.fn()} onResizeStart={vi.fn()} onNameFocus={vi.fn()}
         onNameChange={vi.fn()} onNameBlur={vi.fn()} onAddRow={vi.fn()}
         onEditRow={(_, updater) => setCurrent((prev) => updater(prev))} onDeleteRow={vi.fn()}
@@ -350,7 +353,7 @@ describe('guarded input filtering ergonomics', () => {
   }
 
   function strengthInput(): HTMLInputElement {
-    return host.querySelector<HTMLInputElement>('[data-guard-field="strength"]')!
+    return host.querySelector<HTMLInputElement>('[data-guard-field="weight"]')!
   }
 
   function setValueWithCaret(input: HTMLInputElement, value: string, caret: number): void {
@@ -394,5 +397,54 @@ describe('guarded input filtering ergonomics', () => {
 
     act(() => setValueWithCaret(reps, '8-10次', 5))
     expect(reps.value).toBe('8-10')
+  })
+
+  it('offers six intensity types and preserves the uniform-to-per-set weight handoff', () => {
+    act(() => root?.render(<GuardHarness initial={row('r1', {
+      intensity: null,
+      weightMode: 'uniform',
+      boxes: [{ val: '', empty: true }, { val: '', empty: true }],
+    })} />))
+
+    const select = host.querySelector<HTMLSelectElement>('[aria-label="强度类型"]')!
+    expect([...select.options].map((option) => option.value).filter(Boolean)).toEqual([
+      'pct', 'rpe', 'rir', 'weight_range', 'rpe_range', 'fixed_weight',
+    ])
+    expect(select.textContent).not.toContain('旧逐组')
+
+    Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value')?.set?.call(select, 'rpe')
+    act(() => select.dispatchEvent(new Event('change', { bubbles: true })))
+    expect(host.querySelectorAll('[data-guard-field="intensity"]')).toHaveLength(1)
+    const perSetIntensity = [...host.querySelectorAll<HTMLButtonElement>('button')]
+      .find((button) => button.textContent === '逐组')!
+    act(() => perSetIntensity.click())
+    expect(host.querySelectorAll('[data-guard-field="intensity"]')).toHaveLength(2)
+
+    const uniform = host.querySelector<HTMLInputElement>('[data-guard-field="weight"]')!
+    act(() => setValueWithCaret(uniform, '170', 3))
+    expect(host.querySelectorAll('[data-guard-field="weight"]')).toHaveLength(1)
+
+    const perSet = [...host.querySelectorAll<HTMLButtonElement>('button')]
+      .find((button) => button.textContent === '逐组标重')!
+    act(() => perSet.click())
+    expect([...host.querySelectorAll<HTMLInputElement>('[data-guard-field="weight"]')].map((input) => input.value))
+      .toEqual(['170', '170'])
+  })
+
+  it('surfaces the weight-range conflict directly in the row', () => {
+    act(() => root?.render(<GuardHarness initial={row('r1', {
+      intensity: null,
+      weightMode: 'uniform',
+      boxes: [{ val: '170', empty: false }],
+    })} />))
+    const select = host.querySelector<HTMLSelectElement>('[aria-label="强度类型"]')!
+    Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value')?.set?.call(select, 'weight_range')
+    act(() => select.dispatchEvent(new Event('change', { bubbles: true })))
+    const inputs = host.querySelectorAll<HTMLInputElement>('[data-guard-field^="intensity"]')
+    act(() => setValueWithCaret(inputs[0], '165', 3))
+    act(() => setValueWithCaret(inputs[1], '175', 3))
+
+    expect(host.querySelector<HTMLElement>('.matrix-warning')?.title)
+      .toBe('重量区间不能同时填写重量列')
   })
 })

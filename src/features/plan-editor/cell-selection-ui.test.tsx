@@ -109,11 +109,12 @@ describe('plan editor cell selection UI', () => {
     const cases = [
       ['sets', '组数'],
       ['reps', '次数'],
-      ['intensity', '第 1 组强度'],
+      ['intensity', '强度'],
+      ['weight', '统一重量'],
     ] as const
     for (const [field, label] of cases) {
       const cell = host.querySelector<HTMLElement>(`[data-plan-cell="${field}"]`)!
-      const input = cell.matches('input') ? cell : cell.querySelector<HTMLElement>('input')!
+      const input = cell.matches('input,select') ? cell : cell.querySelector<HTMLElement>('input,select')!
       act(() => input.dispatchEvent(new MouseEvent('click', { bubbles: true })))
       expect(host.querySelectorAll('.plan-cell-selected')).toHaveLength(1)
       expect(host.querySelector(`[data-plan-cell="${field}"]`)?.className).toContain('plan-cell-selected')
@@ -196,7 +197,7 @@ describe('plan editor cell selection UI', () => {
     const firstName = host.querySelector<HTMLInputElement>('[data-rowid="squat-first"] [data-plan-cell="name"] input')!
     await act(async () => { firstName.focus() })
 
-    for (const expected of ['sets', 'reps', 'intensity', 'intensity', 'intensity', 'name']) {
+    for (const expected of ['sets', 'reps', 'intensity', 'weight', 'weight', 'weight', 'name']) {
       await act(async () => {
         document.activeElement?.dispatchEvent(new KeyboardEvent('keydown', {
           key: 'Tab',
@@ -294,5 +295,37 @@ describe('plan editor cell selection UI', () => {
     expect(shortcut.defaultPrevented).toBe(true)
     expect([...host.querySelectorAll<HTMLInputElement>('[data-rowid="squat-first"] [data-set-index]')].map((input) => input.value))
       .toEqual(['150', '145', '140'])
+  })
+
+  it('selects and fills per-set strength values inside the intensity column', async () => {
+    const source = keyboardWeek()
+    const first = source.days[0].rows[0]
+    first.intensity = { mode: 'rpe', value: '7', high: '' }
+    first.intensityMode = 'per_set'
+    first.intensityBoxes = [
+      { val: '7', empty: false },
+      { val: '', empty: true },
+      { val: '', empty: true },
+    ]
+
+    await act(async () => {
+      root.render(
+        <PlanEditor initialWeeks={[source]} weeksCount={1} studentName="学员" planName="计划" />,
+      )
+    })
+    const firstIntensity = host.querySelector<HTMLInputElement>(
+      '[data-rowid="squat-first"] [data-plan-cell="intensity"][data-set-index="0"]',
+    )!
+    await act(async () => { firstIntensity.focus() })
+    await act(async () => {
+      firstIntensity.dispatchEvent(new KeyboardEvent('keydown', {
+        key: 'd', metaKey: true, bubbles: true, cancelable: true,
+      }))
+    })
+
+    expect([...host.querySelectorAll<HTMLInputElement>(
+      '[data-rowid="squat-first"] [data-plan-cell="intensity"][data-set-index]',
+    )].map((input) => input.value)).toEqual(['7', '7', '7'])
+    expect(host.querySelector('.plan-formula-label')?.textContent).toContain('第 1 组强度')
   })
 })

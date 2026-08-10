@@ -1,5 +1,5 @@
 import type { PlanWithChildren, PlanExerciseResponse, PlanDayResponse } from '../../api/types'
-import type { Week, DayCol, ExerciseRow, SetBox } from './types'
+import type { Week, DayCol, ExerciseRow, IntensityValueMode, RowIntensity, SetBox, WeightMode } from './types'
 
 export const DOW_LABELS = ['周一', '周二', '周三', '周四', '周五', '周六', '周日']
 
@@ -7,10 +7,49 @@ export interface CatalogEntry { name: string; custom: boolean }
 export type Catalog = Map<string, CatalogEntry>
 
 /** "82.50" -> "82.5", "80.00" -> "80", "9.00" -> "9". */
-function fmtNum(s: string): string {
+function fmtNum(s: string | number): string {
   const n = Number(s)
-  if (Number.isNaN(n)) return s
+  if (Number.isNaN(n)) return String(s)
   return String(Number(n.toFixed(2)))
+}
+
+function optionalNum(value: string | number | null | undefined): string {
+  return value == null ? '' : fmtNum(value)
+}
+
+function intensityFromSet(set: PlanExerciseResponse['sets'][number]): RowIntensity | null {
+  switch (set.load_mode) {
+    case 'pct': return { mode: 'pct', value: optionalNum(set.target_pct), high: '' }
+    case 'rpe': return { mode: 'rpe', value: optionalNum(set.target_rpe), high: '' }
+    case 'rir': return { mode: 'rir', value: optionalNum(set.rir_target), high: '' }
+    case 'weight_range': return {
+      mode: 'weight_range', value: optionalNum(set.weight_low), high: optionalNum(set.weight_high),
+    }
+    case 'rpe_range': return {
+      mode: 'rpe_range', value: optionalNum(set.rpe_low), high: optionalNum(set.rpe_high),
+    }
+    case 'fixed_weight': return { mode: 'fixed_weight', value: '', high: '' }
+    default: return null
+  }
+}
+
+function singleIntensityValue(set: PlanExerciseResponse['sets'][number]): string {
+  switch (set.load_mode) {
+    case 'pct': return optionalNum(set.target_pct)
+    case 'rpe': return optionalNum(set.target_rpe)
+    case 'rir': return optionalNum(set.rir_target)
+    default: return ''
+  }
+}
+
+function weightModeForBoxes(boxes: SetBox[]): WeightMode {
+  const values = boxes.map((box) => box.empty || box.val === '' ? '<empty>' : box.val)
+  return new Set(values).size > 1 ? 'per_set' : 'uniform'
+}
+
+function intensityModeForBoxes(boxes: SetBox[]): IntensityValueMode {
+  const values = boxes.map((box) => box.empty || box.val === '' ? '<empty>' : box.val)
+  return new Set(values).size > 1 ? 'per_set' : 'uniform'
 }
 
 export function addDays(iso: string, days: number): Date {
@@ -119,15 +158,26 @@ function mapExercise(ex: PlanExerciseResponse, catalog: Catalog): ExerciseRow {
       id: ex.id, serverRowId: ex.id, serverSortOrder: ex.sort_order,
       hasLogs: ex.has_logs ?? false, conflictMessage: null,
       exerciseId: ex.exercise_id, name, ku: !custom, custom, isMain: ex.is_main_lift,
-      aux: true, reps: '—', mode: 'kg', boxes: [], note: ex.notes ?? '',
+      aux: true, reps: '—', mode: 'kg', intensity: null, weightMode: 'uniform', boxes: [], note: ex.notes ?? '',
     }
   }
 
   const bodyweight = sets.every((s) => /自重|bodyweight/i.test(s.coach_note ?? ''))
-  const mode = bodyweight ? 'bodyweight' : sets[0].intensity_mode === 'rpe' ? 'rpe' : 'kg'
-  const boxes: SetBox[] = sets.map((s) => (
-    bodyweight ? { empty: true, val: '' } : { empty: false, val: fmtNum(s.target_value) }
+  const legacyRpeSource = !bodyweight && sets.every((set) => (
+    set.load_mode == null && set.intensity_mode === 'rpe'
   ))
+  const loadMode = sets[0].load_mode ?? null
+  const uniformLoadMode = sets.every((set) => (set.load_mode ?? null) === loadMode)
+  const singleValueMode = loadMode === 'pct' || loadMode === 'rpe' || loadMode === 'rir'
+  const intensityBoxes: SetBox[] = sets.map((set) => {
+    const value = legacyRpeSource ? optionalNum(set.target_value) : singleIntensityValue(set)
+    return { empty: value === '', val: value }
+  })
+  const boxes: SetBox[] = sets.map((s) => {
+    if (bodyweight) return { empty: true, val: '' }
+    const weight = s.target_weight ?? (s.load_mode == null && s.intensity_mode === 'weight' ? s.target_value : null)
+    return { empty: weight == null, val: optionalNum(weight) }
+  })
   const baseReps = sets[0].target_reps
   const repsMax = sets[0].target_reps_max
   const hasAmrap = sets.some((s) => s.set_type === 'amrap')
@@ -138,7 +188,21 @@ function mapExercise(ex: PlanExerciseResponse, catalog: Catalog): ExerciseRow {
     id: ex.id, serverRowId: ex.id, serverSortOrder: ex.sort_order,
     hasLogs: ex.has_logs ?? false, conflictMessage: null,
     exerciseId: ex.exercise_id, name, ku: !custom, custom, isMain: ex.is_main_lift,
-    aux: false, reps, mode, boxes, note: ex.notes ?? '',
+    aux: false,
+    reps,
+    // `mode: rpe` is provenance only: reconcile keeps load_mode=null until an
+    // explicit row edit materializes the first-class intensity fields.
+    mode: bodyweight ? 'bodyweight' : legacyRpeSource ? 'rpe' : 'kg',
+    ...(!bodyweight && (legacyRpeSource || singleValueMode) ? {
+      intensityMode: intensityModeForBoxes(intensityBoxes),
+      intensityBoxes,
+    } : {}),
+    ...(legacyRpeSource ? {} : {
+      intensity: bodyweight || !uniformLoadMode ? null : intensityFromSet(sets[0]),
+    }),
+    weightMode: weightModeForBoxes(boxes),
+    boxes,
+    note: ex.notes ?? '',
   }
 }
 

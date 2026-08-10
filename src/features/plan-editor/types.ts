@@ -1,4 +1,18 @@
+import type { LoadModeWire } from '../../api/types'
+
 export type IntensityMode = 'kg' | 'rpe' | 'bodyweight'
+
+/** Backend spec 034 v2 prescription form. `null` means a weight-only row. */
+export type LoadMode = LoadModeWire
+export type WeightMode = 'uniform' | 'per_set'
+export type IntensityValueMode = 'uniform' | 'per_set'
+
+/** Row-level intensity. Single-value modes use `value`; ranges use both fields. */
+export interface RowIntensity {
+  mode: LoadMode
+  value: string
+  high: string
+}
 
 /** One per-set strength box: a value or an empty slot. */
 export interface SetBox {
@@ -24,8 +38,21 @@ export interface ExerciseRow {
   isMain: boolean    // backend is_main_lift flag (independent of aux)
   aux: boolean       // accessory with no structured intensity
   reps: string       // target reps, e.g. "5" / "8+" / "—"
+  /**
+   * Legacy source mode. New non-bodyweight rows use `kg`; an omitted `intensity`
+   * on an `rpe` row is a lossless compatibility shape for old per-set RPE data.
+   */
   mode: IntensityMode
-  boxes: SetBox[]     // per-set strength
+  /** Row-level spec-034 intensity. Omitted only for legacy rows/mirrors. */
+  intensity?: RowIntensity | null
+  /** Presentation for pct/rpe/rir values; ranges and fixed_weight stay row-level. */
+  intensityMode?: IntensityValueMode
+  /** One independent intensity-value slot per set for pct/rpe/rir. */
+  intensityBoxes?: SetBox[]
+  /** Weight presentation. Omitted legacy rows infer it from their values. */
+  weightMode?: WeightMode
+  /** One slot per set. In the new model these are concrete target weights. */
+  boxes: SetBox[]
   note: string
 }
 
@@ -52,12 +79,12 @@ export interface Week {
   days: DayCol[]
 }
 
-export type ColKey = 'name' | 'sets' | 'reps' | 'int' | 'note'
+export type ColKey = 'name' | 'sets' | 'reps' | 'int' | 'weight' | 'note'
 export type ColWidths = Record<ColKey, number>
 
-export const COLS: ColKey[] = ['name', 'sets', 'reps', 'int', 'note']
-export const COL_DEFAULTS: ColWidths = { name: 92, sets: 26, reps: 26, int: 110, note: 36 }
-export const COL_MIN: ColWidths = { name: 60, sets: 22, reps: 22, int: 62, note: 28 }
+export const COLS: ColKey[] = ['name', 'sets', 'reps', 'int', 'weight', 'note']
+export const COL_DEFAULTS: ColWidths = { name: 92, sets: 26, reps: 26, int: 142, weight: 118, note: 36 }
+export const COL_MIN: ColWidths = { name: 60, sets: 22, reps: 22, int: 112, weight: 82, note: 28 }
 
 /** Derived: number of working sets shown in the 组 column. */
 export function setCount(row: ExerciseRow): string {
@@ -72,7 +99,10 @@ export function setCount(row: ExerciseRow): string {
  *  false: skipping them loses nothing. */
 export function isContentfulUnbound(row: ExerciseRow): boolean {
   if (row.exerciseId) return false
-  return row.name.trim() !== '' || row.boxes.some((b) => !b.empty && b.val !== '')
+  return row.name.trim() !== ''
+    || row.boxes.some((b) => !b.empty && b.val !== '')
+    || row.intensityBoxes?.some((b) => !b.empty && b.val !== '') === true
+    || !!row.intensity
 }
 
 /** Compatibility export used by issue discovery and reconciliation. */

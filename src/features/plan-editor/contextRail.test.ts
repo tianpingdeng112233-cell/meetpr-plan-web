@@ -72,8 +72,8 @@ describe('isRowComplete', () => {
     expect(isRowComplete(row({ boxes: [{ val: '215', empty: false }, { val: '', empty: false }] }))).toBe(false)
   })
 
-  it('ignores skipped slots and treats bodyweight rows as complete without a load', () => {
-    expect(isRowComplete(row({ boxes: [{ val: '215', empty: false }, { val: '', empty: true }] }))).toBe(true)
+  it('requires every non-bodyweight set to be complete and treats bodyweight rows as complete without a load', () => {
+    expect(isRowComplete(row({ boxes: [{ val: '215', empty: false }, { val: '', empty: true }] }))).toBe(false)
     expect(isRowComplete(row({ mode: 'bodyweight', boxes: [{ val: '', empty: false }] }))).toBe(true)
     // mapping.ts / reconcile.ts store bodyweight sets as empty boxes.
     expect(isRowComplete(row({ mode: 'bodyweight', boxes: [{ val: '', empty: true }, { val: '', empty: true }] }))).toBe(true)

@@ -2518,6 +2518,72 @@ textarea {
 }
 .mode-badge.rpe { border-color: color-mix(in srgb, var(--warn) 32%, var(--bd)); color: var(--warn); background: var(--tag-warn-bg); }
 .mode-badge.bodyweight { color: var(--mut); background: var(--tag-neutral-bg); }
+.intcell select {
+  width: 66px;
+  min-width: 0;
+  height: 21px;
+  border: 1px solid var(--bd);
+  border-radius: var(--r-sm);
+  color: var(--txt);
+  background: var(--card-bg);
+  font: 600 9px var(--font-sans);
+}
+.intcell input,
+.weightcell input {
+  width: 35px;
+  height: 19px;
+  margin: 0 3px 2px 0;
+  padding: 1px 2px;
+  border: 1px solid var(--bd);
+  border-radius: var(--r-sm);
+  color: var(--txt);
+  background: var(--panel-bg);
+  text-align: center;
+  font: 500 10px var(--font-mono);
+  outline: none;
+}
+.intcell input { width: 31px; margin: 0; }
+.range-separator,
+.intensity-unit { color: var(--mut); font: 500 9px var(--font-mono); }
+.fixed-weight-badge {
+  padding: 2px 4px;
+  border-radius: var(--r-sm);
+  color: var(--ink);
+  background: var(--tint);
+  font: 600 9px var(--font-sans);
+  white-space: nowrap;
+}
+.weight-controls { width: 100%; display: flex; gap: 3px; margin-bottom: 2px; }
+.weight-mode-toggle,
+.intensity-mode-toggle,
+.bodyweight-toggle {
+  min-width: 0;
+  padding: 0 3px;
+  border: 1px solid var(--bd);
+  border-radius: var(--r-sm);
+  color: var(--mut);
+  background: transparent;
+  font: 500 8px var(--font-sans);
+  line-height: 16px;
+  cursor: pointer;
+}
+.weight-mode-toggle.active { color: var(--ink); border-color: var(--tint-bd); background: var(--tint); }
+.weight-mode-toggle:disabled,
+.intensity-mode-toggle:disabled,
+.bodyweight-toggle:disabled { opacity: .5; cursor: default; }
+.matrix-warning {
+  width: 15px;
+  height: 15px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  color: var(--bad);
+  background: color-mix(in srgb, var(--bad) 10%, transparent);
+  font: 700 9px var(--font-mono);
+  cursor: help;
+}
+.bodyweight-summary { color: var(--mut); font: 500 9px var(--font-mono); }
 .bodyweight-cell {
   width: 36px;
   height: 19px;
