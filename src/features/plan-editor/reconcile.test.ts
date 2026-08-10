@@ -14,7 +14,7 @@ function row(partial: Partial<ExerciseRow>): ExerciseRow {
   return {
     id: 'r', serverRowId: null, serverSortOrder: null, hasLogs: false, conflictMessage: null,
     exerciseId: null, name: '', ku: false, custom: false,
-    isMain: false, target: null, aux: false, reps: '5', mode: 'kg', boxes: [], note: '',
+    isMain: false, aux: false, reps: '5', mode: 'kg', boxes: [], note: '',
     ...partial,
   }
 }
@@ -80,7 +80,7 @@ function serverDaysFromBatch(days: Parameters<typeof plans.batchDays>[1]['upsert
       shifted_to_date: null,
       exercises: day.exercises.map((exercise, exerciseIndex) => ({
         ...exercise,
-        target: exercise.target ?? null,
+        target: null,
         notes: exercise.notes ?? null,
         id: `batch-ex-${day.week_number}-${day.day_of_week}-${exerciseIndex}`,
         plan_day_id: `batch-day-${day.week_number}-${day.day_of_week}`,
@@ -155,6 +155,8 @@ describe('reconcilePlan — shared week-band skeleton order', () => {
       [['b', 0], ['a', 1], ['c', 2]],
       [['b', 0], ['a', 1], ['c', 2]],
     ])
+    expect(vi.mocked(plans.batchDays).mock.calls[0][1].upsert_days
+      .every((day) => day.exercises.every((exercise) => !Object.hasOwn(exercise, 'target')))).toBe(true)
   })
 })
 
@@ -186,30 +188,6 @@ describe('reconcilePlan — skippedRows counts only contentful unbound rows', ()
     ]
     const res = await reconcilePlan('p', [weekWithMondayRows(rows)])
     expect(res.skippedRows).toBe(1)
-  })
-
-  it('includes a selected target in unlocked-day batch reconciliation', async () => {
-    const baseline = serverExercise('stored', 'ex1', 0)
-    vi.mocked(plans.getPlan).mockResolvedValue(serverPlan([serverDay([baseline])], 'draft'))
-    const weeks = [weekWithMondayRows([
-      boundRow('local', 'stored', 'ex1', '100', { serverSortOrder: 0, target: 'chest' }),
-    ])]
-
-    await reconcilePlan('p', weeks)
-
-    expect(vi.mocked(plans.batchDays).mock.calls[0][1].upsert_days[0].exercises[0].target).toBe('chest')
-  })
-
-  it('sends target null when clearing a stored target', async () => {
-    const baseline = { ...serverExercise('stored', 'ex1', 0), target: 'quad' }
-    vi.mocked(plans.getPlan).mockResolvedValue(serverPlan([serverDay([baseline])], 'draft'))
-    const weeks = [weekWithMondayRows([
-      boundRow('local', 'stored', 'ex1', '100', { serverSortOrder: 0, target: null }),
-    ])]
-
-    await reconcilePlan('p', weeks)
-
-    expect(vi.mocked(plans.batchDays).mock.calls[0][1].upsert_days[0].exercises[0].target).toBeNull()
   })
 
   it('reports zero skipped when every row is either bound or an empty placeholder', async () => {
@@ -461,7 +439,7 @@ describe('reconcilePlan — exercise-granularity history locks', () => {
     const result = await reconcilePlan('p', [weekWithMondayRows([
       boundRow('l', 'locked', 'lock-ex', '90', { hasLogs: true, serverSortOrder: 0 }),
       boundRow('c', 'changed', 'change-ex', '105', { serverSortOrder: 1 }),
-      boundRow('n', null, 'new-ex', '50', { serverSortOrder: 2, target: 'squat' }),
+      boundRow('n', null, 'new-ex', '50', { serverSortOrder: 2 }),
     ])])
 
     expect(plans.deleteDay).not.toHaveBeenCalled()
@@ -471,7 +449,8 @@ describe('reconcilePlan — exercise-granularity history locks', () => {
     expect(plans.deleteExercise).not.toHaveBeenCalledWith('locked')
     expect(plans.createExercise).toHaveBeenCalledTimes(2)
     expect(plans.createExercise).toHaveBeenCalledWith('day1', expect.objectContaining({ exercise_id: 'change-ex', sort_order: 1 }))
-    expect(plans.createExercise).toHaveBeenCalledWith('day1', expect.objectContaining({ exercise_id: 'new-ex', sort_order: 2, target: 'squat' }))
+    expect(plans.createExercise).toHaveBeenCalledWith('day1', expect.objectContaining({ exercise_id: 'new-ex', sort_order: 2 }))
+    expect(vi.mocked(plans.createExercise).mock.calls[1][1]).not.toHaveProperty('target')
     expect(result.changedDays).toBe(1)
   })
 
@@ -580,7 +559,7 @@ describe('reconcilePlan — batch payload and errors', () => {
       upsert_days: [{
         week_number: 1, day_of_week: 1, sort_order: 0,
         exercises: [{
-          exercise_id: 'change-ex', is_main_lift: false, sort_order: 0, target: null, notes: null,
+          exercise_id: 'change-ex', is_main_lift: false, sort_order: 0, notes: null,
           sets: [{
             set_number: 1, target_reps: 5, target_reps_max: null, load_mode: null,
             target_pct: null, target_rpe: null, rir_target: null, rpe_low: null, rpe_high: null,
@@ -595,7 +574,7 @@ describe('reconcilePlan — batch payload and errors', () => {
   })
 
   it('sends no batch request when the live baseline already matches', async () => {
-    const same = serverExercise('same', 'same-ex', 0, '80')
+    const same = { ...serverExercise('same', 'same-ex', 0, '80'), target: 'retired-value' }
     vi.mocked(plans.getPlan).mockResolvedValue(serverPlan([serverDay([same])], 'draft'))
 
     const result = await reconcilePlan('p', [weekWithMondayRows([

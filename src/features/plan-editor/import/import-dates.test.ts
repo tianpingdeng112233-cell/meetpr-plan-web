@@ -71,7 +71,6 @@ describe('import dates — keep the source plan dates (spec 002 option A)', () =
           ku: true,
           custom: false,
           isMain: true,
-          target: null,
           aux: false,
           reps: '5',
           mode: 'kg',

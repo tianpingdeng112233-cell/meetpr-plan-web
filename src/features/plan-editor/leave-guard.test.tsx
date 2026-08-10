@@ -9,7 +9,7 @@ import type { DayCol, ExerciseRow, Week } from './types'
 function row(partial: Partial<ExerciseRow> = {}): ExerciseRow {
   return {
     id: 'row', serverRowId: 'server-row', serverSortOrder: 0, hasLogs: false, conflictMessage: null,
-    exerciseId: 'exercise', name: '深蹲', ku: true, custom: false, isMain: true, target: null,
+    exerciseId: 'exercise', name: '深蹲', ku: true, custom: false, isMain: true,
     aux: false, reps: '5', mode: 'kg', boxes: [{ val: '100', empty: false }], note: '',
     ...partial,
   }

@@ -5,7 +5,7 @@ import type { DayCol, ExerciseRow, Week } from './types'
 function row(id: string, hasLogs = false): ExerciseRow {
   return {
     id, serverRowId: id, serverSortOrder: 0, hasLogs, conflictMessage: null,
-    exerciseId: id, name: id, ku: true, custom: false, isMain: false, target: null,
+    exerciseId: id, name: id, ku: true, custom: false, isMain: false,
     aux: false, reps: '5', mode: 'kg', boxes: [{ val: '100', empty: false }], note: '',
   }
 }

@@ -6,13 +6,12 @@ import {
   closestWeekToViewportCenter,
   orderWeeksByWeekBand,
   reorderWeekBandSkeleton,
-  setWeekBandSlotTarget,
 } from './weekBandModel'
 
 function row(id: string, exerciseId: string, isMain = true): ExerciseRow {
   return {
     id, serverRowId: null, serverSortOrder: null, hasLogs: false, conflictMessage: null,
-    exerciseId, name: exerciseId, ku: true, custom: false, isMain, target: null, aux: !isMain,
+    exerciseId, name: exerciseId, ku: true, custom: false, isMain, aux: !isMain,
     reps: '5', mode: 'kg', boxes: [], note: '',
   }
 }
@@ -129,23 +128,6 @@ describe('D1 weekday anchor', () => {
     expect(reorderWeekBandSkeleton(locked, () => 'main', 0, 1, 'a1', 'b1', 'after')).toBeNull()
   })
 
-  it('revalidates the latest slot lock before applying a target chosen from a stale picker', () => {
-    const stale = [
-      week(1, [row('a1', 'a')]),
-      week(2, [row('a2', 'a')]),
-    ]
-    const slotKey = alignWeeksByExercise(stale, () => 'main')[0].main[0].key
-    const fresh = stale.map((wk) => ({
-      ...wk,
-      days: wk.days.map((day) => ({
-        ...day,
-        rows: day.rows.map((item) => item.id === 'a2' ? { ...item, hasLogs: true } : item),
-      })),
-    }))
-
-    expect(setWeekBandSlotTarget(fresh, () => 'main', 0, slotKey, 'squat')).toBeNull()
-    expect(fresh.flatMap((wk) => wk.days[0].rows).map((item) => item.target)).toEqual([null, null])
-  })
   it('aligns unbound rows by trimmed display name across weeks (imported/sample plans)', () => {
     const unbound = (id: string, name: string): ExerciseRow => ({ ...row(id, ''), exerciseId: null, name })
     const aligned = alignWeeksByExercise([

@@ -48,7 +48,6 @@ function mkRow(name: string, opt: RowOpt = {}): ExerciseRow {
     ku: opt.ku !== false && !aux && !opt.custom,
     custom: !!opt.custom,
     isMain: opt.main ?? !aux,
-    target: null,
     aux,
     reps: opt.reps != null ? String(opt.reps) : '—',
     mode: 'kg',

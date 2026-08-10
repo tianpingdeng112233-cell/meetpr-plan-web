@@ -19,7 +19,7 @@ class MemoryStorage implements Storage {
 function row(note = ''): ExerciseRow {
   return {
     id: 'local-row', serverRowId: null, serverSortOrder: null, hasLogs: false, conflictMessage: null,
-    exerciseId: 'exercise', name: '深蹲', ku: true, custom: false, isMain: true, target: null,
+    exerciseId: 'exercise', name: '深蹲', ku: true, custom: false, isMain: true,
     aux: false, reps: '5', mode: 'kg', boxes: [{ val: '100', empty: false }], note,
   }
 }
@@ -136,11 +136,6 @@ describe('local draft mirror storage', () => {
       rows,
     }
     const legacyRawContent = structuredClone(legacyContent)
-    for (const week of legacyRawContent.weeks) {
-      for (const day of week.days) {
-        for (const entry of day.rows) delete (entry as Partial<ExerciseRow>).target
-      }
-    }
     const key = draftMirrorStorageKey('legacy')
     storage.setItem(key, JSON.stringify({
       version: 1,
@@ -154,14 +149,15 @@ describe('local draft mirror storage', () => {
     expect(migrated?.version).toBe(DRAFT_MIRROR_VERSION)
     expect(migrated?.content.weeks[0].days[0].rows[0].note).toBe('other-day unsaved edit')
     expect(migrated?.content.weeks[0].days[1].rest).toBe(normalizedRest)
-    expect(migrated?.content.weeks[0].days[1].rows[0]?.target ?? null).toBeNull()
+    expect(migrated?.content.weeks.flatMap((week) => week.days.flatMap((day) => day.rows))
+      .every((entry) => !Object.hasOwn(entry, 'target'))).toBe(true)
 
     const rewritten = JSON.parse(storage.getItem(key)!) as {
       version: number
       contentHash: string
       content: DraftMirrorContent
     }
-    expect(rewritten.version).toBe(2)
+    expect(rewritten.version).toBe(DRAFT_MIRROR_VERSION)
     expect(rewritten.content.weeks[0].days[0].rows[0].note).toBe('other-day unsaved edit')
     expect(rewritten.content.weeks[0].days[1].rest).toBe(normalizedRest)
     expect(rewritten.contentHash).toBe(draftContentHash(rewritten.content))

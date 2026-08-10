@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useLayoutEffect, useRef, useState } from 'react'
 import type { DayCol, ColWidths, ColKey, ExerciseRow } from '../types'
 import { COLS, isRestDay } from '../types'
 import {
@@ -33,19 +33,11 @@ export interface WeekBandBadge {
   tone: 'squat' | 'bench' | 'deadlift' | 'muscle' | 'neutral'
 }
 
-export interface WeekBandTargetOption extends WeekBandBadge {
-  token: string
-  group: 'lift' | 'muscle'
-}
-
 export interface WeekBandDayView {
   main: WeekBandSlot[]
   aux: WeekBandSlot[]
   rows: ReadonlyMap<string, ExerciseRow>
-  badgeFor: (slot: WeekBandSlot) => WeekBandBadge
-  targetOptions: readonly WeekBandTargetOption[]
-  targetDisabled: (slot: WeekBandSlot) => boolean
-  onTargetChange: (slot: WeekBandSlot, target: string | null) => void
+  badgeFor: (slot: WeekBandSlot) => WeekBandBadge | null
   onQuickAdd: (slot: WeekBandSlot) => void
   dayOrdinal: number
   weekdayLabel: string | null
@@ -63,8 +55,9 @@ interface Props {
   selectedRowId?: string | null
   selectedRowIds?: ReadonlySet<string>
   cellSelection?: PlanCellSelection | null
+  /** v1.3 experiment: selected-day context rendered in the dark day header. */
+  headerContext?: React.ReactNode
   onSelect: () => void
-  onRecallContext?: () => void
   onSelectRow?: (rowId: string, modifiers?: { toggle: boolean; range: boolean }) => void
   onSelectCell?: (rowId: string, field: PlanCellField, setIndex?: number) => void
   onSetsDraftChange?: (rowId: string, draft: string | null) => void
@@ -95,82 +88,6 @@ const head: React.CSSProperties = {
   color: 'var(--mut)', textTransform: 'uppercase',
 }
 const stop = (e: React.MouseEvent) => e.stopPropagation()
-
-function TargetPicker({ slot, badge, options, disabled, onChange }: {
-  slot: WeekBandSlot
-  badge: WeekBandBadge
-  options: readonly WeekBandTargetOption[]
-  disabled?: boolean
-  onChange: (target: string | null) => void
-}) {
-  const [open, setOpen] = useState(false)
-  const root = useRef<HTMLDivElement>(null)
-  useEffect(() => {
-    if (!open) return undefined
-    const closeOutside = (event: MouseEvent) => {
-      if (!root.current?.contains(event.target as Node)) setOpen(false)
-    }
-    const closeEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setOpen(false)
-    }
-    document.addEventListener('mousedown', closeOutside)
-    document.addEventListener('keydown', closeEscape)
-    return () => {
-      document.removeEventListener('mousedown', closeOutside)
-      document.removeEventListener('keydown', closeEscape)
-    }
-  }, [open])
-  const choose = (target: string | null) => {
-    onChange(target)
-    setOpen(false)
-  }
-  const lifts = options.filter((option) => option.group === 'lift')
-  const muscles = options.filter((option) => option.group === 'muscle')
-  return (
-    <div className="week-band-target-picker" ref={root}>
-      <button
-        type="button"
-        className={`week-band-badge ${badge.tone}`}
-        aria-label={`目标：${badge.label === '—' ? '无目标' : badge.label}`}
-        aria-haspopup="menu"
-        aria-expanded={open}
-        disabled={disabled}
-        onMouseDown={stop}
-        onClick={(event) => { stop(event); setOpen((value) => !value) }}
-      >
-        {badge.label}<span aria-hidden="true" className="week-band-target-caret">▾</span>
-      </button>
-      {open && (
-        <div className="week-band-target-menu" role="menu" onMouseDown={stop} onClick={stop}>
-          <button type="button" role="menuitemradio" aria-checked={slot.target == null}
-            className={slot.target == null ? 'selected' : ''} onClick={() => choose(null)}>
-            <span className="week-band-badge neutral">—</span><span>无目标</span>
-          </button>
-          <div className="week-band-target-group">竞技主项</div>
-          <div className="week-band-target-options">
-            {lifts.map((option) => (
-              <button type="button" role="menuitemradio" aria-checked={slot.target === option.token}
-                className={slot.target === option.token ? 'selected' : ''} key={option.token}
-                onClick={() => choose(option.token)}>
-                <span className={`week-band-badge ${option.tone}`}>{option.label}</span>
-              </button>
-            ))}
-          </div>
-          <div className="week-band-target-group">肌群</div>
-          <div className="week-band-target-options muscles">
-            {muscles.map((option) => (
-              <button type="button" role="menuitemradio" aria-checked={slot.target === option.token}
-                className={slot.target === option.token ? 'selected' : ''} key={option.token}
-                onClick={() => choose(option.token)}>
-                <span className="week-band-badge muscle">{option.label}</span>
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-    </div>
-  )
-}
 
 function ShiftBadge({ day }: { day: DayCol }) {
   if (!day.shiftBadge) return null
@@ -588,8 +505,8 @@ export function DayColumn({
   selectedRowId,
   selectedRowIds,
   cellSelection,
+  headerContext,
   onSelect,
-  onRecallContext,
   onSelectRow,
   onSelectCell,
   onSetsDraftChange,
@@ -619,12 +536,6 @@ export function DayColumn({
   const dayMoveClass = dayMoveState ? ` day-move-${dayMoveState}` : ''
   const dayMoveTitle = dayMoveDisabledHint ?? '拖动搬到本周其他日期 / 点击选中日'
   const dayMoveCursor = dayMoveDisabledHint ? 'not-allowed' : 'grab'
-  // Brings the context rail back after the coach dismisses it for this day.
-  const contextRecall = selected && onRecallContext ? (
-    <button className="context-recall" title="显示撰写上下文"
-      onMouseDown={(e) => e.stopPropagation()}
-      onClick={(e) => { e.stopPropagation(); onRecallContext() }}>▤</button>
-  ) : null
   const resolveTier = (row: ExerciseRow) => rowTier?.(row) ?? (row.isMain ? 'main' : 'aux')
   const displayRows = orderRowsForDisplay(day.rows, rowTier)
   const mainRowsForDay = day.rows.filter((row) => resolveTier(row) === 'main')
@@ -726,7 +637,6 @@ export function DayColumn({
           <span className="dayhead-primary">{!dayMoveDisabledHint && <span className="day-move-grip" aria-hidden="true">⋮ </span>}{day.dowLabel}</span>
           <span className="dayhead-date">{day.dateLabel}</span>
           <ShiftBadge day={day} />
-          {contextRecall}
         </div>
         <div className="restday-body">
           <span>休息</span>
@@ -768,9 +678,9 @@ export function DayColumn({
             <span className="dayhead-date">{day.dateLabel}</span>
             <ShiftBadge day={day} />
             {columnLetter && <kbd className="day-column-key">{columnLetter}</kbd>}
-            {contextRecall}
           </span>
           <span className="week-band-rest-label">休息</span>
+          {headerContext}
         </div>
         {!readOnly && (
           <button type="button" className="week-band-rest-add" data-add-tier="main"
@@ -782,7 +692,7 @@ export function DayColumn({
     )
   }
 
-  const frozenWidth = weekBand ? 28 + 76 : 0
+  const frozenWidth = weekBand ? 28 : 0
   const total = COLS.reduce((s, k) => s + colW[k], 0) + frozenWidth
   let acc = frozenWidth
   const dividers = COLS.map((k) => { acc += colW[k]; return { col: k, left: acc } })
@@ -815,17 +725,16 @@ export function DayColumn({
           <span className="dayhead-date">{day.dateLabel}</span>
           <ShiftBadge day={day} />
           {columnLetter && <kbd className="day-column-key">{columnLetter}</kbd>}
-          {contextRecall}
         </span>
         <span className="dayhead-theme">{dayTheme}</span>
         <span className="dayhead-meta">{dayMeta}</span>
+        {headerContext}
       </div>
 
       <div className="daygrid" style={{ width: total, fontVariantNumeric: 'tabular-nums' }}>
         <div className="gridhead" style={{ display: 'flex', alignItems: 'stretch', background: 'var(--card-bg)', borderBottom: '1px solid var(--line)' }}>
           {weekBand && <div className="gcell week-band-frozen week-band-index" data-c="index" style={{ width: 28, padding: '4px 3px', textAlign: 'center', ...head }}>#</div>}
-          {weekBand && <div className="gcell week-band-frozen week-band-target" data-c="target" style={{ width: 76, padding: '4px 6px', ...head }}>目标</div>}
-          <div className="gcell" data-c="name" style={{ width: colW.name, padding: '4px 6px', ...head }}>动作</div>
+          <div className={`gcell${weekBand ? ' week-band-frozen' : ''}`} data-c="name" style={{ width: colW.name, padding: '4px 6px', ...head }}>动作</div>
           <div className="gcell" data-c="sets" style={{ width: colW.sets, padding: '4px 4px', textAlign: 'center', ...head }}>组</div>
           <div className="gcell" data-c="reps" style={{ width: colW.reps, padding: '4px 4px', textAlign: 'center', ...head }}>次</div>
           <div className="gcell" data-c="int" style={{ width: colW.int, padding: '4px 6px', ...head }}>强度</div>
@@ -839,6 +748,7 @@ export function DayColumn({
           const inputIssue = getBoundRowInputIssue(row)
           const isSelectedRow = selectedRowIds?.has(row.id) ?? selectedRowId === row.id
           const dropPosition = dropTarget?.rowId === row.id ? dropTarget.position : null
+          const badge = weekBand && slot ? weekBand.badgeFor(slot) : null
           return (
             <div
               key={row.id}
@@ -857,18 +767,8 @@ export function DayColumn({
                     {rowNumber}
                   </div>
                 )}
-                {weekBand && slot && (() => {
-                  const badge = weekBand.badgeFor(slot)
-                  return (
-                    <div className="gcell week-band-frozen week-band-target" data-c="target" style={{ width: 76 }}>
-                      <TargetPicker slot={slot} badge={badge} options={weekBand.targetOptions}
-                        disabled={readOnly || weekBand.targetDisabled(slot)}
-                        onChange={(target) => weekBand.onTargetChange(slot, target)} />
-                    </div>
-                  )
-                })()}
                 <div
-                  className={`gcell plan-cell${isCellSelected(row.id, 'name') ? ' plan-cell-selected' : ''}`}
+                  className={`gcell plan-cell${weekBand ? ' week-band-frozen' : ''}${isCellSelected(row.id, 'name') ? ' plan-cell-selected' : ''}`}
                   data-c="name"
                   data-plan-cell="name"
                   data-plan-cell-key={planCellKey({ weekNumber, dow: day.dow, rowId: row.id, field: 'name' })}
@@ -886,6 +786,7 @@ export function DayColumn({
                   >
                     ⋮
                   </span>
+                  {badge && <span className={`week-band-badge ${badge.tone}`}>{badge.label}</span>}
                   <input
                     value={row.name} placeholder="输入动作…"
                     disabled={readOnly || row.hasLogs}
@@ -1015,12 +916,10 @@ export function DayColumn({
             >
               <span className="exercise-row-main">
                 <span className="gcell week-band-frozen week-band-index" data-c="index" style={{ width: 28 }}>{rowNumber}</span>
-                <span className="gcell week-band-frozen week-band-target" data-c="target" style={{ width: 76 }}>
-                  <TargetPicker slot={slot} badge={badge} options={weekBand!.targetOptions}
-                    disabled={readOnly || weekBand!.targetDisabled(slot)}
-                    onChange={(target) => weekBand!.onTargetChange(slot, target)} />
+                <span className="gcell week-band-frozen week-band-empty-name" data-c="name" style={{ width: colW.name }}>
+                  {badge && <span className={`week-band-badge ${badge.tone}`}>{badge.label}</span>}
+                  <span className="week-band-empty-name-label">{slot.exemplar.name || '未命名动作'}</span>
                 </span>
-                <span className="gcell week-band-frozen week-band-empty-name" data-c="name" style={{ width: colW.name }}>{slot.exemplar.name || '未命名动作'}</span>
                 <span className="week-band-empty-prescription" style={{ width: total - frozenWidth - colW.name }}>
                   {missingName ? '—　不可添加' : '—　点击添加'}
                 </span>
@@ -1083,12 +982,12 @@ export function DayColumn({
           </>
         )
         })()}
-      </div>
 
-      {dividers.map((d) => (
-        <div key={d.col} className="coldiv" style={{ left: d.left }}
-          onMouseDown={(e) => onResizeStart(d.col, e)} onClick={(e) => e.stopPropagation()} />
-      ))}
+        {dividers.map((d) => (
+          <div key={d.col} className="coldiv" style={{ left: d.left }}
+            onMouseDown={(e) => onResizeStart(d.col, e)} onClick={(e) => e.stopPropagation()} />
+        ))}
+      </div>
     </div>
   )
 }

@@ -48,6 +48,16 @@ const sortedPlans = (list: PlanResponse[]) => [...list].sort((a, b) => (
   new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
 ))
 
+function rejectsCreateAnchorWeekday(error: unknown): error is ApiException {
+  if (!(error instanceof ApiException) || error.status !== 400) return false
+  const issues = error.details.issues
+  return Array.isArray(issues) && issues.some((issue) => {
+    if (typeof issue !== 'object' || issue === null) return false
+    const path = Reflect.get(issue, 'path')
+    return Array.isArray(path) && path.includes('anchor_weekday')
+  })
+}
+
 export function PlanWorkspace({ onLogout, me }: Props) {
   const [catalog, setCatalog] = useState<Catalog | null>(null)
   const [exerciseList, setExerciseList] = useState<ExerciseResponse[]>([])
@@ -505,15 +515,25 @@ export function PlanWorkspace({ onLogout, me }: Props) {
     if (!catalog || !studentId) return
     setNewPlanOpen(true)
   }
-  const createNewPlan = async (name: string, weeks: number, startDate: string) => {
+  const createNewPlan = async (name: string, weeks: number, startDate: string, anchorWeekday: number) => {
     if (!catalog || !studentId) throw new Error('PLAN_CONTEXT_MISSING')
     const generation = ++loadGeneration.current
     const targetStudentId = studentId
     try {
-      const created = await createPlan({
+      const body = {
         trainee_id: targetStudentId, name, start_date: startDate, end_date: planEndISO(startDate, weeks),
-        plan_weeks: weeks, source: 'coach', kind: 'regular',
-      })
+        plan_weeks: weeks, anchor_weekday: anchorWeekday, source: 'coach' as const, kind: 'regular' as const,
+      }
+      let created: PlanResponse
+      try {
+        created = await createPlan(body)
+      } catch (error) {
+        if (!rejectsCreateAnchorWeekday(error)) throw error
+        const { anchor_weekday: _unsupported, ...legacyBody } = body
+        const legacyCreated = await createPlan(legacyBody)
+        const patched = await patchPlan(legacyCreated.id, { anchor_weekday: anchorWeekday })
+        created = { ...legacyCreated, ...patched, anchor_weekday: patched.anchor_weekday ?? anchorWeekday }
+      }
       if (generation !== loadGeneration.current) return
       updateStudentPlans(targetStudentId, (prev) => [created, ...prev])
       await loadPlan(created.id, catalog, generation)

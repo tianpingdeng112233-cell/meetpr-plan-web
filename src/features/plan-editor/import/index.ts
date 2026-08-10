@@ -609,7 +609,6 @@ function rowFromParsed(exercise: ParsedExercise, resolved: ExerciseResponse | nu
     ku: resolved ? !custom : false,
     custom: resolved ? custom : false,
     isMain: resolved ? resolved.is_competition_lift || resolved.main_lift_family != null : false,
-    target: null,
     aux: boxes.length === 0,
     reps: exercise.reps,
     mode: rpe ? 'kg' : exercise.mode,

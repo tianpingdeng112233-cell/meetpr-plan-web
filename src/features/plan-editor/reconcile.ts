@@ -20,7 +20,6 @@ import { isLegacyRpeRow, rowIntensity, rowIntensityBoxes, rowWeightBoxes } from 
 interface DesiredExercise {
   exercise_id: string
   is_main_lift: boolean
-  target: string | null
   notes: string | null
   sets: CreatePlanSetBody[]
 }
@@ -79,7 +78,7 @@ export class ReconcileConflict extends Error {
  * flattening, but deliberately do not gate on plan status: published
  * mutability is server-authoritative (backend spec 016). */
 export class ReconciliationError extends Error {
-  constructor(public readonly code: 'PLAN_REQUIRES_NATIVE_EDITOR' | 'PLAN_SET_SPEC_INCOMPLETE' | 'PLAN_TARGET_INVALID') {
+  constructor(public readonly code: 'PLAN_REQUIRES_NATIVE_EDITOR' | 'PLAN_SET_SPEC_INCOMPLETE') {
     super(code)
   }
 }
@@ -147,9 +146,6 @@ function parseReps(reps: string): { reps: number; repsMax: number | null; amrap:
 /** A bound row -> desired backend exercise. Unbound rows (no exerciseId) -> null. */
 function rowToDesired(row: ExerciseRow): DesiredExercise | null {
   if (!row.exerciseId) return null
-  if (row.target != null && !/^[a-z_]{1,32}$/.test(row.target)) {
-    throw new ReconciliationError('PLAN_TARGET_INVALID')
-  }
   const { reps, repsMax, amrap } = parseReps(row.reps)
   let sets: CreatePlanSetBody[]
   if (row.mode === 'bodyweight') {
@@ -203,7 +199,6 @@ function rowToDesired(row: ExerciseRow): DesiredExercise | null {
   return {
     exercise_id: row.exerciseId,
     is_main_lift: row.isMain,
-    target: row.target,
     notes: row.note || null,
     sets,
   }
@@ -241,14 +236,14 @@ function canonicalSet(set: CreatePlanSetBody | PlanExerciseResponse['sets'][numb
 
 function canonDesiredOne(e: DesiredExercise): string {
   return JSON.stringify({
-    x: e.exercise_id, m: e.is_main_lift, t: e.target, n: e.notes ?? '',
+    x: e.exercise_id, m: e.is_main_lift, n: e.notes ?? '',
     s: e.sets.map(canonicalSet),
   })
 }
 
 function canonServerOne(e: PlanExerciseResponse): string {
   return JSON.stringify({
-    x: e.exercise_id, m: e.is_main_lift, t: e.target, n: e.notes ?? '',
+    x: e.exercise_id, m: e.is_main_lift, n: e.notes ?? '',
     s: [...e.sets].sort((a, b) => a.set_number - b.set_number)
       .map(canonicalSet),
   })
@@ -408,7 +403,6 @@ function serverToRow(exercise: PlanExerciseResponse, local: ExerciseRow | undefi
     ku: !custom,
     custom,
     isMain: exercise.is_main_lift,
-    target: exercise.target,
     aux: sets.length === 0,
     reps: sets.length === 0 ? '—' : repsMax != null && repsMax > baseReps
       ? `${baseReps}-${repsMax}`
@@ -647,7 +641,6 @@ async function postExercise(dayId: string, entry: DesiredEntry, sortOrder: numbe
     exercise_id: entry.desired.exercise_id,
     is_main_lift: entry.desired.is_main_lift,
     sort_order: sortOrder,
-    target: entry.desired.target,
     notes: entry.desired.notes,
   })
   for (const set of entry.desired.sets) await createSet(created.id, set)
@@ -663,7 +656,6 @@ function workToBatchDay(work: DayWork): BatchPlanDayBody {
       exercise_id: entry.desired.exercise_id,
       is_main_lift: entry.desired.is_main_lift,
       sort_order: sortOrder,
-      target: entry.desired.target,
       notes: entry.desired.notes,
       sets: entry.desired.sets.map((set) => ({
         set_number: set.set_number,

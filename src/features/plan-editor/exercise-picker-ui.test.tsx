@@ -20,7 +20,7 @@ function exercise(id: string, name: string): ExerciseResponse {
 function emptyRow(): ExerciseRow {
   return {
     id: 'row', serverRowId: null, serverSortOrder: null, hasLogs: false, conflictMessage: null,
-    exerciseId: null, name: '', ku: false, custom: false, isMain: false, target: null,
+    exerciseId: null, name: '', ku: false, custom: false, isMain: false,
     aux: false, reps: '5', mode: 'kg', boxes: [{ val: '', empty: true }], note: '',
   }
 }

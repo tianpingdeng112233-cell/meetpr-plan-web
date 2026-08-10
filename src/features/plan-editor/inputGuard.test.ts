@@ -13,7 +13,7 @@ import { isBoundNoSets, type DayCol, type ExerciseRow, type Week } from './types
 function row(partial: Partial<ExerciseRow> = {}): ExerciseRow {
   return {
     id: 'row', serverRowId: null, serverSortOrder: null, hasLogs: false, conflictMessage: null,
-    exerciseId: 'exercise', name: '深蹲', ku: true, custom: false, isMain: false, target: null,
+    exerciseId: 'exercise', name: '深蹲', ku: true, custom: false, isMain: false,
     aux: false, reps: '5', mode: 'kg', boxes: [{ val: '100', empty: false }], note: '',
     ...partial,
   }

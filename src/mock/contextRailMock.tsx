@@ -92,7 +92,7 @@ const auxDetail: ExerciseStatsDetail = {
 function row(over: Partial<ExerciseRow> & { id: string; name: string }): ExerciseRow {
   return {
     serverRowId: null, serverSortOrder: null, hasLogs: false, conflictMessage: null,
-    exerciseId: null, ku: false, custom: false, isMain: false, target: null, aux: false,
+    exerciseId: null, ku: false, custom: false, isMain: false, aux: false,
     reps: '', mode: 'kg', boxes: [], note: '', ...over,
   }
 }
@@ -181,7 +181,7 @@ function Mock() {
   const complete = isRowComplete(sel)
   const railVisible = !dismissed && !complete
 
-  const placement = useRailPlacement(mode, railVisible, wrapRef, `${selDow}-${stage}-${tier}`)
+  const railLayout = useRailPlacement(mode, railVisible, wrapRef, `${selDow}-${stage}-${tier}`)
 
   return (
     <div style={{ height: '100vh', display: 'flex', flexDirection: 'column', background: 'var(--page-bg)' }}>
@@ -208,7 +208,7 @@ function Mock() {
         ))}
       </div>
 
-      <div ref={wrapRef} className={`plan-with-rail${railVisible && mode === 'dock' ? ' rail-open' : ''}`}>
+      <div ref={wrapRef} className={`plan-with-rail${railVisible && railLayout.placementMode === 'dock' ? ' rail-open' : ''}`}>
         <div className="scroller" style={{ flex: 1, overflow: 'auto', background: 'var(--page-bg)' }}>
           <div className="weekband" data-wnum={4}>
             <div className="weekband-head">
@@ -226,7 +226,6 @@ function Mock() {
                   colW={COL_DEFAULTS}
                   selected={d.dow === selDow}
                   selectedRowId={d.dow === selDow ? sel?.id ?? null : null}
-                  onRecallContext={d.dow === selDow && !railVisible ? () => { setDismissed(false); setStage(4) } : undefined}
                   onSelect={noop} onResizeStart={noop} onNameFocus={noop} onNameChange={noop}
                   onNameBlur={noop} onAddRow={noop} onEditRow={noop} onDeleteRow={noop}
                   rowTier={(r) => (r.isMain ? 'main' : 'aux')}
@@ -239,7 +238,7 @@ function Mock() {
         {railVisible && (
           <ContextRailView
             studentName="史俊义" day={day} row={sel} profile={profile} overview={overview}
-            detail={detail} style={placement} mode={mode} onToggleMode={toggleMode}
+            detail={detail} style={railLayout.style} mode={mode} placementMode={railLayout.placementMode} onToggleMode={toggleMode}
             onClose={() => setDismissed(true)}
           />
         )}

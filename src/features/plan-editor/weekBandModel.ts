@@ -8,8 +8,6 @@ export interface WeekBandSlot {
   exerciseId: string | null
   exemplar: ExerciseRow
   tier: WeekBandTier
-  /** First non-empty target in week order; the slot is the display authority. */
-  target: string | null
 }
 
 export interface DayBandAlignment {
@@ -209,7 +207,6 @@ export function alignWeeksByExercise(
             exerciseId: keyed.row.exerciseId,
             exemplar: keyed.row,
             tier,
-            target: null,
           }
           if (nextKnown) {
             const insertAt = slots[tier].findIndex((candidate) => candidate.key === nextKnown.key)
@@ -223,46 +220,8 @@ export function alignWeeksByExercise(
         }
       }
     }
-    for (const slot of [...slots.main, ...slots.aux]) {
-      for (const rows of rowsByWeek.values()) {
-        const target = rows.get(slot.key)?.target
-        if (target) {
-          slot.target = target
-          break
-        }
-      }
-    }
     return { dow, main: slots.main, aux: slots.aux, rowsByWeek }
   })
-}
-
-/** Apply one frozen-skeleton target to every concrete occurrence across weeks. */
-export function setWeekBandSlotTarget(
-  weeks: readonly Week[],
-  resolveTier: (row: ExerciseRow) => WeekBandTier,
-  dow: number,
-  slotKey: string,
-  target: string | null,
-): Week[] | null {
-  const alignment = alignWeeksByExercise(weeks, resolveTier).find((candidate) => candidate.dow === dow)
-  if (!alignment) return null
-  // Revalidate the concrete slot rows from the latest functional-update state.
-  // A picker may have opened before an autosave/refetch made one occurrence immutable.
-  if ([...alignment.rowsByWeek.values()].some((rows) => rows.get(slotKey)?.hasLogs === true)) return null
-  let changed = false
-  const next = weeks.map((week) => {
-    const row = alignment.rowsByWeek.get(week.num)?.get(slotKey)
-    if (!row || row.target === target) return week
-    changed = true
-    return {
-      ...week,
-      days: week.days.map((day) => day.dow !== dow ? day : {
-        ...day,
-        rows: day.rows.map((candidate) => candidate.id === row.id ? { ...candidate, target } : candidate),
-      }),
-    }
-  })
-  return changed ? next : null
 }
 
 export const WEEKDAY_LABELS = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'] as const

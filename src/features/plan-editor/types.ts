@@ -36,8 +36,6 @@ export interface ExerciseRow {
   ku: boolean        // matched the exercise catalog
   custom: boolean    // coach-created custom exercise
   isMain: boolean    // backend is_main_lift flag (independent of aux)
-  /** Coach-selected slot meaning persisted as plan_exercises.target; null = no target. */
-  target: string | null
   aux: boolean       // accessory with no structured intensity
   reps: string       // target reps, e.g. "5" / "8+" / "—"
   /**

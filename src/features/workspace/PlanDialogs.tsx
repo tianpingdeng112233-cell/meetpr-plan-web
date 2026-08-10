@@ -57,7 +57,7 @@ export function NewPlanDialog({ open, studentName, onClose, onCreate }: {
   open: boolean
   studentName: string
   onClose: () => void
-  onCreate: (name: string, weeks: number, startDate: string) => Promise<void>
+  onCreate: (name: string, weeks: number, startDate: string, anchorWeekday: number) => Promise<void>
 }) {
   const [name, setName] = useState('新计划')
   const [weeks, setWeeks] = useState(12)
@@ -88,7 +88,7 @@ export function NewPlanDialog({ open, studentName, onClose, onCreate }: {
           if (!validName || creating) return
           setCreating(true)
           setError('')
-          void onCreate(name.trim(), weeks, startDate).catch(() => {
+          void onCreate(name.trim(), weeks, startDate, weekdayIndex(startDate) + 1).catch(() => {
             setError('创建失败，请稍后重试')
             setCreating(false)
           })
