@@ -48,12 +48,9 @@ import {
 import { useGlobalKeyboardHandler } from '../workspace/globalKeyboard'
 import { MUSCLE_LABEL } from '../catalog/catalogModel'
 import {
-  alignWeeksByExercise,
   closestWeekToViewportCenter,
-  orderWeeksByWeekBand,
-  reorderWeekBandSkeleton,
+  reorderRowsInWeek,
   trainingDayOrdinal,
-  type WeekBandSlot,
 } from './weekBandModel'
 import type { WeekBandBadge } from './components/DayColumn'
 
@@ -319,16 +316,15 @@ export function PlanEditor(props: PlanEditorProps) {
   const [weeks, setWeeks] = useState<Week[]>(initialWeeks)
   const latestWeeks = useRef(weeks)
   latestWeeks.current = weeks
-  const dayBandAlignments = useMemo(
-    () => alignWeeksByExercise(weeks, rowTier),
+  const displayWeeks = useMemo(
+    () => weeks.map((week) => ({
+      ...week,
+      days: week.days.map((day) => ({ ...day, rows: orderRowsForDisplay(day.rows, rowTier) })),
+    })),
     [rowTier, weeks],
   )
-  const interactionWeeks = useMemo(
-    () => orderWeeksByWeekBand(weeks, dayBandAlignments),
-    [dayBandAlignments, weeks],
-  )
-  const latestInteractionWeeks = useRef(interactionWeeks)
-  latestInteractionWeeks.current = interactionWeeks
+  const latestDisplayWeeks = useRef(displayWeeks)
+  latestDisplayWeeks.current = displayWeeks
   const mirrorPlanId = props.currentPlanId
   const initialServerMirrorContent = useRef(mirrorContent(
     initialWeeks,
@@ -416,9 +412,9 @@ export function PlanEditor(props: PlanEditorProps) {
   }, [cellSelection])
 
   useEffect(() => {
-    setRowSelection((current) => convergeRowSelection(current, interactionWeeks, rowTier))
-    setCellSelection((current) => current && !resolvePlanCell(interactionWeeks, current) ? null : current)
-  }, [interactionWeeks, rowTier])
+    setRowSelection((current) => convergeRowSelection(current, displayWeeks, rowTier))
+    setCellSelection((current) => current && !resolvePlanCell(displayWeeks, current) ? null : current)
+  }, [displayWeeks, rowTier])
 
   useEffect(() => {
     // Parent metadata is authoritative after loading/saving. Do not overwrite a
@@ -792,7 +788,7 @@ export function PlanEditor(props: PlanEditorProps) {
       const sameDay = anchor?.wnum === wnum && anchor.dow === dow
       if (!sameDay || (!modifiers.toggle && !modifiers.range)) return singleRowSelection(target)
 
-      const day = latestInteractionWeeks.current.find((week) => week.num === wnum)?.days.find((item) => item.dow === dow)
+      const day = latestDisplayWeeks.current.find((week) => week.num === wnum)?.days.find((item) => item.dow === dow)
       if (!day) return singleRowSelection(target)
       const displayRows = orderRowsForDisplay(day.rows, rowTier)
       if (modifiers.range && anchor) {
@@ -986,8 +982,8 @@ export function PlanEditor(props: PlanEditorProps) {
     return derived
   }, [props.exerciseIndex, weeks])
 
-  const weekBandBadge = useCallback((slot: WeekBandSlot): WeekBandBadge | null => {
-    const metadata = slot.exerciseId ? props.exerciseIndex?.bandMetadataById(slot.exerciseId) : null
+  const weekBandBadge = useCallback((row: ExerciseRow): WeekBandBadge | null => {
+    const metadata = row.exerciseId ? props.exerciseIndex?.bandMetadataById(row.exerciseId) : null
     if (metadata && metadata.exercise_type !== 'accessory' && metadata.main_lift_family) {
       const labels = { squat: '蹲', bench: '卧', deadlift: '拉' } as const
       return { label: labels[metadata.main_lift_family], tone: metadata.main_lift_family }
@@ -1008,7 +1004,7 @@ export function PlanEditor(props: PlanEditorProps) {
   ) => {
     if (dragRowId === targetRowId) return
     setWeeksWithHistory((prev) => (
-      reorderWeekBandSkeleton(prev, rowTier, dow, wnum, dragRowId, targetRowId, position) ?? prev
+      reorderRowsInWeek(prev, rowTier, wnum, dow, dragRowId, targetRowId, position) ?? prev
     ))
     setSel({ wnum, dow })
     setRowSelection(singleRowSelection({ wnum, dow, rowId: dragRowId }))
@@ -1152,11 +1148,11 @@ export function PlanEditor(props: PlanEditorProps) {
 
   const selectedRowsValue = useCallback((): ExerciseRow[] => {
     if (!selectedRow) return []
-    const day = interactionWeeks.find((week) => week.num === selectedRow.wnum)?.days.find((d) => d.dow === selectedRow.dow)
+    const day = displayWeeks.find((week) => week.num === selectedRow.wnum)?.days.find((d) => d.dow === selectedRow.dow)
     return day
       ? orderRowsForDisplay(day.rows, rowTier).filter((row) => selectedRowIds.has(row.id))
       : []
-  }, [interactionWeeks, rowTier, selectedRow, selectedRowIds])
+  }, [displayWeeks, rowTier, selectedRow, selectedRowIds])
 
   const copySelectedDay = useCallback(async () => {
     const day = selectedDay()
@@ -1303,7 +1299,7 @@ export function PlanEditor(props: PlanEditorProps) {
   }, [])
 
   const moveCellSelection = (move: 'next' | 'previous' | 'up' | 'down') => {
-    const next = movePlanCell(latestInteractionWeeks.current, cellSelection, move)
+    const next = movePlanCell(latestDisplayWeeks.current, cellSelection, move)
     if (!next) return
     if (visibleWeekRef.current !== next.weekNumber) {
       setVisibleWeek(next.weekNumber)
@@ -1333,7 +1329,7 @@ export function PlanEditor(props: PlanEditorProps) {
 
   const fillSelectedIntensityDown = () => {
     if (readOnly || !cellSelection || !['intensity', 'weight'].includes(cellSelection.field) || cellSelection.setIndex == null) return false
-    const resolved = resolvePlanCell(latestInteractionWeeks.current, cellSelection)
+    const resolved = resolvePlanCell(latestDisplayWeeks.current, cellSelection)
     const fillsIntensity = cellSelection.field === 'intensity'
     const source = resolved
       ? (fillsIntensity ? rowIntensityBoxes(resolved.row) : rowWeightBoxes(resolved.row))[cellSelection.setIndex]
@@ -1505,42 +1501,6 @@ export function PlanEditor(props: PlanEditorProps) {
     setSel({ wnum, dow })
     setRowSelection(singleRowSelection({ wnum, dow, rowId: row.id }))
     setCellSelection({ weekNumber: wnum, dow, rowId: row.id, field: 'name' })
-  }
-
-  const quickAddAlignedExercise = (wnum: number, dow: number, slot: WeekBandSlot) => {
-    // Name-based slots (unbound imported/sample rows) quick-add too: the new
-    // row copies the exemplar's name unbound and aligns by the same name key.
-    if (readOnly || !slot.exemplar.name.trim()) return
-    const row = blankRow()
-    row.exerciseId = slot.exerciseId
-    row.name = slot.exemplar.name
-    row.ku = slot.exemplar.ku
-    row.custom = slot.exemplar.custom
-    row.isMain = slot.tier === 'main'
-    // Match the ordinary add+bind path: catalog accessories still use the
-    // structured prescription grid and participate in the publish input guard.
-    // `aux` is reserved for explicitly imported notes-only actions.
-    row.aux = false
-    const currentWeek = latestWeeks.current.find((week) => week.num === wnum)
-    const displayedWeek = currentWeek ? {
-      ...currentWeek,
-      days: currentWeek.days.map((day) => day.dow === dow
-        ? { ...day, rest: false, rows: [...day.rows, row] }
-        : day),
-    } : null
-    setWeeksWithHistory((prev) => prev.map((week) => week.num !== wnum ? week : {
-      ...week,
-      days: week.days.map((day) => day.dow !== dow ? day : {
-        ...day,
-        rest: false,
-        rows: [...day.rows, row],
-      }),
-    }))
-    setSel({ wnum, dow })
-    setRowSelection(singleRowSelection({ wnum, dow, rowId: row.id }))
-    setCellSelection({ weekNumber: wnum, dow, rowId: row.id, field: 'sets' })
-    const ordinal = displayedWeek ? trainingDayOrdinal(displayedWeek, dow) : null
-    setStatusText(`已添加「${row.name}」到 W${String(wnum).padStart(2, '0')}${ordinal == null ? '' : ` · D${ordinal}`}`)
   }
 
   const handleClearDay = () => {
@@ -2131,7 +2091,7 @@ export function PlanEditor(props: PlanEditorProps) {
   })()
   const selectedRowForBar = selectedRowValue()
   const selectedCellInfo = useMemo(() => {
-    const resolved = resolvePlanCell(interactionWeeks, cellSelection)
+    const resolved = resolvePlanCell(displayWeeks, cellSelection)
     if (
       !resolved
       || !formulaCellDraft
@@ -2141,7 +2101,7 @@ export function PlanEditor(props: PlanEditorProps) {
       ...resolved,
       value: formulaCellDraft.rawValue === '' ? '/' : `${formulaCellDraft.rawValue} 组`,
     }
-  }, [cellSelection, formulaCellDraft, interactionWeeks])
+  }, [cellSelection, displayWeeks, formulaCellDraft])
   const selectedRowLabel = selectedRowForBar ? `当前行 · ${selectedRowForBar.name.trim() || '未命名动作'}` : ''
   const moveStateForDay = (wnum: number, dow: number): 'source' | 'target' | 'invalid' | undefined => {
     if (!dayMoveVisual) return undefined
@@ -2328,28 +2288,14 @@ export function PlanEditor(props: PlanEditorProps) {
                         onNameCompositionEnd={() => { nameComposingRef.current = false }}
                         onNameBlur={(rowId) => handleNameBlur(wk.num, day.dow, rowId)}
                         onAddRow={(tier) => addRowToDay(wk.num, day.dow, tier)}
-                        rowReorderDisabledHint={(() => {
-                          const alignment = dayBandAlignments.find((candidate) => candidate.dow === day.dow)
-                          return alignment && [...alignment.rowsByWeek.values()]
-                            .some((rows) => [...rows.values()].some((row) => row.hasLogs))
-                            ? '该骨架含学员已打卡动作，所有周均不可拖排'
-                            : undefined
-                        })()}
                         onEditRow={(rowId, updater) => editRow(wk.num, day.dow, rowId, updater)}
                         onReorderRow={(dragRowId, targetRowId, position) => reorderRow(wk.num, day.dow, dragRowId, targetRowId, position)}
                         onDeleteRow={(rowId) => deleteRow(wk.num, day.dow, rowId)}
-                        weekBand={(() => {
-                          const alignment = dayBandAlignments.find((candidate) => candidate.dow === day.dow)
-                          return {
-                            main: alignment?.main ?? [],
-                            aux: alignment?.aux ?? [],
-                            rows: alignment?.rowsByWeek.get(wk.num) ?? new Map(),
-                            badgeFor: weekBandBadge,
-                            onQuickAdd: (slot) => quickAddAlignedExercise(wk.num, day.dow, slot),
-                            trainingDayOrdinal: trainingDayOrdinal(wk, day.dow),
-                            weekdayLabel: day.dowLabel,
-                          }
-                        })()}
+                        weekBand={{
+                          badgeFor: weekBandBadge,
+                          trainingDayOrdinal: trainingDayOrdinal(wk, day.dow),
+                          weekdayLabel: day.dowLabel,
+                        }}
                       />
                     ))}
                   </div>

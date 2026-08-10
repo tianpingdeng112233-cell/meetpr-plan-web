@@ -151,7 +151,7 @@ export class ExerciseIndex {
     } : null
   }
 
-  /** Catalog fields used by the frozen week-band skeleton badge. */
+  /** Catalog fields used by the badge attached to week-band action names. */
   bandMetadataById(id: string): Pick<ExerciseResponse, 'exercise_type' | 'main_lift_family' | 'muscle_groups'> | null {
     const exercise = this.byId.get(id)
     return exercise ? {

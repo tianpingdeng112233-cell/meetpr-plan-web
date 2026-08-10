@@ -27,7 +27,6 @@ import {
   type PlanCellField,
   type PlanCellSelection,
 } from '../selectionModel'
-import type { WeekBandSlot } from '../weekBandModel'
 
 export interface WeekBandBadge {
   label: string
@@ -35,11 +34,7 @@ export interface WeekBandBadge {
 }
 
 export interface WeekBandDayView {
-  main: WeekBandSlot[]
-  aux: WeekBandSlot[]
-  rows: ReadonlyMap<string, ExerciseRow>
-  badgeFor: (slot: WeekBandSlot) => WeekBandBadge | null
-  onQuickAdd: (slot: WeekBandSlot) => void
+  badgeFor: (row: ExerciseRow) => WeekBandBadge | null
   /** Display-only ordinal among this week's non-empty training days. */
   trainingDayOrdinal: number | null
   weekdayLabel: string | null
@@ -74,11 +69,10 @@ interface Props {
   onAddRow: (tier: 'main' | 'aux') => void
   /** Display tier resolver (catalog exercise_type based); absent = flat legacy list. */
   rowTier?: (row: ExerciseRow) => 'main' | 'aux'
-  rowReorderDisabledHint?: string | null
   onEditRow: (rowId: string, updater: (r: ExerciseRow) => ExerciseRow) => void
   onReorderRow?: (dragRowId: string, targetRowId: string, position: 'before' | 'after') => void
   onDeleteRow: (rowId: string) => void
-  /** Spec 037 aligned week-band rendering; omitted for the legacy standalone view/tests. */
+  /** Focused week-band presentation; omitted for the legacy standalone view/tests. */
   weekBand?: WeekBandDayView
 }
 
@@ -574,7 +568,6 @@ export function DayColumn({
   onNameBlur,
   onAddRow,
   rowTier,
-  rowReorderDisabledHint,
   onEditRow,
   onReorderRow,
   onDeleteRow,
@@ -582,8 +575,8 @@ export function DayColumn({
 }: Props) {
   const [dragRowId, setDragRowId] = useState<string | null>(null)
   const [dropTarget, setDropTarget] = useState<{ rowId: string; position: 'before' | 'after' } | null>(null)
-  const dragDisabled = !!rowReorderDisabledHint || day.rows.some((row) => row.hasLogs)
-  const dragDisabledTitle = rowReorderDisabledHint ?? '该日含学员已打卡动作，整天不可拖排'
+  const dragDisabled = day.rows.some((row) => row.hasLogs)
+  const dragDisabledTitle = '该日含学员已打卡动作，整天不可拖排'
   const dayMoveClass = dayMoveState ? ` day-move-${dayMoveState}` : ''
   const dayMoveTitle = dayMoveDisabledHint ?? '拖动搬到本周其他日期 / 点击选中日'
   const dayMoveCursor = dayMoveDisabledHint ? 'not-allowed' : 'grab'
@@ -758,12 +751,12 @@ export function DayColumn({
         </div>
 
         {(() => {
-        const renderRow = (row: ExerciseRow, slot?: WeekBandSlot, rowNumber?: number) => {
+        const renderRow = (row: ExerciseRow, rowNumber?: number) => {
           const edit = (u: (r: ExerciseRow) => ExerciseRow) => onEditRow(row.id, u)
           const inputIssue = getBoundRowInputIssue(row)
           const isSelectedRow = selectedRowIds?.has(row.id) ?? selectedRowId === row.id
           const dropPosition = dropTarget?.rowId === row.id ? dropTarget.position : null
-          const badge = weekBand && slot ? weekBand.badgeFor(slot) : null
+          const badge = weekBand ? weekBand.badgeFor(row) : null
           return (
             <div
               key={row.id}
@@ -905,49 +898,6 @@ export function DayColumn({
             </div>
           )
         }
-        const renderEmptySlot = (slot: WeekBandSlot, rowNumber: number) => {
-          const badge = weekBand!.badgeFor(slot)
-          const missingName = slot.exemplar.name.trim() === ''
-          const quickAddDisabled = readOnly || missingName
-          return (
-            <div
-              key={`empty-${slot.key}`}
-              className="exrow week-band-empty-row"
-              data-empty-exercise-id={slot.exerciseId ?? undefined}
-              title={missingName
-                ? '未命名动作不可添加，请先完善动作名称'
-                : `本周未安排「${slot.exemplar.name}」，可快速添加`}
-              role="button"
-              tabIndex={quickAddDisabled ? -1 : 0}
-              aria-disabled={quickAddDisabled}
-              aria-label={missingName
-                ? `${slot.exemplar.name || '未命名动作'}：本周未安排，不可添加`
-                : `${slot.exemplar.name}：本周未安排，添加到本周`}
-              onClick={(event) => { event.stopPropagation(); if (!quickAddDisabled) weekBand!.onQuickAdd(slot) }}
-              onKeyDown={(event) => {
-                if (event.target !== event.currentTarget) return
-                if (!quickAddDisabled && (event.key === 'Enter' || event.key === ' ')) {
-                  event.preventDefault()
-                  weekBand!.onQuickAdd(slot)
-                }
-              }}
-            >
-              <span className="exercise-row-main">
-                <span className="gcell week-band-frozen week-band-index" data-c="index" style={{ width: 28 }}>{rowNumber}</span>
-                <span className="gcell week-band-frozen week-band-empty-name" data-c="name" style={{ width: colW.name }}>
-                  {badge && <span className={`week-band-badge ${badge.tone}`}>{badge.label}</span>}
-                  <span className="week-band-empty-name-label">{slot.exemplar.name || '未命名动作'}</span>
-                </span>
-                <span className="week-band-empty-prescription" style={{ width: total - frozenWidth - colW.name }}>
-                  <span className="week-band-empty-status">本周未安排</span>
-                  <span className="week-band-empty-action">
-                    {missingName ? '不可添加' : '+ 添加到本周'}
-                  </span>
-                </span>
-              </span>
-            </div>
-          )
-        }
         const addRowEntry = (tier: 'main' | 'aux') => (
           <div className="popitem" data-add-tier={tier} onClick={(e) => { e.stopPropagation(); onAddRow(tier) }}
             style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 8px', borderTop: '1px dashed var(--bd)', color: 'var(--mut)', cursor: 'pointer', fontSize: 11 }}>
@@ -961,21 +911,22 @@ export function DayColumn({
           </button>
         )
         if (weekBand) {
-          const mainSummary = summarizeDaySection(day.rows.filter((row) => resolveTier(row) === 'main'))
-          const auxSummary = summarizeDaySection(day.rows.filter((row) => resolveTier(row) === 'aux'))
+          const mainRows = displayRows.filter((row) => resolveTier(row) === 'main')
+          const auxRows = displayRows.filter((row) => resolveTier(row) === 'aux')
+          const mainSummary = summarizeDaySection(mainRows)
+          const auxSummary = summarizeDaySection(auxRows)
           let rowNumber = 0
-          const renderSlots = (slots: WeekBandSlot[]) => slots.map((slot) => {
+          const renderRows = (rows: ExerciseRow[]) => rows.map((row) => {
             rowNumber += 1
-            const row = weekBand.rows.get(slot.key)
-            return row ? renderRow(row, slot, rowNumber) : renderEmptySlot(slot, rowNumber)
+            return renderRow(row, rowNumber)
           })
           return (
             <>
-              {(weekBand.main.length > 0 || !readOnly) && <TierHeader label="主项及变式" accent width={total} summary={mainSummary} />}
-              {renderSlots(weekBand.main)}
+              {(mainRows.length > 0 || !readOnly) && <TierHeader label="主项及变式" accent width={total} summary={mainSummary} />}
+              {renderRows(mainRows)}
               {addWeekBandRowEntry('main')}
-              {(weekBand.aux.length > 0 || !readOnly) && <TierHeader label="辅助项" width={total} summary={auxSummary} />}
-              {renderSlots(weekBand.aux)}
+              {(auxRows.length > 0 || !readOnly) && <TierHeader label="辅助项" width={total} summary={auxSummary} />}
+              {renderRows(auxRows)}
               {addWeekBandRowEntry('aux')}
             </>
           )
