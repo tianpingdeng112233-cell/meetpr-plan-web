@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { PlanExerciseResponse, PlanSetResponse, PlanWithChildren } from '../../api/types'
 import { mapPlanToWeeks, type Catalog } from './mapping'
-import { rowIntensity } from './intensityModel'
+import { displayedRowIntensity, rowIntensity } from './intensityModel'
 
 function set(id: string, patch: Partial<PlanSetResponse>): PlanSetResponse {
   return {
@@ -76,9 +76,11 @@ describe('spec 034 plan read reconstruction', () => {
       boxes: [{ val: '', empty: true }, { val: '', empty: true }],
     })
     expect(rows[2]).toMatchObject({
-      intensity: null, weightMode: 'uniform',
+      intensity: null, legacyWeightSource: true, weightMode: 'uniform',
       boxes: [{ val: '100', empty: false }, { val: '100', empty: false }],
     })
+    expect(rowIntensity(rows[2])).toBeNull()
+    expect(displayedRowIntensity(rows[2])).toEqual({ mode: 'fixed_weight', value: '', high: '' })
   })
 
   it('keeps old load_mode-null RPE sets in the lossless compatibility shape', () => {

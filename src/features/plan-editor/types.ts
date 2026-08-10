@@ -43,6 +43,12 @@ export interface ExerciseRow {
    * on an `rpe` row is a lossless compatibility shape for old per-set RPE data.
    */
   mode: IntensityMode
+  /**
+   * Read provenance for old `load_mode=null + intensity_mode=weight` sets.
+   * Their kg values stay in `boxes`; the intensity selector only presents them
+   * as fixed weight until an explicit edit materializes the new wire shape.
+   */
+  legacyWeightSource?: boolean
   /** Row-level spec-034 intensity. Omitted only for legacy rows/mirrors. */
   intensity?: RowIntensity | null
   /** Presentation for pct/rpe/rir values; ranges and fixed_weight stay row-level. */

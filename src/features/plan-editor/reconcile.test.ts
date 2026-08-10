@@ -199,6 +199,42 @@ describe('reconcilePlan — skippedRows counts only contentful unbound rows', ()
     expect(res.skippedRows).toBe(0)
   })
 
+  it.each([
+    ['intensity-only', {
+      intensity: { mode: 'rpe' as const, value: '8', high: '' },
+      intensityMode: 'per_set' as const,
+      intensityBoxes: [{ val: '8', empty: false }, { val: '8.5', empty: false }],
+      boxes: [{ val: '', empty: true }, { val: '', empty: true }],
+    }],
+    ['weight-only', {
+      intensity: null,
+      boxes: [{ val: '170', empty: false }, { val: '172.5', empty: false }],
+    }],
+    ['sparse mixed per-set', {
+      intensity: { mode: 'rpe' as const, value: '8', high: '' },
+      intensityMode: 'per_set' as const,
+      intensityBoxes: [
+        { val: '8', empty: false },
+        { val: '', empty: true },
+        { val: '9', empty: false },
+      ],
+      boxes: [
+        { val: '', empty: true },
+        { val: '172.5', empty: false },
+        { val: '', empty: true },
+      ],
+    }],
+  ])('does not skip or reject a complete %s row', async (_label, partial) => {
+    const res = await reconcilePlan('p', [weekWithMondayRows([
+      row({ id: 'complete', exerciseId: 'ex', name: '深蹲', ...partial }),
+    ])])
+
+    expect(res).toMatchObject({ changedDays: 1, skippedRows: 0 })
+    expect(vi.mocked(plans.batchDays)).toHaveBeenCalledTimes(1)
+    expect(vi.mocked(plans.batchDays).mock.calls[0][1].upsert_days[0].exercises[0].sets)
+      .toHaveLength(partial.boxes.length)
+  })
+
   it('writes rep ranges as target_reps_max and includes the max in diffing', async () => {
     const rows = [
       row({
@@ -227,6 +263,24 @@ describe('reconcilePlan — skippedRows counts only contentful unbound rows', ()
     const weeks = mapPlanToWeeks(baseline, new Map([['legacy-ex', { name: '旧 RPE', custom: false }]]))
 
     await expect(reconcilePlan('p', weeks)).resolves.toMatchObject({ changedDays: 0 })
+    expect(plans.batchDays).not.toHaveBeenCalled()
+    expect(plans.deleteExercise).not.toHaveBeenCalled()
+    expect(plans.createExercise).not.toHaveBeenCalled()
+  })
+
+  it('presents a legacy pure-weight row without autosave migrating load_mode', async () => {
+    const legacy = serverExercise('legacy-weight', 'legacy-ex', 0, '170')
+    legacy.sets[0] = { ...legacy.sets[0], load_mode: null, target_weight: null }
+    const baseline = serverPlan([serverDay([legacy])], 'draft')
+    vi.mocked(plans.getPlan).mockResolvedValue(baseline)
+    const weeks = mapPlanToWeeks(baseline, new Map([['legacy-ex', { name: '旧重量', custom: false }]]))
+
+    expect(weeks[0].days[0].rows[0]).toMatchObject({
+      legacyWeightSource: true,
+      intensity: null,
+      boxes: [{ val: '170', empty: false }],
+    })
+    await expect(reconcilePlan('p', weeks)).resolves.toMatchObject({ changedDays: 0, skippedRows: 0 })
     expect(plans.batchDays).not.toHaveBeenCalled()
     expect(plans.deleteExercise).not.toHaveBeenCalled()
     expect(plans.createExercise).not.toHaveBeenCalled()

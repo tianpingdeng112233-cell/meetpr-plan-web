@@ -215,7 +215,7 @@ function canonicalSet(set: CreatePlanSetBody | PlanExerciseResponse['sets'][numb
     || (set.load_mode !== undefined && set.intensity_mode === undefined)
   )
   if (useNewShape) {
-    const legacyWeight = set.load_mode === undefined && set.intensity_mode === 'weight'
+    const legacyWeight = set.load_mode == null && set.intensity_mode === 'weight'
       ? numNullable(set.target_value)
       : null
     return [
@@ -343,6 +343,9 @@ function serverToRow(exercise: PlanExerciseResponse, local: ExerciseRow | undefi
   const legacyRpeSource = !bodyweight && sets.length > 0 && sets.every((set) => (
     set.load_mode == null && set.intensity_mode === 'rpe'
   ))
+  const legacyWeightSource = !bodyweight && sets.length > 0 && sets.every((set) => (
+    set.load_mode == null && set.intensity_mode === 'weight'
+  ))
   const loadMode = sets[0]?.load_mode ?? null
   const uniformLoadMode = sets.every((set) => (set.load_mode ?? null) === loadMode)
   const singleValueMode = loadMode === 'pct' || loadMode === 'rpe' || loadMode === 'rir'
@@ -408,6 +411,7 @@ function serverToRow(exercise: PlanExerciseResponse, local: ExerciseRow | undefi
       ? `${baseReps}-${repsMax}`
       : `${baseReps}${amrap ? '+' : ''}`,
     mode: bodyweight ? 'bodyweight' : legacyRpeSource ? 'rpe' : 'kg',
+    ...(legacyWeightSource ? { legacyWeightSource: true } : {}),
     ...(!bodyweight && (legacyRpeSource || singleValueMode) ? { intensityMode, intensityBoxes } : {}),
     ...(legacyRpeSource ? {} : { intensity: uniformLoadMode ? intensity : null }),
     weightMode,

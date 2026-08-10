@@ -23,6 +23,14 @@ export function rowIntensity(row: ExerciseRow): RowIntensity | null {
   return null
 }
 
+/** Selector-only compatibility projection for old pure-weight rows. Persistence
+ * must keep using `rowIntensity`, so merely opening one never migrates load_mode. */
+export function displayedRowIntensity(row: ExerciseRow): RowIntensity | null {
+  return rowIntensity(row) ?? (row.legacyWeightSource
+    ? { mode: 'fixed_weight', value: '', high: '' }
+    : null)
+}
+
 export function rowWeightBoxes(row: ExerciseRow): SetBox[] {
   if (row.mode === 'bodyweight' || isLegacyRpeRow(row)) {
     return row.boxes.map(() => ({ val: '', empty: true }))
@@ -62,11 +70,12 @@ export function inferredIntensityMode(row: ExerciseRow): IntensityValueMode {
  * edit. Its RPE slots already live independently from the empty weight slots. */
 export function materializeIntensityRow(row: ExerciseRow): ExerciseRow {
   if (row.mode === 'bodyweight') return row
-  if (row.mode !== 'rpe' && row.intensity !== undefined && row.weightMode !== undefined) return row
+  if (!row.legacyWeightSource && row.mode !== 'rpe' && row.intensity !== undefined && row.weightMode !== undefined) return row
   const intensity = rowIntensity(row)
   const intensityBoxes = rowIntensityBoxes(row).map((box) => ({ ...box }))
   return {
     ...row,
+    legacyWeightSource: undefined,
     mode: 'kg',
     intensity,
     intensityMode: inferredIntensityMode(row),

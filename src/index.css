@@ -2731,16 +2731,25 @@ textarea {
    virtual placeholders preserve exact scroll geometry. */
 .week-tabs {
   height: 40px;
-  padding: 0 14px;
+  padding: 0 10px;
   box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+  overflow: hidden;
+  border-bottom: 1px solid var(--bd);
+  background: var(--card-bg);
+}
+.week-tab-list {
+  min-width: 0;
+  height: 100%;
   display: flex;
   align-items: end;
   gap: 3px;
-  flex: none;
+  flex: 1;
   overflow-x: auto;
   overflow-y: hidden;
-  border-bottom: 1px solid var(--bd);
-  background: var(--card-bg);
   scrollbar-width: thin;
 }
 .week-tabs button {
@@ -2754,9 +2763,30 @@ textarea {
   font: 600 11px var(--font-mono);
   cursor: pointer;
 }
-.week-tabs button:hover { color: var(--txt); background: var(--panel-bg); }
+.week-tabs button:not(:disabled):hover { color: var(--txt); background: var(--panel-bg); }
 .week-tabs button.active { border-bottom-color: var(--ink); color: var(--ink); background: var(--ink-soft); }
 .week-tabs .week-tab-add { margin-left: 5px; border: 1px dashed var(--bd); border-bottom-style: dashed; border-radius: var(--r-sm) var(--r-sm) 0 0; font-family: var(--font-sans); }
+.plan-toolbar-week-jumps {
+  height: 28px;
+  display: inline-flex;
+  flex: none;
+  overflow: hidden;
+  border: 1px solid var(--bd);
+  border-radius: var(--r-sm);
+}
+.plan-toolbar-week-jumps button {
+  width: 30px;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  color: var(--sec);
+  background: transparent;
+  font: 500 20px/1 var(--font-sans);
+  cursor: pointer;
+}
+.plan-toolbar-week-jumps button + button { border-left: 1px solid var(--bd); }
+.plan-toolbar-week-jumps button:not(:disabled):hover { color: var(--txt); background: var(--panel-bg); }
+.plan-toolbar-week-jumps button:disabled { color: var(--faint); cursor: default; opacity: .52; }
 .week-tabs button:disabled { opacity: .42; cursor: default; }
 
 .week-band-track {
@@ -2983,15 +3013,28 @@ textarea {
   color: var(--faint);
   background: var(--card-bg);
   text-align: left;
-  cursor: pointer;
+  cursor: default;
+  opacity: .54;
+  transition: opacity .12s, background .12s;
 }
-.week-band-empty-row:hover { background: var(--ink-soft); }
+.week-band-empty-row:hover,
+.week-band-empty-row:focus-visible { background: var(--ink-soft); opacity: .76; }
+.week-band-empty-row:focus-visible { outline: 1px solid var(--tint-bd); outline-offset: -1px; }
 .week-band-empty-row[aria-disabled="true"] { cursor: default; }
 .week-band-empty-name { color: var(--faint); font-size: 10px; }
 .week-band-empty-name-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.week-band-empty-prescription { height: 58px; padding: 0 12px; box-sizing: border-box; display: flex; align-items: center; color: var(--faint); font: 500 10px var(--font-mono); }
+.week-band-empty-prescription { position: relative; height: 58px; padding: 0 12px; box-sizing: border-box; display: flex; align-items: center; color: var(--faint); }
+.week-band-empty-status { font: italic 500 10px var(--font-sans); transition: opacity .1s; }
+.week-band-empty-action { position: absolute; left: 12px; color: var(--ink); font: 600 10px var(--font-sans); opacity: 0; transition: opacity .1s; }
+.week-band-empty-row:not([aria-disabled="true"]):hover { cursor: pointer; }
+.week-band-empty-row:not([aria-disabled="true"]):hover .week-band-empty-status,
+.week-band-empty-row:not([aria-disabled="true"]):focus-visible .week-band-empty-status { opacity: 0; }
+.week-band-empty-row:not([aria-disabled="true"]):hover .week-band-empty-action,
+.week-band-empty-row:not([aria-disabled="true"]):focus-visible .week-band-empty-action { opacity: 1; }
 .week-band-track .weekband-head { height: 40px; min-height: 40px; }
 .scroller { overscroll-behavior: contain; }
+.plan-with-rail > .scroller { scroll-snap-type: x mandatory; }
+.plan-with-rail > .scroller.panning { scroll-snap-type: none; }
 
 /* Filled prescription cells that fail the shared plan-editor input guard. */
 .guard-invalid {

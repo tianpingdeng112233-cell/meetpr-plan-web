@@ -145,6 +145,31 @@ describe('exercise history lock UI', () => {
       .toEqual([''])
   })
 
+  it('shows old pure-weight rows as fixed weight while keeping kg in the weight column', () => {
+    act(() => root?.render(
+      <DayColumn
+        day={{
+          dow: 0, dowLabel: '周一', dateLabel: '1/1', rest: false,
+          rows: [row('legacy-weight', {
+            legacyWeightSource: true,
+            intensity: null,
+            boxes: [{ val: '170', empty: false }],
+          })],
+        }}
+        colW={{ name: 92, sets: 26, reps: 26, int: 142, weight: 118, note: 36 }} selected
+        onSelect={vi.fn()} onResizeStart={vi.fn()} onNameFocus={vi.fn()}
+        onNameChange={vi.fn()} onNameBlur={vi.fn()} onAddRow={vi.fn()}
+        onEditRow={vi.fn()} onDeleteRow={vi.fn()}
+      />,
+    ))
+
+    expect(host.querySelector<HTMLSelectElement>('[aria-label="强度类型"]')?.value).toBe('fixed_weight')
+    expect(host.querySelector('.fixed-weight-badge')?.textContent).toBe('固定重量')
+    expect(host.querySelector<HTMLInputElement>('[data-guard-field="weight"]')?.value).toBe('170')
+    expect(host.querySelector('[role="alert"]')).toBeNull()
+    expect(host.querySelector('.guard-invalid')).toBeNull()
+  })
+
   it('focuses a filled invalid cell before an empty prescription cell', async () => {
     vi.useFakeTimers()
     act(() => root?.render(

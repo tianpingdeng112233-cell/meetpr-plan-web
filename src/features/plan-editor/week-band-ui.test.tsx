@@ -76,11 +76,153 @@ describe('spec 037 week-band UI', () => {
 
     expect(host.querySelectorAll('[data-week-slot]')).toHaveLength(12)
     expect(host.querySelectorAll('.weekband[data-wnum]')).toHaveLength(3)
-    expect(host.querySelectorAll('.week-tabs button:not(.week-tab-add)')).toHaveLength(12)
+    expect(host.querySelectorAll('.week-tab-list .week-tab')).toHaveLength(12)
     expect(host.textContent).not.toContain('跳到周')
     expect(host.textContent).not.toContain('缩放')
     expect(host.querySelector('.weekband .weekrow')?.children[0]?.classList.contains('day')).toBe(true)
     expect(host.querySelector('.weekband .weekrow')?.children[1]?.classList.contains('day')).toBe(true)
+  })
+
+  it('uses mandatory week-slot snapping and snaps to the nearest week when panning ends', async () => {
+    act(() => root.render(
+      <PlanEditor initialWeeks={[week(1, [], true), week(2), week(3)]} weeksCount={3}
+        studentName="学员" planName="计划" />,
+    ))
+    await act(async () => new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve())))
+
+    const scroller = host.querySelector<HTMLElement>('.scroller')!
+    const track = host.querySelector<HTMLElement>('.week-band-track')!
+    const slots = [...host.querySelectorAll<HTMLElement>('[data-week-slot]')]
+    slots.forEach((slot, index) => {
+      Object.defineProperty(slot, 'offsetLeft', { configurable: true, value: index * 948 })
+    })
+    const scrollTo = vi.fn()
+    scroller.scrollTo = scrollTo
+
+    expect(scroller.style.scrollSnapType).toBe('x mandatory')
+    expect(track.style.gap).toBe('28px')
+    expect(slots[0].style.scrollSnapAlign).toBe('start')
+
+    act(() => scroller.dispatchEvent(new MouseEvent('mousedown', {
+      bubbles: true, button: 1, clientX: 100, clientY: 0,
+    })))
+    expect(scroller.classList.contains('panning')).toBe(true)
+    expect(scroller.style.scrollSnapType).toBe('none')
+
+    act(() => {
+      window.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, clientX: -450, clientY: 0 }))
+      window.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, button: 1 }))
+    })
+
+    expect(scroller.classList.contains('panning')).toBe(false)
+    expect(scrollTo).toHaveBeenLastCalledWith({ left: 948, behavior: 'smooth' })
+    expect(scroller.style.scrollSnapType).toBe('x mandatory')
+  })
+
+  it('keeps adjacent week-step buttons beside the toolbar indicator and disables week boundaries', async () => {
+    act(() => root.render(
+      <PlanEditor initialWeeks={[week(1), week(2, [], true), week(3)]} weeksCount={3}
+        studentName="学员" planName="计划" />,
+    ))
+    await act(async () => new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve())))
+
+    const scroller = host.querySelector<HTMLElement>('.scroller')!
+    const slots = [...host.querySelectorAll<HTMLElement>('[data-week-slot]')]
+    slots.forEach((slot, index) => {
+      Object.defineProperty(slot, 'offsetLeft', { configurable: true, value: index * 948 })
+    })
+    const scrollTo = vi.fn()
+    scroller.scrollTo = scrollTo
+    const controls = host.querySelector<HTMLElement>('[data-week-jump-controls]')!
+    const previous = host.querySelector<HTMLButtonElement>('[aria-label="上一周"]')!
+    const next = host.querySelector<HTMLButtonElement>('[aria-label="下一周"]')!
+
+    expect(controls.closest('.plan-toolbar')).not.toBeNull()
+    expect(controls.querySelectorAll('button')).toHaveLength(2)
+    expect(previous.nextElementSibling).toBe(next)
+    expect(host.querySelector('.week-tabs [aria-label="上一周"]')).toBeNull()
+    expect(host.querySelector('.week-tabs [aria-label="下一周"]')).toBeNull()
+    expect(previous.disabled).toBe(false)
+    expect(next.disabled).toBe(false)
+    await act(async () => {
+      previous.click()
+      await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()))
+    })
+    expect(scrollTo).toHaveBeenLastCalledWith({ left: 0, behavior: 'smooth' })
+    expect(previous.disabled).toBe(true)
+
+    await act(async () => {
+      next.click()
+      await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()))
+    })
+    await act(async () => {
+      next.click()
+      await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()))
+    })
+    expect(scrollTo).toHaveBeenLastCalledWith({ left: 1896, behavior: 'smooth' })
+    expect(next.disabled).toBe(true)
+    expect(controls.querySelectorAll('button')).toHaveLength(2)
+    expect(previous.nextElementSibling).toBe(next)
+  })
+
+  it('steps weeks with Alt+Arrow from an input while plain arrows keep cell navigation', async () => {
+    act(() => root.render(
+      <PlanEditor
+        initialWeeks={[week(1), week(2, [row('sq', 'sq', '深蹲', true)], true), week(3)]}
+        weeksCount={3}
+        studentName="学员"
+        planName="计划"
+      />,
+    ))
+    await act(async () => new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve())))
+
+    const scroller = host.querySelector<HTMLElement>('.scroller')!
+    const slots = [...host.querySelectorAll<HTMLElement>('[data-week-slot]')]
+    slots.forEach((slot, index) => {
+      Object.defineProperty(slot, 'offsetLeft', { configurable: true, value: index * 948 })
+    })
+    const scrollTo = vi.fn()
+    scroller.scrollTo = scrollTo
+    const nameInput = host.querySelector<HTMLInputElement>(
+      '.weekband[data-wnum="2"] [data-plan-cell="name"] input',
+    )!
+
+    await act(async () => {
+      nameInput.focus()
+      nameInput.dispatchEvent(new KeyboardEvent('keydown', {
+        key: 'ArrowRight', altKey: true, bubbles: true, cancelable: true,
+      }))
+      await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()))
+    })
+    expect(scrollTo).toHaveBeenLastCalledWith({ left: 1896, behavior: 'smooth' })
+    expect(host.querySelector<HTMLButtonElement>('[aria-label="下一周"]')?.disabled).toBe(true)
+
+    await act(async () => {
+      nameInput.focus()
+      nameInput.dispatchEvent(new KeyboardEvent('keydown', {
+        key: 'ArrowLeft', altKey: true, bubbles: true, cancelable: true,
+      }))
+      await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()))
+    })
+    expect(scrollTo).toHaveBeenLastCalledWith({ left: 948, behavior: 'smooth' })
+
+    scrollTo.mockClear()
+    await act(async () => {
+      nameInput.blur()
+      nameInput.focus()
+    })
+    await act(async () => {
+      nameInput.dispatchEvent(new KeyboardEvent('keydown', {
+        key: 'ArrowRight', bubbles: true, cancelable: true,
+      }))
+      await new Promise((resolve) => window.setTimeout(resolve, 0))
+    })
+    expect(host.querySelector('.plan-cell-selected')?.getAttribute('data-plan-cell')).toBe('sets')
+    expect(scrollTo).not.toHaveBeenCalled()
+
+    const character = new KeyboardEvent('keydown', { key: 'x', bubbles: true, cancelable: true })
+    act(() => nameInput.dispatchEvent(character))
+    expect(character.defaultPrevented).toBe(false)
   })
 
   it('renders all D1–D7 slots and derives compact dashed rest cards from empty rows', () => {
@@ -185,6 +327,9 @@ describe('spec 037 week-band UI', () => {
     expect(host.querySelector('[data-rowid="fly-w2"] [data-c="name"] .week-band-badge.muscle')?.textContent).toBe('胸')
     const empty = host.querySelector<HTMLButtonElement>('.weekband[data-wnum="1"] [data-empty-exercise-id="fly"]')!
     expect(empty.textContent).toContain('哑铃飞鸟')
+    expect(empty.querySelector('.week-band-empty-status')?.textContent).toBe('本周未安排')
+    expect(empty.querySelector('.week-band-empty-action')?.textContent?.trim()).toBe('+ 添加到本周')
+    expect(empty.textContent).not.toContain('点击添加')
     expect(empty.querySelector('[data-c="name"] .week-band-badge.muscle')?.textContent).toBe('胸')
     act(() => empty.dispatchEvent(new MouseEvent('click', { bubbles: true })))
     expect(host.querySelector('.weekband[data-wnum="1"] [data-empty-exercise-id="fly"]')).toBeNull()
@@ -262,11 +407,11 @@ describe('spec 037 week-band UI', () => {
         studentName="学员" planName="计划" />,
     ))
     const scroller = host.querySelector<HTMLElement>('.scroller')!
-    Object.defineProperty(scroller, 'clientWidth', { configurable: true, value: 1840 })
-    scroller.getBoundingClientRect = () => ({ left: 0, width: 1840 } as DOMRect)
+    Object.defineProperty(scroller, 'clientWidth', { configurable: true, value: 1868 })
+    scroller.getBoundingClientRect = () => ({ left: 0, width: 1868 } as DOMRect)
     const slots = [...host.querySelectorAll<HTMLElement>('[data-week-slot]')]
     slots.forEach((slot, index) => {
-      slot.getBoundingClientRect = () => ({ left: index * 920, width: 920 } as DOMRect)
+      slot.getBoundingClientRect = () => ({ left: index * 948, width: 920 } as DOMRect)
     })
 
     act(() => scroller.dispatchEvent(new Event('scroll')))
@@ -298,7 +443,7 @@ describe('spec 037 week-band UI', () => {
     })
 
     expect(onChangePlanWeeks).toHaveBeenCalledWith(4)
-    expect(host.querySelectorAll('.week-tabs button:not(.week-tab-add)')).toHaveLength(4)
+    expect(host.querySelectorAll('.week-tab-list .week-tab')).toHaveLength(4)
     expect(host.querySelector('.week-tabs button.active')?.textContent).toBe('W04')
     expect(host.querySelector('.weekband[data-wnum="4"]')?.textContent).toContain('第 4 周')
   })

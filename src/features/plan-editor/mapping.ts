@@ -166,6 +166,9 @@ function mapExercise(ex: PlanExerciseResponse, catalog: Catalog): ExerciseRow {
   const legacyRpeSource = !bodyweight && sets.every((set) => (
     set.load_mode == null && set.intensity_mode === 'rpe'
   ))
+  const legacyWeightSource = !bodyweight && sets.every((set) => (
+    set.load_mode == null && set.intensity_mode === 'weight'
+  ))
   const loadMode = sets[0].load_mode ?? null
   const uniformLoadMode = sets.every((set) => (set.load_mode ?? null) === loadMode)
   const singleValueMode = loadMode === 'pct' || loadMode === 'rpe' || loadMode === 'rir'
@@ -193,6 +196,7 @@ function mapExercise(ex: PlanExerciseResponse, catalog: Catalog): ExerciseRow {
     // `mode: rpe` is provenance only: reconcile keeps load_mode=null until an
     // explicit row edit materializes the first-class intensity fields.
     mode: bodyweight ? 'bodyweight' : legacyRpeSource ? 'rpe' : 'kg',
+    ...(legacyWeightSource ? { legacyWeightSource: true } : {}),
     ...(!bodyweight && (legacyRpeSource || singleValueMode) ? {
       intensityMode: intensityModeForBoxes(intensityBoxes),
       intensityBoxes,
