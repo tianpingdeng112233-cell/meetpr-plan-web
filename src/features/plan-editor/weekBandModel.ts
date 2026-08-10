@@ -161,8 +161,11 @@ function keyedRows(
   const occurrences = new Map<string, number>()
   return rows.flatMap((row) => {
     if (resolveTier(row) !== tier) return []
-    // Unbound rows cannot be safely aligned by their mutable display name.
-    const identity = row.exerciseId ?? `row:${row.id}`
+    // Unbound rows align by their (trimmed) display name so imported/sample
+    // plans without catalog bindings still form one skeleton per exercise;
+    // only nameless rows fall back to per-row identity.
+    const trimmedName = row.name.trim()
+    const identity = row.exerciseId ?? (trimmedName ? `name:${trimmedName}` : `row:${row.id}`)
     const occurrence = occurrences.get(identity) ?? 0
     occurrences.set(identity, occurrence + 1)
     return [{ key: `${identity}:${occurrence}`, row }]

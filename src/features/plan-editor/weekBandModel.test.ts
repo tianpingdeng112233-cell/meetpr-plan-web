@@ -127,5 +127,16 @@ describe('D1 weekday anchor', () => {
     ]
     expect(reorderWeekBandSkeleton(locked, () => 'main', 0, 1, 'a1', 'b1', 'after')).toBeNull()
   })
+  it('aligns unbound rows by trimmed display name across weeks (imported/sample plans)', () => {
+    const unbound = (id: string, name: string): ExerciseRow => ({ ...row(id, ''), exerciseId: null, name })
+    const aligned = alignWeeksByExercise([
+      week(1, [unbound('w1a', '低杆深蹲'), unbound('w1b', '卧推')]),
+      week(2, [unbound('w2a', ' 低杆深蹲 '), unbound('w2b', '卧推'), unbound('w2c', '')]),
+    ], () => 'main')[0]
+    expect(aligned.main.map((slot) => slot.key)).toEqual(['name:低杆深蹲:0', 'name:卧推:0', 'row:w2c:0'])
+    expect(aligned.rowsByWeek.get(1)?.get('name:低杆深蹲:0')?.id).toBe('w1a')
+    expect(aligned.rowsByWeek.get(2)?.get('name:低杆深蹲:0')?.id).toBe('w2a')
+  })
 })
+
 
