@@ -256,7 +256,15 @@ export function DayHeaderContext({ studentId, studentName, row, profile }: {
                 : summary ? `上次 ${summary}` : '暂无训练记录'}
           </span>
         )}
-        {detail?.e1rm && <span className="dayhead-context-e1rm">e1RM {kg(detail.e1rm.value)}kg</span>}
+        {/* No RPE in the logs means the backend cannot compute a rolling e1RM;
+            fall back to the registered 1RM so the line never just vanishes. */}
+        {detail && (
+          <span className="dayhead-context-e1rm">
+            {detail.e1rm ? `e1RM ${kg(detail.e1rm.value)}kg`
+              : detail.one_rm_reference ? `登记 1RM ${kg(detail.one_rm_reference)}kg`
+                : 'e1RM —'}
+          </span>
+        )}
       </div>
       {detail && detail.rep_prs.length > 0 && (
         <div className="dayhead-panel" onMouseDown={stop} onClick={stop}>
@@ -274,9 +282,10 @@ export function DayHeaderContext({ studentId, studentName, row, profile }: {
         <div className="dayhead-panel" onMouseDown={stop} onClick={stop}>
           <h4>最近一次 · {shortDate(last.date)}</h4>
           <div className="dayhead-panel-sets">
-            {last.sets.map((set) => (
+            {/* Ordinal position, not set_index — the backend indexes sets from 0. */}
+            {last.sets.map((set, index) => (
               <div className="dayhead-panel-line" key={set.set_index}>
-                <span>{set.set_index}</span>
+                <span>{index + 1}</span>
                 <b>{kg(set.weight_kg)}×{set.reps}</b>
                 <em>{set.rpe ? `@${Number(set.rpe)}` : '—'}{set.failed ? ' 力竭' : set.completed ? ' ✓' : ''}</em>
               </div>

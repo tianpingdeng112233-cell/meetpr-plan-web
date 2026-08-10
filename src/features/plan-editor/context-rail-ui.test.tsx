@@ -55,10 +55,11 @@ function detail(recent = true): ExerciseStatsDetail {
     } : {},
     recent_sessions: recent ? [{
       date: '2026-07-27',
+      // set_index is 0-based on the wire; the header must render ordinals from 1.
       sets: [
-        { set_index: 1, weight_kg: '185', reps: 5, rpe: '8', completed: true, failed: false, assumed: false, has_video: false },
-        { set_index: 2, weight_kg: '185', reps: 5, rpe: '8.5', completed: true, failed: false, assumed: false, has_video: false },
-        { set_index: 3, weight_kg: '185', reps: 5, rpe: '9', completed: true, failed: false, assumed: false, has_video: false },
+        { set_index: 0, weight_kg: '185', reps: 5, rpe: '8', completed: true, failed: false, assumed: false, has_video: false },
+        { set_index: 1, weight_kg: '185', reps: 5, rpe: '8.5', completed: true, failed: false, assumed: false, has_video: false },
+        { set_index: 2, weight_kg: '185', reps: 5, rpe: '9', completed: true, failed: false, assumed: false, has_video: false },
       ],
     }] : [],
   }
@@ -156,7 +157,9 @@ describe('plan editor day-header context experiment', () => {
     expect(panels[0]?.textContent).toContain('1RM')
     expect(panels[0]?.textContent).toContain('230kg')
     expect(panels[0]?.textContent).toContain('06/14 导')
-    expect(panels[1]?.querySelectorAll('.dayhead-panel-line')).toHaveLength(3)
+    const setLines = [...panels[1]!.querySelectorAll('.dayhead-panel-line')]
+    expect(setLines).toHaveLength(3)
+    expect(setLines.map((l) => l.querySelector('span')?.textContent)).toEqual(['1', '2', '3'])
     expect(panels[1]?.textContent).toContain('185×5')
     expect(panels[1]?.textContent).toContain('@9 ✓')
     expect(panels[2]?.querySelectorAll('.dayhead-panel-line')).toHaveLength(2)
@@ -173,7 +176,9 @@ describe('plan editor day-header context experiment', () => {
     const context = host.querySelector<HTMLElement>('[data-dayhead-context]')!
     expect(context.textContent).toContain('竞技深蹲')
     expect(context.textContent).toContain('暂无训练记录')
+    // Without RPE logs there is no rolling e1RM; the registered 1RM fills in.
     expect(context.textContent).not.toContain('e1RM')
+    expect(context.textContent).toContain('登记 1RM 240kg')
   })
 
   it('does not render the retired rail or its recall/placement controls', async () => {

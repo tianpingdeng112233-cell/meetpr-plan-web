@@ -3061,14 +3061,17 @@ textarea {
   user-select: text;
 }
 .dayhead-profile-inline-name {
+  /* flex: none — the fixed-height column must never shrink this line; a squeezed
+     line box paints glyphs outside itself and the overflow clip beheads them. */
+  flex: none;
   overflow: hidden;
   color: inherit;
   font-size: 11px;
-  line-height: 15px;
+  line-height: 14px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.dayhead-profile-inline .panel-profile.compact { margin-top: 0; min-width: 0; }
+.dayhead-profile-inline .panel-profile.compact { margin-top: 0; min-width: 0; flex: none; }
 .dayhead-profile-inline .panel-profile dl {
   margin: 0;
   display: grid;
@@ -3081,13 +3084,13 @@ textarea {
   color: inherit;
   opacity: .58;
   white-space: nowrap;
-  line-height: 1.5;
+  line-height: 1.35;
 }
 .dayhead-profile-inline .panel-profile dd {
   margin: 0;
   overflow: hidden;
   color: inherit;
-  line-height: 1.5;
+  line-height: 1.35;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
