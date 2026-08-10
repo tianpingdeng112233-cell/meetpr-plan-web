@@ -3057,33 +3057,6 @@ textarea {
 .week-band-badge.squat { border-color: color-mix(in srgb, #276fbf 36%, var(--bd)); color: #276fbf; background: color-mix(in srgb, #276fbf 9%, var(--card-bg)); }
 .week-band-badge.bench { border-color: color-mix(in srgb, #18855b 36%, var(--bd)); color: #18855b; background: color-mix(in srgb, #18855b 9%, var(--card-bg)); }
 .week-band-badge.deadlift { border-color: color-mix(in srgb, #f5a623 45%, var(--bd)); color: #a96700; background: color-mix(in srgb, #f5a623 11%, var(--card-bg)); }
-.week-band-empty-row {
-  width: 100%;
-  padding: 0;
-  display: block;
-  border: 0;
-  border-bottom: 1px solid var(--line-2);
-  color: var(--faint);
-  background: var(--card-bg);
-  text-align: left;
-  cursor: default;
-  opacity: .54;
-  transition: opacity .12s, background .12s;
-}
-.week-band-empty-row:hover,
-.week-band-empty-row:focus-visible { background: var(--ink-soft); opacity: .76; }
-.week-band-empty-row:focus-visible { outline: 1px solid var(--tint-bd); outline-offset: -1px; }
-.week-band-empty-row[aria-disabled="true"] { cursor: default; }
-.week-band-empty-name { color: var(--faint); font-size: 10px; }
-.week-band-empty-name-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.week-band-empty-prescription { position: relative; height: 58px; padding: 0 12px; box-sizing: border-box; display: flex; align-items: center; color: var(--faint); }
-.week-band-empty-status { font: italic 500 10px var(--font-sans); transition: opacity .1s; }
-.week-band-empty-action { position: absolute; left: 12px; color: var(--ink); font: 600 10px var(--font-sans); opacity: 0; transition: opacity .1s; }
-.week-band-empty-row:not([aria-disabled="true"]):hover { cursor: pointer; }
-.week-band-empty-row:not([aria-disabled="true"]):hover .week-band-empty-status,
-.week-band-empty-row:not([aria-disabled="true"]):focus-visible .week-band-empty-status { opacity: 0; }
-.week-band-empty-row:not([aria-disabled="true"]):hover .week-band-empty-action,
-.week-band-empty-row:not([aria-disabled="true"]):focus-visible .week-band-empty-action { opacity: 1; }
 .week-band-track .weekband-head { height: 40px; min-height: 40px; }
 .scroller { overscroll-behavior: contain; }
 .plan-with-rail > .scroller { scroll-snap-type: x mandatory; }

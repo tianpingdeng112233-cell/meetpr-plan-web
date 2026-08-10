@@ -6,7 +6,7 @@ import type { Week, ExerciseRow, DayCol } from './types'
 import type { PlanDayResponse, PlanExerciseResponse, PlanWithChildren } from '../../api/types'
 import { mapPlanToWeeks } from './mapping'
 import { displayedWeightMode, materializeIntensityRow } from './intensityModel'
-import { reorderWeekBandSkeleton } from './weekBandModel'
+import { reorderRowsInWeek } from './weekBandModel'
 
 vi.mock('../../api/plans')
 
@@ -113,13 +113,13 @@ function boundRow(id: string, serverId: string | null, exerciseId: string, value
   })
 }
 
-describe('reconcilePlan — shared week-band skeleton order', () => {
+describe('reconcilePlan — week-local row order', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockBatchEcho()
   })
 
-  it('persists the moved slot as sort_order in every week that contains it', async () => {
+  it('persists reordered sort_order only in the week that was changed', async () => {
     const firstServer = [
       serverExercise('w1-a', 'a', 0),
       serverExercise('w1-b', 'b', 1),
@@ -145,15 +145,14 @@ describe('reconcilePlan — shared week-band skeleton order', () => {
         boundRow(item.id, item.id, item.exercise_id, '100', { serverSortOrder: item.sort_order })
       ))),
     ]
-    const reordered = reorderWeekBandSkeleton(weeks, () => 'main', 0, 2, 'w2-a', 'w2-b', 'after')!
+    const reordered = reorderRowsInWeek(weeks, () => 'main', 2, 0, 'w2-a', 'w2-b', 'after')!
 
     await reconcilePlan('p', reordered)
 
-    const persisted = vi.mocked(plans.batchDays).mock.calls[0][1].upsert_days
-      .map((day) => day.exercises.map((item) => [item.exercise_id, item.sort_order]))
-    expect(persisted).toEqual([
-      [['b', 0], ['a', 1], ['c', 2]],
-      [['b', 0], ['a', 1], ['c', 2]],
+    const persistedDays = vi.mocked(plans.batchDays).mock.calls[0][1].upsert_days
+    expect(persistedDays.map((day) => day.week_number)).toEqual([2])
+    expect(persistedDays[0].exercises.map((item) => [item.exercise_id, item.sort_order])).toEqual([
+      ['c', 0], ['b', 1], ['a', 2],
     ])
     expect(vi.mocked(plans.batchDays).mock.calls[0][1].upsert_days
       .every((day) => day.exercises.every((exercise) => !Object.hasOwn(exercise, 'target')))).toBe(true)
