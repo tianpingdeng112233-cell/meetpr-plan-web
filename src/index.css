@@ -3010,6 +3010,70 @@ textarea {
   user-select: text;
 }
 .dayhead-profile-popover .panel-profile.compact { margin-top: 0; }
+/* Band-day headers show the full profile inline; the popover <details> stays for
+   the one-line rest-day header, where 6 field rows cannot fit. */
+.dayhead-profile-inline { display: none; }
+.week-band-day > .dayhead > .dayhead-context.student { display: block; }
+.week-band-day > .dayhead > .dayhead-context.student .dayhead-profile { display: none; }
+.week-band-day .dayhead-profile-inline {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  height: 100%;
+  min-width: 0;
+  overflow: hidden;
+  cursor: default;
+  user-select: text;
+}
+.dayhead-profile-inline-name {
+  overflow: hidden;
+  color: inherit;
+  font-size: 11px;
+  line-height: 15px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dayhead-profile-inline .panel-profile.compact { margin-top: 0; min-width: 0; }
+.dayhead-profile-inline .panel-profile dl {
+  margin: 0;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto minmax(0, 1fr);
+  column-gap: 7px;
+  row-gap: 1px;
+  font-size: 10px;
+}
+.dayhead-profile-inline .panel-profile dt {
+  color: inherit;
+  opacity: .58;
+  white-space: nowrap;
+  line-height: 1.5;
+}
+.dayhead-profile-inline .panel-profile dd {
+  margin: 0;
+  overflow: hidden;
+  color: inherit;
+  line-height: 1.5;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dayhead-profile-inline .panel-profile blockquote {
+  margin: 1px 0 0;
+  padding: 0;
+  border-left: 0;
+  background: transparent;
+  overflow: hidden;
+  color: inherit;
+  opacity: .66;
+  font-size: 9px;
+  line-height: 1.4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dayhead-profile-inline .empty-state {
+  color: inherit;
+  opacity: .7;
+  font-size: 10px;
+}
 @media (max-width: 800px) {
   .week-band-day > .dayhead { grid-template-columns: minmax(300px, 1fr) minmax(140px, .6fr); column-gap: 10px; }
   .dayhead-context { padding-left: 9px; }

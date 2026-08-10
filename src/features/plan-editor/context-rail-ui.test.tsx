@@ -11,17 +11,20 @@ vi.mock('../../api/coach', () => ({ getExerciseStats: api.getExerciseStats }))
 
 ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
-function row(id = 'squat', name = '竞技深蹲', isMain = true): ExerciseRow {
+// Weight left blank by default: an in-progress row keeps the exercise context in
+// the header, while a filled row (see the completion test) hands it back to the
+// student profile.
+function row(id = 'squat', name = '竞技深蹲', isMain = true, weight = ''): ExerciseRow {
   return {
     id, serverRowId: null, serverSortOrder: null, hasLogs: false, conflictMessage: null,
     exerciseId: id, name, ku: true, custom: false, isMain, aux: false,
-    reps: '5', mode: 'kg', boxes: [{ val: '100', empty: false }], note: '',
+    reps: '5', mode: 'kg', boxes: [{ val: weight, empty: false }], note: '',
   }
 }
 
-function week(): Week {
+function week(rows: ExerciseRow[] = [row(), row('bench', '竞技卧推', false)]): Week {
   const days: DayCol[] = [{
-    dow: 0, dowLabel: '周一', dateLabel: '7/27', rest: false, rows: [row(), row('bench', '竞技卧推', false)],
+    dow: 0, dowLabel: '周一', dateLabel: '7/27', rest: false, rows,
   }]
   return { num: 1, num2: '01', range: '7/27–8/2', isCurrent: false, vol: '', days }
 }
@@ -71,9 +74,9 @@ describe('plan editor day-header context experiment', () => {
     vi.restoreAllMocks()
   })
 
-  function renderEditor() {
+  function renderEditor(weeks: Week[] = [week()]) {
     act(() => root.render(
-      <PlanEditor initialWeeks={[week()]} weeksCount={1} studentId="student-1" studentName="吕子豪"
+      <PlanEditor initialWeeks={weeks} weeksCount={1} studentId="student-1" studentName="吕子豪"
         planName="Monster" onboardingProfile={profile} />,
     ))
   }
@@ -91,21 +94,34 @@ describe('plan editor day-header context experiment', () => {
     })
   }
 
-  it('shows the student summary and expands profile details only on demand when no row is selected', () => {
+  it('shows the full student profile inline in the day header when no row is selected', () => {
     renderEditor()
     expect(host.querySelector('[data-dayhead-context]')).toBeNull()
 
     selectDay()
 
     const context = host.querySelector<HTMLElement>('[data-dayhead-context]')!
-    const disclosure = context.querySelector<HTMLDetailsElement>('details')!
     expect(context.dataset.contextState).toBe('student')
-    expect(disclosure.querySelector('summary')?.textContent).toContain('吕子豪· 画像')
-    expect(disclosure.open).toBe(false)
 
-    act(() => disclosure.querySelector('summary')?.dispatchEvent(new MouseEvent('click', { bubbles: true })))
-    expect(disclosure.open).toBe(true)
-    expect(disclosure.textContent).toContain('S 240 / B 100 / D 270')
+    const inline = context.querySelector<HTMLElement>('.dayhead-profile-inline')!
+    expect(inline.textContent).toContain('吕子豪')
+    expect(inline.textContent).toContain('S 240 / B 100 / D 270')
+    expect(inline.textContent).toContain('7 年 · 每周 3 天')
+    expect(inline.textContent).toContain('暂不备赛')
+
+    // The popover <details> fallback stays mounted for rest-day headers.
+    expect(context.querySelector('details.dayhead-profile')).not.toBeNull()
+  })
+
+  it('returns the header to the student profile once the selected row is complete', async () => {
+    renderEditor([week([row('squat', '竞技深蹲', true, '100')])])
+    selectDay()
+    await selectRow()
+
+    const context = host.querySelector<HTMLElement>('[data-dayhead-context]')!
+    expect(context.dataset.contextState).toBe('student')
+    expect(context.querySelector('.dayhead-profile-inline')?.textContent).toContain('S 240 / B 100 / D 270')
+    expect(api.getExerciseStats).not.toHaveBeenCalled()
   })
 
   it('shows the selected exercise recent-session summary and e1RM in the day header', async () => {

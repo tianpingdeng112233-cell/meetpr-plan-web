@@ -180,8 +180,11 @@ export function recentSessionSummary(detail: ExerciseStatsDetail | null): string
 
 /**
  * Compact context mounted inside the selected training-day header. It intentionally
- * shares the rail's existing history endpoint and profile renderer, while keeping
- * disclosure to at most two header lines.
+ * shares the rail's existing history endpoint and profile renderer. The exercise
+ * history occupies the header only while the coach is actively filling the row;
+ * before a row is selected and once it is complete, the header shows the full
+ * student profile inline (rest-day headers keep the click-to-open popover — their
+ * single line has no room for the inline block).
  */
 export function DayHeaderContext({ studentId, studentName, row, profile }: {
   studentId: string
@@ -191,7 +194,10 @@ export function DayHeaderContext({ studentId, studentName, row, profile }: {
 }) {
   const [cache, setCache] = useState<Record<string, ExerciseStatsDetail>>({})
   const [failedId, setFailedId] = useState('')
-  const exerciseId = row?.exerciseId ?? null
+  // Exercise context only while actively filling a bound row: an unbound row has
+  // no history to show, and a complete row hands the header back to the profile.
+  const activeRow = row?.exerciseId && !isRowComplete(row) ? row : null
+  const exerciseId = activeRow?.exerciseId ?? null
   const hasDetail = exerciseId != null && Object.prototype.hasOwnProperty.call(cache, exerciseId)
   const detail = exerciseId && hasDetail ? cache[exerciseId] : null
 
@@ -209,14 +215,19 @@ export function DayHeaderContext({ studentId, studentName, row, profile }: {
     return () => { cancelled = true }
   }, [studentId, exerciseId, hasDetail])
 
-  if (!row) {
+  if (!activeRow) {
+    const stop = (event: { stopPropagation(): void }) => event.stopPropagation()
     return (
       <div className="dayhead-context student" data-dayhead-context="" data-context-state="student">
+        <div className="dayhead-profile-inline" onMouseDown={stop} onClick={stop}>
+          <b className="dayhead-profile-inline-name">{studentName}</b>
+          <Profile profile={profile} compact />
+        </div>
         <details className="dayhead-profile">
-          <summary onMouseDown={(event) => event.stopPropagation()} onClick={(event) => event.stopPropagation()}>
+          <summary onMouseDown={stop} onClick={stop}>
             <b>{studentName}</b><span>· 画像</span>
           </summary>
-          <div className="dayhead-profile-popover" onMouseDown={(event) => event.stopPropagation()} onClick={(event) => event.stopPropagation()}>
+          <div className="dayhead-profile-popover" onMouseDown={stop} onClick={stop}>
             <Profile profile={profile} compact />
           </div>
         </details>
@@ -227,8 +238,8 @@ export function DayHeaderContext({ studentId, studentName, row, profile }: {
   const summary = recentSessionSummary(detail)
   const pending = !!exerciseId && !hasDetail && failedId !== exerciseId
   return (
-    <div className="dayhead-context exercise" data-dayhead-context="" data-context-state="exercise" title={row.name || '未命名动作'}>
-      <b className="dayhead-context-name">{row.name || '未命名动作'}</b>
+    <div className="dayhead-context exercise" data-dayhead-context="" data-context-state="exercise" title={activeRow.name || '未命名动作'}>
+      <b className="dayhead-context-name">{activeRow.name || '未命名动作'}</b>
       <span className="dayhead-context-history">
         {pending ? '训练记录载入中…'
           : failedId === exerciseId ? '记录载入失败'
