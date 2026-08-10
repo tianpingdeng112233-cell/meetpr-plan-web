@@ -68,7 +68,7 @@ export function WeekdayDateSelector({ value, onChange, compact = false, disabled
             type="button"
             disabled={disabled}
             aria-pressed={selected === index}
-            onClick={() => onChange(nearestWeekdayISO(index))}
+            onClick={() => onChange(nearestWeekdayISO(index, value))}
             style={{
               ...chip,
               minWidth: compact ? 34 : chip.minWidth,

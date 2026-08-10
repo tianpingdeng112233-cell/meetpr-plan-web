@@ -145,7 +145,7 @@ function StartDateControl({ startDate, locked, lockedHint, saving, onApply }: {
           }}>
             <span style={{ color: 'var(--mut)', fontSize: 12, fontWeight: 600 }}>开始日期（= Day 1）</span>
             <WeekdayDateSelector value={draft} onChange={setDraft} compact />
-            <span style={{ color: 'var(--mut)', fontSize: 11 }}>快捷选周几（选中即跳到今天起最近的该周几）</span>
+            <span style={{ color: 'var(--mut)', fontSize: 11 }}>快捷选周几（从当前起始日起向后调整到最近的该周几）</span>
             <span style={{ display: 'flex', justifyContent: 'flex-end', gap: 'var(--sp-sm)' }}>
               <button type="button" onClick={() => setDraft((value) => shiftISODate(value, 1))} style={{ ...smallButton, color: 'var(--sec)' }}>后移 1 天</button>
               <button type="button" disabled={applying || draft === startDate} onClick={() => {

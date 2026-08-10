@@ -1,8 +1,9 @@
 import type { ExerciseIndex } from './exerciseIndex'
 import type { DayCol, ExerciseRow, IntensityMode, LoadMode, RowIntensity } from './types'
 import {
+  displayedRowIntensity,
+  displayedWeightMode,
   inferredIntensityMode,
-  inferredWeightMode,
   isSingleValueIntensity,
   rowIntensity,
   rowIntensityBoxes,
@@ -21,21 +22,27 @@ function clipboardMode(raw: string): IntensityMode {
 export function serializeRowsForClipboard(rows: ExerciseRow[]): string {
   const lines = ['动作\t组\t次\t强度类型\t强度值\t重量模式\t重量\t备注']
   for (const row of rows) {
-    const intensity = rowIntensity(row)
+    const intensity = displayedRowIntensity(row)
     const mode = row.mode === 'bodyweight' ? '自重' : intensity?.mode ?? '无'
-    const intensityValue = intensity == null || intensity.mode === 'fixed_weight'
+    const intensityValue = intensity == null
       ? ''
       : isSingleValueIntensity(intensity)
         ? (inferredIntensityMode(row) === 'uniform'
           ? rowIntensityBoxes(row)[0]?.val ?? ''
           : rowIntensityBoxes(row).map((box) => box.empty ? '' : box.val).join('/'))
-        : intensity.mode === 'weight_range' || intensity.mode === 'rpe_range'
+        : intensity.mode === 'rpe_range'
         ? `${intensity.value}-${intensity.high}`
         : intensity.value
-    const weightMode = row.mode === 'bodyweight' ? '自重' : inferredWeightMode(row) === 'per_set' ? '逐组' : '统一'
-    const weights = row.mode === 'bodyweight'
-      ? '每组自重'
-      : rowWeightBoxes(row).map((box) => (box.empty ? '' : box.val)).join('/')
+    const displayWeightMode = displayedWeightMode(row)
+    const weightMode = displayWeightMode === 'bodyweight' ? '自重'
+      : displayWeightMode === 'per_set' ? '逐组标重'
+        : displayWeightMode === 'weight_range' ? '重量区间'
+          : '固定重量'
+    const wireIntensity = rowIntensity(row)
+    const weights = displayWeightMode === 'bodyweight' ? '每组自重'
+      : displayWeightMode === 'weight_range' && wireIntensity?.mode === 'weight_range'
+        ? `${wireIntensity.value}-${wireIntensity.high}`
+        : rowWeightBoxes(row).map((box) => (box.empty ? '' : box.val)).join('/')
     lines.push([row.name, String(row.boxes.length), row.reps, mode, intensityValue, weightMode, weights, row.note].join('\t'))
   }
   return lines.join('\n')
@@ -62,13 +69,17 @@ export function parseClipboardRows(text: string, exerciseIndex?: ExerciseResolve
     const legacyPerSetRpe = modern && (cells[3] ?? '').replace(/\s/g, '').toLowerCase() === '旧逐组rpe'
     const legacyMode = clipboardMode(cells[3] ?? '')
     const mode: IntensityMode = modern && legacyMode !== 'bodyweight' ? 'kg' : legacyMode
+    const weightModeText = modern ? (cells[5] ?? '').trim() : ''
+    const weightRangeMode = weightModeText === '重量区间' || weightModeText === 'weight_range'
     const weightText = modern ? cells[6] ?? '' : legacyMode === 'kg' ? cells[4] ?? '' : ''
-    const weightValues = mode === 'bodyweight'
+    const weightValues = mode === 'bodyweight' || weightRangeMode
       ? []
       : modern
         ? weightText.split('/').map((value) => value.trim())
         : weightText.split(/[\/,，、\s]+/).map((value) => value.trim()).filter(Boolean)
-    const intensityText = modern ? cells[4] ?? '' : legacyMode === 'rpe' ? cells[4] ?? '' : ''
+    const intensityText = weightRangeMode ? weightText
+      : modern ? cells[4] ?? ''
+        : legacyMode === 'rpe' ? cells[4] ?? '' : ''
     const intensityValues = intensityText.split('/').map((value) => value.trim())
     const setCountRaw = parseInt(cells[1] ?? '', 10)
     const inferredCount = Math.max(weightValues.length, intensityValues.length)
@@ -80,7 +91,8 @@ export function parseClipboardRows(text: string, exerciseIndex?: ExerciseResolve
     const resolved = exerciseIndex?.resolve(name) ?? null
     const custom = resolved?.created_by_coach_id != null
     const rawLoadMode = legacyPerSetRpe ? 'rpe' : modern ? cells[3] ?? '' : legacyMode === 'rpe' ? 'rpe' : ''
-    const loadMode = ['pct', 'rpe', 'rir', 'weight_range', 'rpe_range', 'fixed_weight'].includes(rawLoadMode)
+    const loadMode = weightRangeMode ? 'weight_range'
+      : ['pct', 'rpe', 'rir', 'weight_range', 'rpe_range', 'fixed_weight'].includes(rawLoadMode)
       ? rawLoadMode as LoadMode
       : null
     const intensityParts = intensityText.split(/[-–—~]/).map((value) => value.trim())
@@ -119,7 +131,9 @@ export function parseClipboardRows(text: string, exerciseIndex?: ExerciseResolve
       ...(mode !== 'bodyweight' ? {
         intensity,
         ...(singleValue ? { intensityMode, intensityBoxes } : {}),
-        weightMode: modern && !legacyPerSetRpe && cells[5] === '逐组' ? 'per_set' as const : 'uniform' as const,
+        weightMode: modern && !legacyPerSetRpe && (weightModeText === '逐组' || weightModeText === '逐组标重')
+          ? 'per_set' as const
+          : 'uniform' as const,
       } : {}),
       boxes,
       note: (cells[modern ? 7 : 5] ?? '').trim(),

@@ -5,6 +5,7 @@ export type IntensityMode = 'kg' | 'rpe' | 'bodyweight'
 /** Backend spec 034 v2 prescription form. `null` means a weight-only row. */
 export type LoadMode = LoadModeWire
 export type WeightMode = 'uniform' | 'per_set'
+export type DisplayWeightMode = 'fixed_weight' | 'per_set' | 'weight_range' | 'bodyweight'
 export type IntensityValueMode = 'uniform' | 'per_set'
 
 /** Row-level intensity. Single-value modes use `value`; ranges use both fields. */
@@ -45,13 +46,13 @@ export interface ExerciseRow {
   mode: IntensityMode
   /**
    * Read provenance for old `load_mode=null + intensity_mode=weight` sets.
-   * Their kg values stay in `boxes`; the intensity selector only presents them
-   * as fixed weight until an explicit edit materializes the new wire shape.
+   * Their kg values stay in `boxes`; the weight selector presents them as fixed
+   * weight until an explicit edit materializes the new wire shape.
    */
   legacyWeightSource?: boolean
   /** Row-level spec-034 intensity. Omitted only for legacy rows/mirrors. */
   intensity?: RowIntensity | null
-  /** Presentation for pct/rpe/rir values; ranges and fixed_weight stay row-level. */
+  /** Presentation for pct/rpe/rir values; wire-only ranges stay row-level. */
   intensityMode?: IntensityValueMode
   /** One independent intensity-value slot per set for pct/rpe/rir. */
   intensityBoxes?: SetBox[]

@@ -111,7 +111,7 @@ describe('plan editor cell selection UI', () => {
       ['sets', '组数'],
       ['reps', '次数'],
       ['intensity', '强度'],
-      ['weight', '统一重量'],
+      ['weight', '固定重量'],
     ] as const
     for (const [field, label] of cases) {
       const cell = host.querySelector<HTMLElement>(`[data-plan-cell="${field}"]`)!

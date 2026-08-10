@@ -1,5 +1,14 @@
 import type { ExerciseRow, Week } from './types'
-import { inferredIntensityMode, inferredWeightMode, isSingleValueIntensity, rowIntensity, rowIntensityBoxes, rowWeightBoxes } from './intensityModel'
+import {
+  displayedRowIntensity,
+  displayedWeightMode,
+  inferredIntensityMode,
+  isSingleValueIntensity,
+  rowIntensity,
+  rowIntensityBoxes,
+  rowWeightBoxes,
+} from './intensityModel'
+import { trainingDayOrdinal } from './weekBandModel'
 
 export const DAY_COLUMNS = ['A', 'B', 'C', 'D', 'E', 'F', 'G'] as const
 
@@ -71,8 +80,12 @@ function rowSelections(
   row: ExerciseRow,
 ): PlanCellSelection[] {
   const weightBoxes = rowWeightBoxes(row)
-  const visibleWeightBoxes = inferredWeightMode(row) === 'uniform' ? weightBoxes.slice(0, 1) : weightBoxes
-  const intensity = rowIntensity(row)
+  const weightMode = displayedWeightMode(row)
+  const visibleWeightBoxes = weightMode === 'fixed_weight' ? weightBoxes.slice(0, 1)
+    : weightMode === 'per_set' ? weightBoxes
+      : weightMode === 'weight_range' ? [null]
+        : []
+  const intensity = displayedRowIntensity(row)
   const visibleIntensityBoxes = isSingleValueIntensity(intensity)
     ? (inferredIntensityMode(row) === 'uniform' ? rowIntensityBoxes(row).slice(0, 1) : rowIntensityBoxes(row))
     : null
@@ -85,13 +98,13 @@ function rowSelections(
         weekNumber, dow, rowId: row.id, field: 'intensity', setIndex,
       }))
       : [{ weekNumber, dow, rowId: row.id, field: 'intensity' } as PlanCellSelection]),
-    ...(row.mode === 'bodyweight' ? [] : visibleWeightBoxes.map((_, setIndex): PlanCellSelection => ({
+    ...visibleWeightBoxes.map((_, setIndex): PlanCellSelection => ({
         weekNumber,
         dow,
         rowId: row.id,
         field: 'weight',
         setIndex,
-      }))),
+      })),
   ]
 }
 
@@ -142,7 +155,14 @@ function cellLabel(row: ExerciseRow, field: PlanCellField, setIndex?: number): s
     case 'sets': return `组数 · ${row.name.trim() || '未命名动作'}`
     case 'reps': return `次数 · ${row.name.trim() || '未命名动作'}`
     case 'intensity': return `${setIndex == null || inferredIntensityMode(row) === 'uniform' ? '强度' : `第 ${setIndex + 1} 组强度`} · ${row.name.trim() || '未命名动作'}`
-    case 'weight': return `${inferredWeightMode(row) === 'uniform' ? '统一重量' : `第 ${(setIndex ?? 0) + 1} 组重量`} · ${row.name.trim() || '未命名动作'}`
+    case 'weight': {
+      const mode = displayedWeightMode(row)
+      const label = mode === 'fixed_weight' ? '固定重量'
+        : mode === 'weight_range' ? '重量区间'
+          : mode === 'bodyweight' ? '自重'
+            : `第 ${(setIndex ?? 0) + 1} 组重量`
+      return `${label} · ${row.name.trim() || '未命名动作'}`
+    }
   }
 }
 
@@ -153,7 +173,7 @@ function cellValue(row: ExerciseRow, field: PlanCellField, setIndex?: number): s
     case 'reps': return row.reps && row.reps !== '—' ? `${row.reps} 次` : '/'
     case 'intensity': {
       if (row.mode === 'bodyweight') return 'BW'
-      const intensity = rowIntensity(row)
+      const intensity = displayedRowIntensity(row)
       if (!intensity) return '/'
       if (isSingleValueIntensity(intensity)) {
         const box = rowIntensityBoxes(row)[setIndex ?? 0]
@@ -163,13 +183,19 @@ function cellValue(row: ExerciseRow, field: PlanCellField, setIndex?: number): s
         return `RIR ${value}`
       }
       switch (intensity.mode) {
-        case 'weight_range': return `${intensity.value || '—'}–${intensity.high || '—'} kg`
         case 'rpe_range': return `RPE ${intensity.value || '—'}–${intensity.high || '—'}`
-        case 'fixed_weight': return '固定重量'
+        case 'weight_range':
+        case 'fixed_weight': return '/'
       }
       return '/'
     }
     case 'weight': {
+      const mode = displayedWeightMode(row)
+      const intensity = rowIntensity(row)
+      if (mode === 'bodyweight') return 'BW'
+      if (mode === 'weight_range' && intensity?.mode === 'weight_range') {
+        return `${intensity.value || '—'}–${intensity.high || '—'} kg`
+      }
       const box = rowWeightBoxes(row)[setIndex ?? -1]
       if (!box || box.empty || box.val.trim() === '') return '/'
       return `${box.val} kg`
@@ -196,8 +222,12 @@ export function resolvePlanCell(
   if (rowIndex < 0) return null
   const row = day.rows[rowIndex]
   const weightBoxes = rowWeightBoxes(row)
-  const visibleWeightCount = inferredWeightMode(row) === 'uniform' ? Math.min(1, weightBoxes.length) : weightBoxes.length
-  const intensity = rowIntensity(row)
+  const weightMode = displayedWeightMode(row)
+  const visibleWeightCount = weightMode === 'fixed_weight' ? Math.min(1, weightBoxes.length)
+    : weightMode === 'per_set' ? weightBoxes.length
+      : weightMode === 'weight_range' ? 1
+        : 0
+  const intensity = displayedRowIntensity(row)
   const visibleIntensityCount = isSingleValueIntensity(intensity)
     ? Math.max(1, inferredIntensityMode(row) === 'uniform' ? Math.min(1, row.boxes.length) : row.boxes.length)
     : null
@@ -212,10 +242,11 @@ export function resolvePlanCell(
   ) return null
 
   const rowNumber = rowNumberInWeek(week, dayIndex, rowIndex)
+  const dayOrdinal = trainingDayOrdinal(week, day.dow)
   return {
     selection,
     reference: `${DAY_COLUMNS[dayIndex]}${rowNumber} · W${week.num2}`,
-    label: `${day.dowLabel} · ${cellLabel(row, selection.field, selection.setIndex)}`,
+    label: `${dayOrdinal == null ? '' : `D${dayOrdinal} · `}${day.dowLabel} · ${cellLabel(row, selection.field, selection.setIndex)}`,
     value: cellValue(row, selection.field, selection.setIndex),
     row,
   }

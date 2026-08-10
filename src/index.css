@@ -2554,6 +2554,17 @@ textarea {
   white-space: nowrap;
 }
 .weight-controls { width: 100%; display: flex; gap: 3px; margin-bottom: 2px; }
+.weight-controls select {
+  width: 68px;
+  min-width: 0;
+  height: 18px;
+  border: 1px solid var(--bd);
+  border-radius: var(--r-sm);
+  color: var(--txt);
+  background: var(--card-bg);
+  font: 600 8px var(--font-sans);
+}
+.weight-range-inputs { display: inline-flex; align-items: center; gap: 2px; }
 .weight-mode-toggle,
 .intensity-mode-toggle,
 .bodyweight-toggle {
@@ -2817,28 +2828,63 @@ textarea {
 }
 .week-band-track .day.restday { width: 100%; min-width: 100%; display: block; }
 .week-band-track .week-band-rest-card {
-  margin: 6px 8px;
+  margin: 4px 8px;
   width: calc(100% - 16px);
   min-width: calc(100% - 16px);
   /* No clipping: the student profile popover expands past the short card. */
   overflow: visible;
-  border: 1px dashed var(--bd);
+  border: 1px dashed color-mix(in srgb, var(--bd) 58%, transparent);
   border-radius: var(--r-md);
-  background: var(--panel-bg);
+  background: color-mix(in srgb, var(--panel-bg) 55%, var(--page-bg));
 }
 .week-band-track .day.restday.week-band-rest-card .dayhead {
-  height: 44px;
-  min-height: 44px;
-  padding: 6px 9px;
+  height: 34px;
+  min-height: 34px;
+  padding: 4px 7px;
   flex-direction: row;
   align-items: center;
+  gap: 8px;
   border-bottom: 0;
   background: transparent;
+}
+.week-band-track .week-band-rest-card.sel {
+  outline: 1px solid var(--mut);
+  outline-offset: -1px;
+}
+.week-band-track .day.sel.week-band-rest-card > .dayhead,
+.week-band-track .day.sel.week-band-rest-card > .dayhead:hover {
+  color: var(--mut);
+  background: transparent !important;
+}
+.week-band-track .day.sel.week-band-rest-card > .dayhead .dayhead-date,
+.week-band-track .day.sel.week-band-rest-card > .dayhead .dayhead-weekday,
+.week-band-track .day.sel.week-band-rest-card > .dayhead .day-move-grip,
+.week-band-track .day.sel.week-band-rest-card > .dayhead:hover .day-move-grip {
+  color: var(--mut);
+}
+.week-band-track .day.sel.week-band-rest-card > .dayhead [data-shift-badge] {
+  border-color: var(--faint) !important;
+  color: var(--mut) !important;
+}
+.week-band-track .day.week-band-rest-card > .week-band-rest-line:hover { background: transparent !important; }
+.week-band-track .day.week-band-rest-card > .week-band-rest-line:hover .day-move-grip { color: var(--mut); }
+.week-band-rest-line .anchor-weekday-select,
+.week-band-rest-line .day-column-key,
+.week-band-rest-line .dayhead-weekday {
+  border-color: color-mix(in srgb, var(--bd) 65%, transparent);
+  color: var(--mut);
+}
+.week-band-rest-line > .dayhead-line { flex: none; }
+.week-band-rest-line > .dayhead-context {
+  height: auto;
+  flex: 0 1 180px;
+  color: var(--mut);
+  font-size: 10px;
 }
 .week-band-rest-label {
   margin-left: auto;
   color: var(--faint);
-  font: 600 10px var(--font-mono);
+  font: 500 9px var(--font-mono);
   letter-spacing: .14em;
 }
 .week-band-rest-add,
@@ -2855,10 +2901,23 @@ textarea {
   cursor: pointer;
   transition: color .12s, background .12s;
 }
-.week-band-rest-add:hover,
 .week-band-section-add:hover { color: var(--ink); background: var(--ink-soft); }
+.week-band-rest-add {
+  width: auto;
+  height: 22px;
+  margin-left: 2px;
+  padding: 0 6px 0 8px;
+  flex: none;
+  border-top: 0;
+  border-left: 1px dashed color-mix(in srgb, var(--bd) 58%, transparent);
+  color: var(--faint);
+  font-size: 9px;
+  opacity: .62;
+}
+.week-band-rest-add:hover { color: var(--sec); background: var(--row-hover); opacity: 1; }
 .week-band-rest-add > span,
 .week-band-section-add > span { margin-right: 4px; color: var(--ink); font-weight: 700; }
+.week-band-rest-add > span { color: currentColor; }
 .week-band-section-add { display: block; box-sizing: border-box; }
 .week-band-track .dayhead,
 .week-band-track .restday .dayhead {
@@ -2877,6 +2936,10 @@ textarea {
 .week-band-day > .dayhead > .dayhead-line { grid-column: 1; grid-row: 1; }
 .week-band-day > .dayhead > .dayhead-theme { grid-column: 1; grid-row: 2; }
 .week-band-day > .dayhead > .dayhead-meta { grid-column: 1; grid-row: 3; }
+.week-band-day.sel > .dayhead .dayhead-weekday {
+  border-color: color-mix(in srgb, var(--card-bg) 52%, transparent);
+  color: var(--card-bg);
+}
 .dayhead-context {
   min-width: 0;
   height: 100%;
@@ -2953,6 +3016,7 @@ textarea {
   .dayhead-context { padding-left: 9px; }
   .dayhead-context-e1rm { display: none; }
 }
+.dayhead-calendar { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
 .dayhead-weekday {
   padding: 1px 5px;
   border: 1px solid var(--tint-bd);

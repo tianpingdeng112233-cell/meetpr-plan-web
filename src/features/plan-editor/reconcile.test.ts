@@ -5,7 +5,7 @@ import { LockedRowMutationError, ReconcileConflict, reconcileImportedPlan, recon
 import type { Week, ExerciseRow, DayCol } from './types'
 import type { PlanDayResponse, PlanExerciseResponse, PlanWithChildren } from '../../api/types'
 import { mapPlanToWeeks } from './mapping'
-import { materializeIntensityRow } from './intensityModel'
+import { displayedWeightMode, materializeIntensityRow } from './intensityModel'
 import { reorderWeekBandSkeleton } from './weekBandModel'
 
 vi.mock('../../api/plans')
@@ -286,6 +286,32 @@ describe('reconcilePlan — skippedRows counts only contentful unbound rows', ()
     expect(plans.createExercise).not.toHaveBeenCalled()
   })
 
+  it('opens stored per-set fixed_weight values without folding or writing them', async () => {
+    const stored = serverExercise('fixed-per-set', 'fixed-ex', 0, '170')
+    stored.sets = ['170', '172.5'].map((targetWeight, index) => ({
+      ...stored.sets[0],
+      id: `fixed-set-${index + 1}`,
+      set_number: index + 1,
+      load_mode: 'fixed_weight',
+      target_weight: targetWeight,
+      target_value: targetWeight,
+    }))
+    const baseline = serverPlan([serverDay([stored])], 'draft')
+    vi.mocked(plans.getPlan).mockResolvedValue(baseline)
+    const weeks = mapPlanToWeeks(baseline, new Map([['fixed-ex', { name: '存量固定重量', custom: false }]]))
+    const mapped = weeks[0].days[0].rows[0]
+
+    expect(mapped.boxes).toEqual([
+      { val: '170', empty: false },
+      { val: '172.5', empty: false },
+    ])
+    expect(displayedWeightMode(mapped)).toBe('per_set')
+    await expect(reconcilePlan('p', weeks)).resolves.toMatchObject({ changedDays: 0, skippedRows: 0 })
+    expect(plans.batchDays).not.toHaveBeenCalled()
+    expect(plans.deleteExercise).not.toHaveBeenCalled()
+    expect(plans.createExercise).not.toHaveBeenCalled()
+  })
+
   it('converts a legacy RPE row to per-set load_mode only after an explicit row edit', async () => {
     const legacy = legacyRpeExercise('legacy', 'legacy-ex', ['7.5', '8'])
     const baseline = serverPlan([serverDay([legacy])], 'draft')
@@ -304,14 +330,16 @@ describe('reconcilePlan — skippedRows counts only contentful unbound rows', ()
     expect(sets.every((set) => set.intensity_mode === undefined && set.target_value === undefined)).toBe(true)
   })
 
-  it('writes all six row-level modes plus independent per-set target weights without client projections', async () => {
+  it('writes strength modes and all four weight modes without changing backend compatibility', async () => {
     const modes: ExerciseRow[] = [
       row({ id: 'pct', exerciseId: 'pct', name: 'pct', intensity: { mode: 'pct', value: '72.5', high: '' }, intensityMode: 'per_set', intensityBoxes: [{ val: '72.5', empty: false }, { val: '75', empty: false }], boxes: [{ val: '170', empty: false }, { val: '', empty: true }] }),
       row({ id: 'rpe', exerciseId: 'rpe', name: 'rpe', intensity: { mode: 'rpe', value: '8', high: '' }, boxes: [{ val: '', empty: true }, { val: '', empty: true }] }),
       row({ id: 'rir', exerciseId: 'rir', name: 'rir', intensity: { mode: 'rir', value: '2', high: '' }, boxes: [{ val: '', empty: true }] }),
       row({ id: 'wr', exerciseId: 'wr', name: 'wr', intensity: { mode: 'weight_range', value: '165', high: '175' }, boxes: [{ val: '', empty: true }] }),
       row({ id: 'rr', exerciseId: 'rr', name: 'rr', intensity: { mode: 'rpe_range', value: '7', high: '8.5' }, boxes: [{ val: '170', empty: false }] }),
-      row({ id: 'fixed', exerciseId: 'fixed', name: 'fixed', intensity: { mode: 'fixed_weight', value: '', high: '' }, boxes: [{ val: '170', empty: false }, { val: '172.5', empty: false }], weightMode: 'per_set' }),
+      row({ id: 'fixed', exerciseId: 'fixed', name: 'fixed', intensity: null, boxes: [{ val: '170', empty: false }, { val: '170', empty: false }], weightMode: 'uniform' }),
+      row({ id: 'per', exerciseId: 'per', name: 'per', intensity: null, boxes: [{ val: '170', empty: false }, { val: '172.5', empty: false }], weightMode: 'per_set' }),
+      row({ id: 'fixed-wire', exerciseId: 'fixed-wire', name: 'fixed-wire', intensity: { mode: 'fixed_weight', value: '', high: '' }, boxes: [{ val: '180', empty: false }], weightMode: 'uniform' }),
     ]
 
     await reconcilePlan('p', [weekWithMondayRows(modes)])
@@ -327,9 +355,14 @@ describe('reconcilePlan — skippedRows counts only contentful unbound rows', ()
     expect(byId.get('wr')?.[0]).toEqual(expect.objectContaining({ load_mode: 'weight_range', weight_low: '165', weight_high: '175', target_weight: null }))
     expect(byId.get('rr')?.[0]).toEqual(expect.objectContaining({ load_mode: 'rpe_range', rpe_low: '7', rpe_high: '8.5', target_weight: '170' }))
     expect(byId.get('fixed')).toEqual([
-      expect.objectContaining({ load_mode: 'fixed_weight', target_weight: '170' }),
-      expect.objectContaining({ load_mode: 'fixed_weight', target_weight: '172.5' }),
+      expect.objectContaining({ load_mode: null, target_weight: '170' }),
+      expect.objectContaining({ load_mode: null, target_weight: '170' }),
     ])
+    expect(byId.get('per')).toEqual([
+      expect.objectContaining({ load_mode: null, target_weight: '170' }),
+      expect.objectContaining({ load_mode: null, target_weight: '172.5' }),
+    ])
+    expect(byId.get('fixed-wire')?.[0]).toEqual(expect.objectContaining({ load_mode: 'fixed_weight', target_weight: '180' }))
     expect(exercises.flatMap((exercise) => exercise.sets).every((set) => (
       set.intensity_mode === undefined && set.target_value === undefined
     ))).toBe(true)

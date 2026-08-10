@@ -98,6 +98,7 @@ vi.mock('../plan-editor/PlanEditor', () => ({
     onSwitchStudent?: (id: string) => void
     plans?: { id: string; label: string }[]
     onPublish?: () => Promise<void>
+    onChangeStartDate?: (startDate: string) => Promise<void>
   }) => {
     const { initialWeeks, onLeaveGuardChange, students, currentStudentId, plans, onPublish } = props
     api.captureEditorProps(props)
@@ -1047,5 +1048,39 @@ describe('PlanWorkspace editor remount', () => {
     expect(props.onSave).toBeUndefined()
     expect(props.onRename).toBeUndefined()
     expect(props.onPublish).toBeUndefined()
+  })
+
+  it('patches start/end together and keeps the plan week count unchanged', async () => {
+    const updated = {
+      ...plan('加载时快照'),
+      start_date: '2026-01-07',
+      end_date: '2026-01-13',
+      anchor_weekday: 3,
+    }
+    api.patchPlan.mockResolvedValue(updated)
+    api.getPlan.mockResolvedValue(plan('加载时快照'))
+
+    await act(async () => {
+      root.render(<PlanWorkspace onLogout={vi.fn()} me={me} />)
+      await settle()
+    })
+    const editorProps = api.captureEditorProps.mock.calls.at(-1)?.[0] as {
+      onChangeStartDate: (startDate: string) => Promise<void>
+    }
+    await act(async () => {
+      await editorProps.onChangeStartDate('2026-01-07')
+    })
+
+    expect(api.patchPlan).toHaveBeenCalledWith('plan', {
+      start_date: '2026-01-07',
+      end_date: '2026-01-13',
+      anchor_weekday: 3,
+    })
+    const latestProps = api.captureEditorProps.mock.calls.at(-1)?.[0] as {
+      planStartDate: string
+      weeksCount: number
+    }
+    expect(latestProps.planStartDate).toBe('2026-01-07')
+    expect(latestProps.weeksCount).toBe(1)
   })
 })
