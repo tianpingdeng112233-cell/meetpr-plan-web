@@ -184,7 +184,9 @@ export function recentSessionSummary(detail: ExerciseStatsDetail | null): string
  * history occupies the header only while the coach is actively filling the row;
  * before a row is selected and once it is complete, the header shows the full
  * student profile inline (rest-day headers keep the click-to-open popover — their
- * single line has no room for the inline block).
+ * single line has no room for the inline block). While filling, history depth
+ * (rep PRs, last session per-set, set-count bucket ×2) renders as side-by-side
+ * columns inside the fixed-height header rather than growing it.
  */
 export function DayHeaderContext({ studentId, studentName, row, profile }: {
   studentId: string
@@ -237,15 +239,63 @@ export function DayHeaderContext({ studentId, studentName, row, profile }: {
 
   const summary = recentSessionSummary(detail)
   const pending = !!exerciseId && !hasDetail && failedId !== exerciseId
+  const stop = (event: { stopPropagation(): void }) => event.stopPropagation()
+  const sets = activeRow.boxes.length
+  const bucket = detail && sets > 0 ? (detail.by_set_count[String(sets)] ?? []).slice(0, 2) : []
+  const last = detail?.recent_sessions[0]
   return (
     <div className="dayhead-context exercise" data-dayhead-context="" data-context-state="exercise" title={activeRow.name || '未命名动作'}>
-      <b className="dayhead-context-name">{activeRow.name || '未命名动作'}</b>
-      <span className="dayhead-context-history">
-        {pending ? '训练记录载入中…'
-          : failedId === exerciseId ? '记录载入失败'
-            : summary ? `上次 ${summary}` : '暂无训练记录'}
-      </span>
-      {detail?.e1rm && <span className="dayhead-context-e1rm">e1RM {kg(detail.e1rm.value)}kg</span>}
+      <div className="dayhead-context-id">
+        <b className="dayhead-context-name">{activeRow.name || '未命名动作'}</b>
+        {/* The one-line 上次 summary duplicates the per-set panel; show it only
+            while that panel is absent (loading / failed / no history). */}
+        {!(last && last.sets.length > 0) && (
+          <span className="dayhead-context-history">
+            {pending ? '训练记录载入中…'
+              : failedId === exerciseId ? '记录载入失败'
+                : summary ? `上次 ${summary}` : '暂无训练记录'}
+          </span>
+        )}
+        {detail?.e1rm && <span className="dayhead-context-e1rm">e1RM {kg(detail.e1rm.value)}kg</span>}
+      </div>
+      {detail && detail.rep_prs.length > 0 && (
+        <div className="dayhead-panel" onMouseDown={stop} onClick={stop}>
+          <h4>次数 PR</h4>
+          {detail.rep_prs.slice(0, 4).map((p) => (
+            <div className="dayhead-panel-line" key={p.reps}>
+              <span>{p.reps}RM</span>
+              <b>{kg(p.weight_kg)}kg</b>
+              <em>{shortDate(p.logged_at)}{p.source === 'imported' ? ' 导' : ''}</em>
+            </div>
+          ))}
+        </div>
+      )}
+      {last && last.sets.length > 0 && (
+        <div className="dayhead-panel" onMouseDown={stop} onClick={stop}>
+          <h4>最近一次 · {shortDate(last.date)}</h4>
+          <div className="dayhead-panel-sets">
+            {last.sets.map((set) => (
+              <div className="dayhead-panel-line" key={set.set_index}>
+                <span>{set.set_index}</span>
+                <b>{kg(set.weight_kg)}×{set.reps}</b>
+                <em>{set.rpe ? `@${Number(set.rpe)}` : '—'}{set.failed ? ' 力竭' : set.completed ? ' ✓' : ''}</em>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      {bucket.length > 0 && (
+        <div className="dayhead-panel" onMouseDown={stop} onClick={stop}>
+          <h4>{sets} 组 · 最近 {bucket.length} 次</h4>
+          {bucket.map((x) => (
+            <div className="dayhead-panel-line" key={x.date}>
+              <span>{shortDate(x.date)}</span>
+              <b>顶组 {kg(x.best_weight_kg)}kg</b>
+              <em>{x.completed_sets}/{x.set_count}</em>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   )
 }

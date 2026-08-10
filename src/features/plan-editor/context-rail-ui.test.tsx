@@ -41,7 +41,18 @@ function detail(recent = true): ExerciseStatsDetail {
   return {
     one_rm_reference: '240',
     e1rm: recent ? { value: '221.5', computed_at: '2026-07-27' } : null,
-    rep_prs: [], by_set_count: {},
+    rep_prs: recent ? [
+      { reps: 1, weight_kg: '230', logged_at: '2026-06-14', source: 'imported' },
+      { reps: 5, weight_kg: '200', logged_at: '2026-07-20', source: 'logged' },
+    ] : [],
+    // The fixture rows carry one set box, so the bucket key is '1'.
+    by_set_count: recent ? {
+      '1': [
+        { date: '2026-07-27', set_count: 1, best_weight_kg: '185', total_reps: 5, completed_sets: 1 },
+        { date: '2026-07-20', set_count: 1, best_weight_kg: '180', total_reps: 5, completed_sets: 1 },
+        { date: '2026-07-13', set_count: 1, best_weight_kg: '175', total_reps: 5, completed_sets: 1 },
+      ],
+    } : {},
     recent_sessions: recent ? [{
       date: '2026-07-27',
       sets: [
@@ -132,9 +143,25 @@ describe('plan editor day-header context experiment', () => {
     const context = host.querySelector<HTMLElement>('[data-dayhead-context]')!
     expect(context.dataset.contextState).toBe('exercise')
     expect(context.textContent).toContain('竞技深蹲')
-    expect(context.textContent).toContain('上次 07/27 · 3×5 @ 185kg / RPE 9')
     expect(context.textContent).toContain('e1RM 221.5kg')
+    // The one-line 上次 summary is replaced by the per-set panel when it renders.
+    expect(context.textContent).not.toContain('上次 07/27')
     expect(api.getExerciseStats).toHaveBeenCalledWith('student-1', 'squat')
+
+    // History depth panels: rep PRs, last session per-set, set-count bucket ×2.
+    const panels = [...context.querySelectorAll<HTMLElement>('.dayhead-panel')]
+    expect(panels.map((p) => p.querySelector('h4')?.textContent)).toEqual([
+      '次数 PR', '最近一次 · 07/27', '1 组 · 最近 2 次',
+    ])
+    expect(panels[0]?.textContent).toContain('1RM')
+    expect(panels[0]?.textContent).toContain('230kg')
+    expect(panels[0]?.textContent).toContain('06/14 导')
+    expect(panels[1]?.querySelectorAll('.dayhead-panel-line')).toHaveLength(3)
+    expect(panels[1]?.textContent).toContain('185×5')
+    expect(panels[1]?.textContent).toContain('@9 ✓')
+    expect(panels[2]?.querySelectorAll('.dayhead-panel-line')).toHaveLength(2)
+    expect(panels[2]?.textContent).toContain('顶组 185kg')
+    expect(panels[2]?.textContent).not.toContain('07/13')
   })
 
   it('shows the no-history empty state for an exercise without records', async () => {

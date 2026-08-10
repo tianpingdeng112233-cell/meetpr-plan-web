@@ -2928,7 +2928,7 @@ textarea {
 }
 .week-band-day > .dayhead {
   display: grid;
-  grid-template-columns: minmax(290px, .9fr) minmax(0, 1.1fr);
+  grid-template-columns: minmax(270px, .75fr) minmax(0, 1.25fr);
   grid-template-rows: 21px 18px 16px;
   column-gap: 16px;
 }
@@ -2951,24 +2951,29 @@ textarea {
   color: inherit;
 }
 .dayhead-context.exercise {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  grid-template-rows: 22px minmax(0, 1fr);
-  align-items: center;
+  display: flex;
+  align-items: flex-start;
   column-gap: 12px;
+  overflow: hidden;
+}
+.dayhead-context-id {
+  flex: 0 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
 }
 .dayhead-context-name {
   min-width: 0;
   overflow: hidden;
   color: inherit;
   font-size: 11px;
+  line-height: 19px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .dayhead-context-history {
   min-width: 0;
-  grid-column: 1 / 3;
-  align-self: start;
   overflow: hidden;
   color: inherit;
   font: 500 10px/1.45 var(--font-mono);
@@ -2981,6 +2986,36 @@ textarea {
   font: 700 10px var(--font-mono);
   white-space: nowrap;
 }
+/* History panels (次数 PR / 逐组明细 / 组数桶) sit as extra columns inside the
+   fixed 88px header; long set lists wrap 4-per-column instead of growing it. */
+.dayhead-panel {
+  flex: none;
+  min-width: 0;
+  padding-left: 10px;
+  border-left: 1px solid color-mix(in srgb, currentColor 24%, transparent);
+  color: inherit;
+  font: 500 10px/1.4 var(--font-mono);
+  cursor: default;
+  user-select: text;
+}
+.dayhead-panel h4 {
+  margin: 0 0 1px;
+  color: inherit;
+  font: 600 9px var(--font-mono);
+  letter-spacing: .06em;
+  opacity: .55;
+}
+.dayhead-panel-line { display: flex; gap: 6px; white-space: nowrap; }
+.dayhead-panel-line span { opacity: .55; }
+.dayhead-panel-line b { font-weight: 600; }
+.dayhead-panel-line em { font-style: normal; opacity: .75; }
+.dayhead-panel-sets {
+  display: grid;
+  grid-auto-flow: column;
+  grid-template-rows: repeat(4, auto);
+  column-gap: 12px;
+}
+.week-band-rest-line .dayhead-panel { display: none; }
 .dayhead-context.student { display: flex; align-items: center; justify-content: flex-end; }
 .dayhead-profile { position: relative; min-width: 0; }
 .dayhead-profile > summary {
@@ -3078,6 +3113,7 @@ textarea {
   .week-band-day > .dayhead { grid-template-columns: minmax(300px, 1fr) minmax(140px, .6fr); column-gap: 10px; }
   .dayhead-context { padding-left: 9px; }
   .dayhead-context-e1rm { display: none; }
+  .dayhead-panel { display: none; }
 }
 .dayhead-calendar { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
 .dayhead-weekday {
