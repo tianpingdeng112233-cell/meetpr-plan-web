@@ -9,6 +9,7 @@ import {
   intensityReason,
 } from '../inputGuard'
 import {
+  displayedRowIntensity,
   inferredIntensityMode,
   inferredWeightMode,
   isSingleValueIntensity,
@@ -267,7 +268,7 @@ function EditableIntensity({ row, width, edit, selectedCell, selectCell, cellKey
     )
   }
   const issue = getBoundRowInputIssue(row)
-  const intensity = rowIntensity(row)
+  const intensity = displayedRowIntensity(row)
   const singleValue = isSingleValueIntensity(intensity)
   const intensityMode = inferredIntensityMode(row)
   const intensityBoxes = rowIntensityBoxes(row)
@@ -901,10 +902,13 @@ export function DayColumn({
               data-empty-exercise-id={slot.exerciseId ?? undefined}
               title={missingName
                 ? '未命名动作不可添加，请先完善动作名称'
-                : `本周无「${slot.exemplar.name}」，点击快速添加`}
+                : `本周未安排「${slot.exemplar.name}」，可快速添加`}
               role="button"
               tabIndex={quickAddDisabled ? -1 : 0}
               aria-disabled={quickAddDisabled}
+              aria-label={missingName
+                ? `${slot.exemplar.name || '未命名动作'}：本周未安排，不可添加`
+                : `${slot.exemplar.name}：本周未安排，添加到本周`}
               onClick={(event) => { event.stopPropagation(); if (!quickAddDisabled) weekBand!.onQuickAdd(slot) }}
               onKeyDown={(event) => {
                 if (event.target !== event.currentTarget) return
@@ -921,7 +925,10 @@ export function DayColumn({
                   <span className="week-band-empty-name-label">{slot.exemplar.name || '未命名动作'}</span>
                 </span>
                 <span className="week-band-empty-prescription" style={{ width: total - frozenWidth - colW.name }}>
-                  {missingName ? '—　不可添加' : '—　点击添加'}
+                  <span className="week-band-empty-status">本周未安排</span>
+                  <span className="week-band-empty-action">
+                    {missingName ? '不可添加' : '+ 添加到本周'}
+                  </span>
                 </span>
               </span>
             </div>

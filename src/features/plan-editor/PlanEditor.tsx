@@ -187,6 +187,19 @@ function scrollElementLeft(element: HTMLElement, left: number, behavior?: Scroll
   else element.scrollLeft = left
 }
 
+const WEEK_BAND_GAP_PX = 28
+
+function snapScrollerToNearestWeek(scroller: HTMLElement) {
+  const slots = [...scroller.querySelectorAll<HTMLElement>('[data-week-slot][data-wnum]')]
+  const nearest = slots.reduce<HTMLElement | null>((best, slot) => {
+    if (!best) return slot
+    return Math.abs(slot.offsetLeft - scroller.scrollLeft) < Math.abs(best.offsetLeft - scroller.scrollLeft)
+      ? slot
+      : best
+  }, null)
+  if (nearest) scrollElementLeft(scroller, nearest.offsetLeft, 'smooth')
+}
+
 function importRangeLabel(weeks: Week[]): string {
   const first = weeks[0]
   const last = weeks[weeks.length - 1]
@@ -583,7 +596,15 @@ export function PlanEditor(props: PlanEditorProps) {
     }
     const onUp = () => {
       if (dragRef.current) { dragRef.current.el.classList.remove('dragging'); dragRef.current = null; document.body.style.cursor = '' }
-      if (panRef.current) { panRef.current = null; scrollerRef.current?.classList.remove('panning') }
+      if (panRef.current) {
+        panRef.current = null
+        const scroller = scrollerRef.current
+        scroller?.classList.remove('panning')
+        if (scroller) {
+          scroller.style.scrollSnapType = 'x mandatory'
+          snapScrollerToNearestWeek(scroller)
+        }
+      }
     }
     window.addEventListener('mousemove', onMove)
     window.addEventListener('mouseup', onUp)
@@ -604,6 +625,7 @@ export function PlanEditor(props: PlanEditorProps) {
       e.preventDefault()
       panRef.current = { x: e.clientX, y: e.clientY, sl: sc.scrollLeft, st: sc.scrollTop }
       sc.classList.add('panning')
+      sc.style.scrollSnapType = 'none'
     }
     sc.addEventListener('wheel', onWheel, { passive: false })
     sc.addEventListener('mousedown', onDown)
@@ -1848,6 +1870,11 @@ export function PlanEditor(props: PlanEditorProps) {
     })
   }
 
+  const jumpToAdjacentWeek = (delta: -1 | 1) => {
+    const target = weeks[visibleWeekIndex + delta]
+    if (target) jumpToWeek(target.num)
+  }
+
   const handleSave = async () => {
     if (!props.onSave || readOnly || saving || publishing.current) return
     if (published) {
@@ -2149,31 +2176,51 @@ export function PlanEditor(props: PlanEditorProps) {
         }, { days: 0, exercises: 0 })}
         curWeekLabel={curWeekLabel} />
       <nav className="week-tabs" aria-label="计划周">
-        {weeks.map((week, index) => (
-          <button
-            type="button"
-            key={week.num}
-            className={index === visibleWeekIndex ? 'active' : ''}
-            aria-current={index === visibleWeekIndex ? 'page' : undefined}
-            onClick={() => jumpToWeek(week.num)}
-          >
-            W{week.num2}
-          </button>
-        ))}
         <button
           type="button"
-          className="week-tab-add"
-          disabled={calendarLocked || saving || weeks.length >= 52 || !props.onChangePlanWeeks}
-          title={calendarLocked ? calendarLockedHint : '加一周'}
-          onClick={() => {
-            const nextCount = weeks.length + 1
-            void handleChangePlanWeeks(nextCount).then(() => {
-              setVisibleWeekIndex(nextCount - 1)
-              window.requestAnimationFrame(() => jumpToWeek(nextCount))
-            }).catch(() => undefined)
-          }}
+          className="week-tab-jump"
+          aria-label="上一周"
+          disabled={visibleWeekIndex <= 0}
+          onClick={() => jumpToAdjacentWeek(-1)}
         >
-          ＋ 加一周
+          <span aria-hidden="true">‹</span>
+        </button>
+        <div className="week-tab-list">
+          {weeks.map((week, index) => (
+            <button
+              type="button"
+              key={week.num}
+              className={`week-tab${index === visibleWeekIndex ? ' active' : ''}`}
+              aria-current={index === visibleWeekIndex ? 'page' : undefined}
+              onClick={() => jumpToWeek(week.num)}
+            >
+              W{week.num2}
+            </button>
+          ))}
+          <button
+            type="button"
+            className="week-tab-add"
+            disabled={calendarLocked || saving || weeks.length >= 52 || !props.onChangePlanWeeks}
+            title={calendarLocked ? calendarLockedHint : '加一周'}
+            onClick={() => {
+              const nextCount = weeks.length + 1
+              void handleChangePlanWeeks(nextCount).then(() => {
+                setVisibleWeekIndex(nextCount - 1)
+                window.requestAnimationFrame(() => jumpToWeek(nextCount))
+              }).catch(() => undefined)
+            }}
+          >
+            ＋ 加一周
+          </button>
+        </div>
+        <button
+          type="button"
+          className="week-tab-jump"
+          aria-label="下一周"
+          disabled={visibleWeekIndex >= weeks.length - 1}
+          onClick={() => jumpToAdjacentWeek(1)}
+        >
+          <span aria-hidden="true">›</span>
         </button>
       </nav>
       <ContextBar
@@ -2199,10 +2246,10 @@ export function PlanEditor(props: PlanEditorProps) {
 
       {/* v1.3 页眉集成试验：ContextRail 与视口钳制实现保留作回滚，编辑器渲染入口暂时下线。 */}
       <div className="plan-with-rail">
-      <div className="scroller" ref={scrollerRef} aria-readonly={readOnly || undefined} style={{ flex: 1, overflow: 'auto', position: 'relative', background: 'var(--page-bg)' }}>
+      <div className="scroller" ref={scrollerRef} aria-readonly={readOnly || undefined} style={{ flex: 1, overflow: 'auto', position: 'relative', background: 'var(--page-bg)', scrollSnapType: 'x mandatory' }}>
         {readOnly && <div role="status" style={{ position: 'sticky', top: 0, zIndex: 12, padding: '8px 16px', background: 'var(--panel-bg)', borderBottom: '1px solid var(--bd)', color: 'var(--sec)', fontSize: 12 }}>历史计划只读：可以查看，但不会保存任何修改</div>}
         <div style={{ pointerEvents: readOnly ? 'none' : undefined }}>
-            <div ref={weeksRef} className="week-band-track">
+            <div ref={weeksRef} className="week-band-track" style={{ gap: WEEK_BAND_GAP_PX }}>
               {weeks.map((wk, weekIndex) => (
                 Math.abs(weekIndex - visibleWeekIndex) > 1 ? (
                   <div
@@ -2211,8 +2258,9 @@ export function PlanEditor(props: PlanEditorProps) {
                     data-week-slot=""
                     data-wnum={wk.num}
                     aria-hidden="true"
+                    style={{ scrollSnapAlign: 'start' }}
                   />
-                ) : <div key={wk.num} className="weekband week-band-slot" data-week-slot="" data-wnum={wk.num}>
+                ) : <div key={wk.num} className="weekband week-band-slot" data-week-slot="" data-wnum={wk.num} style={{ scrollSnapAlign: 'start' }}>
                   <div className="weekband-head">
                     <kbd>W{wk.num2}</kbd>
                     <span className="weekband-name">第 {wk.num} 周</span>
