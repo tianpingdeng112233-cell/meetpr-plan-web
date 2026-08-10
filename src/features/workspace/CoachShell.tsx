@@ -24,7 +24,7 @@ const NAV_ITEMS: { id: CoachView; label: string; short: string }[] = [
 
 const VIEW_SHORTCUTS: Record<CoachView, string> = {
   board: 'J / K 移动 · ↵ 打开编排器 · ⌘K 命令',
-  editor: 'Tab / ⇧Tab 横移 · ↵ / ↑↓ 纵移 · ⌘D 向下填充 · ⌘C / ⌘V · ⌘Z',
+  editor: '⌥← / ⌥→ 翻周 · Tab / ⇧Tab 横移 · ↵ / ↑↓ 纵移 · ⌘D 向下填充 · ⌘C / ⌘V · ⌘Z',
   messages: '⌥1–5 快捷回复 · ↵ 发送 · ← / → 切视频 · 空格播放 · ⌘↵ 反馈',
   catalog: '⌘K 搜动作 / 跳转',
   requests: '',

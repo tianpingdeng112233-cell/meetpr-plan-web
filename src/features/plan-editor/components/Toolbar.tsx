@@ -7,9 +7,24 @@ interface Props {
   onChangeWeeks?: (weeks: number) => Promise<void>
   removalSummary?: (weeks: number) => { days: number; exercises: number }
   curWeekLabel: string
+  previousWeekDisabled: boolean
+  nextWeekDisabled: boolean
+  onPreviousWeek: () => void
+  onNextWeek: () => void
 }
 
-export function Toolbar({ weeksCount, calendarLocked = false, calendarLockedHint, onChangeWeeks, removalSummary, curWeekLabel }: Props) {
+export function Toolbar({
+  weeksCount,
+  calendarLocked = false,
+  calendarLockedHint,
+  onChangeWeeks,
+  removalSummary,
+  curWeekLabel,
+  previousWeekDisabled,
+  nextWeekDisabled,
+  onPreviousWeek,
+  onNextWeek,
+}: Props) {
   const [weeksOpen, setWeeksOpen] = useState(false)
   const [draftWeeks, setDraftWeeks] = useState(weeksCount)
   const [applying, setApplying] = useState(false)
@@ -80,6 +95,24 @@ export function Toolbar({ weeksCount, calendarLocked = false, calendarLockedHint
       <span style={{ color: 'var(--mut)' }}>可见</span>
       <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--ink)', fontWeight: 500, letterSpacing: '.04em' }}>
         {curWeekLabel}
+      </span>
+      <span className="plan-toolbar-week-jumps" data-week-jump-controls="">
+        <button
+          type="button"
+          aria-label="上一周"
+          disabled={previousWeekDisabled}
+          onClick={onPreviousWeek}
+        >
+          <span aria-hidden="true">‹</span>
+        </button>
+        <button
+          type="button"
+          aria-label="下一周"
+          disabled={nextWeekDisabled}
+          onClick={onNextWeek}
+        >
+          <span aria-hidden="true">›</span>
+        </button>
       </span>
       <span style={{ flex: 1 }} />
       <span className="t-hint" style={{ color: 'var(--mut)', fontSize: 11 }}>横向滚动切换周 · 周内训练日纵向排列</span>

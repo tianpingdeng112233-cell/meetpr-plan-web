@@ -2766,14 +2766,27 @@ textarea {
 .week-tabs button:not(:disabled):hover { color: var(--txt); background: var(--panel-bg); }
 .week-tabs button.active { border-bottom-color: var(--ink); color: var(--ink); background: var(--ink-soft); }
 .week-tabs .week-tab-add { margin-left: 5px; border: 1px dashed var(--bd); border-bottom-style: dashed; border-radius: var(--r-sm) var(--r-sm) 0 0; font-family: var(--font-sans); }
-.week-tabs .week-tab-jump {
-  width: 30px;
-  height: 30px;
-  padding: 0;
+.plan-toolbar-week-jumps {
+  height: 28px;
+  display: inline-flex;
+  flex: none;
+  overflow: hidden;
   border: 1px solid var(--bd);
   border-radius: var(--r-sm);
-  font: 500 20px/1 var(--font-sans);
 }
+.plan-toolbar-week-jumps button {
+  width: 30px;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  color: var(--sec);
+  background: transparent;
+  font: 500 20px/1 var(--font-sans);
+  cursor: pointer;
+}
+.plan-toolbar-week-jumps button + button { border-left: 1px solid var(--bd); }
+.plan-toolbar-week-jumps button:not(:disabled):hover { color: var(--txt); background: var(--panel-bg); }
+.plan-toolbar-week-jumps button:disabled { color: var(--faint); cursor: default; opacity: .52; }
 .week-tabs button:disabled { opacity: .42; cursor: default; }
 
 .week-band-track {

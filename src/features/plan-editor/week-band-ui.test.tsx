@@ -119,7 +119,7 @@ describe('spec 037 week-band UI', () => {
     expect(scroller.style.scrollSnapType).toBe('x mandatory')
   })
 
-  it('jumps through the shared smooth-scroll channel and disables week boundaries', async () => {
+  it('keeps adjacent week-step buttons beside the toolbar indicator and disables week boundaries', async () => {
     act(() => root.render(
       <PlanEditor initialWeeks={[week(1), week(2, [], true), week(3)]} weeksCount={3}
         studentName="学员" planName="计划" />,
@@ -133,9 +133,15 @@ describe('spec 037 week-band UI', () => {
     })
     const scrollTo = vi.fn()
     scroller.scrollTo = scrollTo
+    const controls = host.querySelector<HTMLElement>('[data-week-jump-controls]')!
     const previous = host.querySelector<HTMLButtonElement>('[aria-label="上一周"]')!
     const next = host.querySelector<HTMLButtonElement>('[aria-label="下一周"]')!
 
+    expect(controls.closest('.plan-toolbar')).not.toBeNull()
+    expect(controls.querySelectorAll('button')).toHaveLength(2)
+    expect(previous.nextElementSibling).toBe(next)
+    expect(host.querySelector('.week-tabs [aria-label="上一周"]')).toBeNull()
+    expect(host.querySelector('.week-tabs [aria-label="下一周"]')).toBeNull()
     expect(previous.disabled).toBe(false)
     expect(next.disabled).toBe(false)
     await act(async () => {
@@ -155,6 +161,68 @@ describe('spec 037 week-band UI', () => {
     })
     expect(scrollTo).toHaveBeenLastCalledWith({ left: 1896, behavior: 'smooth' })
     expect(next.disabled).toBe(true)
+    expect(controls.querySelectorAll('button')).toHaveLength(2)
+    expect(previous.nextElementSibling).toBe(next)
+  })
+
+  it('steps weeks with Alt+Arrow from an input while plain arrows keep cell navigation', async () => {
+    act(() => root.render(
+      <PlanEditor
+        initialWeeks={[week(1), week(2, [row('sq', 'sq', '深蹲', true)], true), week(3)]}
+        weeksCount={3}
+        studentName="学员"
+        planName="计划"
+      />,
+    ))
+    await act(async () => new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve())))
+
+    const scroller = host.querySelector<HTMLElement>('.scroller')!
+    const slots = [...host.querySelectorAll<HTMLElement>('[data-week-slot]')]
+    slots.forEach((slot, index) => {
+      Object.defineProperty(slot, 'offsetLeft', { configurable: true, value: index * 948 })
+    })
+    const scrollTo = vi.fn()
+    scroller.scrollTo = scrollTo
+    const nameInput = host.querySelector<HTMLInputElement>(
+      '.weekband[data-wnum="2"] [data-plan-cell="name"] input',
+    )!
+
+    await act(async () => {
+      nameInput.focus()
+      nameInput.dispatchEvent(new KeyboardEvent('keydown', {
+        key: 'ArrowRight', altKey: true, bubbles: true, cancelable: true,
+      }))
+      await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()))
+    })
+    expect(scrollTo).toHaveBeenLastCalledWith({ left: 1896, behavior: 'smooth' })
+    expect(host.querySelector<HTMLButtonElement>('[aria-label="下一周"]')?.disabled).toBe(true)
+
+    await act(async () => {
+      nameInput.focus()
+      nameInput.dispatchEvent(new KeyboardEvent('keydown', {
+        key: 'ArrowLeft', altKey: true, bubbles: true, cancelable: true,
+      }))
+      await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()))
+    })
+    expect(scrollTo).toHaveBeenLastCalledWith({ left: 948, behavior: 'smooth' })
+
+    scrollTo.mockClear()
+    await act(async () => {
+      nameInput.blur()
+      nameInput.focus()
+    })
+    await act(async () => {
+      nameInput.dispatchEvent(new KeyboardEvent('keydown', {
+        key: 'ArrowRight', bubbles: true, cancelable: true,
+      }))
+      await new Promise((resolve) => window.setTimeout(resolve, 0))
+    })
+    expect(host.querySelector('.plan-cell-selected')?.getAttribute('data-plan-cell')).toBe('sets')
+    expect(scrollTo).not.toHaveBeenCalled()
+
+    const character = new KeyboardEvent('keydown', { key: 'x', bubbles: true, cancelable: true })
+    act(() => nameInput.dispatchEvent(character))
+    expect(character.defaultPrevented).toBe(false)
   })
 
   it('renders all D1–D7 slots and derives compact dashed rest cards from empty rows', () => {

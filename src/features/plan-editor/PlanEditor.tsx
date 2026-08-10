@@ -1379,6 +1379,14 @@ export function PlanEditor(props: PlanEditorProps) {
 
     const mod = e.metaKey || e.ctrlKey
     const key = e.key.toLowerCase()
+    const weekStep = e.altKey && !mod && !e.shiftKey && (
+      e.key === 'ArrowLeft' || e.key === 'ArrowRight'
+    )
+    if (weekStep) {
+      e.preventDefault()
+      jumpToAdjacentWeek(e.key === 'ArrowLeft' ? -1 : 1)
+      return true
+    }
     if (mod && key === 'd' && !e.altKey && !e.shiftKey && (!editable || gridInput)) {
       if (readOnly) {
         e.preventDefault()
@@ -1871,7 +1879,8 @@ export function PlanEditor(props: PlanEditorProps) {
   }
 
   const jumpToAdjacentWeek = (delta: -1 | 1) => {
-    const target = weeks[visibleWeekIndex + delta]
+    const currentIndex = latestWeeks.current.findIndex((week) => week.num === visibleWeekRef.current)
+    const target = latestWeeks.current[(currentIndex >= 0 ? currentIndex : visibleWeekIndex) + delta]
     if (target) jumpToWeek(target.num)
   }
 
@@ -2174,17 +2183,12 @@ export function PlanEditor(props: PlanEditorProps) {
           }
           return summary
         }, { days: 0, exercises: 0 })}
-        curWeekLabel={curWeekLabel} />
+        curWeekLabel={curWeekLabel}
+        previousWeekDisabled={visibleWeekIndex <= 0}
+        nextWeekDisabled={visibleWeekIndex >= weeks.length - 1}
+        onPreviousWeek={() => jumpToAdjacentWeek(-1)}
+        onNextWeek={() => jumpToAdjacentWeek(1)} />
       <nav className="week-tabs" aria-label="计划周">
-        <button
-          type="button"
-          className="week-tab-jump"
-          aria-label="上一周"
-          disabled={visibleWeekIndex <= 0}
-          onClick={() => jumpToAdjacentWeek(-1)}
-        >
-          <span aria-hidden="true">‹</span>
-        </button>
         <div className="week-tab-list">
           {weeks.map((week, index) => (
             <button
@@ -2213,15 +2217,6 @@ export function PlanEditor(props: PlanEditorProps) {
             ＋ 加一周
           </button>
         </div>
-        <button
-          type="button"
-          className="week-tab-jump"
-          aria-label="下一周"
-          disabled={visibleWeekIndex >= weeks.length - 1}
-          onClick={() => jumpToAdjacentWeek(1)}
-        >
-          <span aria-hidden="true">›</span>
-        </button>
       </nav>
       <ContextBar
         visible={!!sel && !readOnly}
