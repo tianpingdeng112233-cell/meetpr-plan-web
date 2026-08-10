@@ -158,6 +158,7 @@ function mapExercise(ex: PlanExerciseResponse, catalog: Catalog): ExerciseRow {
       id: ex.id, serverRowId: ex.id, serverSortOrder: ex.sort_order,
       hasLogs: ex.has_logs ?? false, conflictMessage: null,
       exerciseId: ex.exercise_id, name, ku: !custom, custom, isMain: ex.is_main_lift,
+      target: ex.target,
       aux: true, reps: '—', mode: 'kg', intensity: null, weightMode: 'uniform', boxes: [], note: ex.notes ?? '',
     }
   }
@@ -188,6 +189,7 @@ function mapExercise(ex: PlanExerciseResponse, catalog: Catalog): ExerciseRow {
     id: ex.id, serverRowId: ex.id, serverSortOrder: ex.sort_order,
     hasLogs: ex.has_logs ?? false, conflictMessage: null,
     exerciseId: ex.exercise_id, name, ku: !custom, custom, isMain: ex.is_main_lift,
+    target: ex.target,
     aux: false,
     reps,
     // `mode: rpe` is provenance only: reconcile keeps load_mode=null until an

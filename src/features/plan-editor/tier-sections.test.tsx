@@ -9,7 +9,7 @@ import type { ExerciseRow } from './types'
 function row(id: string, partial: Partial<ExerciseRow> = {}): ExerciseRow {
   return {
     id, serverRowId: null, serverSortOrder: null, hasLogs: false, conflictMessage: null,
-    exerciseId: 'ex', name: '深蹲', ku: true, custom: false, isMain: false,
+    exerciseId: 'ex', name: '深蹲', ku: true, custom: false, isMain: false, target: null,
     aux: false, reps: '5', mode: 'kg', boxes: [{ val: '100', empty: false }], note: '',
     ...partial,
   }

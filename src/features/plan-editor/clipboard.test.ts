@@ -34,6 +34,7 @@ describe('plan editor clipboard rows', () => {
       ku: true,
       custom: false,
       isMain: true,
+      target: null,
       aux: false,
       reps: '5',
       mode: 'kg',
@@ -64,7 +65,7 @@ describe('plan editor clipboard rows', () => {
   it('round-trips a row-level range even when the optional weight and note cells are empty', () => {
     const source: ExerciseRow = {
       id: 'row-range', serverRowId: null, serverSortOrder: null, hasLogs: false, conflictMessage: null,
-      exerciseId: 'bench', name: '卧推', ku: true, custom: false, isMain: true,
+      exerciseId: 'bench', name: '卧推', ku: true, custom: false, isMain: true, target: null,
       aux: false, reps: '5', mode: 'kg',
       intensity: { mode: 'rpe_range', value: '7', high: '8.5' },
       weightMode: 'uniform',
@@ -84,7 +85,7 @@ describe('plan editor clipboard rows', () => {
   it('round-trips legacy per-set RPE values without turning them into weights', () => {
     const source: ExerciseRow = {
       id: 'legacy-rpe', serverRowId: 'server-legacy', serverSortOrder: 0, hasLogs: false, conflictMessage: null,
-      exerciseId: 'bench', name: '卧推', ku: true, custom: false, isMain: true,
+      exerciseId: 'bench', name: '卧推', ku: true, custom: false, isMain: true, target: null,
       aux: false, reps: '5', mode: 'rpe',
       boxes: [{ val: '7.5', empty: false }, { val: '8', empty: false }],
       note: '',
@@ -108,7 +109,7 @@ describe('plan editor clipboard rows', () => {
   it('round-trips sparse per-set single-value intensity without moving it into weight', () => {
     const source: ExerciseRow = {
       id: 'pct-sparse', serverRowId: null, serverSortOrder: null, hasLogs: false, conflictMessage: null,
-      exerciseId: 'bench', name: '卧推', ku: true, custom: false, isMain: true,
+      exerciseId: 'bench', name: '卧推', ku: true, custom: false, isMain: true, target: null,
       aux: false, reps: '5', mode: 'kg',
       intensity: { mode: 'pct', value: '70', high: '' },
       intensityMode: 'per_set',

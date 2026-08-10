@@ -113,6 +113,7 @@ export function parseClipboardRows(text: string, exerciseIndex?: ExerciseResolve
       ku: resolved ? !custom : false,
       custom: resolved ? custom : false,
       isMain: resolved ? resolved.is_competition_lift || resolved.main_lift_family != null : false,
+      target: null,
       aux: boxes.length === 0,
       reps: (cells[2] ?? '').trim() || '—',
       mode,

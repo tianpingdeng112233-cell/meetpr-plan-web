@@ -19,6 +19,7 @@ function row(id: string, count: number, weight: string): ExerciseRow {
     ku: false,
     custom: false,
     isMain: true,
+    target: null,
     aux: false,
     reps: '5',
     mode: 'kg',

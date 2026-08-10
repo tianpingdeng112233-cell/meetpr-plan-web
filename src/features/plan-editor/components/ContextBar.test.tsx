@@ -14,17 +14,13 @@ describe('selected context bar', () => {
       <ContextBar
         visible
         dayLabel="W02 · 周一"
-        isRest={false}
         canCopyPrev
-        hasLockedRows={false}
         copyLabel="⎘ 复制上周"
         copyDone={false}
         selectedRowLabel="当前行 · 深蹲"
         hasRowClipboard
         onCopyPrev={vi.fn()}
         onPasteRow={vi.fn()}
-        onSetRest={vi.fn()}
-        onUnsetRest={vi.fn()}
         onClearDay={vi.fn()}
         onClose={vi.fn()}
       />,
@@ -34,7 +30,7 @@ describe('selected context bar', () => {
     expect(host.textContent).not.toContain('＋ 加动作')
     expect(host.textContent).toContain('复制上周')
     expect(host.textContent).toContain('粘贴动作')
-    expect(host.textContent).toContain('设为休息')
+    expect(host.textContent).not.toContain('设为休息')
     expect(host.textContent).toContain('清空本日')
 
     act(() => root.unmount())

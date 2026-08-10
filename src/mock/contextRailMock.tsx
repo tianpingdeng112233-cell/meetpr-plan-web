@@ -92,7 +92,7 @@ const auxDetail: ExerciseStatsDetail = {
 function row(over: Partial<ExerciseRow> & { id: string; name: string }): ExerciseRow {
   return {
     serverRowId: null, serverSortOrder: null, hasLogs: false, conflictMessage: null,
-    exerciseId: null, ku: false, custom: false, isMain: false, aux: false,
+    exerciseId: null, ku: false, custom: false, isMain: false, target: null, aux: false,
     reps: '', mode: 'kg', boxes: [], note: '', ...over,
   }
 }

@@ -27,6 +27,7 @@ function exercise(id: string, sets: PlanSetResponse[]): PlanExerciseResponse {
     exercise_id: id,
     is_main_lift: false,
     sort_order: 0,
+    target: null,
     notes: null,
     sets: sets.map((item, index) => ({ ...item, plan_exercise_id: `pe-${id}`, set_number: index + 1 })),
   }

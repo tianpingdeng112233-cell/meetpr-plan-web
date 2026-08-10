@@ -5,7 +5,7 @@ import type { DayCol, ExerciseRow, Week } from './types'
 function row(id: string, hasLogs = false): ExerciseRow {
   return {
     id, serverRowId: id, serverSortOrder: 0, hasLogs, conflictMessage: null,
-    exerciseId: id, name: id, ku: true, custom: false, isMain: false,
+    exerciseId: id, name: id, ku: true, custom: false, isMain: false, target: null,
     aux: false, reps: '5', mode: 'kg', boxes: [{ val: '100', empty: false }], note: '',
   }
 }
@@ -44,6 +44,15 @@ describe('moveDayInWeek', () => {
 
     expect(moved.days[0]).toMatchObject({ rest: true, rows: [] })
     expect(moved.days[1]).toMatchObject({ rest: false, rows: original.days[0].rows })
+  })
+
+  it('treats a legacy rest-marked day with rows as populated and swaps it losslessly', () => {
+    const legacyPopulated = day(0, [row('squat')], true)
+    const target = day(1, [row('bench')], false)
+    const moved = moveDayInWeek(week([legacyPopulated, target]), 0, 1)
+
+    expect(moved.days[0]).toMatchObject({ rest: false, rows: target.rows })
+    expect(moved.days[1]).toMatchObject({ rest: false, rows: legacyPopulated.rows })
   })
 
   it('swaps two populated training days without changing day order or anchors', () => {

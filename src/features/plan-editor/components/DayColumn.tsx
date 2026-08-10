@@ -1,6 +1,6 @@
-import { useLayoutEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { DayCol, ColWidths, ColKey, ExerciseRow } from '../types'
-import { COLS } from '../types'
+import { COLS, isRestDay } from '../types'
 import {
   filterRepsInput,
   filterStrengthInput,
@@ -33,21 +33,25 @@ export interface WeekBandBadge {
   tone: 'squat' | 'bench' | 'deadlift' | 'muscle' | 'neutral'
 }
 
+export interface WeekBandTargetOption extends WeekBandBadge {
+  token: string
+  group: 'lift' | 'muscle'
+}
+
 export interface WeekBandDayView {
   main: WeekBandSlot[]
   aux: WeekBandSlot[]
   rows: ReadonlyMap<string, ExerciseRow>
   badgeFor: (slot: WeekBandSlot) => WeekBandBadge
+  targetOptions: readonly WeekBandTargetOption[]
+  targetDisabled: (slot: WeekBandSlot) => boolean
+  onTargetChange: (slot: WeekBandSlot, target: string | null) => void
   onQuickAdd: (slot: WeekBandSlot) => void
   dayOrdinal: number
   weekdayLabel: string | null
   anchorWeekday: number | null
   anchorSaving?: boolean
   onAnchorWeekdayChange?: (weekday: number | null) => void
-  onToggleRest?: () => void
-  onClearDay?: () => void
-  onCopyPreviousWeek?: () => void
-  canCopyPreviousWeek?: boolean
 }
 
 interface Props {
@@ -91,6 +95,82 @@ const head: React.CSSProperties = {
   color: 'var(--mut)', textTransform: 'uppercase',
 }
 const stop = (e: React.MouseEvent) => e.stopPropagation()
+
+function TargetPicker({ slot, badge, options, disabled, onChange }: {
+  slot: WeekBandSlot
+  badge: WeekBandBadge
+  options: readonly WeekBandTargetOption[]
+  disabled?: boolean
+  onChange: (target: string | null) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const root = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!open) return undefined
+    const closeOutside = (event: MouseEvent) => {
+      if (!root.current?.contains(event.target as Node)) setOpen(false)
+    }
+    const closeEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setOpen(false)
+    }
+    document.addEventListener('mousedown', closeOutside)
+    document.addEventListener('keydown', closeEscape)
+    return () => {
+      document.removeEventListener('mousedown', closeOutside)
+      document.removeEventListener('keydown', closeEscape)
+    }
+  }, [open])
+  const choose = (target: string | null) => {
+    onChange(target)
+    setOpen(false)
+  }
+  const lifts = options.filter((option) => option.group === 'lift')
+  const muscles = options.filter((option) => option.group === 'muscle')
+  return (
+    <div className="week-band-target-picker" ref={root}>
+      <button
+        type="button"
+        className={`week-band-badge ${badge.tone}`}
+        aria-label={`目标：${badge.label === '—' ? '无目标' : badge.label}`}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        disabled={disabled}
+        onMouseDown={stop}
+        onClick={(event) => { stop(event); setOpen((value) => !value) }}
+      >
+        {badge.label}<span aria-hidden="true" className="week-band-target-caret">▾</span>
+      </button>
+      {open && (
+        <div className="week-band-target-menu" role="menu" onMouseDown={stop} onClick={stop}>
+          <button type="button" role="menuitemradio" aria-checked={slot.target == null}
+            className={slot.target == null ? 'selected' : ''} onClick={() => choose(null)}>
+            <span className="week-band-badge neutral">—</span><span>无目标</span>
+          </button>
+          <div className="week-band-target-group">竞技主项</div>
+          <div className="week-band-target-options">
+            {lifts.map((option) => (
+              <button type="button" role="menuitemradio" aria-checked={slot.target === option.token}
+                className={slot.target === option.token ? 'selected' : ''} key={option.token}
+                onClick={() => choose(option.token)}>
+                <span className={`week-band-badge ${option.tone}`}>{option.label}</span>
+              </button>
+            ))}
+          </div>
+          <div className="week-band-target-group">肌群</div>
+          <div className="week-band-target-options muscles">
+            {muscles.map((option) => (
+              <button type="button" role="menuitemradio" aria-checked={slot.target === option.token}
+                className={slot.target === option.token ? 'selected' : ''} key={option.token}
+                onClick={() => choose(option.token)}>
+                <span className="week-band-badge muscle">{option.label}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
 
 function ShiftBadge({ day }: { day: DayCol }) {
   if (!day.shiftBadge) return null
@@ -638,7 +718,7 @@ export function DayColumn({
     window.addEventListener('mouseup', onUp)
   }
 
-  if (day.rest && !weekBand) {
+  if (isRestDay(day) && !weekBand) {
     return (
       <div className={`day restday${selected ? ' sel' : ''}${dayMoveClass}`} data-dow={day.dow} onClick={onSelect}>
         <div className="dayhead" data-day-move-handle="" title={dayMoveTitle} onMouseDown={onDayMoveStart}
@@ -655,13 +735,60 @@ export function DayColumn({
     )
   }
 
+  // In the week-band view, rest is presentation derived solely from whether
+  // the day has action rows. The stored flag remains readable for legacy data,
+  // but cannot hide rows or force a populated day into a rest presentation.
+  if (weekBand && isRestDay(day)) {
+    return (
+      <div className={`day restday week-band-rest-card${selected ? ' sel' : ''}${dayMoveClass}`}
+        data-dow={day.dow} data-derived-rest="true" onClick={onSelect}>
+        <div className="dayhead" data-day-move-handle="" title={dayMoveTitle} onMouseDown={onDayMoveStart}
+          style={{ cursor: dayMoveCursor }}>
+          <span className="dayhead-line">
+            {!dayMoveDisabledHint && <span className="day-move-grip" aria-hidden="true">⋮</span>}
+            <span className="dayhead-primary">D{weekBand.dayOrdinal}</span>
+            {weekBand.weekdayLabel && <span className="dayhead-weekday">{weekBand.weekdayLabel}</span>}
+            {weekBand.dayOrdinal === 1 && (
+              <select
+                className="anchor-weekday-select"
+                aria-label={weekBand.anchorWeekday == null ? '设置 D1 周几' : '修改 D1 周几'}
+                title="D1 周几锚（仅影响标签显示）"
+                value={weekBand.anchorWeekday ?? ''}
+                disabled={readOnly || weekBand.anchorSaving || !weekBand.onAnchorWeekdayChange}
+                onMouseDown={stop}
+                onClick={stop}
+                onChange={(event) => weekBand.onAnchorWeekdayChange?.(event.currentTarget.value ? Number(event.currentTarget.value) : null)}
+              >
+                <option value="">设周几</option>
+                {['周一', '周二', '周三', '周四', '周五', '周六', '周日'].map((label, index) => (
+                  <option value={index + 1} key={label}>{label}</option>
+                ))}
+              </select>
+            )}
+            <span className="dayhead-date">{day.dateLabel}</span>
+            <ShiftBadge day={day} />
+            {columnLetter && <kbd className="day-column-key">{columnLetter}</kbd>}
+            {contextRecall}
+          </span>
+          <span className="week-band-rest-label">休息</span>
+        </div>
+        {!readOnly && (
+          <button type="button" className="week-band-rest-add" data-add-tier="main"
+            onMouseDown={stop} onClick={(event) => { stop(event); onAddRow('main') }}>
+            <span aria-hidden="true">＋</span> 加主项
+          </button>
+        )}
+      </div>
+    )
+  }
+
   const frozenWidth = weekBand ? 28 + 76 : 0
   const total = COLS.reduce((s, k) => s + colW[k], 0) + frozenWidth
   let acc = frozenWidth
   const dividers = COLS.map((k) => { acc += colW[k]; return { col: k, left: acc } })
 
   return (
-    <div className={`day${day.rest ? ' restday' : ''}${selected ? ' sel' : ''}${dayMoveClass}${weekBand ? ' week-band-day' : ''}`} data-dow={day.dow} onClick={onSelect}>
+    <div className={`day${selected ? ' sel' : ''}${dayMoveClass}${weekBand ? ' week-band-day' : ''}`} data-dow={day.dow} onClick={onSelect}>
       <div className="dayhead" data-day-move-handle="" title={dayMoveTitle} onMouseDown={onDayMoveStart}
         style={{ cursor: dayMoveCursor }}>
         <span className="dayhead-line">
@@ -692,21 +819,12 @@ export function DayColumn({
         </span>
         <span className="dayhead-theme">{dayTheme}</span>
         <span className="dayhead-meta">{dayMeta}</span>
-        {weekBand && !readOnly && (
-          <span className="dayhead-actions" onMouseDown={stop} onClick={stop}>
-            <button type="button" data-add-tier="main" onClick={() => onAddRow('main')}>＋ 主项</button>
-            <button type="button" data-add-tier="aux" onClick={() => onAddRow('aux')}>＋ 辅助</button>
-            <button type="button" onClick={weekBand.onToggleRest}>{day.rest ? '恢复训练' : '设为休息'}</button>
-            <button type="button" disabled={day.rows.length === 0} onClick={weekBand.onClearDay}>清空本日</button>
-            <button type="button" disabled={!weekBand.canCopyPreviousWeek} onClick={weekBand.onCopyPreviousWeek}>复制上周计划到本周</button>
-          </span>
-        )}
       </div>
 
       <div className="daygrid" style={{ width: total, fontVariantNumeric: 'tabular-nums' }}>
         <div className="gridhead" style={{ display: 'flex', alignItems: 'stretch', background: 'var(--card-bg)', borderBottom: '1px solid var(--line)' }}>
           {weekBand && <div className="gcell week-band-frozen week-band-index" data-c="index" style={{ width: 28, padding: '4px 3px', textAlign: 'center', ...head }}>#</div>}
-          {weekBand && <div className="gcell week-band-frozen week-band-target" data-c="target" style={{ width: 76, padding: '4px 6px', ...head }}>目标部位</div>}
+          {weekBand && <div className="gcell week-band-frozen week-band-target" data-c="target" style={{ width: 76, padding: '4px 6px', ...head }}>目标</div>}
           <div className="gcell" data-c="name" style={{ width: colW.name, padding: '4px 6px', ...head }}>动作</div>
           <div className="gcell" data-c="sets" style={{ width: colW.sets, padding: '4px 4px', textAlign: 'center', ...head }}>组</div>
           <div className="gcell" data-c="reps" style={{ width: colW.reps, padding: '4px 4px', textAlign: 'center', ...head }}>次</div>
@@ -743,7 +861,9 @@ export function DayColumn({
                   const badge = weekBand.badgeFor(slot)
                   return (
                     <div className="gcell week-band-frozen week-band-target" data-c="target" style={{ width: 76 }}>
-                      <span className={`week-band-badge ${badge.tone}`}>{badge.label}</span>
+                      <TargetPicker slot={slot} badge={badge} options={weekBand.targetOptions}
+                        disabled={readOnly || weekBand.targetDisabled(slot)}
+                        onChange={(target) => weekBand.onTargetChange(slot, target)} />
                     </div>
                   )
                 })()}
@@ -871,25 +991,41 @@ export function DayColumn({
         }
         const renderEmptySlot = (slot: WeekBandSlot, rowNumber: number) => {
           const badge = weekBand!.badgeFor(slot)
+          const missingName = slot.exemplar.name.trim() === ''
+          const quickAddDisabled = readOnly || missingName
           return (
-            <button
-              type="button"
+            <div
               key={`empty-${slot.key}`}
               className="exrow week-band-empty-row"
               data-empty-exercise-id={slot.exerciseId ?? undefined}
-              title={`本周无「${slot.exemplar.name || '未命名动作'}」，点击快速添加`}
-              disabled={readOnly}
-              onClick={(event) => { event.stopPropagation(); weekBand!.onQuickAdd(slot) }}
+              title={missingName
+                ? '未命名动作不可添加，请先完善动作名称'
+                : `本周无「${slot.exemplar.name}」，点击快速添加`}
+              role="button"
+              tabIndex={quickAddDisabled ? -1 : 0}
+              aria-disabled={quickAddDisabled}
+              onClick={(event) => { event.stopPropagation(); if (!quickAddDisabled) weekBand!.onQuickAdd(slot) }}
+              onKeyDown={(event) => {
+                if (event.target !== event.currentTarget) return
+                if (!quickAddDisabled && (event.key === 'Enter' || event.key === ' ')) {
+                  event.preventDefault()
+                  weekBand!.onQuickAdd(slot)
+                }
+              }}
             >
               <span className="exercise-row-main">
                 <span className="gcell week-band-frozen week-band-index" data-c="index" style={{ width: 28 }}>{rowNumber}</span>
                 <span className="gcell week-band-frozen week-band-target" data-c="target" style={{ width: 76 }}>
-                  <span className={`week-band-badge ${badge.tone}`}>{badge.label}</span>
+                  <TargetPicker slot={slot} badge={badge} options={weekBand!.targetOptions}
+                    disabled={readOnly || weekBand!.targetDisabled(slot)}
+                    onChange={(target) => weekBand!.onTargetChange(slot, target)} />
                 </span>
                 <span className="gcell week-band-frozen week-band-empty-name" data-c="name" style={{ width: colW.name }}>{slot.exemplar.name || '未命名动作'}</span>
-                <span className="week-band-empty-prescription" style={{ width: total - frozenWidth - colW.name }}>—　点击添加</span>
+                <span className="week-band-empty-prescription" style={{ width: total - frozenWidth - colW.name }}>
+                  {missingName ? '—　不可添加' : '—　点击添加'}
+                </span>
               </span>
-            </button>
+            </div>
           )
         }
         const addRowEntry = (tier: 'main' | 'aux') => (
@@ -897,6 +1033,12 @@ export function DayColumn({
             style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 8px', borderTop: '1px dashed var(--bd)', color: 'var(--mut)', cursor: 'pointer', fontSize: 11 }}>
             <span style={{ color: 'var(--ink)', fontWeight: 700 }}>＋</span> 加动作
           </div>
+        )
+        const addWeekBandRowEntry = (tier: 'main' | 'aux') => !readOnly && (
+          <button type="button" className="week-band-section-add" data-add-tier={tier}
+            onClick={(event) => { event.stopPropagation(); onAddRow(tier) }}>
+            <span aria-hidden="true">＋</span> {tier === 'main' ? '加主项' : '加辅助'}
+          </button>
         )
         if (weekBand) {
           const mainSummary = summarizeDaySection(day.rows.filter((row) => resolveTier(row) === 'main'))
@@ -909,13 +1051,12 @@ export function DayColumn({
           })
           return (
             <>
-              {weekBand.main.length > 0 && <TierHeader label="主项及变式" accent width={total} summary={mainSummary} />}
+              {(weekBand.main.length > 0 || !readOnly) && <TierHeader label="主项及变式" accent width={total} summary={mainSummary} />}
               {renderSlots(weekBand.main)}
-              {weekBand.aux.length > 0 && <TierHeader label="辅助项" width={total} summary={auxSummary} />}
+              {addWeekBandRowEntry('main')}
+              {(weekBand.aux.length > 0 || !readOnly) && <TierHeader label="辅助项" width={total} summary={auxSummary} />}
               {renderSlots(weekBand.aux)}
-              {weekBand.main.length === 0 && weekBand.aux.length === 0 && (
-                <div className="week-band-rest-empty">{day.rest ? '休息日' : '暂无动作'}</div>
-              )}
+              {addWeekBandRowEntry('aux')}
             </>
           )
         }

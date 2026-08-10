@@ -26,6 +26,7 @@ function week(num: number, content = true): Week {
         ku: true,
         custom: false,
         isMain: true,
+        target: null,
         aux: false,
         reps: '5',
         mode: 'kg',

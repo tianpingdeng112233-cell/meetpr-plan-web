@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { PlanWithChildren } from '../../api/types'
 import { mapPlanToWeeks, type Catalog } from './mapping'
 
-function plan(hasLogs?: boolean): PlanWithChildren {
+function plan(hasLogs?: boolean, target: string | null = null): PlanWithChildren {
   return {
     id: 'p', coach_id: 'c', trainee_id: 't', name: 'p', start_date: '2026-01-01',
     end_date: '2026-01-07', plan_weeks: 1, source: 'coach', source_template_id: null,
@@ -13,7 +13,7 @@ function plan(hasLogs?: boolean): PlanWithChildren {
       shifted_to_date: null,
       exercises: [{
         id: 'pe', plan_day_id: 'd', exercise_id: 'ex', is_main_lift: false,
-        sort_order: 4, ...(hasLogs === undefined ? {} : { has_logs: hasLogs }), notes: null, sets: [],
+        sort_order: 4, target, ...(hasLogs === undefined ? {} : { has_logs: hasLogs }), notes: null, sets: [],
       }],
     }],
   }
@@ -30,5 +30,9 @@ describe('mapPlanToWeeks history-lock wire compatibility', () => {
 
   it('treats a missing pre-rollout has_logs field as false without crashing', () => {
     expect(mapPlanToWeeks(plan(), catalog)[0].days[0].rows[0].hasLogs).toBe(false)
+  })
+
+  it('maps a stored plan_exercises target onto the row', () => {
+    expect(mapPlanToWeeks(plan(false, 'chest'), catalog)[0].days[0].rows[0].target).toBe('chest')
   })
 })

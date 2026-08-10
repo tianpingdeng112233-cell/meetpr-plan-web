@@ -15,7 +15,7 @@ vi.mock('../../api/coach', () => ({ getExerciseStats: api.getExerciseStats }))
 function row(id = 'squat', name = '竞技深蹲', isMain = true): ExerciseRow {
   return {
     id, serverRowId: null, serverSortOrder: null, hasLogs: false, conflictMessage: null,
-    exerciseId: id, name, ku: true, custom: false, isMain, aux: false,
+    exerciseId: id, name, ku: true, custom: false, isMain, target: null, aux: false,
     reps: '—', mode: 'kg', boxes: [], note: '',
   }
 }

@@ -4,7 +4,7 @@
 // powers the name-cell typeahead.
 
 import aliasesData from '../../data/exercise-aliases.json'
-import type { ExerciseResponse } from '../../api/types'
+import type { ExerciseResponse, MuscleGroup } from '../../api/types'
 import type { ExerciseUsageStat } from '../../api/exercises'
 import type { CatalogClassification } from './weeklySummary'
 
@@ -159,6 +159,11 @@ export class ExerciseIndex {
       main_lift_family: exercise.main_lift_family,
       muscle_groups: exercise.muscle_groups,
     } : null
+  }
+
+  /** Muscle tokens present anywhere in the currently loaded catalog. */
+  targetMuscleGroups(): Set<MuscleGroup> {
+    return new Set(this.catalog.flatMap((exercise) => exercise.muscle_groups))
   }
 
   /** Metadata needed by the editor's inline history/e1RM information row. */

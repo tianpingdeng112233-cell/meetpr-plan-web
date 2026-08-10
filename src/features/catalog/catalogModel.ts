@@ -72,6 +72,12 @@ export const MOVEMENT_PATTERN_LABEL: Record<MovementPattern, string> = {
 }
 
 export const MUSCLE_OPTIONS = (Object.keys(MUSCLE_LABEL) as MuscleGroup[])
+/** Stable head-to-toe order for compact target pickers (non-anatomical utilities last). */
+export const TARGET_MUSCLE_ORDER: MuscleGroup[] = [
+  'trap', 'shoulder', 'chest', 'back', 'biceps', 'triceps', 'forearm', 'grip',
+  'core', 'hip', 'hip_flexor', 'glute', 'adductor', 'quad', 'hamstring',
+  'calf', 'tibialis', 'mobility', 'cardio',
+]
 export const EQUIPMENT_OPTIONS = (Object.keys(EQUIPMENT_LABEL) as Equipment[])
 export const MOVEMENT_PATTERN_OPTIONS = (Object.keys(MOVEMENT_PATTERN_LABEL) as MovementPattern[])
 export const FAMILY_CATEGORIES: LiftFamily[] = ['squat', 'bench', 'deadlift']

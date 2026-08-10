@@ -36,6 +36,8 @@ export interface ExerciseRow {
   ku: boolean        // matched the exercise catalog
   custom: boolean    // coach-created custom exercise
   isMain: boolean    // backend is_main_lift flag (independent of aux)
+  /** Coach-selected slot meaning persisted as plan_exercises.target; null = no target. */
+  target: string | null
   aux: boolean       // accessory with no structured intensity
   reps: string       // target reps, e.g. "5" / "8+" / "—"
   /**
@@ -64,6 +66,7 @@ export interface DayCol {
   shiftedToDate?: string | null
   /** Tooltip details for a genuinely shifted day. */
   shiftBadge?: { originalDate: string; days: number } | null
+  /** Legacy compatibility marker. Never use as the source of truth; derive rest from rows. */
   rest: boolean
   rows: ExerciseRow[]
   /** Unsaved mixed-day deletions whose sort slots may be reused immediately by new rows. */
@@ -77,6 +80,11 @@ export interface Week {
   isCurrent: boolean
   vol: string
   days: DayCol[]
+}
+
+/** The only authoritative rest-day rule across rendering and data paths. */
+export function isRestDay(day: Pick<DayCol, 'rows'>): boolean {
+  return day.rows.length === 0
 }
 
 export type ColKey = 'name' | 'sets' | 'reps' | 'int' | 'weight' | 'note'

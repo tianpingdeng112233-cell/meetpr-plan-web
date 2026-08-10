@@ -181,7 +181,7 @@ function plan(note: string, status: PlanWithChildren['status'] = 'draft'): PlanW
       shifted_to_date: null,
       exercises: [{
         id: 'plan-exercise', plan_day_id: 'day', exercise_id: 'exercise', is_main_lift: true,
-        sort_order: 0, notes: note, sets: [{
+        sort_order: 0, target: null, notes: note, sets: [{
           id: 'set', plan_exercise_id: 'plan-exercise', set_number: 1, target_reps: 5,
           target_reps_max: null, intensity_mode: 'weight', target_value: '100', set_type: 'working',
           rest_seconds: null, coach_note: null, created_at: '2026-01-01T00:00:00Z',
@@ -572,6 +572,7 @@ describe('PlanWorkspace editor remount', () => {
           exercise_id: exercise.id,
           is_main_lift: true,
           sort_order: 0,
+          target: null,
           notes: null,
           sets: [{
             id: 'tonnage-set',

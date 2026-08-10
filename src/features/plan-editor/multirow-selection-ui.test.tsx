@@ -18,6 +18,7 @@ function row(id: string, name: string, partial: Partial<ExerciseRow> = {}): Exer
     ku: true,
     custom: false,
     isMain: false,
+    target: null,
     aux: false,
     reps: '8',
     mode: 'kg',

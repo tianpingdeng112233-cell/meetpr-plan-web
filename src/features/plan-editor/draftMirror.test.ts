@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { ExerciseRow, Week } from './types'
 import {
-  clearDraftMirrorIfHash, createDraftMirrorWriter, DRAFT_MIRROR_PREFIX,
+  clearDraftMirrorIfHash, createDraftMirrorWriter, DRAFT_MIRROR_PREFIX, DRAFT_MIRROR_VERSION,
   draftContentHash, draftMirrorStorageKey, loadDraftMirror, saveDraftMirror,
   type DraftMirrorContent,
 } from './draftMirror'
@@ -19,7 +19,7 @@ class MemoryStorage implements Storage {
 function row(note = ''): ExerciseRow {
   return {
     id: 'local-row', serverRowId: null, serverSortOrder: null, hasLogs: false, conflictMessage: null,
-    exerciseId: 'exercise', name: '深蹲', ku: true, custom: false, isMain: true,
+    exerciseId: 'exercise', name: '深蹲', ku: true, custom: false, isMain: true, target: null,
     aux: false, reps: '5', mode: 'kg', boxes: [{ val: '100', empty: false }], note,
   }
 }
@@ -33,6 +33,47 @@ function content(note = ''): DraftMirrorContent {
     })),
   }]
   return { weeks, planStartDate: '2026-01-01', weeksCount: 1 }
+}
+
+function legacyContentHash(value: DraftMirrorContent): string {
+  const canonical = {
+    planStartDate: value.planStartDate,
+    weeksCount: value.weeksCount,
+    weeks: value.weeks.map((week) => ({
+      num: week.num,
+      days: week.days.map((day) => ({
+        dow: day.dow,
+        rest: day.rest,
+        rows: day.rows.map((entry) => ({
+          exerciseId: entry.exerciseId,
+          name: entry.name,
+          ku: entry.ku,
+          custom: entry.custom,
+          isMain: entry.isMain,
+          aux: entry.aux,
+          reps: entry.reps,
+          mode: entry.mode,
+          intensity: entry.intensity == null ? entry.intensity : {
+            mode: entry.intensity.mode,
+            value: entry.intensity.value,
+            high: entry.intensity.high,
+          },
+          intensityMode: entry.intensityMode,
+          intensityBoxes: entry.intensityBoxes?.map((box) => ({ val: box.val, empty: box.empty })),
+          weightMode: entry.weightMode,
+          boxes: entry.boxes.map((box) => ({ val: box.val, empty: box.empty })),
+          note: entry.note,
+        })),
+      })),
+    })),
+  }
+  const input = JSON.stringify(canonical)
+  let hash = 0x811c9dc5
+  for (let index = 0; index < input.length; index++) {
+    hash ^= input.charCodeAt(index)
+    hash = Math.imul(hash, 0x01000193)
+  }
+  return `fnv1a32:${(hash >>> 0).toString(16).padStart(8, '0')}`
 }
 
 afterEach(() => vi.useRealTimers())
@@ -81,6 +122,65 @@ describe('local draft mirror storage', () => {
     storage.setItem(draftMirrorStorageKey('old'), JSON.stringify({ version: 0 }))
     expect(loadDraftMirror('old', storage)).toBeNull()
     expect(storage.getItem(draftMirrorStorageKey('old'))).toBeNull()
+  })
+
+  it.each([
+    { label: 'rest:false with empty rows', rest: false, rows: [] as ExerciseRow[], normalizedRest: true },
+    { label: 'rest:true with rows', rest: true, rows: [row('legacy conflict')], normalizedRest: false },
+  ])('migrates a verified v1 mirror with $label without losing edits', ({ rest, rows, normalizedRest }) => {
+    const storage = new MemoryStorage()
+    const legacyContent = content('other-day unsaved edit')
+    legacyContent.weeks[0].days[1] = {
+      ...legacyContent.weeks[0].days[1],
+      rest,
+      rows,
+    }
+    const legacyRawContent = structuredClone(legacyContent)
+    for (const week of legacyRawContent.weeks) {
+      for (const day of week.days) {
+        for (const entry of day.rows) delete (entry as Partial<ExerciseRow>).target
+      }
+    }
+    const key = draftMirrorStorageKey('legacy')
+    storage.setItem(key, JSON.stringify({
+      version: 1,
+      planId: 'legacy',
+      savedAt: '2026-07-18T10:00:00.000Z',
+      contentHash: legacyContentHash(legacyRawContent),
+      content: legacyRawContent,
+    }))
+
+    const migrated = loadDraftMirror('legacy', storage)
+    expect(migrated?.version).toBe(DRAFT_MIRROR_VERSION)
+    expect(migrated?.content.weeks[0].days[0].rows[0].note).toBe('other-day unsaved edit')
+    expect(migrated?.content.weeks[0].days[1].rest).toBe(normalizedRest)
+    expect(migrated?.content.weeks[0].days[1].rows[0]?.target ?? null).toBeNull()
+
+    const rewritten = JSON.parse(storage.getItem(key)!) as {
+      version: number
+      contentHash: string
+      content: DraftMirrorContent
+    }
+    expect(rewritten.version).toBe(2)
+    expect(rewritten.content.weeks[0].days[0].rows[0].note).toBe('other-day unsaved edit')
+    expect(rewritten.content.weeks[0].days[1].rest).toBe(normalizedRest)
+    expect(rewritten.contentHash).toBe(draftContentHash(rewritten.content))
+  })
+
+  it('removes a v1 mirror only when its legacy signature fails', () => {
+    const storage = new MemoryStorage()
+    const legacyContent = content('must not load')
+    const key = draftMirrorStorageKey('bad-v1')
+    storage.setItem(key, JSON.stringify({
+      version: 1,
+      planId: 'bad-v1',
+      savedAt: '2026-07-18T10:00:00.000Z',
+      contentHash: 'fnv1a32:00000000',
+      content: legacyContent,
+    }))
+
+    expect(loadDraftMirror('bad-v1', storage)).toBeNull()
+    expect(storage.getItem(key)).toBeNull()
   })
 
   it('keeps only the five most recently written plan mirrors', () => {

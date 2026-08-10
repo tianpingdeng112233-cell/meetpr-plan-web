@@ -24,6 +24,7 @@ function row(patch: Partial<ExerciseRow> = {}): ExerciseRow {
     ku: true,
     custom: false,
     isMain: true,
+    target: null,
     aux: false,
     reps: '3',
     mode: 'kg',

@@ -18,6 +18,7 @@ function row(): ExerciseRow {
     ku: true,
     custom: false,
     isMain: true,
+    target: null,
     aux: false,
     reps: '3',
     mode: 'kg',

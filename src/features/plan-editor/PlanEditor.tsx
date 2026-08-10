@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ColKey, ColWidths, Week, DayCol, ExerciseRow } from './types'
-import { COL_DEFAULTS, COL_MIN, isContentfulUnbound } from './types'
+import { COL_DEFAULTS, COL_MIN, isContentfulUnbound, isRestDay } from './types'
 import { getBoundRowInputIssue, type BoundRowInputIssue } from './inputGuard'
 import {
   isSingleValueIntensity,
@@ -19,7 +19,7 @@ import { ExercisePopover } from './components/ExercisePopover'
 import { CustomExerciseDialog } from './components/CustomExerciseDialog'
 import type { ExerciseIndex, ExerciseHit } from './exerciseIndex'
 import type { CreateCustomExerciseInput } from '../../api/exercises'
-import type { ExerciseResponse, ExerciseStatsOverview, PlanStatus, StudentOnboardingProfile } from '../../api/types'
+import type { ExerciseResponse, ExerciseStatsOverview, MuscleGroup, PlanStatus, StudentOnboardingProfile } from '../../api/types'
 import type { ParsedWeek } from './import'
 import {
   LockedRowMutationError, ReconcileConflict, ReconciliationError, type SaveResult,
@@ -46,16 +46,17 @@ import {
   type PlanCellSelection,
 } from './selectionModel'
 import { useGlobalKeyboardHandler } from '../workspace/globalKeyboard'
-import { MUSCLE_LABEL } from '../catalog/catalogModel'
+import { MUSCLE_LABEL, TARGET_MUSCLE_ORDER } from '../catalog/catalogModel'
 import {
   alignWeeksByExercise,
   anchoredWeekday,
   closestWeekToViewportCenter,
   orderWeeksByWeekBand,
   reorderWeekBandSkeleton,
+  setWeekBandSlotTarget,
   type WeekBandSlot,
 } from './weekBandModel'
-import type { WeekBandBadge } from './components/DayColumn'
+import type { WeekBandBadge, WeekBandTargetOption } from './components/DayColumn'
 
 interface Sel { wnum: number; dow: number }
 interface PopState { visible: boolean; x: number; y: number; wnum: number; dow: number; rowId: string; query: string }
@@ -175,7 +176,7 @@ interface DetailedIssueRow extends IssueRow {
 function findDetailedIssueRows(wks: Week[]): DetailedIssueRow[] {
   const issues: DetailedIssueRow[] = []
   for (const wk of wks) for (const d of wk.days) {
-    if (d.rest) continue
+    if (isRestDay(d)) continue
     for (const r of d.rows) {
       if (r.hasLogs) continue
       if (isContentfulUnbound(r)) issues.push({ rowId: r.id, kind: 'unbound' })
@@ -223,7 +224,7 @@ function isPastISODate(iso: string): boolean {
 }
 
 type WeeksUpdate = Week[] | ((prev: Week[]) => Week[])
-interface DayClipboard { rest: boolean; rows: ExerciseRow[] }
+interface DayClipboard { rows: ExerciseRow[] }
 
 function cloneRow(row: ExerciseRow, prefix: string, index: number): ExerciseRow {
   const source = materializeIntensityRow(row)
@@ -245,7 +246,7 @@ function cloneRows(rows: ExerciseRow[], prefix: string): ExerciseRow[] {
 }
 
 function cloneDayClipboard(day: DayCol): DayClipboard {
-  return { rest: day.rest, rows: cloneRows(day.rows, 'clip') }
+  return { rows: cloneRows(day.rows, 'clip') }
 }
 
 function dayDisplay(day: DayCol): string {
@@ -578,7 +579,7 @@ export function PlanEditor(props: PlanEditorProps) {
       const slot = weeksRef.current?.querySelector<HTMLElement>(`[data-week-slot][data-wnum="${current.num}"]`)
       const scroller = scrollerRef.current
       if (scroller) scrollElementLeft(scroller, slot?.offsetLeft ?? 0)
-      const firstTrain = current.days.find((day) => !day.rest)
+      const firstTrain = current.days.find((day) => !isRestDay(day))
       if (firstTrain) setSel({ wnum: current.num, dow: firstTrain.dow })
     })
     return () => window.cancelAnimationFrame(id)
@@ -748,7 +749,7 @@ export function PlanEditor(props: PlanEditorProps) {
               '该操作涉及带学员顺延日期的天。保存后该天的顺延日期会丢失、回到按序数计算的日期。确认继续搬动？',
             )
             if (confirmed) {
-              const swapped = !targetDay.rest && targetDay.rows.length > 0
+              const swapped = !isRestDay(targetDay)
               setWeeksWithHistory((previous) => {
                 const index = previous.findIndex((week) => week.num === wnum)
                 if (index < 0) return previous
@@ -987,18 +988,54 @@ export function PlanEditor(props: PlanEditorProps) {
     return derived
   }, [props.exerciseIndex, weeks])
 
-  const weekBandBadge = useCallback((slot: WeekBandSlot): WeekBandBadge => {
-    const metadata = slot.exerciseId ? props.exerciseIndex?.bandMetadataById(slot.exerciseId) : null
-    if (metadata && metadata.exercise_type !== 'accessory' && metadata.main_lift_family) {
-      const labels = { squat: '蹲', bench: '卧', deadlift: '拉' } as const
-      return { label: labels[metadata.main_lift_family], tone: metadata.main_lift_family }
-    }
-    const primaryMuscle = metadata?.muscle_groups[0]
-    if (metadata?.exercise_type === 'accessory' && primaryMuscle) {
-      return { label: MUSCLE_LABEL[primaryMuscle], tone: 'muscle' }
-    }
-    return { label: slot.tier === 'main' ? '主项' : '—', tone: 'neutral' }
+  const weekBandTargetOptions = useMemo<WeekBandTargetOption[]>(() => {
+    const present = props.exerciseIndex?.targetMuscleGroups() ?? new Set()
+    return [
+      { token: 'squat', label: '蹲', tone: 'squat', group: 'lift' },
+      { token: 'bench', label: '卧', tone: 'bench', group: 'lift' },
+      { token: 'deadlift', label: '拉', tone: 'deadlift', group: 'lift' },
+      ...TARGET_MUSCLE_ORDER.filter((muscle) => present.has(muscle)).map((muscle) => ({
+        token: muscle,
+        label: MUSCLE_LABEL[muscle],
+        tone: 'muscle' as const,
+        group: 'muscle' as const,
+      })),
+    ]
   }, [props.exerciseIndex])
+
+  const weekBandBadge = useCallback((slot: WeekBandSlot): WeekBandBadge => {
+    if (!slot.target) return { label: '—', tone: 'neutral' }
+    const option = weekBandTargetOptions.find((candidate) => candidate.token === slot.target)
+    if (option) return option
+    if (slot.target in MUSCLE_LABEL) {
+      return { label: MUSCLE_LABEL[slot.target as MuscleGroup], tone: 'muscle' }
+    }
+    return { label: slot.target, tone: 'neutral' }
+  }, [weekBandTargetOptions])
+
+  const changeWeekBandTarget = (dow: number, slot: WeekBandSlot, target: string | null) => {
+    if (readOnly) return
+    // Stay fully functional: the helper re-derives alignment and the hasLogs
+    // lock from `prev`, so a queued autosave/refetch update can never be
+    // clobbered by a snapshot. The outcome is captured in a ref inside the
+    // updater and the toast is deferred to a microtask (updaters may re-run
+    // under StrictMode; writing the same value twice is harmless).
+    const outcome = { changed: false }
+    setWeeksWithHistory((prev) => {
+      const next = setWeekBandSlotTarget(prev, rowTier, dow, slot.key, target)
+      outcome.changed = next != null
+      return next ?? prev
+    })
+    queueMicrotask(() => {
+      if (!outcome.changed) {
+        setStatusText('该动作已有打卡记录，不可修改目标')
+        return
+      }
+      setStatusText(target == null
+        ? `已清除「${slot.exemplar.name || '未命名动作'}」的全周目标`
+        : `已将「${slot.exemplar.name || '未命名动作'}」的全周目标设为 ${weekBandTargetOptions.find((option) => option.token === target)?.label ?? target}`)
+    })
+  }
 
   const reorderRow = (
     wnum: number,
@@ -1111,7 +1148,7 @@ export function PlanEditor(props: PlanEditorProps) {
     if (!targetSelection || targetSelection.wnum <= 1) return
     const targetWeek = weeks.find((week) => week.num === targetSelection.wnum)
     if (targetWeek?.days.some((day) => day.rows.some((row) => row.hasLogs))) return
-    const occupiedDays = targetWeek?.days.filter((day) => !day.rest && day.rows.length > 0).length ?? 0
+    const occupiedDays = targetWeek?.days.filter((day) => !isRestDay(day)).length ?? 0
     if (
       occupiedDays > 0
       && !window.confirm(`本周已有 ${occupiedDays} 天训练内容，复制上周会覆盖整周计划。是否继续？`)
@@ -1128,8 +1165,8 @@ export function PlanEditor(props: PlanEditorProps) {
           if (!source) return day
           return {
             ...day,
-            rest: source.rest,
-            rows: source.rest ? [] : cloneRows(source.rows, 'copy-week'),
+            rest: isRestDay(source),
+            rows: cloneRows(source.rows, 'copy-week'),
             releasedSortOrders: [],
           }
         }),
@@ -1243,7 +1280,7 @@ export function PlanEditor(props: PlanEditorProps) {
       ...wk,
       days: wk.days.map((day) => day.dow !== sel.dow ? day : replaceUnlockedRows(
         day,
-        clip.rest ? [] : clip.rows,
+        clip.rows,
       )),
     }))
     setRowSelection(singleRowSelection(null))
@@ -1456,6 +1493,7 @@ export function PlanEditor(props: PlanEditorProps) {
     id: `n${Date.now()}-${Math.round(performance.now())}`,
     serverRowId: null, serverSortOrder: null, hasLogs: false, conflictMessage: null,
     exerciseId: null, name: '', ku: false, custom: false, isMain: false,
+    target: null,
     aux: false, reps: '—', mode: 'kg', intensity: null, weightMode: 'uniform', boxes: [], note: '',
   })
   // A blank row can't resolve its tier from the catalog yet, so seed isMain from
@@ -1482,13 +1520,16 @@ export function PlanEditor(props: PlanEditorProps) {
   }
 
   const quickAddAlignedExercise = (wnum: number, dow: number, slot: WeekBandSlot) => {
-    if (readOnly || !slot.exerciseId) return
+    // Name-based slots (unbound imported/sample rows) quick-add too: the new
+    // row copies the exemplar's name unbound and aligns by the same name key.
+    if (readOnly || !slot.exemplar.name.trim()) return
     const row = blankRow()
     row.exerciseId = slot.exerciseId
     row.name = slot.exemplar.name
     row.ku = slot.exemplar.ku
     row.custom = slot.exemplar.custom
     row.isMain = slot.tier === 'main'
+    row.target = slot.target
     // Match the ordinary add+bind path: catalog accessories still use the
     // structured prescription grid and participate in the publish input guard.
     // `aux` is reserved for explicitly imported notes-only actions.
@@ -1507,30 +1548,6 @@ export function PlanEditor(props: PlanEditorProps) {
     setStatusText(`已添加「${row.name}」到 W${String(wnum).padStart(2, '0')} · D${dow + 1}`)
   }
 
-  const patchDayAt = (wnum: number, dow: number, updater: (day: DayCol) => DayCol) => {
-    setWeeksWithHistory((prev) => prev.map((week) => week.num !== wnum ? week : {
-      ...week,
-      days: week.days.map((day) => day.dow === dow ? updater(day) : day),
-    }))
-    handleSelect(wnum, dow)
-  }
-
-  const clearDayAt = (wnum: number, dow: number) => patchDayAt(wnum, dow, (day) => {
-    const released = new Set(day.releasedSortOrders ?? [])
-    for (const row of day.rows) if (!row.hasLogs && row.serverSortOrder != null) released.add(row.serverSortOrder)
-    return {
-      ...day,
-      rows: day.rows.filter((row) => row.hasLogs),
-      releasedSortOrders: [...released].sort((a, b) => a - b),
-    }
-  })
-
-  const toggleRestAt = (wnum: number, dow: number) => patchDayAt(wnum, dow, (day) => {
-    if (day.rest) return { ...day, rest: false }
-    return day.rows.some((row) => row.hasLogs)
-      ? day
-      : { ...day, rest: true, rows: [], releasedSortOrders: [] }
-  })
   const handleClearDay = () => {
     patchSelDay((d) => {
     const released = new Set(d.releasedSortOrders ?? [])
@@ -1544,14 +1561,6 @@ export function PlanEditor(props: PlanEditorProps) {
     setRowSelection(singleRowSelection(null))
     setCellSelection(null)
   }
-  const handleSetRest = () => {
-    patchSelDay((d) => d.rows.some((row) => row.hasLogs)
-      ? d
-      : { ...d, rest: true, rows: [], releasedSortOrders: [] })
-    setRowSelection(singleRowSelection(null))
-    setCellSelection(null)
-  }
-  const handleUnsetRest = () => patchSelDay((d) => ({ ...d, rest: false }))
 
   const [saving, setSaving] = useState(false)
 
@@ -1664,7 +1673,7 @@ export function PlanEditor(props: PlanEditorProps) {
   // The ⚠ chip in the top bar counts both and jumps the coach to the next one.
   const countUnbound = (wks: Week[]) => wks.reduce(
     (n, wk) => n + wk.days.reduce((m, d) => (
-      d.rest ? m : m + d.rows.filter((row) => !row.hasLogs && isContentfulUnbound(row)).length
+      isRestDay(d) ? m : m + d.rows.filter((row) => !row.hasLogs && isContentfulUnbound(row)).length
     ), 0),
     0,
   )
@@ -1748,6 +1757,8 @@ export function PlanEditor(props: PlanEditorProps) {
             '这份计划包含逐组不同的次数/备注/组间休息，网页编辑器还无法无损保存，为避免丢失这些设置已拒绝写入。'],
           PLAN_SET_SPEC_INCOMPLETE: ['有已绑定动作组次/强度不完整或无效 · 点「待核对」修正',
             '有已绑定动作的组次/强度没填全或值无效。点顶栏「待核对」查看原因并逐个修正后再保存。'],
+          PLAN_TARGET_INVALID: ['目标值无效 · 请重新选择',
+            '目标必须从目标选择器中选择，请重新选择后再保存。'],
         }
         const [status, detail] = explain[error.code]
         setStatusText(status)
@@ -1935,6 +1946,8 @@ export function PlanEditor(props: PlanEditorProps) {
               '这份计划包含逐组不同的次数/备注/组间休息，网页编辑器还无法无损保存，为避免丢失这些设置已拒绝写入。'],
             PLAN_SET_SPEC_INCOMPLETE: ['有已绑定动作组次/强度不完整或无效 · 点「待核对」修正',
               '有已绑定动作的组次/强度没填全或值无效。点顶栏「待核对」查看原因并逐个修正后再更新。'],
+            PLAN_TARGET_INVALID: ['目标值无效 · 请重新选择',
+              '目标必须从目标选择器中选择，请重新选择后再更新。'],
           }
           const [status, detail] = explain[error.code]
           setStatusText(status)
@@ -2008,7 +2021,7 @@ export function PlanEditor(props: PlanEditorProps) {
       pendingPlanStart.current = importStart
       importedPastHistory.current = markPastAsAssumedComplete
       const targetWeek = nextWeeks.find((week) => week.isCurrent) ?? nextWeeks[0]
-      const firstTrain = targetWeek?.days.find((day) => !day.rest)
+      const firstTrain = targetWeek?.days.find((day) => !isRestDay(day))
       setSel(targetWeek && firstTrain ? { wnum: targetWeek.num, dow: firstTrain.dow } : null)
       if (targetWeek) {
         setCurWeekLabel(weekLabel(targetWeek.num))
@@ -2115,16 +2128,6 @@ export function PlanEditor(props: PlanEditorProps) {
     const d = wk?.days.find((x) => x.dow === sel.dow)
     return d ? `${d.dowLabel} ${d.dateLabel}（第 ${sel.wnum} 周）` : ''
   })()
-  const selIsRest = (() => {
-    if (!sel) return false
-    const wk = weeks.find((w) => w.num === sel.wnum)
-    return wk?.days.find((x) => x.dow === sel.dow)?.rest ?? false
-  })()
-  const selHasLockedRows = (() => {
-    if (!sel) return false
-    const wk = weeks.find((w) => w.num === sel.wnum)
-    return wk?.days.find((x) => x.dow === sel.dow)?.rows.some((row) => row.hasLogs) ?? false
-  })()
   const copyTargetHasLockedRows = (() => {
     if (!sel) return false
     return weeks.find((week) => week.num === sel.wnum)?.days
@@ -2222,7 +2225,7 @@ export function PlanEditor(props: PlanEditorProps) {
         onChangeWeeks={props.onChangePlanWeeks ? handleChangePlanWeeks : undefined}
         removalSummary={(nextCount) => weeks.filter((week) => week.num > nextCount).reduce((summary, week) => {
           for (const day of week.days) {
-            if (day.rest || day.rows.length === 0) continue
+            if (isRestDay(day)) continue
             summary.days++
             summary.exercises += day.rows.length
           }
@@ -2260,18 +2263,14 @@ export function PlanEditor(props: PlanEditorProps) {
       <ContextBar
         visible={!!sel && !readOnly}
         dayLabel={selDayLabel}
-        isRest={selIsRest}
         canCopyPrev={!!sel && sel.wnum > 1 && !copyTargetHasLockedRows}
         copyDisabledHint={copyTargetHasLockedRows ? '目标周含学员已打卡动作,不能用上周覆盖' : undefined}
-        hasLockedRows={selHasLockedRows}
         copyLabel={copyDone ? '✓ 已复制上周' : COPY_LABEL}
         copyDone={copyDone}
         selectedRowLabel={selectedRowLabel}
         hasRowClipboard={hasRowClipboard}
         onCopyPrev={handleCopyPrev}
         onPasteRow={pasteSelectedRows}
-        onSetRest={handleSetRest}
-        onUnsetRest={handleUnsetRest}
         onClearDay={handleClearDay}
         onClose={() => {
           setSel(null)
@@ -2355,6 +2354,11 @@ export function PlanEditor(props: PlanEditorProps) {
                             aux: alignment?.aux ?? [],
                             rows: alignment?.rowsByWeek.get(wk.num) ?? new Map(),
                             badgeFor: weekBandBadge,
+                            targetOptions: weekBandTargetOptions,
+                            targetDisabled: (slot) => alignment
+                              ? [...alignment.rowsByWeek.values()].some((rows) => rows.get(slot.key)?.hasLogs)
+                              : false,
+                            onTargetChange: (slot, target) => changeWeekBandTarget(day.dow, slot, target),
                             onQuickAdd: (slot) => quickAddAlignedExercise(wk.num, day.dow, slot),
                             dayOrdinal: dayIndex + 1,
                             weekdayLabel: anchoredWeekday(anchorWeekday, dayIndex + 1),
@@ -2363,10 +2367,6 @@ export function PlanEditor(props: PlanEditorProps) {
                             onAnchorWeekdayChange: props.onChangeAnchorWeekday
                               ? (weekday) => { void handleAnchorWeekdayChange(weekday).catch(() => undefined) }
                               : undefined,
-                            onToggleRest: () => toggleRestAt(wk.num, day.dow),
-                            onClearDay: () => clearDayAt(wk.num, day.dow),
-                            onCopyPreviousWeek: () => handleCopyPrev({ wnum: wk.num, dow: day.dow }),
-                            canCopyPreviousWeek: wk.num > 1 && !wk.days.some((candidate) => candidate.rows.some((row) => row.hasLogs)),
                           }
                         })()}
                       />

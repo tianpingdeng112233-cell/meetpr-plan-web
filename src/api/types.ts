@@ -318,6 +318,7 @@ export interface PlanExerciseResponse {
   exercise_id: string
   is_main_lift: boolean
   sort_order: number
+  target: string | null
   /** backend spec 016; optional while production rolls out the new contract */
   has_logs?: boolean
   notes: string | null
@@ -418,6 +419,7 @@ export interface CreatePlanExerciseBody {
   exercise_id: string
   is_main_lift: boolean
   sort_order: number
+  target?: string | null
   notes?: string | null
 }
 export interface CreatePlanSetBody {
@@ -463,6 +465,7 @@ export interface BatchPlanExerciseBody {
   exercise_id: string
   is_main_lift: boolean
   sort_order: number
+  target?: string | null
   notes?: string | null
   sets: BatchPlanSetBody[]
 }

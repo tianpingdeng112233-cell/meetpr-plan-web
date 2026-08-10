@@ -1,6 +1,7 @@
 import type { Week } from './types'
+import { isRestDay } from './types'
 
-export const DRAFT_MIRROR_VERSION = 1
+export const DRAFT_MIRROR_VERSION = 2
 export const DRAFT_MIRROR_PREFIX = 'meetpr.planEditor.draftMirror.'
 export const DRAFT_MIRROR_LIMIT = 5
 export const DRAFT_MIRROR_DELAY = 800
@@ -68,6 +69,9 @@ function isWeek(value: unknown): value is Week {
       && typeof row.ku === 'boolean'
       && typeof row.custom === 'boolean'
       && typeof row.isMain === 'boolean'
+      // v1 mirrors written before spec-037 v1.1 have no target key; parseMirror
+      // upgrades them to the new explicit null default after hash verification.
+      && (row.target === undefined || row.target === null || typeof row.target === 'string')
       && typeof row.aux === 'boolean'
       && typeof row.reps === 'string'
       && (row.mode === 'kg' || row.mode === 'rpe' || row.mode === 'bodyweight')
@@ -107,6 +111,42 @@ function canonicalContent(content: DraftMirrorContent): unknown {
       num: week.num,
       days: week.days.map((day) => ({
         dow: day.dow,
+        rest: isRestDay(day),
+        rows: day.rows.map((row) => ({
+          exerciseId: row.exerciseId,
+          name: row.name,
+          ku: row.ku,
+          custom: row.custom,
+          isMain: row.isMain,
+          target: row.target,
+          aux: row.aux,
+          reps: row.reps,
+          mode: row.mode,
+          intensity: row.intensity == null ? row.intensity : {
+            mode: row.intensity.mode,
+            value: row.intensity.value,
+            high: row.intensity.high,
+          },
+          intensityMode: row.intensityMode,
+          intensityBoxes: row.intensityBoxes?.map((box) => ({ val: box.val, empty: box.empty })),
+          weightMode: row.weightMode,
+          boxes: row.boxes.map((box) => ({ val: box.val, empty: box.empty })),
+          note: row.note,
+        })),
+      })),
+    })),
+  }
+}
+
+/** The exact editable-content projection used by shipped v1 mirrors. */
+function legacyCanonicalContent(content: DraftMirrorContent): unknown {
+  return {
+    planStartDate: content.planStartDate,
+    weeksCount: content.weeksCount,
+    weeks: content.weeks.map((week) => ({
+      num: week.num,
+      days: week.days.map((day) => ({
+        dow: day.dow,
         rest: day.rest,
         rows: day.rows.map((row) => ({
           exerciseId: row.exerciseId,
@@ -133,15 +173,19 @@ function canonicalContent(content: DraftMirrorContent): unknown {
   }
 }
 
-/** Small deterministic non-cryptographic signature for equality/corruption checks. */
-export function draftContentHash(content: DraftMirrorContent): string {
-  const input = JSON.stringify(canonicalContent(content))
+function contentHash(canonical: unknown): string {
+  const input = JSON.stringify(canonical)
   let hash = 0x811c9dc5
   for (let index = 0; index < input.length; index++) {
     hash ^= input.charCodeAt(index)
     hash = Math.imul(hash, 0x01000193)
   }
   return `fnv1a32:${(hash >>> 0).toString(16).padStart(8, '0')}`
+}
+
+/** Small deterministic non-cryptographic signature for equality/corruption checks. */
+export function draftContentHash(content: DraftMirrorContent): string {
+  return contentHash(canonicalContent(content))
 }
 
 export function draftMirrorStorageKey(planId: string): string {
@@ -152,22 +196,70 @@ function removeQuietly(storage: Pick<Storage, 'removeItem'>, key: string): void 
   try { storage.removeItem(key) } catch { /* localStorage is optional safety only */ }
 }
 
-function parseMirror(raw: string, expectedPlanId?: string): DraftMirror | null {
+function normalizeContent(content: DraftMirrorContent): DraftMirrorContent {
+  return {
+    ...content,
+    weeks: content.weeks.map((week) => ({
+      ...week,
+      days: week.days.map((day) => ({
+        ...day,
+        rest: isRestDay(day),
+        rows: day.rows.map((row) => ({ ...row, target: row.target ?? null })),
+      })),
+    })),
+  }
+}
+
+interface ParsedMirror {
+  mirror: DraftMirror
+  rewrite: boolean
+}
+
+function parseMirror(raw: string, expectedPlanId?: string): ParsedMirror | null {
   try {
     const parsed: unknown = JSON.parse(raw)
     if (!isRecord(parsed)
-      || parsed.version !== DRAFT_MIRROR_VERSION
+      || (parsed.version !== 1 && parsed.version !== DRAFT_MIRROR_VERSION)
       || typeof parsed.planId !== 'string'
       || (expectedPlanId !== undefined && parsed.planId !== expectedPlanId)
       || typeof parsed.savedAt !== 'string'
       || !Number.isFinite(Date.parse(parsed.savedAt))
       || typeof parsed.contentHash !== 'string'
       || !isContent(parsed.content)) return null
-    const mirror = parsed as unknown as DraftMirror
-    return draftContentHash(mirror.content) === mirror.contentHash ? mirror : null
+    const rawContent = parsed.content
+    const expectedHash = parsed.version === 1
+      ? contentHash(legacyCanonicalContent(rawContent))
+      : draftContentHash(rawContent)
+    if (expectedHash !== parsed.contentHash) return null
+    const content = normalizeContent(rawContent)
+    const mirror: DraftMirror = {
+      version: DRAFT_MIRROR_VERSION,
+      planId: parsed.planId,
+      savedAt: parsed.savedAt,
+      contentHash: draftContentHash(content),
+      content,
+    }
+    return {
+      mirror,
+      rewrite: parsed.version === 1 || JSON.stringify(parsed.content) !== JSON.stringify(content),
+    }
   } catch {
     return null
   }
+}
+
+function parseAndRewriteMirror(
+  raw: string,
+  storage: Pick<Storage, 'setItem'>,
+  key: string,
+  expectedPlanId?: string,
+): DraftMirror | null {
+  const parsed = parseMirror(raw, expectedPlanId)
+  if (!parsed) return null
+  if (parsed.rewrite) {
+    try { storage.setItem(key, JSON.stringify(parsed.mirror)) } catch { /* keep the verified in-memory mirror */ }
+  }
+  return parsed.mirror
 }
 
 export function loadDraftMirror(
@@ -179,7 +271,7 @@ export function loadDraftMirror(
   try {
     const raw = storage.getItem(key)
     if (raw === null) return null
-    const mirror = parseMirror(raw, planId)
+    const mirror = parseAndRewriteMirror(raw, storage, key, planId)
     if (!mirror) removeQuietly(storage, key)
     return mirror
   } catch {
@@ -194,7 +286,7 @@ function evictOldMirrors(storage: MirrorStorage, keep = DRAFT_MIRROR_LIMIT): voi
       const key = storage.key(index)
       if (!key?.startsWith(DRAFT_MIRROR_PREFIX)) continue
       const raw = storage.getItem(key)
-      const mirror = raw === null ? null : parseMirror(raw)
+      const mirror = raw === null ? null : parseAndRewriteMirror(raw, storage, key)
       if (!mirror) {
         removeQuietly(storage, key)
         continue
@@ -216,12 +308,13 @@ export function saveDraftMirror(
 ): DraftMirror | null {
   if (!planId || !storage) return null
   try {
+    const normalizedContent = normalizeContent(content)
     const mirror: DraftMirror = {
       version: DRAFT_MIRROR_VERSION,
       planId,
       savedAt: now().toISOString(),
-      contentHash: draftContentHash(content),
-      content,
+      contentHash: draftContentHash(normalizedContent),
+      content: normalizedContent,
     }
     const serialized = JSON.stringify(mirror)
     try {

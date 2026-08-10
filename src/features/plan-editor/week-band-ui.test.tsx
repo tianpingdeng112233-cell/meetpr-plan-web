@@ -21,7 +21,7 @@ function exercise(id: string, partial: Partial<ExerciseResponse>): ExerciseRespo
 function row(id: string, exerciseId: string, name: string, isMain: boolean): ExerciseRow {
   return {
     id, serverRowId: null, serverSortOrder: null, hasLogs: false, conflictMessage: null,
-    exerciseId, name, ku: true, custom: false, isMain, aux: false, reps: '5', mode: 'kg',
+    exerciseId, name, ku: true, custom: false, isMain, target: null, aux: false, reps: '5', mode: 'kg',
     boxes: [{ val: '100', empty: false }], note: '',
   }
 }
@@ -83,6 +83,70 @@ describe('spec 037 week-band UI', () => {
     expect(host.querySelector('.weekband .weekrow')?.children[1]?.classList.contains('day')).toBe(true)
   })
 
+  it('renders all D1–D7 slots and derives compact dashed rest cards from empty rows', () => {
+    act(() => root.render(
+      <PlanEditor initialWeeks={[week(1, [row('sq', 'sq', '深蹲', true)], true)]} weeksCount={1}
+        studentName="学员" planName="计划" anchorWeekday={1} />,
+    ))
+
+    const days = host.querySelectorAll('.weekband[data-wnum="1"] .weekrow > .day')
+    expect(days).toHaveLength(7)
+    expect(host.querySelectorAll('.weekband[data-wnum="1"] [data-derived-rest="true"]')).toHaveLength(6)
+    expect(days[0].querySelector('[data-rowid="sq"]')).not.toBeNull()
+    expect(days[1].textContent).toContain('D2')
+    expect(days[1].textContent).toContain('周二')
+    expect(days[1].textContent).toContain('休息')
+    expect(days[1].querySelector('.week-band-rest-add')?.textContent).toContain('加主项')
+  })
+
+  it('puts low-key add actions after both section rows and removes day-header add/rest actions', () => {
+    act(() => root.render(
+      <PlanEditor initialWeeks={[week(1, [
+        row('main', 'sq', '深蹲', true),
+        row('aux', 'fly', '飞鸟', false),
+      ], true)]} weeksCount={1} studentName="学员" planName="计划" />,
+    ))
+
+    const trainingDay = host.querySelector<HTMLElement>('.weekband[data-wnum="1"] .day[data-dow="0"]')!
+    const additions = [...trainingDay.querySelectorAll<HTMLButtonElement>('.week-band-section-add')]
+    expect(additions.map((button) => button.textContent?.trim())).toEqual(['＋ 加主项', '＋ 加辅助'])
+    expect(additions[0].previousElementSibling?.getAttribute('data-rowid')).toBe('main')
+    expect(additions[1].previousElementSibling?.getAttribute('data-rowid')).toBe('aux')
+    expect(trainingDay.querySelector('.dayhead [data-add-tier]')).toBeNull()
+    expect(trainingDay.textContent).not.toContain('设为休息')
+  })
+
+  it('returns to the derived rest card after clearing the final editable action', () => {
+    act(() => root.render(
+      <PlanEditor initialWeeks={[week(1, [row('only', 'sq', '深蹲', true)], true)]} weeksCount={1}
+        studentName="学员" planName="计划" />,
+    ))
+    const trainingDay = host.querySelector<HTMLElement>('.weekband[data-wnum="1"] .day[data-dow="0"]')!
+    act(() => trainingDay.dispatchEvent(new MouseEvent('click', { bubbles: true })))
+    const clear = [...host.querySelectorAll<HTMLElement>('.selected-context-bar .ctxbtn')]
+      .find((button) => button.textContent === '清空本日')!
+    act(() => clear.dispatchEvent(new MouseEvent('click', { bubbles: true })))
+
+    const cleared = host.querySelector<HTMLElement>('.weekband[data-wnum="1"] .day[data-dow="0"]')!
+    expect(cleared.dataset.derivedRest).toBe('true')
+    expect(cleared.textContent).toContain('休息')
+    expect(cleared.querySelector('.daygrid')).toBeNull()
+  })
+
+  it('renders stored rest-marked days with actions as ordinary editable training days', () => {
+    const legacy = week(1, [row('legacy', 'sq', '存量深蹲', true)], true)
+    legacy.days[0] = { ...legacy.days[0], rest: true }
+    act(() => root.render(
+      <PlanEditor initialWeeks={[legacy]} weeksCount={1} studentName="学员" planName="计划" />,
+    ))
+
+    const day = host.querySelector<HTMLElement>('.weekband[data-wnum="1"] .day[data-dow="0"]')!
+    expect(day.dataset.derivedRest).toBeUndefined()
+    expect(day.classList.contains('restday')).toBe(false)
+    expect(day.querySelector('[data-rowid="legacy"]')).not.toBeNull()
+    expect(day.querySelector('.daygrid')).not.toBeNull()
+  })
+
   it('aligns the exercise union and quick-adds an accessory as a guarded structured row', async () => {
     const squat = row('sq-w1', 'sq', '竞技深蹲', true)
     const fly = row('fly-w2', 'fly', '哑铃飞鸟', false)
@@ -100,8 +164,8 @@ describe('spec 037 week-band UI', () => {
         studentName="学员" planName="计划" exerciseIndex={index} onSave={onSave} />,
     ))
 
-    expect(host.querySelector('.weekband[data-wnum="1"] .week-band-badge.squat')?.textContent).toBe('蹲')
-    expect(host.querySelector('.weekband[data-wnum="2"] .week-band-badge.muscle')?.textContent).toBe('胸')
+    expect(host.querySelector('.weekband[data-wnum="1"] .week-band-target-picker > button')?.textContent).toContain('—')
+    expect(host.querySelector('.weekband[data-wnum="2"] .week-band-target-picker > button')?.textContent).toContain('—')
     const empty = host.querySelector<HTMLButtonElement>('.weekband[data-wnum="1"] [data-empty-exercise-id="fly"]')!
     expect(empty.textContent).toContain('哑铃飞鸟')
     act(() => empty.dispatchEvent(new MouseEvent('click', { bubbles: true })))
@@ -121,6 +185,144 @@ describe('spec 037 week-band UI', () => {
     })
     expect(savedAdded?.aux).toBe(false)
     expect(getBoundRowInputIssue(savedAdded!)).not.toBeNull()
+  })
+
+  it('opens the target picker, applies lift and muscle targets slot-wide, then clears to no target', async () => {
+    const w1 = row('sq-w1', 'sq', '竞技深蹲', true)
+    const w2 = row('sq-w2', 'sq', '竞技深蹲', true)
+    let savedTargets: Array<string | null> = []
+    const onSave = vi.fn(async (savedWeeks: Week[]) => {
+      savedTargets = savedWeeks.map((item) => item.days[0].rows[0].target)
+      return { changedDays: 2, skippedRows: 0, weeks: savedWeeks }
+    })
+    const index = new ExerciseIndex([
+      exercise('sq', { name: '竞技深蹲', exercise_type: 'main_lift', main_lift_family: 'squat', muscle_groups: ['quad'] }),
+      exercise('fly', { name: '哑铃飞鸟', muscle_groups: ['chest'] }),
+      exercise('curl', { name: '弯举', muscle_groups: ['biceps'] }),
+    ])
+    await act(async () => root.render(
+      <PlanEditor initialWeeks={[week(1, [w1], true), week(2, [w2])]} weeksCount={2}
+        studentName="学员" planName="计划" exerciseIndex={index} onSave={onSave} />,
+    ))
+
+    expect(host.querySelector('.gridhead [data-c="target"]')?.textContent).toBe('目标')
+    const openFor = (rowId: string) => {
+      act(() => host.querySelector<HTMLButtonElement>(`[data-rowid="${rowId}"] .week-band-target-picker > button`)!.click())
+      return host.querySelector<HTMLElement>(`[data-rowid="${rowId}"] .week-band-target-menu`)!
+    }
+    let menu = openFor('sq-w1')
+    expect(menu.textContent).toContain('无目标')
+    expect(menu.textContent).toContain('竞技主项')
+    expect(menu.textContent).toContain('肌群')
+    expect([...menu.querySelectorAll<HTMLElement>('.week-band-target-options.muscles .week-band-badge')]
+      .map((item) => item.textContent)).toEqual(['胸', '二头', '股四头'])
+    act(() => [...menu.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]')]
+      .find((button) => button.textContent === '蹲')!.click())
+    expect([...host.querySelectorAll<HTMLElement>('[data-rowid^="sq-w"] .week-band-target-picker > button')]
+      .map((button) => button.getAttribute('aria-label'))).toEqual(['目标：蹲', '目标：蹲'])
+
+    const save = [...host.querySelectorAll<HTMLButtonElement>('button')]
+      .find((button) => button.textContent === '保存草稿')!
+    await act(async () => {
+      save.click()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+    expect(savedTargets).toEqual(['squat', 'squat'])
+
+    menu = openFor('sq-w2')
+    act(() => [...menu.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]')]
+      .find((button) => button.textContent === '胸')!.click())
+    expect([...host.querySelectorAll<HTMLElement>('[data-rowid^="sq-w"] .week-band-target-picker > button')]
+      .map((button) => button.getAttribute('aria-label'))).toEqual(['目标：胸', '目标：胸'])
+
+    menu = openFor('sq-w1')
+    act(() => [...menu.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]')]
+      .find((button) => button.textContent?.includes('无目标'))!.click())
+    expect([...host.querySelectorAll<HTMLElement>('[data-rowid^="sq-w"] .week-band-target-picker > button')]
+      .map((button) => button.getAttribute('aria-label'))).toEqual(['目标：无目标', '目标：无目标'])
+  })
+
+  it('rejects a stale picker choice when a slot row becomes logged before submission', async () => {
+    const w1 = row('sq-w1', 'sq', '竞技深蹲', true)
+    const w2 = row('sq-w2', 'sq', '竞技深蹲', true)
+    const onSave = vi.fn(async (savedWeeks: Week[]) => ({
+      changedDays: 0,
+      skippedRows: 0,
+      weeks: savedWeeks.map((item) => ({
+        ...item,
+        days: item.days.map((day) => ({
+          ...day,
+          rows: day.rows.map((entry) => entry.id === 'sq-w2' ? { ...entry, hasLogs: true } : entry),
+        })),
+      })),
+    }))
+    await act(async () => root.render(
+      <PlanEditor initialWeeks={[week(1, [w1], true), week(2, [w2])]} weeksCount={2}
+        studentName="学员" planName="计划" onSave={onSave} />,
+    ))
+
+    act(() => host.querySelector<HTMLButtonElement>('[data-rowid="sq-w1"] .week-band-target-picker > button')!.click())
+    const save = [...host.querySelectorAll<HTMLButtonElement>('button')]
+      .find((button) => button.textContent === '保存草稿')!
+    await act(async () => {
+      save.click()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+    const staleChoice = [...host.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]')]
+      .find((button) => button.textContent === '蹲')!
+    await act(async () => {
+      staleChoice.click()
+      await Promise.resolve()
+    })
+
+    expect([...host.querySelectorAll<HTMLButtonElement>('[data-rowid^="sq-w"] .week-band-target-picker > button')]
+      .map((button) => button.getAttribute('aria-label'))).toEqual(['目标：无目标', '目标：无目标'])
+    expect(host.querySelector<HTMLButtonElement>('[data-rowid="sq-w1"] .week-band-target-picker > button')!.disabled).toBe(true)
+    expect(host.querySelector<HTMLElement>('.plan-autosave-status')?.textContent)
+      .toContain('该动作已有打卡记录，不可修改目标')
+  })
+
+  it('renders the first non-empty stored target in week order for an inconsistent slot', () => {
+    const w1 = { ...row('sq-w1', 'sq', '竞技深蹲', true), target: null }
+    const w2 = { ...row('sq-w2', 'sq', '竞技深蹲', true), target: 'chest' }
+    act(() => root.render(
+      <PlanEditor initialWeeks={[week(1, [w1], true), week(2, [w2])]} weeksCount={2}
+        studentName="学员" planName="计划" />,
+    ))
+    expect([...host.querySelectorAll<HTMLElement>('[data-rowid^="sq-w"] .week-band-target-picker > button')]
+      .map((button) => button.textContent?.replace('▾', ''))).toEqual(['胸', '胸'])
+  })
+
+  it('quick-adds an unbound name-aligned slot as an unbound row carrying the name', () => {
+    const w1row = { ...row('ub-w1', '', '低杆深蹲', true), exerciseId: null }
+    act(() => root.render(
+      <PlanEditor initialWeeks={[week(1, [w1row], true), week(2, [row('other', 'other', '卧推', true)])]} weeksCount={2}
+        studentName="学员" planName="计划" />,
+    ))
+    const empty = [...host.querySelectorAll<HTMLButtonElement>('.weekband[data-wnum="2"] .week-band-empty-row')]
+      .find((button) => button.textContent?.includes('低杆深蹲'))!
+    act(() => empty.dispatchEvent(new MouseEvent('click', { bubbles: true })))
+    const added = [...host.querySelectorAll<HTMLInputElement>('.weekband[data-wnum="2"] [data-plan-cell="name"] input')]
+      .find((input) => input.value === '低杆深蹲')
+    expect(added).not.toBeUndefined()
+  })
+
+  it('marks an empty-name missing slot unavailable and removes it from the tab order', () => {
+    const nameless = { ...row('nameless', '', '', true), exerciseId: null }
+    act(() => root.render(
+      <PlanEditor initialWeeks={[week(1, [nameless], true), week(2, [row('other', 'other', '卧推', true)])]} weeksCount={2}
+        studentName="学员" planName="计划" />,
+    ))
+
+    const empty = host.querySelector<HTMLElement>('.weekband[data-wnum="2"] .week-band-empty-row')!
+    expect(empty.getAttribute('aria-disabled')).toBe('true')
+    expect(empty.tabIndex).toBe(-1)
+    expect(empty.title).toContain('不可添加')
+    expect(empty.textContent).toContain('不可添加')
+    act(() => empty.click())
+    expect(host.querySelectorAll('.weekband[data-wnum="2"] [data-rowid]')).toHaveLength(1)
   })
 
   it('chooses the lower-index week on a wide-viewport centre tie and moves the virtual window', () => {
