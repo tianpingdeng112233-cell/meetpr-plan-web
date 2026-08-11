@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from 'react'
+import { useEffect, useId, useMemo } from 'react'
 import type {
   CoachStudent,
   E1rmFamilySeries,
@@ -28,6 +28,8 @@ interface ChartDatum {
   t?: number
   /** Shared slot index on the card-wide axis (bar charts). */
   slot?: number
+  /** The stretch back to the previous point crosses a week with no logged sets → dashed. */
+  gapBefore?: boolean
 }
 
 /** Card-wide axis so the same week/date lands on the same x in all three family charts. */
@@ -71,6 +73,7 @@ function YAxis({ ticks, format }: { ticks: { value: number; y: number }[]; forma
 }
 
 export function LineChart({ data, color, label, axis, tick = defaultTick }: ChartProps) {
+  const gradientId = useId()
   const points = finiteData(data)
   if (points.length === 0) return <ChartEmpty />
   const values = points.map((point) => point.value)
@@ -82,7 +85,19 @@ export function LineChart({ data, color, label, axis, tick = defaultTick }: Char
     return PLOT_L + t * (PLOT_R - PLOT_L)
   }
   const yAt = (value: number) => span === 0 ? (PLOT_T + PLOT_B) / 2 : PLOT_T + (max - value) * (PLOT_B - PLOT_T) / span
-  const plot = points.map((point, index) => `${xAt(point, index).toFixed(1)},${yAt(point.value).toFixed(1)}`).join(' ')
+  const coords = points.map((point, index) => `${xAt(point, index).toFixed(1)},${yAt(point.value).toFixed(1)}`)
+  // 光幕: gradient veil under the whole series, dropping to the baseline.
+  const area = points.length > 1
+    ? `M${coords.join(' L')} L${xAt(points.at(-1)!, points.length - 1).toFixed(1)},${PLOT_B} L${xAt(points[0]!, 0).toFixed(1)},${PLOT_B} Z`
+    : null
+  // 实/虚分段: a stretch that crosses a week with no logged sets renders dashed.
+  const segments: { plot: string; dashed: boolean }[] = []
+  for (let index = 1; index < points.length; index++) {
+    const dashed = points[index]!.gapBefore === true
+    const last = segments.at(-1)
+    if (last && last.dashed === dashed) last.plot += ` ${coords[index]}`
+    else segments.push({ plot: `${coords[index - 1]} ${coords[index]}`, dashed })
+  }
   const yTicks = span === 0
     ? [{ value: max, y: (PLOT_T + PLOT_B) / 2 }]
     : [{ value: max, y: PLOT_T }, { value: min + span / 2, y: (PLOT_T + PLOT_B) / 2 }, { value: min, y: PLOT_B }]
@@ -118,7 +133,18 @@ export function LineChart({ data, color, label, axis, tick = defaultTick }: Char
       <YAxis ticks={yTicks} format={tick} />
       <line className="tracking-grid-line" x1={PLOT_L} y1={PLOT_B} x2={PLOT_R} y2={PLOT_B} />
       <line className="tracking-grid-line" x1={PLOT_L} y1={PLOT_T} x2={PLOT_L} y2={PLOT_B} />
-      <polyline points={plot} fill="none" stroke={color} strokeWidth="2" vectorEffect="non-scaling-stroke" />
+      <defs>
+        <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stopColor={color} stopOpacity=".26" />
+          <stop offset="1" stopColor={color} stopOpacity=".02" />
+        </linearGradient>
+      </defs>
+      {area && <path d={area} fill={`url(#${gradientId})`} stroke="none" />}
+      <g className="tracking-line-glow" style={{ color }}>
+        {segments.map((segment, index) => (
+          <polyline key={index} points={segment.plot} className={segment.dashed ? 'tracking-line-dash' : undefined} fill="none" stroke={color} strokeWidth="2" vectorEffect="non-scaling-stroke" />
+        ))}
+      </g>
       {points.map((point, index) => (
         <g key={`${point.label}-${index}`}>
           <circle cx={xAt(point, index)} cy={yAt(point.value)} r={index === points.length - 1 ? 3.5 : 2} fill={color}>
@@ -141,6 +167,7 @@ export function LineChart({ data, color, label, axis, tick = defaultTick }: Char
 }
 
 export function BarChart({ data, color, label, slots, axisLabels, tick = defaultTick }: ChartProps) {
+  const gradientId = useId()
   const points = finiteData(data)
   if (points.length === 0) return <ChartEmpty />
   const slotCount = Math.max(1, slots ?? points.length)
@@ -155,13 +182,20 @@ export function BarChart({ data, color, label, slots, axisLabels, tick = default
     <svg className="tracking-chart tracking-bar-chart" viewBox="0 0 300 110" role="img" aria-label={label} preserveAspectRatio="none">
       <YAxis ticks={yTicks} format={tick} />
       <line className="tracking-grid-line" x1={PLOT_L} y1={PLOT_T} x2={PLOT_L} y2={PLOT_B} />
+      <defs>
+        {/* 明暗: bars brighten toward the top, PowerSheets-style. */}
+        <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stopColor={color} stopOpacity="1" />
+          <stop offset="1" stopColor={color} stopOpacity=".55" />
+        </linearGradient>
+      </defs>
       {points.map((point, index) => {
         const at = point.slot ?? index
         const height = point.value <= 0 ? 0 : Math.max(2, point.value / max * (PLOT_B - PLOT_T - 8))
         const cx = PLOT_L + at * slot + slot / 2
         return (
           <g key={`${point.label}-${index}`}>
-            <rect x={PLOT_L + at * slot + slot * .18} y={PLOT_B - height} width={slot * .64} height={height} rx="2" fill={color} opacity={at === slotCount - 1 ? 1 : .72}>
+            <rect x={PLOT_L + at * slot + slot * .18} y={PLOT_B - height} width={slot * .64} height={height} rx="2" fill={`url(#${gradientId})`} opacity={at === slotCount - 1 ? 1 : .72}>
               <title>{point.label} · {point.display}</title>
             </rect>
             {point.value > 0 && (
@@ -242,20 +276,37 @@ function FamilyHead({ family, value, detail, tone }: {
   return <header className="tracking-family-head"><span><i style={{ background: FAMILY_META[family].color }} />{FAMILY_META[family].label}</span>{value && <b>{value}</b>}{detail && <small className={tone ? `trend-${tone}` : ''}>{detail}</small>}</header>
 }
 
-function TrackingCard({ title, subtitle, missing = false, children }: {
+function TrackingCard({ title, subtitle, missing = false, note, children }: {
   title: string
   subtitle?: string
   missing?: boolean
+  /** PowerSheets 式卡底图注,如「虚线 = 中间隔了无记录周」。 */
+  note?: string
   children: React.ReactNode
 }) {
-  return <article className="tracking-card" data-card-title={title}><header className="tracking-card-head"><div><h2>{title}</h2>{subtitle && <p>{subtitle}</p>}</div></header>{missing ? <div className="tracking-version-placeholder">后端版本过旧</div> : children}</article>
+  return <article className="tracking-card" data-card-title={title}><header className="tracking-card-head"><div><h2>{title}</h2>{subtitle && <p>{subtitle}</p>}</div></header>{missing ? <div className="tracking-version-placeholder">后端版本过旧</div> : <>{children}{note && <footer className="tracking-card-note">{note}</footer>}</>}</article>
+}
+
+const WEEK_MS = 7 * 86400000
+
+/** Monday-based calendar week start (UTC) — DATE strings parse as UTC midnight. */
+function weekStartMs(date: string): number {
+  const ms = Date.parse(date)
+  return ms - (new Date(ms).getUTCDay() + 6) % 7 * 86400000
 }
 
 function validE1rmPoints(series: E1rmFamilySeries | undefined, toT: (date: string) => number): ChartDatum[] {
-  return (series?.points ?? []).flatMap((point) => {
+  const out: ChartDatum[] = []
+  let previousDate: string | undefined
+  for (const point of series?.points ?? []) {
     const value = numberValue(point.value)
-    return value == null ? [] : [{ label: dateLabel(point.date), value, display: `${decimal(value)} kg`, short: decimal(value), t: toT(point.date) }]
-  })
+    if (value == null) continue
+    // 两点之间隔着至少一个完整无记录日历周 → 连线画虚线(正常一周一练的 8–9 天间隔不算)。
+    const gapBefore = previousDate !== undefined && weekStartMs(point.date) - weekStartMs(previousDate) > WEEK_MS
+    out.push({ label: dateLabel(point.date), value, display: `${decimal(value)} kg`, short: decimal(value), t: toT(point.date), gapBefore })
+    previousDate = point.date
+  }
+  return out
 }
 
 function E1rmCard({ data }: { data: ExerciseStatsOverview['e1rm_series'] }) {
@@ -267,7 +318,7 @@ function E1rmCard({ data }: { data: ExerciseStatsOverview['e1rm_series'] }) {
   const axis: ChartAxis | undefined = dates.length > 0
     ? { start: dateLabel(dates[0]), end: dateLabel(dates.at(-1)!) }
     : undefined
-  return <TrackingCard title="e1RM over time" subtitle="近 90 天竞技主项估算" missing={data === undefined}><FamilyGrid>{(family) => {
+  return <TrackingCard title="e1RM over time" subtitle="近 90 天竞技主项估算" missing={data === undefined} note="虚线 = 中间隔了无记录周"><FamilyGrid>{(family) => {
     const points = validE1rmPoints(data?.[family], toT)
     const first = points[0]
     const latest = points.at(-1)
@@ -288,14 +339,21 @@ function metricPoints(
   slotOf: ReadonlyMap<string, number>,
 ): ChartDatum[] {
   const lastSlot = slotOf.size - 1
-  return (metrics ?? []).flatMap((metric) => {
+  const out: ChartDatum[] = []
+  let previousWeek: string | undefined
+  for (const metric of metrics ?? []) {
     const value = numberValue(metric[field])
     const slot = slotOf.get(metric.week_start)
-    if (value == null || slot == null) return []
+    if (value == null || slot == null) continue
     const display = field === 'volume_kg' ? `${decimal(value / 1000)} 吨` : field === 'avg_rpe' ? `RPE ${decimal(value)}` : `${decimal(value)}%`
     const short = field === 'volume_kg' ? decimal(value / 1000) : field === 'avg_rpe' ? decimal(value) : `${Math.round(value)}%`
-    return [{ label: weekLabel(metric.week_start), value, display, short, slot, t: lastSlot === 0 ? .5 : slot / lastSlot }]
-  })
+    // 与上一个有数据的周隔着空日历周 → 虚线段。按 week_start 判,不按共享槽位差——
+    // 三个 family 同时空掉的周在共享轴上没有槽位,槽位差会漏判。
+    const gapBefore = previousWeek !== undefined && weekStartMs(metric.week_start) - weekStartMs(previousWeek) > WEEK_MS
+    out.push({ label: weekLabel(metric.week_start), value, display, short, slot, t: lastSlot === 0 ? .5 : slot / lastSlot, gapBefore })
+    previousWeek = metric.week_start
+  }
+  return out
 }
 
 /** Sorted union of week_start across the three families — the card-wide shared axis (§3.1). */
@@ -316,7 +374,7 @@ function MetricCard({ data, title, subtitle, field, chart }: {
   const axis: ChartAxis | undefined = weeks.length > 0
     ? { start: weekLabel(weeks[0]), end: weekLabel(weeks.at(-1)!) }
     : undefined
-  return <TrackingCard title={title} subtitle={subtitle} missing={data === undefined}><FamilyGrid>{(family) => {
+  return <TrackingCard title={title} subtitle={subtitle} missing={data === undefined} {...chart === 'line' ? { note: '虚线 = 中间隔了无记录周' } : {}}><FamilyGrid>{(family) => {
     const points = metricPoints(data?.[family], field, slotOf)
     const latest = points.at(-1)
     const tick = field === 'volume_kg' ? (v: number) => decimal(v / 1000)
