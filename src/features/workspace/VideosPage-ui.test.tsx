@@ -13,6 +13,7 @@ const api = vi.hoisted(() => ({
   getVideoMarkers: vi.fn(),
   createVideoMarker: vi.fn(),
   deleteVideoMarker: vi.fn(),
+  markVideoViewed: vi.fn(),
   openConversation: vi.fn(),
   sendChatImage: vi.fn(),
   abortChatImage: vi.fn(),
@@ -28,6 +29,7 @@ vi.mock('../../api/markers', () => ({
   getVideoMarkers: api.getVideoMarkers,
   createVideoMarker: api.createVideoMarker,
   deleteVideoMarker: api.deleteVideoMarker,
+  markVideoViewed: api.markVideoViewed,
 }))
 vi.mock('../../api/chat', () => ({ openConversation: api.openConversation }))
 vi.mock('../../api/uploads', () => ({
@@ -176,6 +178,7 @@ describe('VideosPage master-detail interactions', () => {
     api.getVideoMarkers.mockResolvedValue([initialMarker])
     api.createVideoMarker.mockResolvedValue(initialMarker)
     api.deleteVideoMarker.mockResolvedValue(undefined)
+    api.markVideoViewed.mockResolvedValue({ viewed_at: '2026-08-11T12:00:00Z' })
     api.openConversation.mockResolvedValue({
       id: 'conversation', other_party: { id: 'student-1', display_name: '学员' },
       last_message: null, last_message_at: null, unread_count: 0, my_last_read: null, other_last_read: null,
@@ -246,6 +249,65 @@ describe('VideosPage master-detail interactions', () => {
     await act(settle)
     expect(host.querySelectorAll('.video-master-row')).toHaveLength(1)
     expect(host.querySelector('.video-master-row .video-status')?.textContent).toBe('已反馈')
+  })
+
+  it('marks a pending video viewed at halfway and does not resend after success', async () => {
+    api.getStudentVideos
+      .mockResolvedValueOnce(videos)
+      .mockResolvedValue(videos.map((video) => video.id === 'video-1'
+        ? { ...video, viewed_at: '2026-08-11T12:00:00Z' }
+        : video))
+    await renderHarness()
+    const video = host.querySelector<HTMLVideoElement>('video')!
+    Object.defineProperties(video, {
+      duration: { configurable: true, value: 20 },
+      currentTime: { configurable: true, value: 9.99, writable: true },
+    })
+
+    act(() => video.dispatchEvent(new Event('timeupdate')))
+    expect(api.markVideoViewed).not.toHaveBeenCalled()
+
+    video.currentTime = 10
+    await act(async () => {
+      video.dispatchEvent(new Event('timeupdate'))
+      await settle()
+    })
+    expect(api.markVideoViewed).toHaveBeenCalledTimes(1)
+    expect(api.markVideoViewed).toHaveBeenCalledWith('video-1')
+    expect(host.querySelector('.video-detail-head .video-status')?.textContent).toBe('已反馈')
+
+    video.currentTime = 15
+    act(() => video.dispatchEvent(new Event('timeupdate')))
+    expect(api.markVideoViewed).toHaveBeenCalledTimes(1)
+  })
+
+  it('ignores invalid duration and retries silently on a later over-half update after failure', async () => {
+    api.markVideoViewed
+      .mockRejectedValueOnce(new Error('offline'))
+      .mockResolvedValueOnce({ viewed_at: '2026-08-11T12:00:00Z' })
+    await renderHarness()
+    const video = host.querySelector<HTMLVideoElement>('video')!
+    Object.defineProperties(video, {
+      duration: { configurable: true, value: Number.NaN, writable: true },
+      currentTime: { configurable: true, value: 10, writable: true },
+    })
+
+    act(() => video.dispatchEvent(new Event('timeupdate')))
+    expect(api.markVideoViewed).not.toHaveBeenCalled()
+
+    Object.defineProperty(video, 'duration', { configurable: true, value: 20 })
+    await act(async () => {
+      video.dispatchEvent(new Event('timeupdate'))
+      await settle()
+    })
+    expect(api.markVideoViewed).toHaveBeenCalledTimes(1)
+
+    await act(async () => {
+      video.dispatchEvent(new Event('timeupdate'))
+      await settle()
+    })
+    expect(api.markVideoViewed).toHaveBeenCalledTimes(2)
+    expect(host.querySelector('[role="alert"]')).toBeNull()
   })
 
   it('switches to all and locates a group-card target hidden by the current filter', async () => {
