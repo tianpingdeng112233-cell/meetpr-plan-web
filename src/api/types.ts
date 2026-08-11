@@ -102,6 +102,25 @@ export interface RepDistributionBucket {
   reps: number
   count: number
 }
+/** One row of GET /students/:id/sets — a student-logged (or coach-assumed) set. */
+export interface StudentSetLog {
+  id: string
+  student_id: string
+  plan_exercise_id: string | null
+  exercise_id: string
+  set_index: number
+  weight_kg: string
+  reps: number
+  rpe: string | null
+  coach_rpe: string | null
+  completed: boolean
+  failed: boolean
+  assumed: boolean
+  adhoc: boolean
+  logged_date: string
+  logged_at: string
+}
+
 export interface ExerciseStatsDetail {
   rep_prs: { reps: number; weight_kg: string; logged_at: string; source: 'imported' | 'logged' }[]
   recent_sessions: { date: string; sets: { set_index: number; weight_kg: string; reps: number; rpe: string | null; completed: boolean; failed: boolean; assumed: boolean; has_video: boolean }[] }[]

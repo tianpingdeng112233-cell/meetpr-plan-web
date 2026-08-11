@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ColKey, ColWidths, Week, DayCol, ExerciseRow } from './types'
 import { COL_DEFAULTS, COL_MIN, isContentfulUnbound, isRestDay } from './types'
 import { getBoundRowInputIssue, type BoundRowInputIssue } from './inputGuard'
+import { groupActualsByExercise, type ActualSet } from './actuals'
+import { getStudentSetLogs } from '../../api/coach'
 import {
   isSingleValueIntensity,
   materializeIntensityRow,
@@ -352,6 +354,30 @@ export function PlanEditor(props: PlanEditorProps) {
   const importedPastHistory = useRef(false)
   const [colW, setColW] = useState<ColWidths[]>(() => Array.from({ length: 7 }, () => ({ ...COL_DEFAULTS })))
   const [sel, setSel] = useState<Sel | null>(null)
+  // SPEC-038:学员实际完成组,serverRowId → sets。失败静默(编排主流程不受影响)。
+  const [actualsByExercise, setActualsByExercise] = useState<Map<string, ActualSet[]>>(() => new Map())
+  const anyRowHasLogs = weeks.some((week) => week.days.some((day) => day.rows.some((row) => row.hasLogs)))
+  useEffect(() => {
+    const studentId = props.studentId
+    const from = planStartDate
+    const today = new Date().toISOString().slice(0, 10)
+    if (!studentId || !from || !anyRowHasLogs || from > today) return
+    let cancelled = false
+    void getStudentSetLogs(studentId, from, today)
+      .then((logs) => { if (!cancelled) setActualsByExercise(groupActualsByExercise(logs)) })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [props.studentId, planStartDate, anyRowHasLogs])
+  const actualsForRow = useCallback((row: ExerciseRow): ActualSet[] | null => (
+    row.serverRowId ? actualsByExercise.get(row.serverRowId) ?? null : null
+  ), [actualsByExercise])
+  const e1rmForRow = useCallback((row: ExerciseRow): number | null => {
+    const metadata = row.exerciseId ? props.exerciseIndex?.bandMetadataById(row.exerciseId) : null
+    const family = metadata && metadata.exercise_type !== 'accessory' ? metadata.main_lift_family : null
+    const value = family ? props.exerciseStatsOverview?.e1rm?.[family]?.value : null
+    const parsed = value == null ? NaN : Number(value)
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : null
+  }, [props.exerciseIndex, props.exerciseStatsOverview])
   const [rowSelection, setRowSelection] = useState<RowSelection>(() => singleRowSelection(null))
   const selectedRow = rowSelection.anchor
   const selectedRowIds = rowSelection.rowIds
@@ -2296,6 +2322,8 @@ export function PlanEditor(props: PlanEditorProps) {
                           trainingDayOrdinal: trainingDayOrdinal(wk, day.dow),
                           weekdayLabel: day.dowLabel,
                         }}
+                        actualsForRow={actualsForRow}
+                        e1rmForRow={e1rmForRow}
                       />
                     ))}
                   </div>

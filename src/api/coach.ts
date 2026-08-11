@@ -1,8 +1,10 @@
 import { api } from './client'
-import type { CoachBindRequest, CoachFeedbackPayload, CoachFeedbackResponse, CoachStudent, ExerciseStatsDetail, ExerciseStatsOverview, InviteCode, StudentVideo } from './types'
+import type { CoachBindRequest, CoachFeedbackPayload, CoachFeedbackResponse, CoachStudent, ExerciseStatsDetail, ExerciseStatsOverview, InviteCode, StudentSetLog, StudentVideo } from './types'
 
 export const getExerciseStatsOverview = (studentId: string) =>
   api.get<ExerciseStatsOverview>(`/coach/students/${studentId}/exercise-stats`)
+export const getStudentSetLogs = (studentId: string, from: string, to: string) =>
+  api.get<{ logs: StudentSetLog[] }>(`/students/${studentId}/sets?from=${from}&to=${to}&scope=plan`).then((r) => r.logs)
 export const getExerciseStats = (studentId: string, exerciseId: string) =>
   api.get<ExerciseStatsDetail>(`/coach/students/${studentId}/exercise-stats?exercise_id=${encodeURIComponent(exerciseId)}`)
 export const getBindRequests = () =>

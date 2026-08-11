@@ -18,6 +18,7 @@ import {
   rowIntensityBoxes,
   rowWeightBoxes,
 } from '../intensityModel'
+import { actualIntensityChip, actualWeightTone, formatActualWeight, type ActualSet } from '../actuals'
 import type { LoadMode, RowIntensity } from '../types'
 import { compactTonnage, summarizeDaySection, type DaySectionSummary } from '../weeklySummary'
 import {
@@ -74,6 +75,10 @@ interface Props {
   onDeleteRow: (rowId: string) => void
   /** Focused week-band presentation; omitted for the legacy standalone view/tests. */
   weekBand?: WeekBandDayView
+  /** SPEC-038: 学员实际完成组(按 serverRowId 对齐);absent = 无打卡数据。 */
+  actualsForRow?: (row: ExerciseRow) => ActualSet[] | null
+  /** pct 目标换算实际 % 用的主项 e1RM;不可得返回 null。 */
+  e1rmForRow?: (row: ExerciseRow) => number | null
 }
 
 const head: React.CSSProperties = {
@@ -253,7 +258,47 @@ function intensityPlaceholder(intensity: RowIntensity): string {
   }
 }
 
-function EditableIntensity({ row, width, edit, selectedCell, selectCell, cellKey, readOnly }: {
+/** SPEC-038 §3.2: 学员实际完成 chips,渲染在目标格正下方。
+ * tone-off = 超阈红,tone-ok = 阈内黄,力竭强制红,未完成灰。 */
+function ActualIntensityLine({ row, actuals, e1rm }: {
+  row: ExerciseRow
+  actuals: ActualSet[]
+  e1rm: number | null
+}) {
+  return (
+    <span className="actual-line" data-actuals="intensity" title="学员实际完成 · RPE">
+      <span className="actual-tag">实际</span>
+      {actuals.map((set, position) => {
+        const chip = actualIntensityChip(row, position, set, e1rm)
+        const tone = set.failed ? 'off' : !set.completed ? 'missed' : chip.tone
+        return (
+          <span key={set.set_index} className={`actual-chip tone-${tone}`}>
+            {chip.text}
+          </span>
+        )
+      })}
+    </span>
+  )
+}
+
+function ActualWeightLine({ row, actuals }: { row: ExerciseRow; actuals: ActualSet[] }) {
+  return (
+    <span className="actual-line" data-actuals="weight" title="学员实际完成 · 重量×次数">
+      <span className="actual-tag">实际</span>
+      {actuals.map((set, position) => {
+        const tone = set.failed ? 'off' : !set.completed ? 'missed' : actualWeightTone(row, position, set)
+        return (
+          <span key={set.set_index} className={`actual-chip tone-${tone}`}
+            title={set.failed ? '力竭' : set.completed ? undefined : '未完成'}>
+            {formatActualWeight(set)}{set.failed ? ' 力竭' : ''}
+          </span>
+        )
+      })}
+    </span>
+  )
+}
+
+function EditableIntensity({ row, width, edit, selectedCell, selectCell, cellKey, readOnly, actuals, e1rm }: {
   row: ExerciseRow
   width: number
   edit: (u: (r: ExerciseRow) => ExerciseRow) => void
@@ -261,11 +306,17 @@ function EditableIntensity({ row, width, edit, selectedCell, selectCell, cellKey
   selectCell: (setIndex?: number) => void
   cellKey: (setIndex?: number) => string
   readOnly?: boolean
+  actuals?: ActualSet[] | null
+  e1rm?: number | null
 }) {
+  const actualLine = actuals && actuals.length > 0
+    ? <ActualIntensityLine row={row} actuals={actuals} e1rm={e1rm ?? null} />
+    : null
   if (row.aux) {
     return (
-      <div className="gcell" data-c="int" style={{ width, padding: '4px 5px', display: 'flex', alignItems: 'center' }}>
+      <div className="gcell" data-c="int" style={{ width, padding: '4px 5px', display: 'flex', flexWrap: 'wrap', alignItems: 'center' }}>
         <span style={{ color: 'var(--mut)', fontSize: 11 }}>—</span>
+        {actualLine}
       </div>
     )
   }
@@ -412,11 +463,12 @@ function EditableIntensity({ row, width, edit, selectedCell, selectCell, cellKey
           )}
         </>
       )}
+      {actualLine}
     </div>
   )
 }
 
-function EditableWeight({ row, width, edit, selectedCell, selectCell, cellKey, readOnly }: {
+function EditableWeight({ row, width, edit, selectedCell, selectCell, cellKey, readOnly, actuals }: {
   row: ExerciseRow
   width: number
   edit: (u: (r: ExerciseRow) => ExerciseRow) => void
@@ -424,8 +476,19 @@ function EditableWeight({ row, width, edit, selectedCell, selectCell, cellKey, r
   selectCell: (setIndex: number) => void
   cellKey: (setIndex: number) => string
   readOnly?: boolean
+  actuals?: ActualSet[] | null
 }) {
-  if (row.aux) return <div className="gcell" data-c="weight" style={{ width, padding: '4px 5px' }}>—</div>
+  const actualLine = actuals && actuals.length > 0
+    ? <ActualWeightLine row={row} actuals={actuals} />
+    : null
+  if (row.aux) {
+    return (
+      <div className="gcell" data-c="weight" style={{ width, padding: '4px 5px', display: 'flex', flexWrap: 'wrap', alignItems: 'center' }}>
+        <span style={{ color: 'var(--mut)', fontSize: 11 }}>—</span>
+        {actualLine}
+      </div>
+    )
+  }
   const issue = getBoundRowInputIssue(row)
   const weights = rowWeightBoxes(row)
   const displayMode = displayedWeightMode(row)
@@ -537,6 +600,7 @@ function EditableWeight({ row, width, edit, selectedCell, selectCell, cellKey, r
         )
       })}
       {row.boxes.length === 0 && <span style={{ color: 'var(--mut)', fontSize: 10 }}>填组数→</span>}
+      {actualLine}
     </div>
   )
 }
@@ -572,6 +636,8 @@ export function DayColumn({
   onReorderRow,
   onDeleteRow,
   weekBand,
+  actualsForRow,
+  e1rmForRow,
 }: Props) {
   const [dragRowId, setDragRowId] = useState<string | null>(null)
   const [dropTarget, setDropTarget] = useState<{ rowId: string; position: 'before' | 'after' } | null>(null)
@@ -763,7 +829,7 @@ export function DayColumn({
               data-rowid={row.id}
               data-locked={row.hasLogs ? 'true' : 'false'}
               data-drag-disabled={dragDisabled ? 'true' : 'false'}
-              className={`exrow${resolveTier(row) === 'aux' ? ' aux' : ''}${row.hasLogs ? ' locked' : ''}${isSelectedRow ? ' row-sel' : ''}${dragRowId === row.id ? ' row-dragging' : ''}${dropPosition ? ` row-drop-${dropPosition}` : ''}`}
+              className={`exrow${resolveTier(row) === 'aux' ? ' aux' : ''}${row.hasLogs ? ' locked' : ''}${(actualsForRow?.(row)?.length ?? 0) > 0 ? ' has-actuals' : ''}${isSelectedRow ? ' row-sel' : ''}${dragRowId === row.id ? ' row-dragging' : ''}${dropPosition ? ` row-drop-${dropPosition}` : ''}`}
               onMouseDownCapture={(e) => {
                 if (e.button === 0) onSelectRow?.(row.id, rowSelectionModifiers(e))
               }}
@@ -866,6 +932,8 @@ export function DayColumn({
                     weekNumber, dow: day.dow, rowId: row.id, field: 'intensity', setIndex,
                   })}
                   readOnly={readOnly}
+                  actuals={actualsForRow?.(row) ?? null}
+                  e1rm={e1rmForRow?.(row) ?? null}
                 />
 
                 <EditableWeight
@@ -882,6 +950,7 @@ export function DayColumn({
                     setIndex,
                   })}
                   readOnly={readOnly}
+                  actuals={actualsForRow?.(row) ?? null}
                 />
 
                 <div className="gcell note-cell" data-c="note" style={{ width: colW.note }}>
