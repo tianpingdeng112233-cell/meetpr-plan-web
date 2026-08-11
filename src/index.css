@@ -707,7 +707,8 @@ textarea {
 .tracking-card-list {
   padding: 16px;
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  /* 一行一张卡:卡内三 lift 图并排即「一行三个表」,图放大到可读(David 2026-08-11 拍板)。 */
+  grid-template-columns: minmax(0, 1fr);
   gap: 12px;
 }
 .tracking-card {
@@ -769,7 +770,8 @@ textarea {
 }
 .tracking-family-head>small.trend-up { color: var(--ok); }
 .tracking-family-head>small.trend-down { color: var(--bad); }
-.tracking-chart { width: 100%; height: 108px; display: block; overflow: visible; }
+/* 等比缩放(aspect-ratio 跟 viewBox 300×110):卡变宽时文字/线一起放大,不拉扁。 */
+.tracking-chart { width: 100%; height: auto; aspect-ratio: 300 / 110; display: block; overflow: visible; }
 .tracking-chart text { fill: var(--faint); font: 8px var(--font-mono); }
 .tracking-chart text.val { fill: var(--sec); font: 600 7.5px var(--font-mono); }
 
