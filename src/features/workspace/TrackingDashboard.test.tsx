@@ -86,8 +86,8 @@ describe('TrackingDashboard', () => {
 
     expect(host.querySelectorAll('.tracking-card')).toHaveLength(8)
     expect([...host.querySelectorAll('.tracking-card-head h2')].map((node) => node.textContent)).toEqual([
-      'e1RM over time', 'Volume over time', 'Avg RPE over time', 'Intensity over time',
-      'Intensity distribution', 'Rep distribution', 'Volume share by lift', 'Bodyweight',
+      'e1RM 趋势', '容量趋势', '平均 RPE 趋势', '强度趋势',
+      '强度分布', '次数分布', '三项容量占比', '体重',
     ])
     expect(host.textContent).toContain('112.0 kg')
     expect(host.textContent).toContain('较起点 +12.0 kg')
@@ -96,12 +96,12 @@ describe('TrackingDashboard', () => {
     expect(host.querySelector('[data-family="squat"] polyline')?.getAttribute('stroke')).toBe('#276FBF')
     expect(host.querySelector('[data-family="bench"] polyline')?.getAttribute('stroke')).toBe('#18855B')
     // deadlift e1RM 单点无连线;色彩契约走它的 volume 柱渐变(明暗)。
-    expect(host.querySelector('[aria-label="硬拉Volume over time柱状图"] linearGradient stop')?.getAttribute('stop-color')).toBe('#F5A623')
+    expect(host.querySelector('[aria-label="硬拉容量趋势柱状图"] linearGradient stop')?.getAttribute('stop-color')).toBe('#F5A623')
     // 光幕:多点折线带渐变面积;虚线:squat e1RM 两点隔了 4 周 → 虚线段。
     expect(host.querySelector('[aria-label="深蹲 e1RM 折线图"] path[fill^="url(#"]')).not.toBeNull()
     expect(host.querySelector('[aria-label="深蹲 e1RM 折线图"] polyline.tracking-line-dash')).not.toBeNull()
     // 相邻两周之间不画虚线:squat 周指标 7/27→8/3 连续。
-    expect(host.querySelector('[aria-label="深蹲Avg RPE over time折线图"] polyline.tracking-line-dash')).toBeNull()
+    expect(host.querySelector('[aria-label="深蹲平均 RPE 趋势折线图"] polyline.tracking-line-dash')).toBeNull()
     expect(host.querySelector('[aria-label="深蹲强度分布柱状图"]')?.textContent).toContain('90%+')
     expect(host.querySelector('[aria-label="硬拉次数分布柱状图"]')?.textContent).toContain('8+')
     expect(host.querySelector('[aria-label="深蹲容量占比横条图"]')).not.toBeNull()
@@ -112,22 +112,22 @@ describe('TrackingDashboard', () => {
 
     // 共享轴 = 三 family week_start 并集(7/27, 8/3)→ 两个 slot。
     // bench 只有 8/3 一周,它唯一的柱子必须落在第 2 个 slot,与 squat 的第二根同 x,不独占全轴。
-    const benchBar = host.querySelector<SVGRectElement>('[aria-label="卧推Volume over time柱状图"] rect')
-    const squatBars = host.querySelectorAll<SVGRectElement>('[aria-label="深蹲Volume over time柱状图"] rect')
+    const benchBar = host.querySelector<SVGRectElement>('[aria-label="卧推容量趋势柱状图"] rect')
+    const squatBars = host.querySelectorAll<SVGRectElement>('[aria-label="深蹲容量趋势柱状图"] rect')
     expect(squatBars).toHaveLength(2)
     expect(benchBar?.getAttribute('x')).toBe(squatBars[1]?.getAttribute('x'))
 
     // 折线同理:bench 单点落在共享轴末端(t=1 → x=PLOT_R=288),不居中。
-    const benchDot = host.querySelector<SVGCircleElement>('[aria-label="卧推Intensity over time折线图"] circle')
+    const benchDot = host.querySelector<SVGCircleElement>('[aria-label="卧推强度趋势折线图"] circle')
     expect(benchDot?.getAttribute('cx')).toBe('288')
     // 共享轴端点标签在单周 family 的图上也显示两端。
-    expect(host.querySelector('[aria-label="卧推Avg RPE over time折线图"]')?.textContent).toContain('7/27 周')
+    expect(host.querySelector('[aria-label="卧推平均 RPE 趋势折线图"]')?.textContent).toContain('7/27 周')
   })
 
   it('uses the backend trend for single-point e1RM and never shows a zero delta', () => {
     act(() => root.render(<Harness cache={{ 'student-a': overview() }} ensure={vi.fn()} />))
 
-    const deadliftHead = host.querySelector('[data-card-title="e1RM over time"] [data-family="deadlift"] .tracking-family-head')
+    const deadliftHead = host.querySelector('[data-card-title="e1RM 趋势"] [data-family="deadlift"] .tracking-family-head')
     expect(deadliftHead?.textContent).toContain('140.0 kg')
     expect(deadliftHead?.textContent).not.toContain('较起点')
     expect(deadliftHead?.textContent).toContain('新数据')
@@ -149,7 +149,7 @@ describe('TrackingDashboard', () => {
     }
     act(() => root.render(<Harness cache={{ 'student-a': data }} ensure={vi.fn()} />))
 
-    expect(host.querySelector('[aria-label="深蹲Avg RPE over time折线图"] polyline.tracking-line-dash')).not.toBeNull()
+    expect(host.querySelector('[aria-label="深蹲平均 RPE 趋势折线图"] polyline.tracking-line-dash')).not.toBeNull()
     // 光幕渐变 id 全局唯一(useId per chart)。
     const gradientIds = [...host.querySelectorAll('linearGradient')].map((node) => node.id)
     expect(new Set(gradientIds).size).toBe(gradientIds.length)
@@ -158,7 +158,7 @@ describe('TrackingDashboard', () => {
   it('shows the empty state for an all-zero distribution instead of a blank chart', () => {
     act(() => root.render(<Harness cache={{ 'student-a': overview() }} ensure={vi.fn()} />))
 
-    const deadliftIntensity = host.querySelector('[data-card-title="Intensity distribution"] [data-family="deadlift"]')
+    const deadliftIntensity = host.querySelector('[data-card-title="强度分布"] [data-family="deadlift"]')
     expect(deadliftIntensity?.querySelector('svg')).toBeNull()
     expect(deadliftIntensity?.textContent).toContain('暂无数据')
   })

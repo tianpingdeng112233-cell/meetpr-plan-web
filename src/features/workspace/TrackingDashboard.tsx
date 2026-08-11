@@ -318,7 +318,7 @@ function E1rmCard({ data }: { data: ExerciseStatsOverview['e1rm_series'] }) {
   const axis: ChartAxis | undefined = dates.length > 0
     ? { start: dateLabel(dates[0]), end: dateLabel(dates.at(-1)!) }
     : undefined
-  return <TrackingCard title="e1RM over time" subtitle="近 90 天竞技主项估算" missing={data === undefined} note="虚线 = 中间隔了无记录周"><FamilyGrid>{(family) => {
+  return <TrackingCard title="e1RM 趋势" subtitle="近 90 天竞技主项估算" missing={data === undefined} note="虚线 = 中间隔了无记录周"><FamilyGrid>{(family) => {
     const points = validE1rmPoints(data?.[family], toT)
     const first = points[0]
     const latest = points.at(-1)
@@ -446,7 +446,7 @@ function VolumeShareCard({ data }: { data: ExerciseStatsOverview['weekly_family_
     value: (data?.[family] ?? []).reduce((sum, week) => sum + (numberValue(week.volume_kg) ?? 0), 0),
   })), [data])
   const total = totals.reduce((sum, item) => sum + item.value, 0)
-  return <TrackingCard title="Volume share by lift" subtitle="近 90 天总容量占比" missing={data === undefined}><div className="tracking-share-grid">{totals.map(({ family, value }) => {
+  return <TrackingCard title="三项容量占比" subtitle="近 90 天总容量占比" missing={data === undefined}><div className="tracking-share-grid">{totals.map(({ family, value }) => {
     const share = total > 0 ? value / total * 100 : 0
     return <section key={family}><FamilyHead family={family} value={`${decimal(value / 1000)} t`} /><HorizontalBarChart data={[{ label: '容量', value: share, display: `${decimal(share)}%` }]} color={FAMILY_META[family].color} label={`${FAMILY_META[family].label}容量占比横条图`} /></section>
   })}</div></TrackingCard>
@@ -471,13 +471,13 @@ export function TrackingDashboard({ students, selectedStudentId, onStudentChange
     <PageTop title="追踪" students={students} studentId={selectedStudentId} onStudent={onStudentChange} tail={<span className="page-status">近 90 天</span>} />
     {overview === null ? <div className="tracking-load-state">追踪数据加载失败，切换学员或刷新页面重试</div> : overview === undefined ? <div className="tracking-load-state">加载追踪数据…</div> : <div className="tracking-card-list">
       <E1rmCard data={overview.e1rm_series} />
-      <MetricCard data={overview.weekly_family_metrics} title="Volume over time" subtitle="每周训练容量（吨）" field="volume_kg" chart="bar" />
-      <MetricCard data={overview.weekly_family_metrics} title="Avg RPE over time" subtitle="有 RPE 训练组的周均值" field="avg_rpe" chart="line" />
-      <MetricCard data={overview.weekly_family_metrics} title="Intensity over time" subtitle="Top set，占 e1RM %" field="top_set_intensity" chart="line" />
-      <DistributionCard data={overview.intensity_distribution} title="Intensity distribution" kind="intensity" />
-      <DistributionCard data={overview.rep_distribution} title="Rep distribution" kind="reps" />
+      <MetricCard data={overview.weekly_family_metrics} title="容量趋势" subtitle="每周训练容量（吨）" field="volume_kg" chart="bar" />
+      <MetricCard data={overview.weekly_family_metrics} title="平均 RPE 趋势" subtitle="有 RPE 训练组的周均值" field="avg_rpe" chart="line" />
+      <MetricCard data={overview.weekly_family_metrics} title="强度趋势" subtitle="Top set，占 e1RM %" field="top_set_intensity" chart="line" />
+      <DistributionCard data={overview.intensity_distribution} title="强度分布" kind="intensity" />
+      <DistributionCard data={overview.rep_distribution} title="次数分布" kind="reps" />
       <VolumeShareCard data={overview.weekly_family_metrics} />
-      <TrackingCard title="Bodyweight" subtitle="体重趋势"><div className="tracking-bodyweight-empty"><b>暂无体态打卡数据</b><span>等待 wellness 数据源接入</span></div></TrackingCard>
+      <TrackingCard title="体重" subtitle="体重趋势"><div className="tracking-bodyweight-empty"><b>暂无体态打卡数据</b><span>等待 wellness 数据源接入</span></div></TrackingCard>
     </div>}
   </main>
 }
