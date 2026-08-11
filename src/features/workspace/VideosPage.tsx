@@ -2,7 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { ApiException } from '../../api/client'
 import { openConversation } from '../../api/chat'
 import { getUploadUrl, patchCoachRpe, postCoachFeedback } from '../../api/coach'
-import { createVideoMarker, deleteVideoMarker, getVideoMarkers } from '../../api/markers'
+import { createVideoMarker, deleteVideoMarker, getVideoMarkers, markVideoViewed } from '../../api/markers'
 import { abortChatImage, sendChatImage, type ChatImageSendSession } from '../../api/uploads'
 import type { ChatConversation, StudentVideo, VideoMarker } from '../../api/types'
 import { chatOutbox } from '../chat/chatOutbox'
@@ -190,6 +190,7 @@ export function VideosPage({
   const draftRef = useRef('')
   const activeVideoIdRef = useRef<string | null>(null)
   const handledTargetRequest = useRef<number | null>(null)
+  const viewedRequests = useRef<Set<string>>(new Set())
 
   const writeFeedback = (value: string) => {
     draftRef.current = value
@@ -446,6 +447,25 @@ export function VideosPage({
     if (!video) return
     if (video.paused) void video.play()
     else video.pause()
+  }
+  const handleTimeUpdate = (video: HTMLVideoElement) => {
+    const nextTime = video.currentTime
+    setCurrentTime(nextTime)
+    if (
+      !active
+      || active.viewed_at != null
+      || viewedRequests.current.has(active.id)
+      || !Number.isFinite(nextTime)
+      || !Number.isFinite(video.duration)
+      || video.duration <= 0
+      || nextTime < video.duration / 2
+    ) return
+
+    const videoId = active.id
+    viewedRequests.current.add(videoId)
+    void markVideoViewed(videoId)
+      .then(() => { void refreshVideos() })
+      .catch(() => { viewedRequests.current.delete(videoId) })
   }
   const seekTo = (seconds: number) => {
     const video = videoRef.current
@@ -1027,7 +1047,7 @@ export function VideosPage({
                       onDoubleClick={toggleFullscreen}
                       onPlay={() => setPlaying(true)}
                       onPause={() => setPlaying(false)}
-                      onTimeUpdate={(event) => setCurrentTime(event.currentTarget.currentTime)}
+                      onTimeUpdate={(event) => handleTimeUpdate(event.currentTarget)}
                       onLoadedMetadata={(event) => setDuration(event.currentTarget.duration)}
                       onDurationChange={(event) => setDuration(event.currentTarget.duration)}
                       onEnded={() => setPlaying(false)}

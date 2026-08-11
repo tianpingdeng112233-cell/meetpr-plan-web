@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { CreateVideoMarkerPayload } from './types'
-import { createVideoMarker, deleteVideoMarker, getVideoMarkers } from './markers'
+import { createVideoMarker, deleteVideoMarker, getVideoMarkers, markVideoViewed } from './markers'
 
 const marker = {
   id: 'marker-1',
@@ -63,6 +63,18 @@ describe('video markers API', () => {
     expect(fetchMock).toHaveBeenCalledWith(
       '/api/videos/video-1/markers/marker-1',
       expect.objectContaining({ method: 'DELETE' }),
+    )
+  })
+
+  it('marks a video viewed with a bodyless POST', async () => {
+    const viewed = { viewed_at: '2026-08-11T12:00:00Z' }
+    const fetchMock = vi.fn().mockResolvedValue(response(200, viewed))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await expect(markVideoViewed('video-1')).resolves.toEqual(viewed)
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/videos/video-1/viewed',
+      expect.objectContaining({ method: 'POST', body: undefined }),
     )
   })
 
