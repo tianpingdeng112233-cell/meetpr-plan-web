@@ -95,7 +95,13 @@ describe('TrackingDashboard', () => {
     expect(host.textContent).toContain('暂无体态打卡数据')
     expect(host.querySelector('[data-family="squat"] polyline')?.getAttribute('stroke')).toBe('#276FBF')
     expect(host.querySelector('[data-family="bench"] polyline')?.getAttribute('stroke')).toBe('#18855B')
-    expect(host.querySelector('[data-family="deadlift"] polyline')?.getAttribute('stroke')).toBe('#F5A623')
+    // deadlift e1RM 单点无连线;色彩契约走它的 volume 柱渐变(明暗)。
+    expect(host.querySelector('[aria-label="硬拉Volume over time柱状图"] linearGradient stop')?.getAttribute('stop-color')).toBe('#F5A623')
+    // 光幕:多点折线带渐变面积;虚线:squat e1RM 两点隔了 4 周 → 虚线段。
+    expect(host.querySelector('[aria-label="深蹲 e1RM 折线图"] path[fill^="url(#"]')).not.toBeNull()
+    expect(host.querySelector('[aria-label="深蹲 e1RM 折线图"] polyline.tracking-line-dash')).not.toBeNull()
+    // 相邻两周之间不画虚线:squat 周指标 7/27→8/3 连续。
+    expect(host.querySelector('[aria-label="深蹲Avg RPE over time折线图"] polyline.tracking-line-dash')).toBeNull()
     expect(host.querySelector('[aria-label="深蹲强度分布柱状图"]')?.textContent).toContain('90%+')
     expect(host.querySelector('[aria-label="硬拉次数分布柱状图"]')?.textContent).toContain('8+')
     expect(host.querySelector('[aria-label="深蹲容量占比横条图"]')).not.toBeNull()
@@ -106,8 +112,8 @@ describe('TrackingDashboard', () => {
 
     // 共享轴 = 三 family week_start 并集(7/27, 8/3)→ 两个 slot。
     // bench 只有 8/3 一周,它唯一的柱子必须落在第 2 个 slot,与 squat 的第二根同 x,不独占全轴。
-    const benchBar = host.querySelector<SVGRectElement>('[aria-label="卧推Volume over time柱状图"] rect[fill="#18855B"]')
-    const squatBars = host.querySelectorAll<SVGRectElement>('[aria-label="深蹲Volume over time柱状图"] rect[fill="#276FBF"]')
+    const benchBar = host.querySelector<SVGRectElement>('[aria-label="卧推Volume over time柱状图"] rect')
+    const squatBars = host.querySelectorAll<SVGRectElement>('[aria-label="深蹲Volume over time柱状图"] rect')
     expect(squatBars).toHaveLength(2)
     expect(benchBar?.getAttribute('x')).toBe(squatBars[1]?.getAttribute('x'))
 
@@ -128,6 +134,25 @@ describe('TrackingDashboard', () => {
     // 单点不把同一日期标在轴两端。
     const labels = [...host.querySelectorAll('[aria-label="硬拉 e1RM 折线图"] text')].map((node) => node.textContent)
     expect(labels.filter((text) => text === '8/3')).toHaveLength(1)
+  })
+
+  it('dashes weekly lines across a calendar week no family trained (slot 差会漏判的情形)', () => {
+    const data = overview()
+    // 三个 family 都跳过 7/13 那周:共享轴槽位仍相邻(0/1),必须按日历周判出虚线。
+    data.weekly_family_metrics = {
+      squat: [
+        { week_start: '2026-07-06', volume_kg: '5200', avg_rpe: '7.8', top_set_intensity: '81.5' },
+        { week_start: '2026-07-20', volume_kg: '6000', avg_rpe: '8.2', top_set_intensity: '84.0' },
+      ],
+      bench: [],
+      deadlift: [],
+    }
+    act(() => root.render(<Harness cache={{ 'student-a': data }} ensure={vi.fn()} />))
+
+    expect(host.querySelector('[aria-label="深蹲Avg RPE over time折线图"] polyline.tracking-line-dash')).not.toBeNull()
+    // 光幕渐变 id 全局唯一(useId per chart)。
+    const gradientIds = [...host.querySelectorAll('linearGradient')].map((node) => node.id)
+    expect(new Set(gradientIds).size).toBe(gradientIds.length)
   })
 
   it('shows the empty state for an all-zero distribution instead of a blank chart', () => {

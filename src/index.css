@@ -804,6 +804,10 @@ textarea {
 .actual-chip.tone-off { color: var(--bad); background: var(--bad-soft); }
 .actual-chip.tone-missed { color: var(--faint); background: var(--panel-bg); text-decoration: line-through; }
 .tracking-grid-line { stroke: var(--line); stroke-width: 1; vector-effect: non-scaling-stroke; }
+/* PowerSheets 式明暗/虚线/光幕:光幕渐变在 SVG defs 里,这里管发光与虚线段。 */
+.tracking-line-glow { filter: drop-shadow(0 1px 3px color-mix(in srgb, currentColor 35%, transparent)); }
+.tracking-line-dash { stroke-dasharray: 4 3; }
+.tracking-card-note { padding: 0 12px 8px; color: var(--faint); font: 9px var(--font-mono); }
 .tracking-bar-track { fill: var(--line-2); }
 .tracking-chart-empty { height: 108px; display: grid; place-items: center; color: var(--faint); font-size: 11px; }
 .tracking-version-placeholder,
