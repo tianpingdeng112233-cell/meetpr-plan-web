@@ -22,6 +22,8 @@ interface ChartDatum {
   label: string
   value: number
   display: string
+  /** Short on-chart value label (常显数值); falls back to display. */
+  short?: string
   /** Normalized 0..1 x position on the card-wide shared axis (line charts). */
   t?: number
   /** Shared slot index on the card-wide axis (bar charts). */
@@ -43,11 +45,32 @@ interface ChartProps {
   slots?: number
   /** BarChart: slot labels for the shared axis; defaults to per-point labels. */
   axisLabels?: string[]
+  /** y-axis tick formatter (§SPEC-038 3.1); defaults to a compact number. */
+  tick?: (value: number) => string
 }
 
 const finiteData = (data: ChartDatum[]) => data.filter((point) => Number.isFinite(point.value))
 
-export function LineChart({ data, color, label, axis }: ChartProps) {
+// Plot frame shared by line/bar charts: y-axis tick labels live left of PLOT_L.
+const PLOT_L = 46
+const PLOT_R = 288
+const PLOT_T = 18
+const PLOT_B = 80
+
+const defaultTick = (value: number) => Number.isInteger(value) ? String(value) : decimal(value)
+
+function YAxis({ ticks, format }: { ticks: { value: number; y: number }[]; format: (value: number) => string }) {
+  return <>
+    {ticks.map(({ value, y }) => (
+      <g key={y}>
+        <line className="tracking-grid-line" x1={PLOT_L} y1={y} x2={PLOT_R} y2={y} />
+        <text className="tick" x={PLOT_L - 5} y={y + 3} textAnchor="end">{format(value)}</text>
+      </g>
+    ))}
+  </>
+}
+
+export function LineChart({ data, color, label, axis, tick = defaultTick }: ChartProps) {
   const points = finiteData(data)
   if (points.length === 0) return <ChartEmpty />
   const values = points.map((point) => point.value)
@@ -56,55 +79,101 @@ export function LineChart({ data, color, label, axis }: ChartProps) {
   const span = max - min
   const xAt = (point: ChartDatum, index: number) => {
     const t = point.t ?? (points.length === 1 ? .5 : index / (points.length - 1))
-    return 16 + t * 268
+    return PLOT_L + t * (PLOT_R - PLOT_L)
   }
-  const yAt = (value: number) => span === 0 ? 48 : 10 + (max - value) * 70 / span
+  const yAt = (value: number) => span === 0 ? (PLOT_T + PLOT_B) / 2 : PLOT_T + (max - value) * (PLOT_B - PLOT_T) / span
   const plot = points.map((point, index) => `${xAt(point, index).toFixed(1)},${yAt(point.value).toFixed(1)}`).join(' ')
-  const startLabel = axis?.start ?? points[0].label
-  const endLabel = axis?.end ?? points.at(-1)!.label
+  const yTicks = span === 0
+    ? [{ value: max, y: (PLOT_T + PLOT_B) / 2 }]
+    : [{ value: max, y: PLOT_T }, { value: min + span / 2, y: (PLOT_T + PLOT_B) / 2 }, { value: min, y: PLOT_B }]
+  // Every point labelled on the x axis while it stays legible; dense series fall
+  // back to first / middle / last. A single point on a shared card axis shows the
+  // axis端点 instead (and never the same date twice).
+  const xLabels: { x: number; text: string; anchor: 'start' | 'middle' | 'end' }[] = []
+  if (points.length === 1) {
+    if (axis && axis.start !== axis.end) {
+      xLabels.push({ x: PLOT_L, text: axis.start, anchor: 'start' })
+      xLabels.push({ x: PLOT_R, text: axis.end, anchor: 'end' })
+    } else {
+      xLabels.push({ x: xAt(points[0]!, 0), text: points[0]!.label, anchor: 'middle' })
+    }
+  } else {
+    const indexes = points.length <= 7
+      ? points.map((_, index) => index)
+      : [0, Math.floor((points.length - 1) / 2), points.length - 1]
+    for (const index of indexes) {
+      xLabels.push({
+        x: xAt(points[index]!, index),
+        text: points[index]!.label,
+        anchor: index === 0 ? 'start' : index === points.length - 1 ? 'end' : 'middle',
+      })
+    }
+  }
+  // 常显数值:dense series alternate to every other point (ending on the last).
+  const valueLabelled = new Set(points.length <= 8
+    ? points.map((_, index) => index)
+    : points.map((_, index) => index).filter((index) => (points.length - 1 - index) % 2 === 0))
   return (
     <svg className="tracking-chart tracking-line-chart" viewBox="0 0 300 110" role="img" aria-label={label} preserveAspectRatio="none">
-      <line className="tracking-grid-line" x1="16" y1="80" x2="284" y2="80" />
+      <YAxis ticks={yTicks} format={tick} />
+      <line className="tracking-grid-line" x1={PLOT_L} y1={PLOT_B} x2={PLOT_R} y2={PLOT_B} />
+      <line className="tracking-grid-line" x1={PLOT_L} y1={PLOT_T} x2={PLOT_L} y2={PLOT_B} />
       <polyline points={plot} fill="none" stroke={color} strokeWidth="2" vectorEffect="non-scaling-stroke" />
       {points.map((point, index) => (
-        <circle key={`${point.label}-${index}`} cx={xAt(point, index)} cy={yAt(point.value)} r={index === points.length - 1 ? 3.5 : 2} fill={color}>
-          <title>{point.label} · {point.display}</title>
-        </circle>
+        <g key={`${point.label}-${index}`}>
+          <circle cx={xAt(point, index)} cy={yAt(point.value)} r={index === points.length - 1 ? 3.5 : 2} fill={color}>
+            <title>{point.label} · {point.display}</title>
+          </circle>
+          {valueLabelled.has(index) && (
+            <text className="val" x={xAt(point, index)} y={Math.max(8, yAt(point.value) - 6)} textAnchor="middle">
+              {point.short ?? point.display}
+            </text>
+          )}
+        </g>
       ))}
-      {startLabel === endLabel
-        ? <text x="150" y="103" textAnchor="middle">{startLabel}</text>
-        : <>
-            <text x="16" y="103">{startLabel}</text>
-            <text x="284" y="103" textAnchor="end">{endLabel}</text>
-          </>}
+      {xLabels.map((tickLabel, index) => (
+        <text key={`x-${index}`} className="tick" y="103" x={tickLabel.x} textAnchor={tickLabel.anchor}>
+          {tickLabel.text}
+        </text>
+      ))}
     </svg>
   )
 }
 
-export function BarChart({ data, color, label, slots, axisLabels }: ChartProps) {
+export function BarChart({ data, color, label, slots, axisLabels, tick = defaultTick }: ChartProps) {
   const points = finiteData(data)
   if (points.length === 0) return <ChartEmpty />
   const slotCount = Math.max(1, slots ?? points.length)
   const max = Math.max(100, ...points.map((point) => point.value))
-  const slot = 268 / slotCount
+  const slot = (PLOT_R - PLOT_L) / slotCount
   const labels = axisLabels ?? points.map((point) => point.label)
   const labelledSlots = labels.length <= 8
     ? labels.map((text, index) => [text, index] as const)
     : [[labels[0], 0] as const, [labels.at(-1)!, labels.length - 1] as const]
+  const yTicks = [{ value: max, y: PLOT_T }, { value: max / 2, y: (PLOT_T + PLOT_B) / 2 }, { value: 0, y: PLOT_B }]
   return (
     <svg className="tracking-chart tracking-bar-chart" viewBox="0 0 300 110" role="img" aria-label={label} preserveAspectRatio="none">
-      <line className="tracking-grid-line" x1="16" y1="80" x2="284" y2="80" />
+      <YAxis ticks={yTicks} format={tick} />
+      <line className="tracking-grid-line" x1={PLOT_L} y1={PLOT_T} x2={PLOT_L} y2={PLOT_B} />
       {points.map((point, index) => {
         const at = point.slot ?? index
-        const height = point.value <= 0 ? 0 : Math.max(2, point.value / max * 68)
+        const height = point.value <= 0 ? 0 : Math.max(2, point.value / max * (PLOT_B - PLOT_T - 8))
+        const cx = PLOT_L + at * slot + slot / 2
         return (
-          <rect key={`${point.label}-${index}`} x={16 + at * slot + slot * .18} y={80 - height} width={slot * .64} height={height} rx="2" fill={color} opacity={at === slotCount - 1 ? 1 : .72}>
-            <title>{point.label} · {point.display}</title>
-          </rect>
+          <g key={`${point.label}-${index}`}>
+            <rect x={PLOT_L + at * slot + slot * .18} y={PLOT_B - height} width={slot * .64} height={height} rx="2" fill={color} opacity={at === slotCount - 1 ? 1 : .72}>
+              <title>{point.label} · {point.display}</title>
+            </rect>
+            {point.value > 0 && (
+              <text className="val" x={cx} y={Math.max(8, PLOT_B - height - 4)} textAnchor="middle">
+                {point.short ?? point.display}
+              </text>
+            )}
+          </g>
         )
       })}
       {labelledSlots.map(([text, index]) => (
-        <text key={`label-${index}`} x={16 + index * slot + slot / 2} y="103" textAnchor="middle">{text}</text>
+        <text key={`label-${index}`} className="tick" x={PLOT_L + index * slot + slot / 2} y="103" textAnchor="middle">{text}</text>
       ))}
     </svg>
   )
@@ -185,7 +254,7 @@ function TrackingCard({ title, subtitle, missing = false, children }: {
 function validE1rmPoints(series: E1rmFamilySeries | undefined, toT: (date: string) => number): ChartDatum[] {
   return (series?.points ?? []).flatMap((point) => {
     const value = numberValue(point.value)
-    return value == null ? [] : [{ label: dateLabel(point.date), value, display: `${decimal(value)} kg`, t: toT(point.date) }]
+    return value == null ? [] : [{ label: dateLabel(point.date), value, display: `${decimal(value)} kg`, short: decimal(value), t: toT(point.date) }]
   })
 }
 
@@ -209,7 +278,7 @@ function E1rmCard({ data }: { data: ExerciseStatsOverview['e1rm_series'] }) {
         : difference == null || difference === 0 ? 'flat' : difference > 0 ? 'up' : 'down'
     const detail = difference != null ? `较起点 ${difference > 0 ? '+' : ''}${decimal(difference)} kg`
       : trend === 'new' && latest ? '新数据' : undefined
-    return <><FamilyHead family={family} value={latest ? `${decimal(latest.value)} kg` : undefined} detail={detail} tone={tone} /><LineChart data={points} color={FAMILY_META[family].color} label={`${FAMILY_META[family].label} e1RM 折线图`} {...axis ? { axis } : {}} /></>
+    return <><FamilyHead family={family} value={latest ? `${decimal(latest.value)} kg` : undefined} detail={detail} tone={tone} /><LineChart data={points} color={FAMILY_META[family].color} label={`${FAMILY_META[family].label} e1RM 折线图`} tick={(v) => String(Math.round(v))} {...axis ? { axis } : {}} /></>
   }}</FamilyGrid></TrackingCard>
 }
 
@@ -224,7 +293,8 @@ function metricPoints(
     const slot = slotOf.get(metric.week_start)
     if (value == null || slot == null) return []
     const display = field === 'volume_kg' ? `${decimal(value / 1000)} 吨` : field === 'avg_rpe' ? `RPE ${decimal(value)}` : `${decimal(value)}%`
-    return [{ label: weekLabel(metric.week_start), value, display, slot, t: lastSlot === 0 ? .5 : slot / lastSlot }]
+    const short = field === 'volume_kg' ? decimal(value / 1000) : field === 'avg_rpe' ? decimal(value) : `${Math.round(value)}%`
+    return [{ label: weekLabel(metric.week_start), value, display, short, slot, t: lastSlot === 0 ? .5 : slot / lastSlot }]
   })
 }
 
@@ -249,9 +319,12 @@ function MetricCard({ data, title, subtitle, field, chart }: {
   return <TrackingCard title={title} subtitle={subtitle} missing={data === undefined}><FamilyGrid>{(family) => {
     const points = metricPoints(data?.[family], field, slotOf)
     const latest = points.at(-1)
+    const tick = field === 'volume_kg' ? (v: number) => decimal(v / 1000)
+      : field === 'avg_rpe' ? (v: number) => decimal(v)
+        : (v: number) => `${Math.round(v)}%`
     const chartNode = chart === 'bar'
-      ? <BarChart data={points} color={FAMILY_META[family].color} label={`${FAMILY_META[family].label}${title}柱状图`} slots={weeks.length} axisLabels={axisLabels} />
-      : <LineChart data={points} color={FAMILY_META[family].color} label={`${FAMILY_META[family].label}${title}折线图`} {...axis ? { axis } : {}} />
+      ? <BarChart data={points} color={FAMILY_META[family].color} label={`${FAMILY_META[family].label}${title}柱状图`} slots={weeks.length} axisLabels={axisLabels} tick={tick} />
+      : <LineChart data={points} color={FAMILY_META[family].color} label={`${FAMILY_META[family].label}${title}折线图`} tick={tick} {...axis ? { axis } : {}} />
     return <><FamilyHead family={family} value={latest?.display} />{chartNode}</>
   }}</FamilyGrid></TrackingCard>
 }
@@ -270,6 +343,7 @@ function intensityPoints(distribution: IntensityDistribution | undefined): Chart
     label,
     value: count / total * 100,
     display: `${decimal(count / total * 100)}% · ${count} 组`,
+    short: `${Math.round(count / total * 100)}%`,
   }))
 }
 
@@ -285,7 +359,12 @@ function repPoints(distribution: RepDistributionBucket[] | undefined): ChartDatu
   return Array.from({ length: 8 }, (_, index) => {
     const reps = index + 1
     const count = counts.get(reps) ?? 0
-    return { label: reps === 8 ? '8+' : String(reps), value: count / total * 100, display: `${decimal(count / total * 100)}% · ${count} 组` }
+    return {
+      label: reps === 8 ? '8+' : String(reps),
+      value: count / total * 100,
+      display: `${decimal(count / total * 100)}% · ${count} 组`,
+      short: `${Math.round(count / total * 100)}%`,
+    }
   })
 }
 
@@ -299,7 +378,7 @@ function DistributionCard({ data, title, kind }: {
       ? intensityPoints((data as ExerciseStatsOverview['intensity_distribution'])?.[family])
       : repPoints((data as ExerciseStatsOverview['rep_distribution'])?.[family])
     const chartName = kind === 'intensity' ? '强度分布' : '次数分布'
-    return <><FamilyHead family={family} /><BarChart data={points} color={FAMILY_META[family].color} label={`${FAMILY_META[family].label}${chartName}柱状图`} /></>
+    return <><FamilyHead family={family} /><BarChart data={points} color={FAMILY_META[family].color} label={`${FAMILY_META[family].label}${chartName}柱状图`} tick={(v) => `${Math.round(v)}%`} /></>
   }}</FamilyGrid></TrackingCard>
 }
 

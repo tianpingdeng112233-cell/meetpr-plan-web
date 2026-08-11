@@ -111,9 +111,9 @@ describe('TrackingDashboard', () => {
     expect(squatBars).toHaveLength(2)
     expect(benchBar?.getAttribute('x')).toBe(squatBars[1]?.getAttribute('x'))
 
-    // 折线同理:bench 单点落在共享轴末端(t=1 → x=284),不居中。
+    // 折线同理:bench 单点落在共享轴末端(t=1 → x=PLOT_R=288),不居中。
     const benchDot = host.querySelector<SVGCircleElement>('[aria-label="卧推Intensity over time折线图"] circle')
-    expect(benchDot?.getAttribute('cx')).toBe('284')
+    expect(benchDot?.getAttribute('cx')).toBe('288')
     // 共享轴端点标签在单周 family 的图上也显示两端。
     expect(host.querySelector('[aria-label="卧推Avg RPE over time折线图"]')?.textContent).toContain('7/27 周')
   })
