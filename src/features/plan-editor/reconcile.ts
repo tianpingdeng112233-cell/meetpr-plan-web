@@ -94,6 +94,7 @@ function assertSupportedServerTree(server: PlanWithChildren): void {
       numNullable(set.target_pct), numNullable(set.target_rpe), numNullable(set.rir_target),
       numNullable(set.rpe_low), numNullable(set.rpe_high),
       numNullable(set.weight_low), numNullable(set.weight_high),
+      set.load_mode === 'pct' ? canonicalPctAnchor(set.pct_anchor) : null,
     ])
     const firstIntensity = newIntensity(first)
     const singleValueMode = first.load_mode === 'pct' || first.load_mode === 'rpe' || first.load_mode === 'rir'
@@ -104,6 +105,8 @@ function assertSupportedServerTree(server: PlanWithChildren): void {
       && (first.load_mode != null
         ? set.load_mode === first.load_mode && (singleValueMode || newIntensity(set) === firstIntensity)
         : set.load_mode == null && set.intensity_mode === first.intensity_mode)
+      && (first.load_mode !== 'pct'
+        || canonicalPctAnchor(set.pct_anchor) === canonicalPctAnchor(first.pct_anchor))
       && set.rest_seconds == null
       && (bodyweight || set.coach_note == null)
       && (set.set_type === 'working' || (index === sets.length - 1 && set.set_type === 'amrap'))
@@ -119,6 +122,10 @@ function numStr(v: string | number): string {
 
 function numNullable(v: string | number | null | undefined): string | null {
   return v == null || v === '' ? null : numStr(v)
+}
+
+function canonicalPctAnchor(anchor: PlanExerciseResponse['sets'][number]['pct_anchor']): 'e1rm' | 'top_set' | null {
+  return anchor === 'e1rm' || anchor === 'top_set' ? anchor : null
 }
 
 function canonCoachNote(note: string | null | undefined): string | null {
@@ -185,6 +192,9 @@ function rowToDesired(row: ExerciseRow): DesiredExercise | null {
         target_reps_max: repsMax,
         load_mode: setIntensity?.mode ?? null,
         target_pct: setIntensity?.mode === 'pct' ? numNullable(setIntensityValue) : null,
+        ...(setIntensity?.mode === 'pct' ? {
+          pct_anchor: row.pctAnchor === 'e1rm' || row.pctAnchor === 'top_set' ? row.pctAnchor : null,
+        } : {}),
         target_rpe: setIntensity?.mode === 'rpe' ? numNullable(setIntensityValue) : null,
         rir_target: setIntensity?.mode === 'rir' ? numNullable(setIntensityValue) : null,
         rpe_low: setIntensity?.mode === 'rpe_range' ? numNullable(setIntensity.value) : null,
@@ -224,6 +234,7 @@ function canonicalSet(set: CreatePlanSetBody | PlanExerciseResponse['sets'][numb
       numNullable(set.target_pct), numNullable(set.target_rpe), numNullable(set.rir_target),
       numNullable(set.rpe_low), numNullable(set.rpe_high),
       numNullable(set.weight_low), numNullable(set.weight_high),
+      set.load_mode === 'pct' ? canonicalPctAnchor(set.pct_anchor) : null,
       numNullable(set.target_weight) ?? legacyWeight,
       set.set_type, null,
     ]
@@ -413,6 +424,7 @@ function serverToRow(exercise: PlanExerciseResponse, local: ExerciseRow | undefi
     mode: bodyweight ? 'bodyweight' : legacyRpeSource ? 'rpe' : 'kg',
     ...(legacyWeightSource ? { legacyWeightSource: true } : {}),
     ...(!bodyweight && (legacyRpeSource || singleValueMode) ? { intensityMode, intensityBoxes } : {}),
+    ...(loadMode === 'pct' ? { pctAnchor: sets[0]?.pct_anchor ?? 'one_rm' } : {}),
     ...(legacyRpeSource ? {} : { intensity: uniformLoadMode ? intensity : null }),
     weightMode,
     boxes,
@@ -670,6 +682,7 @@ function workToBatchDay(work: DayWork): BatchPlanDayBody {
         ...(set.load_mode !== undefined ? {
           load_mode: set.load_mode,
           target_pct: set.target_pct ?? null,
+          ...(set.load_mode === 'pct' ? { pct_anchor: set.pct_anchor ?? null } : {}),
           target_rpe: set.target_rpe ?? null,
           rir_target: set.rir_target ?? null,
           rpe_low: set.rpe_low ?? null,

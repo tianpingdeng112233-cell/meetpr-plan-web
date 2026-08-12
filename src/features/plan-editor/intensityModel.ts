@@ -1,4 +1,4 @@
-import type { DisplayWeightMode, ExerciseRow, IntensityValueMode, RowIntensity, SetBox, WeightMode } from './types'
+import type { DisplayWeightMode, ExerciseRow, IntensityValueMode, PctAnchor, RowIntensity, SetBox, WeightMode } from './types'
 
 export function isSingleValueIntensity(
   intensity: RowIntensity | null,
@@ -28,6 +28,18 @@ export function rowIntensity(row: ExerciseRow): RowIntensity | null {
 export function displayedRowIntensity(row: ExerciseRow): RowIntensity | null {
   const intensity = rowIntensity(row)
   return intensity?.mode === 'weight_range' || intensity?.mode === 'fixed_weight' ? null : intensity
+}
+
+/** Legacy/missing pct anchors have always meant 1RM. */
+export function rowPctAnchor(row: ExerciseRow): PctAnchor {
+  return rowIntensity(row)?.mode === 'pct' ? row.pctAnchor ?? 'one_rm' : 'one_rm'
+}
+
+/** Return a copy with no percentage-anchor own-property. */
+export function clearPctAnchor(row: ExerciseRow): ExerciseRow {
+  const next = { ...row }
+  delete next.pctAnchor
+  return next
 }
 
 export function rowWeightBoxes(row: ExerciseRow): SetBox[] {

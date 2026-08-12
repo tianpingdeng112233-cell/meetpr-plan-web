@@ -136,6 +136,21 @@ describe('spec 034 plan read reconstruction', () => {
     expect(rowIntensity(rows[0])).toEqual({ mode: 'rpe', value: '7.5', high: '' })
   })
 
+  it('maps missing/null pct anchors to 1RM and preserves explicit anchors', () => {
+    const exercises = [
+      exercise('missing-anchor', [set('missing', { load_mode: 'pct', target_pct: '70' })]),
+      exercise('null-anchor', [set('null', { load_mode: 'pct', target_pct: '72.5', pct_anchor: null })]),
+      exercise('e1rm-anchor', [set('e1rm', { load_mode: 'pct', target_pct: '75', pct_anchor: 'e1rm' })]),
+      exercise('top-anchor', [set('top', { load_mode: 'pct', target_pct: '80', pct_anchor: 'top_set' })]),
+    ]
+    const rows = mapPlanToWeeks(
+      plan(exercises),
+      new Map(exercises.map((item) => [item.exercise_id, { name: item.exercise_id, custom: false }])),
+    )[0].days[0].rows
+
+    expect(rows.map((row) => row.pctAnchor)).toEqual(['one_rm', 'one_rm', 'e1rm', 'top_set'])
+  })
+
   it('aggregates a uniform legacy RPE row without losing its legacy wire provenance', () => {
     const legacy = exercise('uniform-legacy-rpe', [
       set('legacy-1', { load_mode: null, intensity_mode: 'rpe', target_value: '8', target_weight: null }),

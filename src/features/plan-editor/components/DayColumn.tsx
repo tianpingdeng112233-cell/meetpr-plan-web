@@ -9,6 +9,7 @@ import {
   intensityReason,
 } from '../inputGuard'
 import {
+  clearPctAnchor,
   displayedRowIntensity,
   displayedWeightMode,
   inferredIntensityMode,
@@ -16,6 +17,7 @@ import {
   materializeIntensityRow,
   rowIntensity,
   rowIntensityBoxes,
+  rowPctAnchor,
   rowWeightBoxes,
 } from '../intensityModel'
 import { actualIntensityChip, actualWeightTone, formatActualWeight, type ActualSet } from '../actuals'
@@ -247,6 +249,12 @@ const INTENSITY_OPTIONS: { mode: LoadMode; label: string }[] = [
   { mode: 'rpe_range', label: 'RPE 区间' },
 ]
 
+const PCT_ANCHOR_OPTIONS = [
+  { value: 'one_rm', label: '1RM' },
+  { value: 'e1rm', label: 'e1RM' },
+  { value: 'top_set', label: '当日顶组' },
+] as const
+
 function intensityPlaceholder(intensity: RowIntensity): string {
   switch (intensity.mode) {
     case 'pct': return '72.5'
@@ -325,6 +333,7 @@ function EditableIntensity({ row, width, edit, selectedCell, selectCell, cellKey
   const singleValue = isSingleValueIntensity(intensity)
   const intensityMode = inferredIntensityMode(row)
   const intensityBoxes = rowIntensityBoxes(row)
+  const pctAnchor = rowPctAnchor(row)
   const invalid = (issue?.invalidIntensity ?? false) && !singleValue
   const title = invalid && intensity ? intensityReason(intensity.mode) ?? undefined : undefined
   const updateIntensity = (updater: (current: RowIntensity | null) => RowIntensity | null) => {
@@ -389,10 +398,11 @@ function EditableIntensity({ row, width, edit, selectedCell, selectCell, cellKey
             onChange={(event) => {
               const mode = event.currentTarget.value as LoadMode | ''
               edit((current) => {
-                const materialized = materializeIntensityRow(current)
+                const materialized = clearPctAnchor(materializeIntensityRow(current))
                 return {
                   ...materialized,
                   intensity: mode ? { mode, value: '', high: '' } : null,
+                  ...(mode === 'pct' ? { pctAnchor: 'one_rm' as const } : {}),
                   intensityMode: mode === 'pct' || mode === 'rpe' || mode === 'rir' ? 'uniform' : undefined,
                   intensityBoxes: mode === 'pct' || mode === 'rpe' || mode === 'rir'
                     ? materialized.boxes.map(() => ({ val: '', empty: true }))
@@ -434,6 +444,28 @@ function EditableIntensity({ row, width, edit, selectedCell, selectCell, cellKey
                 )
               })}
               <span className="intensity-unit">{intensity.mode === 'pct' ? '%' : ''}</span>
+              {intensity.mode === 'pct' && (readOnly || row.hasLogs) && pctAnchor !== 'one_rm' && (
+                <span className="pct-anchor-label" data-pct-anchor={pctAnchor}>
+                  {pctAnchor === 'e1rm' ? '×e1RM' : '×顶组'}
+                </span>
+              )}
+              {intensity.mode === 'pct' && !readOnly && !row.hasLogs && (
+                <select
+                  className="pct-anchor-select"
+                  aria-label="百分比锚点"
+                  value={pctAnchor}
+                  title="百分比参照"
+                  onClick={stop}
+                  onChange={(event) => {
+                    const pctAnchor = event.currentTarget.value as ExerciseRow['pctAnchor']
+                    edit((current) => ({ ...materializeIntensityRow(current), pctAnchor }))
+                  }}
+                >
+                  {PCT_ANCHOR_OPTIONS.map((option) => (
+                    <option value={option.value} key={option.value}>{option.label}</option>
+                  ))}
+                </select>
+              )}
             </>
           )}
           {intensity && !singleValue && (
@@ -507,9 +539,9 @@ function EditableWeight({ row, width, edit, selectedCell, selectCell, cellKey, r
     if (displayedWeightMode(current) === next) return current
     const materialized = materializeIntensityRow(current)
     const currentIntensity = rowIntensity(materialized)
-    if (next === 'bodyweight') return { ...materialized, mode: 'bodyweight' }
+    if (next === 'bodyweight') return { ...clearPctAnchor(materialized), mode: 'bodyweight' }
     if (next === 'weight_range') return {
-      ...materialized,
+      ...clearPctAnchor(materialized),
       mode: 'kg',
       intensity: { mode: 'weight_range', value: '', high: '' },
       weightMode: 'uniform',

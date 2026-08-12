@@ -267,6 +267,26 @@ describe('reconcilePlan — skippedRows counts only contentful unbound rows', ()
     expect(plans.createExercise).not.toHaveBeenCalled()
   })
 
+  it('treats a legacy pct row without pct_anchor as the default and performs no writes', async () => {
+    const stored = serverExercise('legacy-pct', 'pct-ex', 0, '75')
+    stored.sets[0] = {
+      ...stored.sets[0],
+      load_mode: 'pct',
+      target_pct: '75',
+      target_weight: null,
+    }
+    const baseline = serverPlan([serverDay([stored])], 'draft')
+    vi.mocked(plans.getPlan).mockResolvedValue(baseline)
+    const weeks = mapPlanToWeeks(baseline, new Map([['pct-ex', { name: '百分比动作', custom: false }]]))
+
+    expect(weeks[0].days[0].rows[0].pctAnchor).toBe('one_rm')
+    await expect(reconcilePlan('p', weeks)).resolves.toMatchObject({ changedDays: 0, skippedRows: 0 })
+    expect(plans.batchDays).not.toHaveBeenCalled()
+    expect(plans.deleteExercise).not.toHaveBeenCalled()
+    expect(plans.createExercise).not.toHaveBeenCalled()
+    expect(plans.createSet).not.toHaveBeenCalled()
+  })
+
   it('presents a legacy pure-weight row without autosave migrating load_mode', async () => {
     const legacy = serverExercise('legacy-weight', 'legacy-ex', 0, '170')
     legacy.sets[0] = { ...legacy.sets[0], load_mode: null, target_weight: null }
@@ -331,7 +351,8 @@ describe('reconcilePlan — skippedRows counts only contentful unbound rows', ()
 
   it('writes strength modes and all four weight modes without changing backend compatibility', async () => {
     const modes: ExerciseRow[] = [
-      row({ id: 'pct', exerciseId: 'pct', name: 'pct', intensity: { mode: 'pct', value: '72.5', high: '' }, intensityMode: 'per_set', intensityBoxes: [{ val: '72.5', empty: false }, { val: '75', empty: false }], boxes: [{ val: '170', empty: false }, { val: '', empty: true }] }),
+      row({ id: 'pct', exerciseId: 'pct', name: 'pct', intensity: { mode: 'pct', value: '72.5', high: '' }, pctAnchor: 'e1rm', intensityMode: 'per_set', intensityBoxes: [{ val: '72.5', empty: false }, { val: '75', empty: false }], boxes: [{ val: '170', empty: false }, { val: '', empty: true }] }),
+      row({ id: 'pct-default', exerciseId: 'pct-default', name: 'pct-default', intensity: { mode: 'pct', value: '70', high: '' }, boxes: [{ val: '', empty: true }] }),
       row({ id: 'rpe', exerciseId: 'rpe', name: 'rpe', intensity: { mode: 'rpe', value: '8', high: '' }, boxes: [{ val: '', empty: true }, { val: '', empty: true }] }),
       row({ id: 'rir', exerciseId: 'rir', name: 'rir', intensity: { mode: 'rir', value: '2', high: '' }, boxes: [{ val: '', empty: true }] }),
       row({ id: 'wr', exerciseId: 'wr', name: 'wr', intensity: { mode: 'weight_range', value: '165', high: '175' }, boxes: [{ val: '', empty: true }] }),
@@ -346,9 +367,10 @@ describe('reconcilePlan — skippedRows counts only contentful unbound rows', ()
     const exercises = vi.mocked(plans.batchDays).mock.calls[0][1].upsert_days[0].exercises
     const byId = new Map(exercises.map((exercise) => [exercise.exercise_id, exercise.sets]))
     expect(byId.get('pct')).toEqual([
-      expect.objectContaining({ load_mode: 'pct', target_pct: '72.5', target_weight: '170' }),
-      expect.objectContaining({ load_mode: 'pct', target_pct: '75', target_weight: null }),
+      expect.objectContaining({ load_mode: 'pct', target_pct: '72.5', pct_anchor: 'e1rm', target_weight: '170' }),
+      expect.objectContaining({ load_mode: 'pct', target_pct: '75', pct_anchor: 'e1rm', target_weight: null }),
     ])
+    expect(byId.get('pct-default')?.[0]).toEqual(expect.objectContaining({ load_mode: 'pct', pct_anchor: null }))
     expect(byId.get('rpe')?.[0]).toEqual(expect.objectContaining({ load_mode: 'rpe', target_rpe: '8' }))
     expect(byId.get('rir')?.[0]).toEqual(expect.objectContaining({ load_mode: 'rir', rir_target: '2' }))
     expect(byId.get('wr')?.[0]).toEqual(expect.objectContaining({ load_mode: 'weight_range', weight_low: '165', weight_high: '175', target_weight: null }))
@@ -362,6 +384,9 @@ describe('reconcilePlan — skippedRows counts only contentful unbound rows', ()
       expect.objectContaining({ load_mode: null, target_weight: '172.5' }),
     ])
     expect(byId.get('fixed-wire')?.[0]).toEqual(expect.objectContaining({ load_mode: 'fixed_weight', target_weight: '180' }))
+    expect(exercises.filter((exercise) => !exercise.exercise_id.startsWith('pct'))
+      .flatMap((exercise) => exercise.sets)
+      .every((set) => !Object.hasOwn(set, 'pct_anchor'))).toBe(true)
     expect(exercises.flatMap((exercise) => exercise.sets).every((set) => (
       set.intensity_mode === undefined && set.target_value === undefined
     ))).toBe(true)
@@ -538,6 +563,39 @@ describe('reconcilePlan — exercise-granularity history locks', () => {
     expect(plans.createExercise).toHaveBeenCalledWith('day1', expect.objectContaining({ exercise_id: 'new-ex', sort_order: 2 }))
     expect(vi.mocked(plans.createExercise).mock.calls[1][1]).not.toHaveProperty('target')
     expect(result.changedDays).toBe(1)
+  })
+
+  it('uses the createSet path to send anchors only for pct rows and encodes 1RM as null', async () => {
+    const locked = serverExercise('locked', 'lock-ex', 0, '90', true)
+    vi.mocked(plans.getPlan).mockResolvedValue(serverPlan([serverDay([locked])]))
+
+    await reconcilePlan('p', [weekWithMondayRows([
+      boundRow('locked-row', 'locked', 'lock-ex', '90', { hasLogs: true, serverSortOrder: 0 }),
+      row({
+        id: 'pct-e1rm', exerciseId: 'pct-e1rm', name: 'pct-e1rm',
+        intensity: { mode: 'pct', value: '75', high: '' }, pctAnchor: 'e1rm',
+        boxes: [{ val: '', empty: true }],
+      }),
+      row({
+        id: 'pct-default', exerciseId: 'pct-default', name: 'pct-default',
+        intensity: { mode: 'pct', value: '70', high: '' }, pctAnchor: 'one_rm',
+        boxes: [{ val: '', empty: true }],
+      }),
+      row({
+        id: 'rpe', exerciseId: 'rpe', name: 'rpe',
+        intensity: { mode: 'rpe', value: '8', high: '' }, pctAnchor: 'top_set',
+        boxes: [{ val: '', empty: true }],
+      }),
+    ])])
+
+    const bodies = vi.mocked(plans.createSet).mock.calls.map(([, body]) => body)
+    expect(bodies).toEqual([
+      expect.objectContaining({ load_mode: 'pct', pct_anchor: 'e1rm' }),
+      expect.objectContaining({ load_mode: 'pct', pct_anchor: null }),
+      expect.objectContaining({ load_mode: 'rpe' }),
+    ])
+    expect(bodies[2]).not.toHaveProperty('pct_anchor')
+    expect(plans.batchDays).not.toHaveBeenCalled()
   })
 
   it('sends zero writes for a locked row and blocks a local locked-row mutation before other writes', async () => {

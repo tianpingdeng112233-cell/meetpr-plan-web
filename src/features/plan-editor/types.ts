@@ -1,9 +1,10 @@
-import type { LoadModeWire } from '../../api/types'
+import type { LoadModeWire, PctAnchorWire } from '../../api/types'
 
 export type IntensityMode = 'kg' | 'rpe' | 'bodyweight'
 
 /** Backend spec 034 v2 prescription form. `null` means a weight-only row. */
 export type LoadMode = LoadModeWire
+export type PctAnchor = PctAnchorWire
 export type WeightMode = 'uniform' | 'per_set'
 export type DisplayWeightMode = 'fixed_weight' | 'per_set' | 'weight_range' | 'bodyweight'
 export type IntensityValueMode = 'uniform' | 'per_set'
@@ -52,6 +53,8 @@ export interface ExerciseRow {
   legacyWeightSource?: boolean
   /** Row-level spec-034 intensity. Omitted only for legacy rows/mirrors. */
   intensity?: RowIntensity | null
+  /** Percentage reference. Missing on legacy rows means the default 1RM anchor. */
+  pctAnchor?: PctAnchor
   /** Presentation for pct/rpe/rir values; wire-only ranges stay row-level. */
   intensityMode?: IntensityValueMode
   /** One independent intensity-value slot per set for pct/rpe/rir. */

@@ -201,6 +201,7 @@ function mapExercise(ex: PlanExerciseResponse, catalog: Catalog): ExerciseRow {
       intensityMode: intensityModeForBoxes(intensityBoxes),
       intensityBoxes,
     } : {}),
+    ...(loadMode === 'pct' ? { pctAnchor: sets[0].pct_anchor ?? 'one_rm' } : {}),
     ...(legacyRpeSource ? {} : {
       intensity: bodyweight || !uniformLoadMode ? null : intensityFromSet(sets[0]),
     }),
