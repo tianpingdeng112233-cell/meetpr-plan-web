@@ -7,6 +7,7 @@ import {
   isSingleValueIntensity,
   rowIntensity,
   rowIntensityBoxes,
+  rowPctAnchor,
   rowWeightBoxes,
 } from './intensityModel'
 
@@ -20,7 +21,7 @@ function clipboardMode(raw: string): IntensityMode {
 }
 
 export function serializeRowsForClipboard(rows: ExerciseRow[]): string {
-  const lines = ['动作\t组\t次\t强度类型\t强度值\t重量模式\t重量\t备注']
+  const lines = ['动作\t组\t次\t强度类型\t强度值\t重量模式\t重量\t备注\t百分比锚点']
   for (const row of rows) {
     const intensity = displayedRowIntensity(row)
     const mode = row.mode === 'bodyweight' ? '自重' : intensity?.mode ?? '无'
@@ -43,7 +44,10 @@ export function serializeRowsForClipboard(rows: ExerciseRow[]): string {
       : displayWeightMode === 'weight_range' && wireIntensity?.mode === 'weight_range'
         ? `${wireIntensity.value}-${wireIntensity.high}`
         : rowWeightBoxes(row).map((box) => (box.empty ? '' : box.val)).join('/')
-    lines.push([row.name, String(row.boxes.length), row.reps, mode, intensityValue, weightMode, weights, row.note].join('\t'))
+    const pctAnchor = intensity?.mode === 'pct'
+      ? rowPctAnchor(row) === 'top_set' ? '当日顶组' : rowPctAnchor(row) === 'e1rm' ? 'e1RM' : '1RM'
+      : ''
+    lines.push([row.name, String(row.boxes.length), row.reps, mode, intensityValue, weightMode, weights, row.note, pctAnchor].join('\t'))
   }
   return lines.join('\n')
 }
@@ -58,6 +62,7 @@ export function parseClipboardRows(text: string, exerciseIndex?: ExerciseResolve
   const headerCells = lines[0].split('\t')
   const first = headerCells[0]?.trim()
   const modernFormat = headerCells.includes('重量模式') && headerCells.includes('重量')
+  const pctAnchorIndex = headerCells.indexOf('百分比锚点')
   if (first === '动作' || first?.toLowerCase() === 'exercise') lines.shift()
 
   const rows: ExerciseRow[] = []
@@ -114,6 +119,12 @@ export function parseClipboardRows(text: string, exerciseIndex?: ExerciseResolve
         return { val: value, empty: value === '' }
       })
       : undefined
+    const pctAnchorText = pctAnchorIndex >= 0 ? (cells[pctAnchorIndex] ?? '').trim().toLowerCase() : ''
+    const pctAnchor = loadMode === 'pct'
+      ? pctAnchorText === 'e1rm' ? 'e1rm' as const
+        : pctAnchorText === '当日顶组' || pctAnchorText === 'top_set' ? 'top_set' as const
+          : 'one_rm' as const
+      : undefined
     rows.push({
       id: `paste-${lineIndex}-${Date.now()}-${Math.round(performance.now())}`,
       serverRowId: null,
@@ -130,6 +141,7 @@ export function parseClipboardRows(text: string, exerciseIndex?: ExerciseResolve
       mode,
       ...(mode !== 'bodyweight' ? {
         intensity,
+        ...(pctAnchor ? { pctAnchor } : {}),
         ...(singleValue ? { intensityMode, intensityBoxes } : {}),
         weightMode: modern && !legacyPerSetRpe && (weightModeText === '逐组' || weightModeText === '逐组标重')
           ? 'per_set' as const

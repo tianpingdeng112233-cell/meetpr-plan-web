@@ -134,6 +134,7 @@ describe('plan editor clipboard rows', () => {
       exerciseId: 'bench', name: '卧推', ku: true, custom: false, isMain: true,
       aux: false, reps: '5', mode: 'kg',
       intensity: { mode: 'pct', value: '70', high: '' },
+      pctAnchor: 'top_set',
       intensityMode: 'per_set',
       intensityBoxes: [
         { val: '70', empty: false }, { val: '', empty: true },
@@ -147,12 +148,32 @@ describe('plan editor clipboard rows', () => {
     const parsed = parseClipboardRows(serializeRowsForClipboard([source]), new ExerciseIndex([exercise('bench', '卧推')]))
     expect(parsed?.[0]).toMatchObject({
       intensity: { mode: 'pct', value: '70', high: '' },
+      pctAnchor: 'top_set',
       intensityMode: 'per_set',
       intensityBoxes: [
         { val: '70', empty: false }, { val: '', empty: true },
         { val: '75', empty: false }, { val: '', empty: true },
       ],
       boxes: Array.from({ length: 4 }, () => ({ val: '', empty: true })),
+    })
+    expect(serializeRowsForClipboard([source])).toContain('\t当日顶组')
+  })
+
+  it('parses the previous eight-column clipboard format with the default pct anchor', () => {
+    const legacyText = [
+      '动作\t组\t次\t强度类型\t强度值\t重量模式\t重量\t备注',
+      '卧推\t2\t5\tpct\t72.5/75\t逐组标重\t100/102.5\t旧剪贴板',
+    ].join('\n')
+
+    const parsed = parseClipboardRows(legacyText, new ExerciseIndex([exercise('bench', '卧推')]))
+
+    expect(parsed?.[0]).toMatchObject({
+      intensity: { mode: 'pct', value: '72.5', high: '' },
+      pctAnchor: 'one_rm',
+      intensityMode: 'per_set',
+      intensityBoxes: [{ val: '72.5', empty: false }, { val: '75', empty: false }],
+      boxes: [{ val: '100', empty: false }, { val: '102.5', empty: false }],
+      note: '旧剪贴板',
     })
   })
 })

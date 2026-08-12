@@ -2566,6 +2566,17 @@ textarea {
   background: var(--card-bg);
   font: 600 9px var(--font-sans);
 }
+.intcell .pct-anchor-select {
+  width: 48px;
+  height: 18px;
+  color: var(--mut);
+  font-size: 8px;
+}
+.pct-anchor-label {
+  color: var(--mut);
+  font: 500 8px var(--font-sans);
+  white-space: nowrap;
+}
 .intcell input,
 .weightcell input {
   width: 35px;

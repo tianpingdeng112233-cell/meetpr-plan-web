@@ -99,6 +99,31 @@ describe('local draft mirror storage', () => {
     expect(mirror?.contentHash).toBe(draftContentHash(content('latest')))
   })
 
+  it('round-trips an explicit pct anchor and canonicalizes the default anchor', () => {
+    const storage = new MemoryStorage()
+    const anchored = content()
+    const pctRow = anchored.weeks[0].days[0].rows[0]
+    pctRow.intensity = { mode: 'pct', value: '75', high: '' }
+    pctRow.pctAnchor = 'e1rm'
+
+    saveDraftMirror('pct-plan', anchored, storage)
+    expect(loadDraftMirror('pct-plan', storage)?.content.weeks[0].days[0].rows[0].pctAnchor).toBe('e1rm')
+
+    const defaultAnchor = structuredClone(anchored)
+    defaultAnchor.weeks[0].days[0].rows[0].pctAnchor = 'one_rm'
+    expect(draftContentHash(defaultAnchor)).not.toBe(draftContentHash(anchored))
+
+    const legacyDefault = structuredClone(defaultAnchor)
+    delete legacyDefault.weeks[0].days[0].rows[0].pctAnchor
+    expect(draftContentHash(defaultAnchor)).toBe(draftContentHash(legacyDefault))
+
+    const nonPctWithStaleAnchor = structuredClone(defaultAnchor)
+    nonPctWithStaleAnchor.weeks[0].days[0].rows[0].intensity = { mode: 'rpe', value: '8', high: '' }
+    const nonPctWithoutAnchor = structuredClone(nonPctWithStaleAnchor)
+    delete nonPctWithoutAnchor.weeks[0].days[0].rows[0].pctAnchor
+    expect(draftContentHash(nonPctWithStaleAnchor)).toBe(draftContentHash(nonPctWithoutAnchor))
+  })
+
   it('clears only when a successful save covered the same content hash', () => {
     const storage = new MemoryStorage()
     const first = content('saved snapshot')

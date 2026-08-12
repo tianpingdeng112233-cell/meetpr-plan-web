@@ -76,6 +76,7 @@ function isWeek(value: unknown): value is Week {
       && typeof row.reps === 'string'
       && (row.mode === 'kg' || row.mode === 'rpe' || row.mode === 'bodyweight')
       && (row.intensity === undefined || isIntensity(row.intensity))
+      && (row.pctAnchor === undefined || row.pctAnchor === 'one_rm' || row.pctAnchor === 'e1rm' || row.pctAnchor === 'top_set')
       && (row.intensityMode === undefined || row.intensityMode === 'uniform' || row.intensityMode === 'per_set')
       && (row.intensityBoxes === undefined || (
         Array.isArray(row.intensityBoxes)
@@ -112,26 +113,34 @@ function canonicalContent(content: DraftMirrorContent): unknown {
       days: week.days.map((day) => ({
         dow: day.dow,
         rest: isRestDay(day),
-        rows: day.rows.map((row) => ({
-          exerciseId: row.exerciseId,
-          name: row.name,
-          ku: row.ku,
-          custom: row.custom,
-          isMain: row.isMain,
-          aux: row.aux,
-          reps: row.reps,
-          mode: row.mode,
-          intensity: row.intensity == null ? row.intensity : {
-            mode: row.intensity.mode,
-            value: row.intensity.value,
-            high: row.intensity.high,
-          },
-          intensityMode: row.intensityMode,
-          intensityBoxes: row.intensityBoxes?.map((box) => ({ val: box.val, empty: box.empty })),
-          weightMode: row.weightMode,
-          boxes: row.boxes.map((box) => ({ val: box.val, empty: box.empty })),
-          note: row.note,
-        })),
+        rows: day.rows.map((row) => {
+          const explicitPctAnchor = row.mode !== 'bodyweight'
+            && row.intensity?.mode === 'pct'
+            && (row.pctAnchor === 'e1rm' || row.pctAnchor === 'top_set')
+            ? row.pctAnchor
+            : null
+          return {
+            exerciseId: row.exerciseId,
+            name: row.name,
+            ku: row.ku,
+            custom: row.custom,
+            isMain: row.isMain,
+            aux: row.aux,
+            reps: row.reps,
+            mode: row.mode,
+            intensity: row.intensity == null ? row.intensity : {
+              mode: row.intensity.mode,
+              value: row.intensity.value,
+              high: row.intensity.high,
+            },
+            ...(explicitPctAnchor ? { pctAnchor: explicitPctAnchor } : {}),
+            intensityMode: row.intensityMode,
+            intensityBoxes: row.intensityBoxes?.map((box) => ({ val: box.val, empty: box.empty })),
+            weightMode: row.weightMode,
+            boxes: row.boxes.map((box) => ({ val: box.val, empty: box.empty })),
+            note: row.note,
+          }
+        }),
       })),
     })),
   }

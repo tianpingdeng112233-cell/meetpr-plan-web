@@ -113,6 +113,23 @@ describe('PlanEditor local draft recovery', () => {
     expect(localStorage.length).toBe(0)
   })
 
+  it('does not offer recovery when a legacy missing anchor matches the mapped 1RM default', () => {
+    const legacyWeeks = weeks('same')
+    legacyWeeks[0].days[0].rows[0].intensity = { mode: 'pct', value: '75', high: '' }
+    const mappedWeeks = structuredClone(legacyWeeks)
+    mappedWeeks[0].days[0].rows[0].pctAnchor = 'one_rm'
+    saveDraftMirror('plan', {
+      weeks: legacyWeeks, planStartDate: '2026-01-01', weeksCount: 1,
+    }, localStorage)
+
+    act(() => root.render(
+      <PlanEditor initialWeeks={mappedWeeks} weeksCount={1} planStartDate="2026-01-01"
+        studentName="学员" planName="计划" currentPlanId="plan" />,
+    ))
+
+    expect(host.querySelector('[data-testid="draft-mirror-banner"]')).toBeNull()
+  })
+
   it('clears the mirror after an explicit save covers the same published edit', async () => {
     vi.useFakeTimers()
     vi.spyOn(window, 'confirm').mockReturnValue(true)

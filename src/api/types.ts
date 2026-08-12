@@ -4,6 +4,9 @@
 export type UserRole = 'coach' | 'coached_student' | 'self_train_student' | 'admin'
 export type IntensityModeWire = 'weight' | 'rpe'
 export type LoadModeWire = 'pct' | 'rpe' | 'rir' | 'weight_range' | 'rpe_range' | 'fixed_weight'
+export type PctAnchorWire = 'one_rm' | 'e1rm' | 'top_set'
+/** The API enum accepts `one_rm`; writes use null for the agreed default-1RM representation. */
+export type PctAnchorRequestWire = Exclude<PctAnchorWire, 'one_rm'>
 export type SetType = 'warmup' | 'working' | 'failed' | 'amrap' | 'backoff'
 export type PlanStatus = 'draft' | 'published' | 'completed' | 'paused'
 
@@ -319,6 +322,7 @@ export interface PlanSetResponse {
   target_value: string
   load_mode?: LoadModeWire | null
   target_pct?: string | null
+  pct_anchor?: PctAnchorWire | null
   target_rpe?: string | null
   rir_target?: number | null
   rpe_low?: string | null
@@ -451,6 +455,7 @@ export interface CreatePlanSetBody {
   target_value?: string
   load_mode?: LoadModeWire | null
   target_pct?: string | null
+  pct_anchor?: PctAnchorRequestWire | null
   target_rpe?: string | null
   rir_target?: string | null
   rpe_low?: string | null
@@ -470,6 +475,7 @@ export interface BatchPlanSetBody {
   target_value?: string
   load_mode?: LoadModeWire | null
   target_pct?: string | null
+  pct_anchor?: PctAnchorRequestWire | null
   target_rpe?: string | null
   rir_target?: string | null
   rpe_low?: string | null
