@@ -70,7 +70,7 @@ describe('pct anchor secondary selector', () => {
 
     const intensityType = host.querySelector<HTMLSelectElement>('[aria-label="强度类型"]')!
     expect([...intensityType.options].map((option) => option.textContent)).toEqual([
-      '不设强度', '%1RM', 'RPE', 'RIR', 'RPE 区间',
+      '不设强度', '%', 'RPE', 'RIR', 'RPE 区间',
     ])
     expect(host.querySelector<HTMLSelectElement>('[aria-label="百分比锚点"]')?.value).toBe('e1rm')
 

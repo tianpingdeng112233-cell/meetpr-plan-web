@@ -243,7 +243,7 @@ function TierHeader({ label, accent, width, summary }: { label: string; accent?:
 }
 
 const INTENSITY_OPTIONS: { mode: LoadMode; label: string }[] = [
-  { mode: 'pct', label: '%1RM' },
+  { mode: 'pct', label: '%' },
   { mode: 'rpe', label: 'RPE' },
   { mode: 'rir', label: 'RIR' },
   { mode: 'rpe_range', label: 'RPE 区间' },

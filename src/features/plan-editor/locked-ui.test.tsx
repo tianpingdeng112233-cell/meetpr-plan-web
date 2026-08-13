@@ -470,7 +470,7 @@ describe('guarded input filtering ergonomics', () => {
       '', 'pct', 'rpe', 'rir', 'rpe_range',
     ])
     expect([...select.options].map((option) => option.textContent)).toEqual([
-      '不设强度', '%1RM', 'RPE', 'RIR', 'RPE 区间',
+      '不设强度', '%', 'RPE', 'RIR', 'RPE 区间',
     ])
 
     Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value')?.set?.call(select, 'rpe')
