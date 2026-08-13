@@ -14,7 +14,7 @@ export const REPS_MAX = 50
 
 export const INPUT_GUARD_REASONS = {
   kg: `重量需大于 0 小于 ${KG_MAX_EXCLUSIVE}，最多两位小数`,
-  pct: `%1RM 需 ${PCT_MIN}–${PCT_MAX}，按 0.5 递增`,
+  pct: `强度 % 需 ${PCT_MIN}–${PCT_MAX}，按 0.5 递增`,
   rpe: `RPE 需 ${RPE_MIN}–${RPE_MAX} 半分档`,
   rir: `RIR 需 ${RIR_MIN}–${RIR_MAX} 的整数`,
   weightRange: `重量区间需两值有效且下限小于上限`,
