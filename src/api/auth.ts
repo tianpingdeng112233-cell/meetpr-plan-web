@@ -10,6 +10,18 @@ export class AuthRoleError extends Error {
   }
 }
 
+function persistLogin(res: LoginResponse, expectedRole?: AuthUser['role']): AuthUser {
+  // Do this before any persistence: a student must not be able to leave a
+  // valid token in this coach-only web app by simply refreshing after denial.
+  const roleAllowed = !expectedRole
+    || res.user.role === expectedRole
+    || (expectedRole === 'coach' && res.user.role === 'admin')
+  if (!roleAllowed) throw new AuthRoleError(expectedRole)
+  setTokens({ accessToken: res.accessToken, refreshToken: res.refreshToken })
+  localStorage.setItem(USER_KEY, JSON.stringify(res.user))
+  return res.user
+}
+
 export async function login(
   phone: string,
   password: string,
@@ -20,15 +32,20 @@ export async function login(
     body: { phone, password },
     auth: false,
   })
-  // Do this before any persistence: a student must not be able to leave a
-  // valid token in this coach-only web app by simply refreshing after denial.
-  const roleAllowed = !expectedRole
-    || res.user.role === expectedRole
-    || (expectedRole === 'coach' && res.user.role === 'admin')
-  if (!roleAllowed) throw new AuthRoleError(expectedRole)
-  setTokens({ accessToken: res.accessToken, refreshToken: res.refreshToken })
-  localStorage.setItem(USER_KEY, JSON.stringify(res.user))
-  return res.user
+  return persistLogin(res, expectedRole)
+}
+
+export async function emailLogin(
+  email: string,
+  password: string,
+  expectedRole?: AuthUser['role'],
+): Promise<AuthUser> {
+  const res = await request<LoginResponse>('/auth/email/login', {
+    method: 'POST',
+    body: { email, password },
+    auth: false,
+  })
+  return persistLogin(res, expectedRole)
 }
 
 /**
