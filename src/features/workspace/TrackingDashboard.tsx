@@ -9,13 +9,14 @@ import type {
   WeeklyFamilyMetric,
 } from '../../api/types'
 import { PageTop } from './WorkspaceCommon'
+import { fmt, S } from '../../i18n/strings'
 
 const FAMILIES: LiftFamily[] = ['squat', 'bench', 'deadlift']
-const FAMILY_META: Record<LiftFamily, { label: string; color: string }> = {
-  squat: { label: '深蹲', color: '#276FBF' },
-  bench: { label: '卧推', color: '#18855B' },
+const FAMILY_META: Record<LiftFamily, { color: string }> = {
+  squat: { color: '#276FBF' },
+  bench: { color: '#18855B' },
   // 品牌金(--gold-500,docs/design/coach-web/tokens):David 2026-08-09 拍板硬拉列弃红用金。
-  deadlift: { label: '硬拉', color: '#F5A623' },
+  deadlift: { color: '#F5A623' },
 }
 
 interface ChartDatum {
@@ -238,17 +239,16 @@ export function HorizontalBarChart({ data, color, label }: ChartProps) {
 }
 
 function ChartEmpty() {
-  return <div className="tracking-chart-empty">暂无数据</div>
+  return <div className="tracking-chart-empty">{S.stats.tracking.noData}</div>
 }
 
 function weekLabel(value: string): string {
-  const [, month = '', day = ''] = value.split('-')
-  return `${Number(month)}/${Number(day)} 周`
+  return S.stats.tracking.weekLabel(dateLabel(value))
 }
 
 function dateLabel(value: string): string {
-  const [, month = '', day = ''] = value.split('-')
-  return `${Number(month)}/${Number(day)}`
+  const [year = 1970, month = 1, day = 1] = value.split('-').map(Number)
+  return fmt.monthDay(new Date(year, month - 1, day), () => `${month}/${day}`)
 }
 
 function numberValue(value: string | null): number | null {
@@ -258,7 +258,7 @@ function numberValue(value: string | null): number | null {
 }
 
 function decimal(value: number, digits = 1): string {
-  return value.toLocaleString('zh-CN', { minimumFractionDigits: digits, maximumFractionDigits: digits })
+  return fmt.decimal(value, digits)
 }
 
 function FamilyGrid({ children }: { children: (family: LiftFamily) => React.ReactNode }) {
@@ -273,7 +273,7 @@ function FamilyHead({ family, value, detail, tone }: {
   detail?: string
   tone?: 'up' | 'down' | 'flat'
 }) {
-  return <header className="tracking-family-head"><span><i style={{ background: FAMILY_META[family].color }} />{FAMILY_META[family].label}</span>{value && <b>{value}</b>}{detail && <small className={tone ? `trend-${tone}` : ''}>{detail}</small>}</header>
+  return <header className="tracking-family-head"><span><i style={{ background: FAMILY_META[family].color }} />{S.common.liftFamily[family]}</span>{value && <b>{value}</b>}{detail && <small className={tone ? `trend-${tone}` : ''}>{detail}</small>}</header>
 }
 
 function TrackingCard({ title, subtitle, missing = false, note, children }: {
@@ -284,7 +284,7 @@ function TrackingCard({ title, subtitle, missing = false, note, children }: {
   note?: string
   children: React.ReactNode
 }) {
-  return <article className="tracking-card" data-card-title={title}><header className="tracking-card-head"><div><h2>{title}</h2>{subtitle && <p>{subtitle}</p>}</div></header>{missing ? <div className="tracking-version-placeholder">后端版本过旧</div> : <>{children}{note && <footer className="tracking-card-note">{note}</footer>}</>}</article>
+  return <article className="tracking-card" data-card-title={title}><header className="tracking-card-head"><div><h2>{title}</h2>{subtitle && <p>{subtitle}</p>}</div></header>{missing ? <div className="tracking-version-placeholder">{S.stats.tracking.backendOld}</div> : <>{children}{note && <footer className="tracking-card-note">{note}</footer>}</>}</article>
 }
 
 const WEEK_MS = 7 * 86400000
@@ -318,7 +318,7 @@ function E1rmCard({ data }: { data: ExerciseStatsOverview['e1rm_series'] }) {
   const axis: ChartAxis | undefined = dates.length > 0
     ? { start: dateLabel(dates[0]), end: dateLabel(dates.at(-1)!) }
     : undefined
-  return <TrackingCard title="e1RM 趋势" subtitle="近 90 天竞技主项估算" missing={data === undefined} note="虚线 = 中间隔了无记录周"><FamilyGrid>{(family) => {
+  return <TrackingCard title={S.stats.tracking.e1rmTrend} subtitle={S.stats.tracking.last90Competition} missing={data === undefined} note={S.stats.tracking.gapHint}><FamilyGrid>{(family) => {
     const points = validE1rmPoints(data?.[family], toT)
     const first = points[0]
     const latest = points.at(-1)
@@ -327,9 +327,9 @@ function E1rmCard({ data }: { data: ExerciseStatsOverview['e1rm_series'] }) {
     const tone = trend === 'up' || trend === 'down' ? trend
       : trend === 'flat' || trend === 'new' ? 'flat'
         : difference == null || difference === 0 ? 'flat' : difference > 0 ? 'up' : 'down'
-    const detail = difference != null ? `较起点 ${difference > 0 ? '+' : ''}${decimal(difference)} kg`
-      : trend === 'new' && latest ? '新数据' : undefined
-    return <><FamilyHead family={family} value={latest ? `${decimal(latest.value)} kg` : undefined} detail={detail} tone={tone} /><LineChart data={points} color={FAMILY_META[family].color} label={`${FAMILY_META[family].label} e1RM 折线图`} tick={(v) => String(Math.round(v))} {...axis ? { axis } : {}} /></>
+    const detail = difference != null ? S.stats.tracking.comparedStart(`${difference > 0 ? '+' : ''}${decimal(difference)} kg`)
+      : trend === 'new' && latest ? S.stats.tracking.newData : undefined
+    return <><FamilyHead family={family} value={latest ? `${decimal(latest.value)} kg` : undefined} detail={detail} tone={tone} /><LineChart data={points} color={FAMILY_META[family].color} label={S.stats.tracking.e1rmChart(S.common.liftFamily[family])} tick={(v) => String(Math.round(v))} {...axis ? { axis } : {}} /></>
   }}</FamilyGrid></TrackingCard>
 }
 
@@ -345,7 +345,7 @@ function metricPoints(
     const value = numberValue(metric[field])
     const slot = slotOf.get(metric.week_start)
     if (value == null || slot == null) continue
-    const display = field === 'volume_kg' ? `${decimal(value / 1000)} 吨` : field === 'avg_rpe' ? `RPE ${decimal(value)}` : `${decimal(value)}%`
+    const display = field === 'volume_kg' ? S.stats.tracking.tonnes(decimal(value / 1000)) : field === 'avg_rpe' ? `RPE ${decimal(value)}` : `${decimal(value)}%`
     const short = field === 'volume_kg' ? decimal(value / 1000) : field === 'avg_rpe' ? decimal(value) : `${Math.round(value)}%`
     // 与上一个有数据的周隔着空日历周 → 虚线段。按 week_start 判,不按共享槽位差——
     // 三个 family 同时空掉的周在共享轴上没有槽位,槽位差会漏判。
@@ -374,15 +374,15 @@ function MetricCard({ data, title, subtitle, field, chart }: {
   const axis: ChartAxis | undefined = weeks.length > 0
     ? { start: weekLabel(weeks[0]), end: weekLabel(weeks.at(-1)!) }
     : undefined
-  return <TrackingCard title={title} subtitle={subtitle} missing={data === undefined} {...chart === 'line' ? { note: '虚线 = 中间隔了无记录周' } : {}}><FamilyGrid>{(family) => {
+  return <TrackingCard title={title} subtitle={subtitle} missing={data === undefined} {...chart === 'line' ? { note: S.stats.tracking.gapHint } : {}}><FamilyGrid>{(family) => {
     const points = metricPoints(data?.[family], field, slotOf)
     const latest = points.at(-1)
     const tick = field === 'volume_kg' ? (v: number) => decimal(v / 1000)
       : field === 'avg_rpe' ? (v: number) => decimal(v)
         : (v: number) => `${Math.round(v)}%`
     const chartNode = chart === 'bar'
-      ? <BarChart data={points} color={FAMILY_META[family].color} label={`${FAMILY_META[family].label}${title}柱状图`} slots={weeks.length} axisLabels={axisLabels} tick={tick} />
-      : <LineChart data={points} color={FAMILY_META[family].color} label={`${FAMILY_META[family].label}${title}折线图`} tick={tick} {...axis ? { axis } : {}} />
+      ? <BarChart data={points} color={FAMILY_META[family].color} label={S.stats.tracking.barChart(S.common.liftFamily[family], title)} slots={weeks.length} axisLabels={axisLabels} tick={tick} />
+      : <LineChart data={points} color={FAMILY_META[family].color} label={S.stats.tracking.lineChart(S.common.liftFamily[family], title)} tick={tick} {...axis ? { axis } : {}} />
     return <><FamilyHead family={family} value={latest?.display} />{chartNode}</>
   }}</FamilyGrid></TrackingCard>
 }
@@ -400,7 +400,7 @@ function intensityPoints(distribution: IntensityDistribution | undefined): Chart
   return buckets.map(([label, count]) => ({
     label,
     value: count / total * 100,
-    display: `${decimal(count / total * 100)}% · ${count} 组`,
+    display: S.stats.tracking.setShare(decimal(count / total * 100), count),
     short: `${Math.round(count / total * 100)}%`,
   }))
 }
@@ -420,7 +420,7 @@ function repPoints(distribution: RepDistributionBucket[] | undefined): ChartDatu
     return {
       label: reps === 8 ? '8+' : String(reps),
       value: count / total * 100,
-      display: `${decimal(count / total * 100)}% · ${count} 组`,
+      display: S.stats.tracking.setShare(decimal(count / total * 100), count),
       short: `${Math.round(count / total * 100)}%`,
     }
   })
@@ -431,12 +431,12 @@ function DistributionCard({ data, title, kind }: {
   title: string
   kind: 'intensity' | 'reps'
 }) {
-  return <TrackingCard title={title} subtitle={kind === 'intensity' ? '按已完成训练组强度占比' : '按实际完成次数占比'} missing={data === undefined}><FamilyGrid>{(family) => {
+  return <TrackingCard title={title} subtitle={kind === 'intensity' ? S.stats.tracking.intensityShare : S.stats.tracking.repsShare} missing={data === undefined}><FamilyGrid>{(family) => {
     const points = kind === 'intensity'
       ? intensityPoints((data as ExerciseStatsOverview['intensity_distribution'])?.[family])
       : repPoints((data as ExerciseStatsOverview['rep_distribution'])?.[family])
-    const chartName = kind === 'intensity' ? '强度分布' : '次数分布'
-    return <><FamilyHead family={family} /><BarChart data={points} color={FAMILY_META[family].color} label={`${FAMILY_META[family].label}${chartName}柱状图`} tick={(v) => `${Math.round(v)}%`} /></>
+    const chartName = kind === 'intensity' ? S.stats.tracking.intensityDistribution : S.stats.tracking.repsDistribution
+    return <><FamilyHead family={family} /><BarChart data={points} color={FAMILY_META[family].color} label={S.stats.tracking.barChart(S.common.liftFamily[family], chartName)} tick={(v) => `${Math.round(v)}%`} /></>
   }}</FamilyGrid></TrackingCard>
 }
 
@@ -446,9 +446,9 @@ function VolumeShareCard({ data }: { data: ExerciseStatsOverview['weekly_family_
     value: (data?.[family] ?? []).reduce((sum, week) => sum + (numberValue(week.volume_kg) ?? 0), 0),
   })), [data])
   const total = totals.reduce((sum, item) => sum + item.value, 0)
-  return <TrackingCard title="三项容量占比" subtitle="近 90 天总容量占比" missing={data === undefined}><div className="tracking-share-grid">{totals.map(({ family, value }) => {
+  return <TrackingCard title={S.stats.tracking.bigThreeVolume} subtitle={S.stats.tracking.last90Volume} missing={data === undefined}><div className="tracking-share-grid">{totals.map(({ family, value }) => {
     const share = total > 0 ? value / total * 100 : 0
-    return <section key={family}><FamilyHead family={family} value={`${decimal(value / 1000)} t`} /><HorizontalBarChart data={[{ label: '容量', value: share, display: `${decimal(share)}%` }]} color={FAMILY_META[family].color} label={`${FAMILY_META[family].label}容量占比横条图`} /></section>
+    return <section key={family}><FamilyHead family={family} value={`${decimal(value / 1000)} t`} /><HorizontalBarChart data={[{ label: S.stats.tracking.volume, value: share, display: `${decimal(share)}%` }]} color={FAMILY_META[family].color} label={S.stats.tracking.volumeShareChart(S.common.liftFamily[family])} /></section>
   })}</div></TrackingCard>
 }
 
@@ -467,17 +467,17 @@ export function TrackingDashboard({ students, selectedStudentId, onStudentChange
     if (selectedStudentId) onEnsureOverview(selectedStudentId)
   }, [selectedStudentId, onEnsureOverview])
 
-  return <main className="tracking-page data-page" aria-label="追踪看板">
-    <PageTop title="追踪" students={students} studentId={selectedStudentId} onStudent={onStudentChange} tail={<span className="page-status">近 90 天</span>} />
-    {overview === null ? <div className="tracking-load-state">追踪数据加载失败，切换学员或刷新页面重试</div> : overview === undefined ? <div className="tracking-load-state">加载追踪数据…</div> : <div className="tracking-card-list">
+  return <main className="tracking-page data-page" aria-label={S.stats.tracking.dashboard}>
+    <PageTop title={S.stats.tracking.tracking} students={students} studentId={selectedStudentId} onStudent={onStudentChange} tail={<span className="page-status">{S.stats.tracking.last90Days}</span>} />
+    {overview === null ? <div className="tracking-load-state">{S.stats.tracking.loadFailed}</div> : overview === undefined ? <div className="tracking-load-state">{S.stats.tracking.loading}</div> : <div className="tracking-card-list">
       <E1rmCard data={overview.e1rm_series} />
-      <MetricCard data={overview.weekly_family_metrics} title="容量趋势" subtitle="每周训练容量（吨）" field="volume_kg" chart="bar" />
-      <MetricCard data={overview.weekly_family_metrics} title="平均 RPE 趋势" subtitle="有 RPE 训练组的周均值" field="avg_rpe" chart="line" />
-      <MetricCard data={overview.weekly_family_metrics} title="强度趋势" subtitle="Top set，占 e1RM %" field="top_set_intensity" chart="line" />
-      <DistributionCard data={overview.intensity_distribution} title="强度分布" kind="intensity" />
-      <DistributionCard data={overview.rep_distribution} title="次数分布" kind="reps" />
+      <MetricCard data={overview.weekly_family_metrics} title={S.stats.tracking.volumeTrend} subtitle={S.stats.tracking.weeklyTonnage} field="volume_kg" chart="bar" />
+      <MetricCard data={overview.weekly_family_metrics} title={S.stats.tracking.averageRpe} subtitle={S.stats.tracking.averageRpeHint} field="avg_rpe" chart="line" />
+      <MetricCard data={overview.weekly_family_metrics} title={S.stats.tracking.intensityTrend} subtitle={S.stats.tracking.topSetE1rm} field="top_set_intensity" chart="line" />
+      <DistributionCard data={overview.intensity_distribution} title={S.stats.tracking.intensityDistribution} kind="intensity" />
+      <DistributionCard data={overview.rep_distribution} title={S.stats.tracking.repsDistribution} kind="reps" />
       <VolumeShareCard data={overview.weekly_family_metrics} />
-      <TrackingCard title="体重" subtitle="体重趋势"><div className="tracking-bodyweight-empty"><b>暂无体态打卡数据</b><span>等待 wellness 数据源接入</span></div></TrackingCard>
+      <TrackingCard title={S.stats.tracking.bodyweight} subtitle={S.stats.tracking.bodyweightTrend}><div className="tracking-bodyweight-empty"><b>{S.stats.tracking.noBodyData}</b><span>{S.stats.tracking.wellnessPending}</span></div></TrackingCard>
     </div>}
   </main>
 }

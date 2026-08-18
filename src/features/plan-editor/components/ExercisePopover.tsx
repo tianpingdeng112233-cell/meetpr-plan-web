@@ -1,4 +1,5 @@
 import type { ExerciseIndex, ExerciseHit } from '../exerciseIndex'
+import { fmt, resolveLocale, S } from '../../../i18n/strings'
 
 interface Props {
   visible: boolean
@@ -33,11 +34,11 @@ export function ExercisePopover({ visible, x, y, index, query, activeIndex, onAc
             onMouseEnter={() => onActiveIndexChange(hitIndex)}
             onMouseDown={(e) => { e.preventDefault(); onPick(h) }}
             style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 11px', color: 'var(--txt)', background: activeIndex === hitIndex ? 'var(--ink-soft)' : undefined }}>
-            <span style={{ flex: 1 }}>{h.name}</span>
-            {h.via && h.via !== h.name && <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--mut)' }}>别名「{h.via}」</span>}
+            <span style={{ flex: 1 }}>{fmt.exerciseName({ name: h.name, name_en: h.name_en })}</span>
+            {resolveLocale() === 'zh' && h.via && h.via !== h.name && <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--mut)' }}>{S.editor.alias(h.via)}</span>}
           </div>
         ))}
-        {hits.length === 0 && <div style={{ padding: '8px 11px', color: 'var(--mut)' }}>无匹配动作</div>}
+        {hits.length === 0 && <div style={{ padding: '8px 11px', color: 'var(--mut)' }}>{S.editor.noMatchingExercise}</div>}
       </div>
       {onCreateCustom && (
         <div className="popitem" role="option" aria-selected={activeIndex === hits.length}
@@ -45,7 +46,7 @@ export function ExercisePopover({ visible, x, y, index, query, activeIndex, onAc
           onMouseEnter={() => onActiveIndexChange(hits.length)}
           onMouseDown={(e) => { e.preventDefault(); onCreateCustom(query.trim()) }}
           style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '8px 11px', color: 'var(--sec)', borderTop: '1px solid var(--line)', background: activeIndex === hits.length ? 'var(--tint)' : undefined }}>
-          <span style={{ color: 'var(--ink)' }}>＋</span> 创建自定义「{query.trim()}」
+          <span style={{ color: 'var(--ink)' }}>＋</span> {S.editor.createCustomNamed(query.trim())}
         </div>
       )}
     </div>

@@ -1,4 +1,6 @@
 import type { ChatMessage, ChatSetRefV1 } from '../../api/types'
+import { fmt, S } from '../../i18n/strings'
+import { stableSetRefFirstLine } from '../../i18n/stable-zh'
 
 const nullableString = (value: unknown): value is string | null =>
   value === null || typeof value === 'string'
@@ -93,15 +95,7 @@ export function isChatSetRefV1(value: unknown): value is ChatSetRefV1 {
 }
 
 export function setRefFirstLine(setRef: ChatSetRefV1): string {
-  const prefix = setRef.source === 'logged' ? '[训练分享]' : '[训练计划]'
-  const setTotal = setRef.set_total === null ? '' : `/${setRef.set_total}`
-  const planned = setRef.source === 'planned' ? ' 计划' : ''
-  const weight = setRef.weight_kg === null ? '-kg' : `${setRef.weight_kg}kg`
-  const reps = setRef.reps === null
-    ? '-'
-    : `${setRef.reps}${setRef.reps_max === null ? '' : `-${setRef.reps_max}`}`
-  const rpe = setRef.rpe === null ? '' : ` @RPE${setRef.rpe}`
-  return `${prefix} ${setRef.exercise_name} 第${setRef.set_number}组${setTotal}${planned} ${weight}×${reps}${rpe} (${setRef.day_date})`
+  return stableSetRefFirstLine(setRef)
 }
 
 export interface ParsedSetRefMessage {
@@ -132,22 +126,22 @@ export function SetRefCard({
   onPlayVideo?: () => void
 }) {
   const { setRef, note } = parsed
-  const sourceLabel = setRef.source === 'logged' ? '学员记录的一组' : '学员今天的计划'
+  const sourceLabel = setRef.source === 'logged' ? S.chat.setRefLogged : S.chat.setRefPlanned
   const reps = setRef.reps === null
     ? '-'
     : `${setRef.reps}${setRef.reps_max === null ? '' : `-${setRef.reps_max}`}`
   return <section
     className={`set-ref-card set-ref-card-${setRef.source}`}
-    aria-label={setRef.source === 'logged' ? '训练分享' : '训练计划'}
+    aria-label={setRef.source === 'logged' ? S.chat.trainingShare : S.chat.trainingPlan}
   >
     <header>
       <span className="set-ref-kicker">{sourceLabel}</span>
       <time>{sentAt}</time>
     </header>
     <div className="set-ref-heading">
-      <b>{setRef.exercise_name}</b>
+      <b>{fmt.exerciseName({ name: setRef.exercise_name, name_en: setRef.name_en })}</b>
       <span>
-        第 {setRef.set_number} 组
+        {S.chat.setNumber(setRef.set_number)}
         {setRef.set_total !== null && <> / {setRef.set_total}</>}
       </span>
     </div>
@@ -158,7 +152,7 @@ export function SetRefCard({
       {setRef.rpe !== null && <em>@RPE {setRef.rpe}</em>}
     </div>
     {hasVideo && <button type="button" className="set-ref-play" onClick={onPlayVideo}>
-      <span>▶</span> 播放视频
+      <span>▶</span> {S.chat.playVideo}
     </button>}
     {note !== null && note !== '' && <p className="set-ref-note">{note}</p>}
   </section>

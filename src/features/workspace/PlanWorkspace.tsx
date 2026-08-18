@@ -30,6 +30,7 @@ import { isSessionExpired } from '../../api/errors'
 import { unreadTotal } from '../chat/chatModel'
 import { useVisiblePolling } from '../chat/useVisiblePolling'
 import { chatOutbox } from '../chat/chatOutbox'
+import { fmt, resolveLocale, S } from '../../i18n/strings'
 import { createKeyedRequestVersions } from './requestVersions'
 import {
   currentPublishedWeekTonnage,
@@ -439,7 +440,7 @@ export function PlanWorkspace({ onLogout, me }: Props) {
           refreshBindRequests(),
         ])
         exerciseUsage.current = new Map(usage.map((stat) => [stat.exercise_id, stat.plan_count]))
-        const cat: Catalog = new Map(ex.map((e) => [e.id, { name: displayExerciseName(e.name), custom: e.created_by_coach_id != null }]))
+        const cat: Catalog = new Map(ex.map((e) => [e.id, { name: displayExerciseName(e.name), nameEn: e.name_en, custom: e.created_by_coach_id != null }]))
         setExerciseList(ex); setCatalog(cat); setIndex(new ExerciseIndex(ex, {}, exerciseUsage.current)); setStudents(st)
         if (st.length > 0) {
           await loadStudent(st[0].id, cat, ex)
@@ -449,7 +450,7 @@ export function PlanWorkspace({ onLogout, me }: Props) {
         }
         setLastSyncedAt(new Date())
       } catch (e) {
-        if (alive) setError(errText(e, '无法连接后端'))
+        if (alive) setError(errText(e, S.workspace.plan.backendUnavailable))
       } finally {
         if (alive) setBooting(false)
       }
@@ -480,7 +481,7 @@ export function PlanWorkspace({ onLogout, me }: Props) {
     try {
       await loadStudent(id, catalog)
     } catch (e) {
-      setError(errText(e, '切换学员失败'))
+      setError(errText(e, S.workspace.plan.switchStudentFailed))
     }
   }
   const selectBoardStudent = (id: string) => {
@@ -508,7 +509,7 @@ export function PlanWorkspace({ onLogout, me }: Props) {
     try {
       await loadPlan(id, catalog)
     } catch (e) {
-      setError(errText(e, '打开计划失败'))
+      setError(errText(e, S.workspace.plan.openPlanFailed))
     }
   }
   const newPlan = () => {
@@ -566,7 +567,7 @@ export function PlanWorkspace({ onLogout, me }: Props) {
         localStorage.removeItem(`${LAST_PLAN_PREFIX}${studentId}`)
       }
     } catch (e) {
-      if (generation === loadGeneration.current) setDeleteError(errText(e, '删除失败，请稍后重试'))
+      if (generation === loadGeneration.current) setDeleteError(errText(e, S.workspace.plan.deleteFailed))
     } finally {
       if (generation === loadGeneration.current) setDeleting(false)
     }
@@ -580,10 +581,10 @@ export function PlanWorkspace({ onLogout, me }: Props) {
       const result = await markImportedHistory(loaded.plan.id)
       setBackfillOpen(false)
       window.alert(result.created_set_logs > 0
-        ? `已补记 ${result.created_set_logs} 组历史记录（标「导」），学员数据面板即刻可见。`
-        : '过去的训练日均已有记录，无需补记。')
+        ? S.workspace.plan.backfillSuccess(result.created_set_logs)
+        : S.workspace.plan.noPastToBackfill)
     } catch (e) {
-      setBackfillError(errText(e, '补记失败，请稍后重试'))
+      setBackfillError(errText(e, S.workspace.plan.backfillFailed))
     } finally {
       setBackfilling(false)
     }
@@ -601,7 +602,7 @@ export function PlanWorkspace({ onLogout, me }: Props) {
         : prev)
       setCompleteOpen(false)
     } catch (e) {
-      setCompleteError(errText(e, '标记完成失败，请稍后重试'))
+      setCompleteError(errText(e, S.workspace.plan.completeFailed))
     } finally {
       setCompleting(false)
     }
@@ -613,7 +614,7 @@ export function PlanWorkspace({ onLogout, me }: Props) {
     setExerciseList((prev) => (prev.some((item) => item.id === exercise.id) ? prev : [...prev, exercise]))
     setCatalog((prev) => {
       const next = new Map(prev ?? [])
-      next.set(exercise.id, { name: displayExerciseName(exercise.name), custom })
+      next.set(exercise.id, { name: displayExerciseName(exercise.name), nameEn: exercise.name_en, custom })
       return next
     })
     setIndex((prev) => (prev ? prev.withAdded(exercise) : new ExerciseIndex([exercise], {}, exerciseUsage.current)))
@@ -658,7 +659,7 @@ export function PlanWorkspace({ onLogout, me }: Props) {
         commitView: setView,
       })
     } catch (e) {
-      window.alert(errText(e, '重新加载计划失败，请检查网络后重试'))
+      window.alert(errText(e, S.workspace.plan.reloadFailed))
       return false
     } finally {
       viewTransitioning.current = false
@@ -681,16 +682,16 @@ export function PlanWorkspace({ onLogout, me }: Props) {
     return (
       <Centered>
         <div style={{ color: 'var(--brand-red)', marginBottom: 14 }}>{error}</div>
-        <button onClick={onLogout} style={btn}>退出重登</button>
+        <button onClick={onLogout} style={btn}>{S.workspace.plan.signInAgain}</button>
       </Centered>
     )
   }
-  if (booting) return <Centered><span style={{ color: 'var(--fg-tertiary)' }}>加载中…</span></Centered>
+  if (booting) return <Centered><span style={{ color: 'var(--fg-tertiary)' }}>{S.common.loadingEllipsis}</span></Centered>
 
   const hasStudents = students.length > 0
   const sampleWeeks = hasStudents ? [] : buildSampleWeeks()
   const studentName = students.find((s) => s.id === studentId)?.display_name ?? ''
-  const studentOpts = students.map((s) => ({ id: s.id, label: s.display_name, tag: s.status === 'in_evaluation' ? '评估期' : undefined }))
+  const studentOpts = students.map((s) => ({ id: s.id, label: s.display_name, tag: s.status === 'in_evaluation' ? S.workspace.plan.assessment : undefined }))
   const hasEveryVideoArray = students.every((student) => Object.hasOwn(videosByStudent, student.id))
   const videoCount = hasEveryVideoArray
     ? students.reduce((total, student) => (
@@ -705,7 +706,7 @@ export function PlanWorkspace({ onLogout, me }: Props) {
       await loadStudent(id, catalog)
       if (view !== 'editor') setView('editor')
     } catch (e) {
-      setError(errText(e, '打开学员计划失败'))
+      setError(errText(e, S.workspace.plan.openStudentPlanFailed))
     }
   }
   const openExerciseFromCommand = async (id: string) => {
@@ -714,12 +715,12 @@ export function PlanWorkspace({ onLogout, me }: Props) {
     if (navigated) setCommandExerciseId(id)
   }
   // "M/D 起 · N 周" so same-named plans stay tellable-apart in the switcher.
-  const fmtStart = (iso: string) => { const [, m, d] = iso.split('-'); return `${Number(m)}/${Number(d)}` }
-  const statusTag = (status: PlanResponse['status']) => ({ draft: '草稿', published: '已发布', completed: '已完成', paused: '已暂停' })[status]
+  const fmtStart = (iso: string) => { const [y, m, d] = iso.split('-').map(Number); return fmt.monthDay(new Date(y, m - 1, d), () => `${m}/${d}`) }
+  const statusTag = (status: PlanResponse['status']) => ({ draft: S.common.draft, published: S.common.published, completed: S.common.completed, paused: S.common.paused })[status]
   const planOpts = plans.map((p) => ({
     id: p.id,
     label: p.name,
-    sub: `${fmtStart(p.start_date)} 起 · ${p.plan_weeks} 周`,
+    sub: S.workspace.plan.startSummary(fmtStart(p.start_date), p.plan_weeks),
     tag: statusTag(p.status),
   }))
   const historicalReadOnly = loaded?.plan.status === 'completed' || loaded?.plan.status === 'paused'
@@ -743,21 +744,21 @@ export function PlanWorkspace({ onLogout, me }: Props) {
       commandStudents={students.map((student) => ({ id: student.id, label: student.display_name }))}
       commandExercises={exerciseList.map((exercise) => ({
         id: exercise.id,
-        label: catalog?.get(exercise.id)?.name ?? displayExerciseName(exercise.name),
-        secondary: exercise.name_en,
+        label: fmt.exerciseName({ name: catalog?.get(exercise.id)?.name ?? displayExerciseName(exercise.name), name_en: exercise.name_en }),
+        secondary: resolveLocale() === 'zh' ? exercise.name_en : null,
       }))}
       onCommandStudent={(id) => openStudentEditor(id)}
       onCommandExercise={openExerciseFromCommand}
     >
-      {sessionDead && <div className="chat-session-banner">登录已过期，请刷新页面重新登录</div>}
+      {sessionDead && <div className="chat-session-banner">{S.workspace.plan.sessionExpired}</div>}
       {view === 'editor' && !hasStudents && (
         <div style={{ position: 'relative', height: '100%' }}>
           <PlanEditor
             key="sample-preview"
             initialWeeks={sampleWeeks}
             weeksCount={sampleWeeks.length}
-            studentName="示例学员"
-            planName="示例计划"
+            studentName={S.workspace.plan.sampleStudent}
+            planName={S.workspace.plan.samplePlan}
             exerciseIndex={index}
             onBackToBoard={() => { void changeView('board') }}
           />
@@ -773,7 +774,7 @@ export function PlanWorkspace({ onLogout, me }: Props) {
         studentId={studentId}
         onboardingProfile={onboarding}
         exerciseStatsOverview={rosterDataByStudent[studentId]?.overview}
-        planName={loaded?.plan.name ?? '（暂无计划）'}
+        planName={loaded?.plan.name ?? S.workspace.plan.noPlanParenthesized}
         planStartDate={loaded?.plan.start_date}
         planStatus={loaded?.plan.status}
         totalShiftDays={loaded?.plan.total_shift_days}
@@ -803,7 +804,7 @@ export function PlanWorkspace({ onLogout, me }: Props) {
             try {
               await markImportedHistory(loaded.plan.id)
             } catch {
-              window.alert('计划已导入并保存，但过去训练的「推定完成」补记未成功。稍后重新导入同一份表格即可补上（已有真实打卡的天不会重复）。')
+              window.alert(S.workspace.plan.importBackfillFailed)
             }
           }
           if (result.planStartDate && result.planEndDate && result.planWeeks != null) {
@@ -900,8 +901,8 @@ export function PlanWorkspace({ onLogout, me }: Props) {
       )}
       {!loaded && (
         <div style={{ position: 'absolute', inset: '120px 0 0', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-start', paddingTop: 80, pointerEvents: 'none' }}>
-          <div style={{ color: 'var(--fg-secondary)', marginBottom: 14 }}>{studentName} 暂无计划</div>
-          <button onClick={newPlan} style={{ ...btn, pointerEvents: 'auto' }}>＋ 新建计划</button>
+          <div style={{ color: 'var(--fg-secondary)', marginBottom: 14 }}>{S.workspace.plan.studentNoPlan(studentName)}</div>
+          <button onClick={newPlan} style={{ ...btn, pointerEvents: 'auto' }}>{S.workspace.plan.newPlan}</button>
         </div>
       )}
       <BackfillHistoryDialog
@@ -955,7 +956,7 @@ export function PlanWorkspace({ onLogout, me }: Props) {
           onSelect={selectBoardStudent}
           onOpen={(id) => { void openStudentEditor(id) }}
         />
-      : <div className="empty-page">接受学员申请后即可查看学员总览</div>)}
+      : <div className="empty-page">{S.workspace.plan.acceptForOverview}</div>)}
     {view === 'requests' && <RequestsPage requests={bindRequests} onRequestsChanged={applyBindRequests} onAccepted={refreshStudentsAfterAccept} />}
     {view === 'tracking' && (hasStudents
       ? <TrackingDashboard
@@ -965,7 +966,7 @@ export function PlanWorkspace({ onLogout, me }: Props) {
           overview={rosterDataByStudent[studentId]?.overview}
           onEnsureOverview={ensureTrackingOverview}
         />
-      : <div className="empty-page">接受学员申请后即可查看追踪数据</div>)}
+      : <div className="empty-page">{S.workspace.plan.acceptForTracking}</div>)}
     {view === 'messages' && (hasStudents
       ? <StudentHubPage
           me={me}
@@ -987,7 +988,7 @@ export function PlanWorkspace({ onLogout, me }: Props) {
           onBindLost={(conversationId) => setBindLostIds((prev) => new Set(prev).add(conversationId))}
           onSessionExpired={() => setSessionDead(true)}
         />
-      : <div className="empty-page">接受学员申请后即可查看学员消息与训练视频</div>)}
+      : <div className="empty-page">{S.workspace.plan.acceptForMessages}</div>)}
     </CoachShell>
   )
 }

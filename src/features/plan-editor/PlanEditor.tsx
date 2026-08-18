@@ -48,6 +48,7 @@ import {
   type PlanCellSelection,
 } from './selectionModel'
 import { useGlobalKeyboardHandler } from '../workspace/globalKeyboard'
+import { S, fmt } from '../../i18n/strings'
 import { MUSCLE_LABEL } from '../catalog/catalogModel'
 import {
   closestWeekToViewportCenter,
@@ -72,7 +73,7 @@ interface DayMoveVisual {
   targetValid: boolean
 }
 
-const COPY_LABEL = '复制上周计划到本周'
+const COPY_LABEL = S.editor.copyLastWeek
 const DAY_MOVE_THRESHOLD = 5
 
 interface Switcher { id: string; label: string; tag?: string }
@@ -175,7 +176,7 @@ export function findIssueRows(wks: Week[]): IssueRow[] {
 }
 
 function weekLabel(num: number): string {
-  return `W${String(num).padStart(2, '0')} · 第 ${num} 周`
+  return S.editor.weekTab(num)
 }
 
 function scrollElementLeft(element: HTMLElement, left: number, behavior?: ScrollBehavior) {
@@ -389,8 +390,8 @@ export function PlanEditor(props: PlanEditorProps) {
   // rows with server-authoritative history are locked individually.
   const [published, setPublished] = useState(initialPublished)
   const [statusText, setStatusText] = useState(readOnly
-    ? `${props.planStatus === 'completed' ? '已完成' : '已暂停'} · 只读`
-    : initialPublished ? `已发布给 ${studentName}` : '草稿 · 已存')
+    ? S.editor.readOnlyStatus(props.planStatus === 'completed' ? S.common.completed : S.common.paused)
+    : initialPublished ? S.editor.publishedTo(studentName) : S.editor.draftSavedInitial)
   // W1 calendar/delete controls are draft-only. Keep this separate from main's
   // `published` flag, which drives explicit in-place updates for spec 004.
   const statusCalendarLocked = props.planStatus != null ? props.planStatus !== 'draft' : published
@@ -764,7 +765,7 @@ export function PlanEditor(props: PlanEditorProps) {
           const targetDay = sourceWeek?.days.find((candidate) => candidate.dow === currentTarget!.dow)
           if (sourceWeek && sourceDay && targetDay && !dayMoveDisabledReason(sourceDay, false)) {
             const confirmed = (!sourceDay.shiftBadge && !targetDay.shiftBadge) || window.confirm(
-              '该操作涉及带学员顺延日期的天。保存后该天的顺延日期会丢失、回到按序数计算的日期。确认继续搬动？',
+              S.editor.shiftedDayMoveConfirm,
             )
             if (confirmed) {
               const swapped = !isRestDay(targetDay)
@@ -781,8 +782,8 @@ export function PlanEditor(props: PlanEditorProps) {
               handleSelect(wnum, currentTarget.dow)
               const movedTarget = displayedMovedWeek.days.find((candidate) => candidate.dow === currentTarget!.dow)!
               setStatusText(swapped
-                ? `已交换 ${dayDisplay(sourceWeek, sourceDay)} 与 ${dayDisplay(sourceWeek, targetDay)}`
-                : `已移动 ${dayDisplay(sourceWeek, sourceDay)} 至 ${dayDisplay(displayedMovedWeek, movedTarget)}`)
+                ? S.editor.swappedDays(dayDisplay(sourceWeek, sourceDay), dayDisplay(sourceWeek, targetDay))
+                : S.editor.movedDay(dayDisplay(sourceWeek, sourceDay), dayDisplay(displayedMovedWeek, movedTarget)))
             }
           }
         }
@@ -910,7 +911,7 @@ export function PlanEditor(props: PlanEditorProps) {
   }
   const handleNameChange = (wnum: number, dow: number, rowId: string, value: string, el: HTMLElement) => {
     cancelPendingBlur(wnum, dow, rowId)
-    editRow(wnum, dow, rowId, (r) => ({ ...r, name: value, exerciseId: null, ku: false, custom: false }))
+    editRow(wnum, dow, rowId, (r) => ({ ...r, name: value, nameEn: null, exerciseId: null, ku: false, custom: false }))
     setActiveIndex(0)
     positionPopAt(el, wnum, dow, rowId, value)
   }
@@ -921,6 +922,7 @@ export function PlanEditor(props: PlanEditorProps) {
     name: string,
     custom: boolean,
     knownType: ExerciseResponse['exercise_type'] | null = null,
+    nameEn?: string | null,
   ) => {
     // Backfill is_main_lift from the catalog tier so manually picked rows persist
     // the same flag the xlsx-import path infers (main lift or variation → true).
@@ -930,7 +932,7 @@ export function PlanEditor(props: PlanEditorProps) {
       ...wk,
       days: wk.days.map((d) => d.dow !== target.dow ? d : {
         ...d, rows: d.rows.map((r) => r.id === target.rowId && !r.hasLogs
-          ? { ...r, exerciseId, name, ku: !custom, custom, isMain: tier ? tier !== 'accessory' : r.isMain }
+          ? { ...r, exerciseId, name, nameEn, ku: !custom, custom, isMain: tier ? tier !== 'accessory' : r.isMain }
           : r),
       }),
     }))
@@ -948,7 +950,7 @@ export function PlanEditor(props: PlanEditorProps) {
         const resolved = props.exerciseIndex?.resolveExact(row.name)
         if (resolved) {
           props.exerciseIndex?.bump(resolved.id)
-          bindRowAt({ wnum, dow, rowId }, resolved.id, resolved.name, false)
+          bindRowAt({ wnum, dow, rowId }, resolved.id, resolved.name, false, null, resolved.name_en)
         }
       }
       setPop((current) => current.wnum === wnum && current.dow === dow && current.rowId === rowId
@@ -1011,7 +1013,7 @@ export function PlanEditor(props: PlanEditorProps) {
   const weekBandBadge = useCallback((row: ExerciseRow): WeekBandBadge | null => {
     const metadata = row.exerciseId ? props.exerciseIndex?.bandMetadataById(row.exerciseId) : null
     if (metadata && metadata.exercise_type !== 'accessory' && metadata.main_lift_family) {
-      const labels = { squat: '蹲', bench: '卧', deadlift: '拉' } as const
+      const labels = S.editor.liftBadges
       return { label: labels[metadata.main_lift_family], tone: metadata.main_lift_family }
     }
     const primaryMuscle = metadata?.muscle_groups[0]
@@ -1039,7 +1041,7 @@ export function PlanEditor(props: PlanEditorProps) {
 
   const onPickHit = (hit: ExerciseHit) => {
     props.exerciseIndex?.bump(hit.id)
-    bindRowAt({ wnum: pop.wnum, dow: pop.dow, rowId: pop.rowId }, hit.id, hit.name, false)
+    bindRowAt({ wnum: pop.wnum, dow: pop.dow, rowId: pop.rowId }, hit.id, hit.name, false, null, hit.name_en)
     setPop((p) => ({ ...p, visible: false }))
   }
   // Seed the create dialog's 分类 from the section the blank row lives in, so a
@@ -1081,11 +1083,11 @@ export function PlanEditor(props: PlanEditorProps) {
         bindRowAt(createExercise.bindTarget, e.id, e.name, true, createdType)
         props.exerciseIndex?.bump(e.id)
       }
-      setStatusText(`已创建动作「${e.name}」`)
+      setStatusText(S.editor.exerciseCreated(e.name))
       setCreateExercise({ open: false, initialName: '', bindTarget: null })
     } catch (e) {
       const code = e instanceof ApiException ? e.code : ''
-      setCreateExerciseError(code ? `创建失败（${code}）` : '创建失败，请重试')
+      setCreateExerciseError(code ? S.editor.createFailedCode(code) : S.editor.createFailedRetry)
     } finally {
       setCreatingExercise(false)
     }
@@ -1135,7 +1137,7 @@ export function PlanEditor(props: PlanEditorProps) {
     const occupiedDays = targetWeek?.days.filter((day) => !isRestDay(day)).length ?? 0
     if (
       occupiedDays > 0
-      && !window.confirm(`本周已有 ${occupiedDays} 天训练内容，复制上周会覆盖整周计划。是否继续？`)
+      && !window.confirm(S.editor.overwriteWeekConfirm(occupiedDays))
     ) return
 
     setWeeksWithHistory((prev) => {
@@ -1191,13 +1193,13 @@ export function PlanEditor(props: PlanEditorProps) {
     clipboardTextRef.current = text
     setHasRowClipboard(false)
     try { await navigator.clipboard?.writeText(text) } catch { /* internal clipboard still works */ }
-    setStatusText(`已复制 ${dayDisplay(week, day)}`)
+    setStatusText(S.editor.copiedDay(dayDisplay(week, day)))
   }, [sel, selectedDay, weeks])
 
   const copySelectedRow = useCallback(async () => {
     const rows = selectedRowsValue()
     if (rows.length === 0) {
-      setStatusText('先选中一个动作')
+      setStatusText(S.editor.selectExerciseFirst)
       return
     }
     const text = serializeRowsForClipboard(rows)
@@ -1207,8 +1209,9 @@ export function PlanEditor(props: PlanEditorProps) {
     setHasRowClipboard(true)
     try { await navigator.clipboard?.writeText(text) } catch { /* internal clipboard still works */ }
     setStatusText(rows.length === 1
-      ? `已复制动作「${rows[0].name.trim() || '未命名'}」`
-      : `已复制 ${rows.length} 个动作`)
+      ? S.editor.copiedExercise(
+        fmt.exerciseName({ name: rows[0].name, name_en: rows[0].nameEn }).trim() || S.common.unnamed)
+      : S.editor.copiedExercises(rows.length))
   }, [selectedRowsValue])
 
   const pasteRowsIntoSelection = useCallback((rows: ExerciseRow[]) => {
@@ -1230,7 +1233,7 @@ export function PlanEditor(props: PlanEditorProps) {
         ? { ...day, rows: [...day.rows, ...inserted] }
         : day),
     } : null
-    setStatusText(target && displayedWeek ? `已粘贴动作到 ${dayDisplay(displayedWeek, target)}` : '已粘贴动作')
+    setStatusText(target && displayedWeek ? S.editor.pastedExerciseTo(dayDisplay(displayedWeek, target)) : S.editor.pastedExercise)
   }, [sel, setWeeksWithHistory, weeks])
 
   const pasteSelectedRows = useCallback(async () => {
@@ -1243,7 +1246,7 @@ export function PlanEditor(props: PlanEditorProps) {
 
     const rows = externalRows ?? (clipboardKindRef.current === 'row' ? rowClipboardRef.current : null)
     if (!rows) {
-      setStatusText('没有可粘贴的动作')
+      setStatusText(S.editor.nothingToPasteExercise)
       return
     }
     pasteRowsIntoSelection(rows)
@@ -1264,7 +1267,7 @@ export function PlanEditor(props: PlanEditorProps) {
 
     const clip = dayClipboardRef.current
     if (!clip) {
-      setStatusText('没有可粘贴的内容')
+      setStatusText(S.editor.nothingToPaste)
       return
     }
 
@@ -1286,13 +1289,13 @@ export function PlanEditor(props: PlanEditorProps) {
       ...targetWeek,
       days: targetWeek.days.map((day) => day.dow === displayedTarget.dow ? displayedTarget : day),
     } : null
-    setStatusText(displayedTarget && displayedWeek ? `已粘贴到 ${dayDisplay(displayedWeek, displayedTarget)}` : '已粘贴')
+    setStatusText(displayedTarget && displayedWeek ? S.editor.pastedTo(dayDisplay(displayedWeek, displayedTarget)) : S.editor.pasted)
   }, [pasteRowsIntoSelection, props.exerciseIndex, sel, setWeeksWithHistory, weeks])
 
   const undoWeeks = useCallback(() => {
     const prev = historyRef.current.pop()
     if (!prev) {
-      setStatusText('没有可撤回的操作')
+      setStatusText(S.editor.nothingToUndo)
       return
     }
     const prevStart = historyStartRef.current.pop() ?? null
@@ -1305,7 +1308,7 @@ export function PlanEditor(props: PlanEditorProps) {
       redoStartRef.current = [...redoStartRef.current.slice(-49), currentStart]
       return prev
     })
-    setStatusText('已撤回')
+    setStatusText(S.editor.undone)
   }, [])
 
   const redoWeeks = useCallback(() => {
@@ -1321,7 +1324,7 @@ export function PlanEditor(props: PlanEditorProps) {
       historyStartRef.current = [...historyStartRef.current.slice(-49), currentStart]
       return next
     })
-    setStatusText('已重做')
+    setStatusText(S.editor.redone)
   }, [])
 
   const moveCellSelection = (move: 'next' | 'previous' | 'up' | 'down') => {
@@ -1398,7 +1401,7 @@ export function PlanEditor(props: PlanEditorProps) {
         }),
       }
     }))
-    setStatusText(`已向下填充 ${Math.max(0, resolved.row.boxes.length - sourceIndex - 1)} 格`)
+    setStatusText(S.editor.filledDown(Math.max(0, resolved.row.boxes.length - sourceIndex - 1)))
     return true
   }
 
@@ -1562,8 +1565,8 @@ export function PlanEditor(props: PlanEditorProps) {
   ))
   const calendarLocked = statusCalendarLocked || planHasLockedRows
   const calendarLockedHint = statusCalendarLocked
-    ? '已发布计划的周期与日期不可修改'
-    : '计划内已有学员打卡动作，不能修改周期与日期'
+    ? S.editor.calendarLocked
+    : S.editor.calendarLoggedLocked
 
   const applyStartDate = useCallback(async (nextStart: string) => {
     if (!props.onChangeStartDate || readOnly || saving || publishing.current
@@ -1573,7 +1576,7 @@ export function PlanEditor(props: PlanEditorProps) {
     const weeksAtRequest = latestWeeks.current
     const hadUnsavedContent = unsavedRef.current
     setSaving(true)
-    setStatusText('正在更新起始日期…')
+    setStatusText(S.editor.updatingStartDate)
     try {
       await props.onChangeStartDate(nextStart)
       const nextWeeks = relabelWeeksForStartDate(latestWeeks.current, nextStart)
@@ -1589,9 +1592,9 @@ export function PlanEditor(props: PlanEditorProps) {
       if (!hadUnsavedContent && !contentChangedDuringRequest) {
         markMirrorCovered(mirrorContent(nextWeeks, nextStart, nextWeeks.length || props.weeksCount))
       }
-      setStatusText(`${published ? '已发布' : '草稿'} · 起始日期已更新为 ${nextStart}`)
+      setStatusText(S.editor.startDateUpdated(published ? S.common.published : S.common.draft, nextStart))
     } catch (error) {
-      setStatusText('起始日期更新失败 · 请重试')
+      setStatusText(S.editor.startDateUpdateFailed)
       throw error
     } finally {
       setSaving(false)
@@ -1609,7 +1612,7 @@ export function PlanEditor(props: PlanEditorProps) {
     const startDate = currentPlanStart.current
     if (!startDate) throw new Error('PLAN_DATE_MISSING')
     setSaving(true)
-    setStatusText('正在更新计划周期…')
+    setStatusText(S.editor.updatingCycle)
     try {
       await props.onChangePlanWeeks(nextCount)
       skipNextAutosave.current = true
@@ -1632,9 +1635,9 @@ export function PlanEditor(props: PlanEditorProps) {
         ? singleRowSelection(null)
         : current)
       markMirrorCovered(mirrorContent(nextWeeks, startDate, nextCount))
-      setStatusText(`草稿 · 已调整为 ${nextCount} 周`)
+      setStatusText(S.editor.cycleUpdated(nextCount))
     } catch (error) {
-      setStatusText('计划周期更新失败 · 请重试')
+      setStatusText(S.editor.cycleUpdateFailed)
       throw error
     } finally {
       setSaving(false)
@@ -1673,13 +1676,13 @@ export function PlanEditor(props: PlanEditorProps) {
       setWeeks(error.weeks)
       unsavedRef.current = true
       return error.topMessage ?? (error.code === 'DAY_HISTORY_IMMUTABLE'
-        ? '学员刚完成了训练；新打卡动作已锁定，其余修改仍保留，请再次保存'
-        : '学员刚打了卡；相关动作已锁定并还原，其余修改仍保留')
+        ? S.editor.athleteCompletedDuringSave
+        : S.editor.athleteLoggedDuringSave)
     }
     if (error instanceof LockedRowMutationError) {
       setWeeks(error.weeks)
       unsavedRef.current = true
-      return '锁定行不能修改；请刷新后重试'
+      return S.editor.lockedRowRetry
     }
     return null
   }
@@ -1688,13 +1691,13 @@ export function PlanEditor(props: PlanEditorProps) {
     const auto = saveMode.current === 'auto'
     const importStart = pendingPlanStart.current
     const markPastAsAssumedComplete = importedPastHistory.current
-    const verb = auto ? '自动保存中…' : '保存中…'
+    const verb = auto ? S.editor.autosaving : S.editor.saving
     setSaving(true); setStatusText(verb)
     try {
       // Big saves (imports) crawl through the backend rate limit for minutes — show real
       // per-day movement so the coach can tell progress from a hang. Tiny saves stay quiet.
       const onProgress = (done: number, total: number) => {
-        if (total > 3) setStatusText(`${verb} ${done}/${total} 天`)
+        if (total > 3) setStatusText(S.editor.progressDays(verb, done, total))
       }
       const savedWeeks = latestWeeks.current
       const savedPlanStart = importStart ?? currentPlanStart.current
@@ -1718,9 +1721,9 @@ export function PlanEditor(props: PlanEditorProps) {
       }
       applySuccessfulSave(res, savedWeeks)
       const base = importStart && markPastAsAssumedComplete
-        ? '历史已推定完成并锁定'
-        : (auto ? '草稿 · 已自动保存' : '草稿 · 已保存')
-      setStatusText(res.skippedRows > 0 ? `${base} · ${res.skippedRows} 行未绑定被跳过` : base)
+        ? S.editor.historyBackfilledLocked
+        : (auto ? S.editor.draftAutosaved : S.editor.draftSaved)
+      setStatusText(res.skippedRows > 0 ? S.editor.skippedUnboundRows(base, res.skippedRows) : base)
       return true
     }
     catch (error) {
@@ -1731,16 +1734,14 @@ export function PlanEditor(props: PlanEditorProps) {
         // Client-side refusals are permanent for this plan state — a generic
         // "重试" both misleads and hides the way out.
         const explain: Record<ReconciliationError['code'], [string, string]> = {
-          PLAN_REQUIRES_NATIVE_EDITOR: ['此计划含逐组差异设置 · 网页端暂不支持保存',
-            '这份计划包含逐组不同的次数/备注/组间休息，网页编辑器还无法无损保存，为避免丢失这些设置已拒绝写入。'],
-          PLAN_SET_SPEC_INCOMPLETE: ['有已绑定动作组次/强度不完整或无效 · 点「待核对」修正',
-            '有已绑定动作的组次/强度没填全或值无效。点顶栏「待核对」查看原因并逐个修正后再保存。'],
+          PLAN_REQUIRES_NATIVE_EDITOR: [S.editor.nativeEditorSaveTitle, S.editor.nativeEditorDetail],
+          PLAN_SET_SPEC_INCOMPLETE: [S.editor.incompleteSaveTitle, S.editor.incompleteSaveDetail],
         }
         const [status, detail] = explain[error.code]
         setStatusText(status)
         if (!auto) window.alert(detail)
       } else {
-        setStatusText(auto ? '自动保存失败 · 改动已保留' : '保存失败 · 重试')
+        setStatusText(auto ? S.editor.autosaveFailed : S.editor.saveFailedRetry)
       }
       return false
     }
@@ -1799,10 +1800,10 @@ export function PlanEditor(props: PlanEditorProps) {
   const confirmLeaveUnbound = () => {
     if (!canPersist.current) return true
     const unbound = countUnbound(latestWeeks.current)
-    if (unbound > 0 && !window.confirm(`有 ${unbound} 行填了动作名或重量、但没绑定到动作库（名字后没有 ✓），它们无法保存，离开这个计划后会丢失。仍要离开吗？`)) return false
+    if (unbound > 0 && !window.confirm(S.editor.leaveUnboundConfirm(unbound))) return false
     // Published changes require an explicit confirmed update and are never flushed on leave.
     if (publishedRef.current && unsavedRef.current
-      && !window.confirm('这份已发布计划还有未更新的修改，离开后会丢失。仍要离开吗？')) return false
+      && !window.confirm(S.editor.leavePublishedDirtyConfirm)) return false
     return true
   }
   const confirmLeave = async () => {
@@ -1810,9 +1811,9 @@ export function PlanEditor(props: PlanEditorProps) {
     if (!confirmLeaveUnbound()) return false
     if (!canPersist.current || publishedRef.current) return true
     if (!unsavedRef.current && !savingRef.current) return true
-    setStatusText('离开前保存中…')
+    setStatusText(S.editor.savingBeforeLeave)
     if (await saver.current.flush()) return true
-    window.alert('保存失败，已留在当前计划。请检查网络后重试。')
+    window.alert(S.editor.saveBeforeLeaveFailed)
     return false
   }
   const guardLeave = (fn?: () => void | Promise<void>) => fn ? async () => {
@@ -1839,10 +1840,10 @@ export function PlanEditor(props: PlanEditorProps) {
     const invalid = inputIssues.filter((i) => (i.inputIssue?.reasons.length ?? 0) > 0).length
     const reasons = [...new Set(inputIssues.flatMap((i) => i.inputIssue?.reasons ?? []))]
     const parts = []
-    if (unbound) parts.push(`${unbound} 行未绑定动作库（保存会被跳过）`)
-    if (incomplete) parts.push(`${incomplete} 个动作组次/强度没填全（无法保存）`)
-    if (invalid) parts.push(`${invalid} 个动作值无效：${reasons.join(' / ')}`)
-    return `点击逐个定位：${parts.join('；')}`
+    if (unbound) parts.push(S.editor.unboundIssue(unbound))
+    if (incomplete) parts.push(S.editor.incompleteIssue(incomplete))
+    if (invalid) parts.push(S.editor.invalidIssue(invalid, reasons.join(' / ')))
+    return S.editor.issueHint(parts.join('；'))
   })()
   const jumpToNextIssue = () => {
     const cur = findIssueRows(latestWeeks.current)
@@ -1901,14 +1902,14 @@ export function PlanEditor(props: PlanEditorProps) {
       // Unbound rows are silently skipped by reconcile, so that risk is folded into the same confirm.
       const unboundRows = countUnbound(latestWeeks.current)
       const unboundLine = unboundRows > 0
-        ? `\n注意：有 ${unboundRows} 行未绑定动作库（名字后没有 ✓），本次更新会跳过它们、不写入。`
+        ? S.editor.updateUnboundNote(unboundRows)
         : ''
-      if (!window.confirm(`「${planName}」正在发布给 ${studentName}，保存会立即改变 ta 正在看的计划。${unboundLine}\n确认保存？`)) return
-      setSaving(true); setStatusText('更新中…')
+      if (!window.confirm(S.editor.updatePublishedConfirm(planName, studentName, unboundLine))) return
+      setSaving(true); setStatusText(S.editor.updating)
       try {
         const savedWeeks = latestWeeks.current
         const res = await props.onSave(savedWeeks, null, false,
-          (done, total) => { if (total > 3) setStatusText(`更新中… ${done}/${total} 天`) })
+          (done, total) => { if (total > 3) setStatusText(S.editor.progressDays(S.editor.updating, done, total)) })
         // Edits typed during the round-trip aren't in what was pushed — keep the guards armed.
         // A published update never writes calendar metadata, so the covered
         // hash must use the server-persisted date/weeks, not local values.
@@ -1916,7 +1917,7 @@ export function PlanEditor(props: PlanEditorProps) {
           markMirrorCovered(mirrorContent(res.weeks, persistedPlanStart.current, props.weeksCount))
         }
         applySuccessfulSave(res, savedWeeks)
-        setStatusText(res.skippedRows > 0 ? `已更新 ${studentName} 的计划 · ${res.skippedRows} 行未绑定被跳过` : `已更新 ${studentName} 的计划`)
+        setStatusText(res.skippedRows > 0 ? S.editor.updatedStudentPlanSkipped(studentName, res.skippedRows) : S.editor.updatedStudentPlan(studentName))
       }
       catch (error) {
         const scoped = applySaveFailure(error)
@@ -1924,23 +1925,21 @@ export function PlanEditor(props: PlanEditorProps) {
           setStatusText(scoped)
         } else if (error instanceof ReconciliationError) {
           const explain: Record<ReconciliationError['code'], [string, string]> = {
-            PLAN_REQUIRES_NATIVE_EDITOR: ['此计划含逐组差异设置 · 网页端暂不支持更新',
-              '这份计划包含逐组不同的次数/备注/组间休息，网页编辑器还无法无损保存，为避免丢失这些设置已拒绝写入。'],
-            PLAN_SET_SPEC_INCOMPLETE: ['有已绑定动作组次/强度不完整或无效 · 点「待核对」修正',
-              '有已绑定动作的组次/强度没填全或值无效。点顶栏「待核对」查看原因并逐个修正后再更新。'],
+            PLAN_REQUIRES_NATIVE_EDITOR: [S.editor.nativeEditorUpdateTitle, S.editor.nativeEditorDetail],
+            PLAN_SET_SPEC_INCOMPLETE: [S.editor.incompleteSaveTitle, S.editor.incompleteUpdateDetail],
           }
           const [status, detail] = explain[error.code]
           setStatusText(status)
           window.alert(detail)
         } else {
-          setStatusText('更新失败 · 重试')
+          setStatusText(S.editor.updateFailedRetry)
         }
       }
       finally { setSaving(false) }
       return
     }
     const unbound = countUnbound(latestWeeks.current)
-    if (unbound > 0 && !window.confirm(`有 ${unbound} 行填了动作名或重量、但没绑定到动作库（名字后没有 ✓），保存时会被跳过、不会写入。建议先在名称下拉里选中动作再保存。仍要保存吗？`)) return
+    if (unbound > 0 && !window.confirm(S.editor.saveUnboundConfirm(unbound))) return
     saveMode.current = 'manual'
     await saver.current.saveNow() // draft: goes through the shared queue
   }
@@ -1949,32 +1948,32 @@ export function PlanEditor(props: PlanEditorProps) {
     if (readOnly) return
     const currentStart = currentPlanStart.current
     if (!props.exerciseIndex || !currentStart) {
-      setStatusText('导入失败 · 计划或动作库未就绪')
+      setStatusText(S.editor.importNotReady)
       return
     }
     // No importing inside the publish round-trip (client `published` is still false there): if
     // the publish wins, the plan flips to published and the imported weeks are stranded — never
     // autosaved, never carried by「更新计划」. Refuse instead of racing; also covers in-flight saves.
     if (publishing.current || saving) {
-      setStatusText('正在保存或发布 · 请稍候再导入')
+      setStatusText(S.editor.importWhileSaving)
       return
     }
     // Never import over a published plan — saving would silently overwrite what the
     // student is already seeing. Direct the coach to a fresh draft instead.
     if (published) {
-      window.alert(`「${planName}」已发布给 ${studentName}，导入会直接覆盖学员正在看的计划。\n请先点右上「新建计划」，在新的草稿里导入。`)
+      window.alert(S.editor.importPublishedAlert(planName, studentName))
       return
     }
-    if (hasGridContent(weeks) && !window.confirm('当前网格已有内容，导入会覆盖当前计划。是否继续？')) return
+    if (hasGridContent(weeks) && !window.confirm(S.editor.importOverwriteConfirm)) return
 
-    setStatusText('导入中…')
+    setStatusText(S.editor.importing)
     try {
       const importer = await import('./import')
       const sheets = importer.readWorkbook(await file.arrayBuffer())
       const grid = importer.selectSheet(sheets)
       if (!grid) {
-        window.alert('没识别出训练周，请确认选的是计划表')
-        setStatusText('导入失败 · 未识别计划表')
+        window.alert(S.editor.noTrainingWeeks)
+        setStatusText(S.editor.importNoPlan)
         return
       }
 
@@ -1988,8 +1987,8 @@ export function PlanEditor(props: PlanEditorProps) {
       const { weeks: nextWeeks, startDate: importStart } = importer.buildWeeks(parsedWeeks, props.exerciseIndex, currentStart)
 
       if (nextWeeks.length === 0) {
-        window.alert('没识别出训练周，请确认选的是计划表')
-        setStatusText('导入失败 · 未识别计划表')
+        window.alert(S.editor.noTrainingWeeks)
+        setStatusText(S.editor.importNoPlan)
         return
       }
 
@@ -2019,9 +2018,9 @@ export function PlanEditor(props: PlanEditorProps) {
       const dropped = sourceWeekCount - imported
       let truncation: string
       if (dropped > 0) {
-        truncation = `原表 ${sourceWeekCount} 周，只导入最新一期共 ${imported} 周`
+        truncation = S.editor.importTruncated(sourceWeekCount, imported)
       } else {
-        truncation = `已导入 ${imported} 周 · 未保存`
+        truncation = S.editor.importedUnsaved(imported)
       }
       const range = importRangeLabel(nextWeeks)
       if (range) truncation += `（${range}）`
@@ -2030,11 +2029,11 @@ export function PlanEditor(props: PlanEditorProps) {
     } catch (e) {
       const code = e instanceof Error ? e.message : ''
       if (code === 'WORKBOOK_TOO_LARGE' || code === 'SHEET_TOO_LARGE') {
-        window.alert('导入失败：文件或工作表过大。请删除无关格式/工作表后重试（最大文件 10 MB）。')
-        setStatusText('导入失败 · 文件过大')
+        window.alert(S.editor.importTooLargeAlert)
+        setStatusText(S.editor.importTooLarge)
       } else {
-        window.alert('导入失败，请确认文件是 .xlsx 计划表')
-        setStatusText('导入失败 · 重试')
+        window.alert(S.editor.importInvalidFile)
+        setStatusText(S.editor.importFailedRetry)
       }
     }
   }
@@ -2048,13 +2047,13 @@ export function PlanEditor(props: PlanEditorProps) {
     // to the ⚠ chip instead of letting the coach discover it as an opaque failure.
     const noSets = findIssueRows(latestWeeks.current).filter((i) => i.kind === 'noSets').length
     if (noSets > 0) {
-      window.alert(`还不能发布：有 ${noSets} 个动作的组次/强度没填全或值无效，后端会拒绝发布。\n点顶栏「⚠ 待核对」查看原因并逐个修正，或删掉这些行（行尾 ✕）。`)
+      window.alert(S.editor.cannotPublishIncomplete(noSets))
       return
     }
     // Publishing flushes the draft via saveNow below, which skips unbound rows just like a manual
     // save — but here the loss lands in the plan the student is about to see. Warn before latching.
     const unbound = countUnbound(latestWeeks.current)
-    if (unbound > 0 && !window.confirm(`有 ${unbound} 行填了动作名或重量、但没绑定到动作库（名字后没有 ✓），发布时会被跳过、学员看不到这些行。\n点「取消」后可用顶栏「⚠ 待核对」逐个定位处理。仍要发布吗？`)) return
+    if (unbound > 0 && !window.confirm(S.editor.publishUnboundConfirm(unbound))) return
     // Latch publishing so nothing autosaves while the client still thinks this is a draft — client
     // `published` only flips true after the round-trip below, and an autosave in that window would
     // silently overwrite the just-published plan.
@@ -2066,36 +2065,36 @@ export function PlanEditor(props: PlanEditorProps) {
       // saveNow persists the latest draft AND awaits any in-flight autosave reconcile, so no
       // background draft write is still running when the plan flips to published (so-所见即所发).
       if (!(await saver.current.saveNow())) {
-        window.alert('发布中断：计划保存失败（改动已保留在本页）。请检查网络后重新点发布。')
-        setStatusText('发布失败 · 计划未存,请重试')
+        window.alert(S.editor.publishIncompleteAlert)
+        setStatusText(S.editor.publishPlanNotSaved)
         saver.current.scheduleAutosave() // dirty is still set — re-arm so the save retries itself
         return
       }
-      setStatusText('发布中…')
+      setStatusText(S.editor.publishing)
       if (onPublish) await onPublish()
       setPublished(true); becamePublished = true
       // Edits typed during the round-trip aren't in the published plan — surface them, never drop silently.
       setStatusText(latestWeeks.current !== snapshot
-        ? `已发布给 ${studentName} · 有未更新修改`
-        : `已发布给 ${studentName}`)
+        ? S.editor.publishedDirty(studentName)
+        : S.editor.publishedTo(studentName))
     } catch (e) {
       // The status line gets repainted by later saves — a publish failure must explain itself
       // in a dialog the coach actually reads, in coach language, not a machine code.
       const code = e instanceof ApiException ? e.code : ''
       const detail = e instanceof ApiException ? e.details : {}
       if (code === 'PLAN_PUBLISH_INCOMPLETE') {
-        const n = Number(detail.empty_exercise_count ?? 0) || '若干'
-        window.alert(`发布被拒：有 ${n} 个动作没有任何组数据，学员端无法显示。\n点顶栏「⚠ 待核对」定位这些行，补上组数或删除后再发布。`)
+        const n = Number(detail.empty_exercise_count ?? 0) || S.editor.several
+        window.alert(S.editor.publishEmptyExercises(n))
       } else if (code === 'PLAN_DAYS_EXCEED_WEEKS') {
-        window.alert(`发布被拒：有训练日排在计划周数（${weeksCount} 周）之外，请删除多余的周或调整计划周数。`)
+        window.alert(S.editor.publishWeeksOverflow(weeksCount))
       } else if (code === 'EVALUATION_IN_PROGRESS') {
-        window.alert('发布被拒：该学员的评估期还在进行中，评估期内只能发布 1 周适应计划。')
+        window.alert(S.editor.assessmentPublishRejected)
       } else if (code === 'PLAN_NOT_DRAFT') {
-        window.alert('这份计划已经发布过了。刷新页面获取最新状态。')
+        window.alert(S.editor.alreadyPublishedAlert)
       } else {
-        window.alert(`发布失败${code ? `（${code}）` : ''}，请稍后重试。`)
+        window.alert(S.editor.publishFailedAlert(code))
       }
-      setStatusText('发布失败 · 重试')
+      setStatusText(S.editor.publishFailedRetry)
     } finally {
       publishing.current = false // always unlatch so 更新计划 / autosave work afterwards
       // Re-arm only if the coach actually edited during the round-trip — a blanket re-arm
@@ -2108,7 +2107,7 @@ export function PlanEditor(props: PlanEditorProps) {
     if (!sel) return ''
     const wk = weeks.find((w) => w.num === sel.wnum)
     const d = wk?.days.find((x) => x.dow === sel.dow)
-    return d && wk ? `${dayDisplay(wk, d)}（第 ${sel.wnum} 周）` : ''
+    return d && wk ? S.editor.selectedDayInWeek(dayDisplay(wk, d), sel.wnum) : ''
   })()
   const copyTargetHasLockedRows = (() => {
     if (!sel) return false
@@ -2125,10 +2124,14 @@ export function PlanEditor(props: PlanEditorProps) {
     ) return resolved
     return {
       ...resolved,
-      value: formulaCellDraft.rawValue === '' ? '/' : `${formulaCellDraft.rawValue} 组`,
+      value: formulaCellDraft.rawValue === '' ? '/' : S.common.countSets(formulaCellDraft.rawValue),
     }
   }, [cellSelection, displayWeeks, formulaCellDraft])
-  const selectedRowLabel = selectedRowForBar ? `当前行 · ${selectedRowForBar.name.trim() || '未命名动作'}` : ''
+  const selectedRowLabel = selectedRowForBar
+    ? S.editor.currentRow(
+      fmt.exerciseName({ name: selectedRowForBar.name, name_en: selectedRowForBar.nameEn }).trim()
+        || S.common.unnamedExercise)
+    : ''
   const moveStateForDay = (wnum: number, dow: number): 'source' | 'target' | 'invalid' | undefined => {
     if (!dayMoveVisual) return undefined
     if (dayMoveVisual.fromWnum === wnum && dayMoveVisual.fromDow === dow) return 'source'
@@ -2155,14 +2158,14 @@ export function PlanEditor(props: PlanEditorProps) {
         onMarkComplete={props.onMarkComplete}
         onBackfillHistory={props.onBackfillHistory}
         onRenamePlan={!readOnly && props.onRename ? () => {
-          const name = window.prompt('计划名称', planName)?.trim()
+          const name = window.prompt(S.editor.planNamePrompt, planName)?.trim()
           if (name && name !== planName) void props.onRename!(name)
         } : undefined}
         onRenameStudent={props.onRenameStudent ? () => {
-          const name = window.prompt('学员姓名', studentName)?.trim()
+          const name = window.prompt(S.editor.studentNamePrompt, studentName)?.trim()
           if (name && name !== studentName) {
             void Promise.resolve(props.onRenameStudent!(name)).catch(() => {
-              window.alert('修改学员姓名失败，请稍后重试')
+              window.alert(S.editor.renameStudentFailed)
             })
           }
         } : undefined}
@@ -2170,7 +2173,7 @@ export function PlanEditor(props: PlanEditorProps) {
         onImport={!readOnly && props.exerciseIndex && planStartDate ? handleImport : undefined}
         planStartDate={planStartDate ?? undefined}
         calendarLocked={calendarLocked || !props.onChangeStartDate}
-        calendarLockedHint={calendarLocked ? calendarLockedHint : '当前模式不可修改计划日期'}
+        calendarLockedHint={calendarLocked ? calendarLockedHint : S.editor.calendarUnavailable}
         onChangeStartDate={planStartDate ? (props.onChangeStartDate ? handleChangeStartDate : async () => {}) : undefined}
         onNewExercise={!readOnly && props.onCreateExercise ? () => openCreateExercise() : undefined}
         issueCount={readOnly ? 0 : issues.length} issueHint={issueHint} onJumpIssue={jumpToNextIssue}
@@ -2198,7 +2201,7 @@ export function PlanEditor(props: PlanEditorProps) {
         nextWeekDisabled={visibleWeekIndex >= weeks.length - 1}
         onPreviousWeek={() => jumpToAdjacentWeek(-1)}
         onNextWeek={() => jumpToAdjacentWeek(1)} />
-      <nav className="week-tabs" aria-label="计划周">
+      <nav className="week-tabs" aria-label={S.editor.planWeeksAria}>
         <div className="week-tab-list">
           {weeks.map((week, index) => (
             <button
@@ -2215,7 +2218,7 @@ export function PlanEditor(props: PlanEditorProps) {
             type="button"
             className="week-tab-add"
             disabled={calendarLocked || saving || weeks.length >= 52 || !props.onChangePlanWeeks}
-            title={calendarLocked ? calendarLockedHint : '加一周'}
+            title={calendarLocked ? calendarLockedHint : S.editor.addWeek}
             onClick={() => {
               const nextCount = weeks.length + 1
               void handleChangePlanWeeks(nextCount).then(() => {
@@ -2224,7 +2227,7 @@ export function PlanEditor(props: PlanEditorProps) {
               }).catch(() => undefined)
             }}
           >
-            ＋ 加一周
+            {S.editor.addWeekButton}
           </button>
         </div>
       </nav>
@@ -2232,8 +2235,8 @@ export function PlanEditor(props: PlanEditorProps) {
         visible={!!sel && !readOnly}
         dayLabel={selDayLabel}
         canCopyPrev={!!sel && sel.wnum > 1 && !copyTargetHasLockedRows}
-        copyDisabledHint={copyTargetHasLockedRows ? '目标周含学员已打卡动作,不能用上周覆盖' : undefined}
-        copyLabel={copyDone ? '✓ 已复制上周' : COPY_LABEL}
+        copyDisabledHint={copyTargetHasLockedRows ? S.editor.copyTargetLogged : undefined}
+        copyLabel={copyDone ? S.editor.copiedLastWeek : COPY_LABEL}
         copyDone={copyDone}
         selectedRowLabel={selectedRowLabel}
         hasRowClipboard={hasRowClipboard}
@@ -2252,7 +2255,7 @@ export function PlanEditor(props: PlanEditorProps) {
       {/* v1.3 页眉集成试验：ContextRail 与视口钳制实现保留作回滚，编辑器渲染入口暂时下线。 */}
       <div className="plan-with-rail">
       <div className="scroller" ref={scrollerRef} aria-readonly={readOnly || undefined} style={{ flex: 1, overflow: 'auto', position: 'relative', background: 'var(--page-bg)', scrollSnapType: 'x mandatory' }}>
-        {readOnly && <div role="status" style={{ position: 'sticky', top: 0, zIndex: 12, padding: '8px 16px', background: 'var(--panel-bg)', borderBottom: '1px solid var(--bd)', color: 'var(--sec)', fontSize: 12 }}>历史计划只读：可以查看，但不会保存任何修改</div>}
+        {readOnly && <div role="status" style={{ position: 'sticky', top: 0, zIndex: 12, padding: '8px 16px', background: 'var(--panel-bg)', borderBottom: '1px solid var(--bd)', color: 'var(--sec)', fontSize: 12 }}>{S.editor.historyReadOnlyBanner}</div>}
         <div style={{ pointerEvents: readOnly ? 'none' : undefined }}>
             <div ref={weeksRef} className="week-band-track" style={{ gap: WEEK_BAND_GAP_PX }}>
               {weeks.map((wk, weekIndex) => (
@@ -2268,12 +2271,12 @@ export function PlanEditor(props: PlanEditorProps) {
                 ) : <div key={wk.num} className="weekband week-band-slot" data-week-slot="" data-wnum={wk.num} style={{ scrollSnapAlign: 'start' }}>
                   <div className="weekband-head">
                     <kbd>W{wk.num2}</kbd>
-                    <span className="weekband-name">第 {wk.num} 周</span>
+                    <span className="weekband-name">{S.common.weekN(wk.num)}</span>
                     <span className="weekband-range">{wk.range}</span>
                     <WeekCapacitySummary weekNumber={wk.num} {...weeklySummaries[weekIndex]} />
                     {wk.isCurrent && (
                       <span className="weekband-current">
-                        <span />当前周
+                        <span />{S.editor.currentWeek}
                       </span>
                     )}
                   </div>

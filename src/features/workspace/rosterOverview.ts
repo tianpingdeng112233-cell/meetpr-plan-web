@@ -8,6 +8,7 @@ import type {
 } from '../../api/types'
 import { isStudentPendingNextWeek } from './pendingPlan'
 import { completionRateTone } from './metricThresholds'
+import { S } from '../../i18n/strings'
 
 export type RosterTab = 'all' | 'pending' | 'attention'
 
@@ -86,12 +87,12 @@ export function deriveRedFlag({
   competitionDays: number | null
 }): string {
   const flags: string[] = []
-  if (completionRateTone(completion) === 'bad') flags.push('完成率低')
+  if (completionRateTone(completion) === 'bad') flags.push(S.stats.roster.completionLow)
 
   const competitionIsNear = competitionDays != null && competitionDays >= 0 && competitionDays <= 35
   if (competitionIsNear) {
     const weeks = Math.ceil(competitionDays / 7)
-    flags.push(pending ? `待排 · 赛前 ${weeks} 周` : `赛前 ${weeks} 周`)
+    flags.push(pending ? S.stats.roster.pendingPreMeet(weeks) : S.stats.roster.preMeet(weeks))
   }
   return flags.join(' · ')
 }

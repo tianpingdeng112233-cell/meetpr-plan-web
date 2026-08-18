@@ -30,6 +30,8 @@ import {
   type PlanCellField,
   type PlanCellSelection,
 } from '../selectionModel'
+import { fmt, S } from '../../../i18n/strings'
+import { STABLE_ZH } from '../../../i18n/stable-zh'
 
 export interface WeekBandBadge {
   label: string
@@ -94,14 +96,14 @@ function ShiftBadge({ day }: { day: DayCol }) {
   return (
     <span
       data-shift-badge=""
-      title={`原定日期：${day.shiftBadge.originalDate}；顺延天数：${day.shiftBadge.days} 天`}
+      title={S.editor.shiftBadgeTitle(day.shiftBadge.originalDate, day.shiftBadge.days)}
       style={{
         display: 'inline-flex', alignItems: 'center', flex: 'none', padding: '1px 4px',
         border: '1px solid var(--warn)', borderRadius: 'var(--r-sm)', color: 'var(--warn)',
         fontSize: 8, fontWeight: 600, lineHeight: 1.2, cursor: 'help',
       }}
     >
-      顺延
+      {S.editor.shifted}
     </span>
   )
 }
@@ -234,9 +236,9 @@ function TierHeader({ label, accent, width, summary }: { label: string; accent?:
     <div className={`tierhead${accent ? ' main' : ' aux'}`} style={{ width }}>
       <span className="tierhead-bar" />
       <span className="tierhead-label">{label}</span>
-      <span className="tierhead-summary" aria-label={`${summary.sets} 组${summary.tonnage > 0 ? ` · 总重 ${compactTonnage(summary.tonnage)}` : ''}`}>
-        <span>{summary.sets} 组</span>
-        {summary.tonnage > 0 && <span className="tierhead-tonnage"> · 总重 {compactTonnage(summary.tonnage)}</span>}
+      <span className="tierhead-summary" aria-label={S.editor.tierSummary(summary.sets, summary.tonnage > 0 ? compactTonnage(summary.tonnage) : undefined)}>
+        <span>{S.common.countSets(summary.sets)}</span>
+        {summary.tonnage > 0 && <span className="tierhead-tonnage"> · {S.editor.totalWeight} {compactTonnage(summary.tonnage)}</span>}
       </span>
     </div>
   )
@@ -246,13 +248,13 @@ const INTENSITY_OPTIONS: { mode: LoadMode; label: string }[] = [
   { mode: 'pct', label: '%' },
   { mode: 'rpe', label: 'RPE' },
   { mode: 'rir', label: 'RIR' },
-  { mode: 'rpe_range', label: 'RPE 区间' },
+  { mode: 'rpe_range', label: S.editor.rpeRange },
 ]
 
 const PCT_ANCHOR_OPTIONS = [
   { value: 'one_rm', label: '1RM' },
   { value: 'e1rm', label: 'e1RM' },
-  { value: 'top_set', label: '当日顶组' },
+  { value: 'top_set', label: S.editor.topSetToday },
 ] as const
 
 function intensityPlaceholder(intensity: RowIntensity): string {
@@ -274,8 +276,8 @@ function ActualIntensityLine({ row, actuals, e1rm }: {
   e1rm: number | null
 }) {
   return (
-    <span className="actual-line" data-actuals="intensity" title="学员实际完成 · RPE">
-      <span className="actual-tag">实际</span>
+    <span className="actual-line" data-actuals="intensity" title={S.editor.actualRpe}>
+      <span className="actual-tag">{S.editor.actual}</span>
       {actuals.map((set, position) => {
         const chip = actualIntensityChip(row, position, set, e1rm)
         const tone = set.failed ? 'off' : !set.completed ? 'missed' : chip.tone
@@ -291,14 +293,14 @@ function ActualIntensityLine({ row, actuals, e1rm }: {
 
 function ActualWeightLine({ row, actuals }: { row: ExerciseRow; actuals: ActualSet[] }) {
   return (
-    <span className="actual-line" data-actuals="weight" title="学员实际完成 · 重量×次数">
-      <span className="actual-tag">实际</span>
+    <span className="actual-line" data-actuals="weight" title={S.editor.actualWeightReps}>
+      <span className="actual-tag">{S.editor.actual}</span>
       {actuals.map((set, position) => {
         const tone = set.failed ? 'off' : !set.completed ? 'missed' : actualWeightTone(row, position, set)
         return (
           <span key={set.set_index} className={`actual-chip tone-${tone}`}
-            title={set.failed ? '力竭' : set.completed ? undefined : '未完成'}>
-            {formatActualWeight(set)}{set.failed ? ' 力竭' : ''}
+            title={set.failed ? S.common.failure : set.completed ? undefined : S.common.notCompleted}>
+            {formatActualWeight(set)}{set.failed ? ` ${S.common.failure}` : ''}
           </span>
         )
       })}
@@ -385,14 +387,14 @@ function EditableIntensity({ row, width, edit, selectedCell, selectCell, cellKey
       style={{ width, padding: '4px 4px', gap: 3, display: 'flex', flexWrap: 'wrap', alignItems: 'center' }}
     >
       {row.mode === 'bodyweight' ? (
-        <span className="mode-badge bodyweight" title={row.hasLogs ? '学员已打卡,此行及其组不可修改' : '自重动作不使用强度体系'}>自重</span>
+        <span className="mode-badge bodyweight" title={row.hasLogs ? S.editor.rowLocked : S.editor.bodyweightNoIntensity}>{S.common.bodyweight}</span>
       ) : (
         <>
           <select
-            aria-label="强度类型"
+            aria-label={S.editor.intensityType}
             value={intensity?.mode ?? ''}
             disabled={readOnly || row.hasLogs}
-            title={row.hasLogs ? '学员已打卡,此行及其组不可修改' : title}
+            title={row.hasLogs ? S.editor.rowLocked : title}
             onFocus={() => selectCell(singleValue ? 0 : undefined)}
             onClick={(event) => { stop(event); selectCell(singleValue ? 0 : undefined) }}
             onChange={(event) => {
@@ -411,16 +413,16 @@ function EditableIntensity({ row, width, edit, selectedCell, selectCell, cellKey
               })
             }}
           >
-            <option value="">不设强度</option>
+            <option value="">{S.editor.noIntensity}</option>
             {INTENSITY_OPTIONS.map((option) => <option value={option.mode} key={option.mode}>{option.label}</option>)}
           </select>
           {singleValue && intensity && (
             <>
               <button type="button" className="intensity-mode-toggle"
                 disabled={readOnly || row.hasLogs || row.boxes.length === 0}
-                title={intensityMode === 'uniform' ? '切换为逐组强度值' : '切换为统一强度值'}
+                title={intensityMode === 'uniform' ? S.editor.switchPerSetIntensity : S.editor.switchUniformIntensity}
                 onClick={(event) => { stop(event); toggleIntensityMode() }}>
-                {intensityMode === 'uniform' ? '逐组' : '统一值'}
+                {intensityMode === 'uniform' ? S.editor.perSet : S.editor.uniformValue}
               </button>
               {(intensityMode === 'uniform' ? intensityBoxes.slice(0, 1) : intensityBoxes).map((box, index) => {
                 const sourceIndex = intensityMode === 'uniform' ? 0 : index
@@ -434,7 +436,7 @@ function EditableIntensity({ row, width, edit, selectedCell, selectCell, cellKey
                     data-guard-field="intensity" data-set-index={sourceIndex}
                     data-plan-cell="intensity" data-plan-cell-key={cellKey(sourceIndex)}
                     data-input-invalid={boxInvalid ? 'true' : undefined}
-                    aria-label={intensityMode === 'uniform' ? '统一强度值' : `第 ${sourceIndex + 1} 组强度值`}
+                    aria-label={intensityMode === 'uniform' ? S.editor.uniformIntensityValue : S.editor.setIntensityValue(sourceIndex + 1)}
                     aria-invalid={boxInvalid || undefined} title={boxInvalid ? intensityReason(intensity.mode) ?? undefined : undefined}
                     disabled={readOnly || row.hasLogs} filter={filterStrengthInput}
                     onFocus={() => selectCell(sourceIndex)}
@@ -446,15 +448,15 @@ function EditableIntensity({ row, width, edit, selectedCell, selectCell, cellKey
               <span className="intensity-unit">{intensity.mode === 'pct' ? '%' : ''}</span>
               {intensity.mode === 'pct' && (readOnly || row.hasLogs) && pctAnchor !== 'one_rm' && (
                 <span className="pct-anchor-label" data-pct-anchor={pctAnchor}>
-                  {pctAnchor === 'e1rm' ? '×e1RM' : '×顶组'}
+                  {pctAnchor === 'e1rm' ? '×e1RM' : S.editor.topSetMultiplier}
                 </span>
               )}
               {intensity.mode === 'pct' && !readOnly && !row.hasLogs && (
                 <select
                   className="pct-anchor-select"
-                  aria-label="百分比锚点"
+                  aria-label={S.editor.percentAnchor}
                   value={pctAnchor}
-                  title="百分比参照"
+                  title={S.editor.percentReference}
                   onClick={stop}
                   onChange={(event) => {
                     const pctAnchor = event.currentTarget.value as ExerciseRow['pctAnchor']
@@ -572,20 +574,20 @@ function EditableWeight({ row, width, edit, selectedCell, selectCell, cellKey, r
     <div className="gcell weightcell" data-c="weight" style={{ width, padding: '3px 4px', display: 'flex', flexWrap: 'wrap', alignItems: 'center' }}>
       <span className="weight-controls">
         <select
-          aria-label="重量模式"
+          aria-label={S.editor.weightMode}
           value={displayMode}
           disabled={readOnly || row.hasLogs}
-          title={row.hasLogs ? '学员已打卡,此行及其组不可修改' : undefined}
+          title={row.hasLogs ? S.editor.rowLocked : undefined}
           onClick={stop}
           onChange={(event) => setWeightMode(event.currentTarget.value as ReturnType<typeof displayedWeightMode>)}
         >
-          <option value="fixed_weight">固定重量</option>
-          <option value="per_set">逐组标重</option>
-          <option value="weight_range">重量区间</option>
-          <option value="bodyweight">自重</option>
+          <option value="fixed_weight">{S.editor.fixedWeight}</option>
+          <option value="per_set">{S.editor.perSetWeight}</option>
+          <option value="weight_range">{S.editor.weightRange}</option>
+          <option value="bodyweight">{S.common.bodyweight}</option>
         </select>
       </span>
-      {displayMode === 'bodyweight' && <span className="bodyweight-summary">每组 BW</span>}
+      {displayMode === 'bodyweight' && <span className="bodyweight-summary">{S.editor.eachSetBodyweight}</span>}
       {displayMode === 'weight_range' && range && (
         <span className="weight-range-inputs">
           <GuardedInput
@@ -593,7 +595,7 @@ function EditableWeight({ row, width, edit, selectedCell, selectCell, cellKey, r
             className={invalidRange ? 'guard-invalid' : undefined}
             data-guard-field="weight-range-low" data-input-invalid={invalidRange ? 'true' : undefined}
             data-plan-cell="weight" data-plan-cell-key={cellKey(0)}
-            aria-label="重量区间下限" aria-invalid={invalidRange || undefined}
+            aria-label={S.editor.weightRangeLow} aria-invalid={invalidRange || undefined}
             title={invalidRange ? INPUT_GUARD_REASONS.weightRange : undefined}
             disabled={readOnly || row.hasLogs} filter={filterStrengthInput}
             onFocus={() => selectCell(0)} onClick={(event) => { stop(event); selectCell(0) }}
@@ -604,7 +606,7 @@ function EditableWeight({ row, width, edit, selectedCell, selectCell, cellKey, r
             value={range.high} inputMode="decimal" placeholder="175"
             className={invalidRange ? 'guard-invalid' : undefined}
             data-guard-field="weight-range-high" data-input-invalid={invalidRange ? 'true' : undefined}
-            aria-label="重量区间上限" aria-invalid={invalidRange || undefined}
+            aria-label={S.editor.weightRangeHigh} aria-invalid={invalidRange || undefined}
             title={invalidRange ? INPUT_GUARD_REASONS.weightRange : undefined}
             disabled={readOnly || row.hasLogs} filter={filterStrengthInput}
             onFocus={() => selectCell(0)} onClick={(event) => { stop(event); selectCell(0) }}
@@ -631,7 +633,7 @@ function EditableWeight({ row, width, edit, selectedCell, selectCell, cellKey, r
           />
         )
       })}
-      {row.boxes.length === 0 && <span style={{ color: 'var(--mut)', fontSize: 10 }}>填组数→</span>}
+      {row.boxes.length === 0 && <span style={{ color: 'var(--mut)', fontSize: 10 }}>{S.editor.enterSets}</span>}
       {actualLine}
     </div>
   )
@@ -674,9 +676,9 @@ export function DayColumn({
   const [dragRowId, setDragRowId] = useState<string | null>(null)
   const [dropTarget, setDropTarget] = useState<{ rowId: string; position: 'before' | 'after' } | null>(null)
   const dragDisabled = day.rows.some((row) => row.hasLogs)
-  const dragDisabledTitle = '该日含学员已打卡动作，整天不可拖排'
+  const dragDisabledTitle = S.editor.dayLockedForDrag
   const dayMoveClass = dayMoveState ? ` day-move-${dayMoveState}` : ''
-  const dayMoveTitle = dayMoveDisabledHint ?? '拖动搬到本周其他日期 / 点击选中日'
+  const dayMoveTitle = dayMoveDisabledHint ?? S.editor.moveDayHint
   const dayMoveCursor = dayMoveDisabledHint ? 'not-allowed' : 'grab'
   const resolveTier = (row: ExerciseRow) => rowTier?.(row) ?? (row.isMain ? 'main' : 'aux')
   const displayRows = orderRowsForDisplay(day.rows, rowTier)
@@ -686,14 +688,14 @@ export function DayColumn({
   const auxDaySummary = summarizeDaySection(auxRowsForDay)
   const dayTonnage = mainDaySummary.tonnage + auxDaySummary.tonnage
   const firstMainName = mainRowsForDay[0]?.name ?? ''
-  const dayTheme = firstMainName.includes('深蹲')
-    ? '深蹲日'
-    : firstMainName.includes('卧推')
-      ? '卧推日'
-      : firstMainName.includes('硬拉')
-        ? '硬拉日'
-        : '训练日'
-  const dayMeta = `主项 ${mainDaySummary.sets} 组 · 辅项 ${auxDaySummary.sets} 组 · 总重 ${compactTonnage(dayTonnage)}`
+  const dayTheme = firstMainName.includes(STABLE_ZH.liftNameTokens.squat)
+    ? S.editor.squatDay
+    : firstMainName.includes(STABLE_ZH.liftNameTokens.bench)
+      ? S.editor.benchDay
+      : firstMainName.includes(STABLE_ZH.liftNameTokens.deadlift)
+        ? S.editor.deadliftDay
+        : S.editor.trainingDay
+  const dayMeta = S.editor.dayMeta(mainDaySummary.sets, auxDaySummary.sets, compactTonnage(dayTonnage))
   const isCellSelected = (rowId: string, field: PlanCellField, setIndex?: number) => samePlanCell(
     cellSelection ?? null,
     { weekNumber, dow: day.dow, rowId, field, setIndex },
@@ -781,7 +783,7 @@ export function DayColumn({
           <ShiftBadge day={day} />
         </div>
         <div className="restday-body">
-          <span>休息</span>
+          <span>{S.editor.rest}</span>
         </div>
       </div>
     )
@@ -802,12 +804,12 @@ export function DayColumn({
             <ShiftBadge day={day} />
             {columnLetter && <kbd className="day-column-key">{columnLetter}</kbd>}
           </span>
-          <span className="week-band-rest-label">休息</span>
+          <span className="week-band-rest-label">{S.editor.rest}</span>
           {headerContext}
           {!readOnly && (
             <button type="button" className="week-band-rest-add" data-add-tier="main"
               onMouseDown={stop} onClick={(event) => { stop(event); onAddRow('main') }}>
-              <span aria-hidden="true">＋</span> 加动作
+              <span aria-hidden="true">＋</span> {S.editor.addAction}
             </button>
           )}
         </div>
@@ -840,12 +842,12 @@ export function DayColumn({
       <div className="daygrid" style={{ width: total, fontVariantNumeric: 'tabular-nums' }}>
         <div className="gridhead" style={{ display: 'flex', alignItems: 'stretch', background: 'var(--card-bg)', borderBottom: '1px solid var(--line)' }}>
           {weekBand && <div className="gcell week-band-frozen week-band-index" data-c="index" style={{ width: 28, padding: '4px 3px', textAlign: 'center', ...head }}>#</div>}
-          <div className={`gcell${weekBand ? ' week-band-frozen' : ''}`} data-c="name" style={{ width: colW.name, padding: '4px 6px', ...head }}>动作</div>
-          <div className="gcell" data-c="sets" style={{ width: colW.sets, padding: '4px 4px', textAlign: 'center', ...head }}>组</div>
-          <div className="gcell" data-c="reps" style={{ width: colW.reps, padding: '4px 4px', textAlign: 'center', ...head }}>次</div>
-          <div className="gcell" data-c="int" style={{ width: colW.int, padding: '4px 6px', ...head }}>强度</div>
-          <div className="gcell" data-c="weight" style={{ width: colW.weight, padding: '4px 6px', ...head }}>重量</div>
-          <div className="gcell" data-c="note" style={{ width: colW.note, padding: '4px 6px', ...head }}>备注</div>
+          <div className={`gcell${weekBand ? ' week-band-frozen' : ''}`} data-c="name" style={{ width: colW.name, padding: '4px 6px', ...head }}>{S.common.action}</div>
+          <div className="gcell" data-c="sets" style={{ width: colW.sets, padding: '4px 4px', textAlign: 'center', ...head }}>{S.common.sets}</div>
+          <div className="gcell" data-c="reps" style={{ width: colW.reps, padding: '4px 4px', textAlign: 'center', ...head }}>{S.common.reps}</div>
+          <div className="gcell" data-c="int" style={{ width: colW.int, padding: '4px 6px', ...head }}>{S.common.intensity}</div>
+          <div className="gcell" data-c="weight" style={{ width: colW.weight, padding: '4px 6px', ...head }}>{S.common.weight}</div>
+          <div className="gcell" data-c="note" style={{ width: colW.note, padding: '4px 6px', ...head }}>{S.common.notes}</div>
         </div>
 
         {(() => {
@@ -882,7 +884,7 @@ export function DayColumn({
                 >
                   <span
                     className="rowdrag"
-                    title={dragDisabled ? dragDisabledTitle : '拖动调整顺序 / 点击选中动作'}
+                    title={dragDisabled ? dragDisabledTitle : S.editor.dragRowHint}
                     onMouseDown={(e) => startRowDrag(e, row.id)}
                     onClick={(e) => {
                       e.stopPropagation()
@@ -894,7 +896,7 @@ export function DayColumn({
                   </span>
                   {badge && <span className={`week-band-badge ${badge.tone}`}>{badge.label}</span>}
                   <input
-                    value={row.name} placeholder="输入动作…"
+                    value={fmt.exerciseName({ name: row.name, name_en: row.nameEn })} placeholder={S.editor.exercisePlaceholder}
                     disabled={readOnly || row.hasLogs}
                     onMouseDown={stop}
                     onClick={(event) => { stop(event); selectCell(row.id, 'name') }}
@@ -910,9 +912,9 @@ export function DayColumn({
                     style={{ ...baseInput, flex: 1, minWidth: 0, color: 'var(--txt)', fontWeight: 500 }}
                   />
                   {row.ku && <span className="row-mark bound">✓</span>}
-                  {row.custom && <span className="row-mark custom">定</span>}
+                  {row.custom && <span className="row-mark custom">{S.editor.customMark}</span>}
                   {row.hasLogs && (
-                    <span className="row-mark locked" title={row.conflictMessage ?? '学员已打卡,此行及其组不可修改'}>锁</span>
+                    <span className="row-mark locked" title={row.conflictMessage ?? S.editor.rowLocked}>{S.editor.lockedMark}</span>
                   )}
                   {row.conflictMessage && <span className="row-mark conflict" title={row.conflictMessage}>!</span>}
                 </div>
@@ -991,7 +993,7 @@ export function DayColumn({
                     onChange={(e) => edit((r) => ({ ...r, note: e.target.value }))}
                     style={{ ...baseInput, width: '100%', fontSize: 10, color: 'var(--txt)', paddingRight: 14 }} />
                   {!row.hasLogs && (
-                    <span className="rowdel" title="删除这一行"
+                    <span className="rowdel" title={S.editor.deleteRow}
                       onClick={(e) => { e.stopPropagation(); onDeleteRow(row.id) }}>✕</span>
                   )}
                 </div>
@@ -1002,13 +1004,13 @@ export function DayColumn({
         const addRowEntry = (tier: 'main' | 'aux') => (
           <div className="popitem" data-add-tier={tier} onClick={(e) => { e.stopPropagation(); onAddRow(tier) }}
             style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 8px', borderTop: '1px dashed var(--bd)', color: 'var(--mut)', cursor: 'pointer', fontSize: 11 }}>
-            <span style={{ color: 'var(--ink)', fontWeight: 700 }}>＋</span> 加动作
+            <span style={{ color: 'var(--ink)', fontWeight: 700 }}>＋</span> {S.editor.addAction}
           </div>
         )
         const addWeekBandRowEntry = (tier: 'main' | 'aux') => !readOnly && (
           <button type="button" className="week-band-section-add" data-add-tier={tier}
             onClick={(event) => { event.stopPropagation(); onAddRow(tier) }}>
-            <span aria-hidden="true">＋</span> {tier === 'main' ? '主项/主项变式' : '辅助项'}
+            <span aria-hidden="true">＋</span> {tier === 'main' ? S.editor.mainOrVariation : S.common.accessoryItem}
           </button>
         )
         if (weekBand) {
@@ -1023,10 +1025,10 @@ export function DayColumn({
           })
           return (
             <>
-              {(mainRows.length > 0 || !readOnly) && <TierHeader label="主项及变式" accent width={total} summary={mainSummary} />}
+              {(mainRows.length > 0 || !readOnly) && <TierHeader label={S.editor.mainAndVariations} accent width={total} summary={mainSummary} />}
               {renderRows(mainRows)}
               {addWeekBandRowEntry('main')}
-              {(auxRows.length > 0 || !readOnly) && <TierHeader label="辅助项" width={total} summary={auxSummary} />}
+              {(auxRows.length > 0 || !readOnly) && <TierHeader label={S.common.accessoryItem} width={total} summary={auxSummary} />}
               {renderRows(auxRows)}
               {addWeekBandRowEntry('aux')}
             </>
@@ -1046,10 +1048,10 @@ export function DayColumn({
         const auxSummary = summarizeDaySection(auxRows)
         return (
           <>
-            {(mainRows.length > 0 || selected) && <TierHeader label="主项及变式" accent width={total} summary={mainSummary} />}
+            {(mainRows.length > 0 || selected) && <TierHeader label={S.editor.mainAndVariations} accent width={total} summary={mainSummary} />}
             {mainRows.map((row) => renderRow(row))}
             {selected && addRowEntry('main')}
-            {(auxRows.length > 0 || selected) && <TierHeader label="辅助项" width={total} summary={auxSummary} />}
+            {(auxRows.length > 0 || selected) && <TierHeader label={S.common.accessoryItem} width={total} summary={auxSummary} />}
             {auxRows.map((row) => renderRow(row))}
             {selected && addRowEntry('aux')}
           </>

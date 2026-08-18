@@ -1,9 +1,8 @@
 import type { Week, DayCol, ExerciseRow, SetBox, IntensityMode } from './types'
+import { fmt, S } from '../../i18n/strings'
 
 // Ported from the design bundle's buildWeeks() — xty 吕子豪 12-week sample.
 // Used until the backend plan API is wired in.
-
-const DOW = ['周一', '周二', '周三', '周四', '周五', '周六', '周日']
 
 const r2 = (n: number) => Math.round(n / 2.5) * 2.5
 const ramp = (s: number, inc: number, n: number) =>
@@ -12,7 +11,7 @@ const fill = (v: number, n: number) => Array<number>(n).fill(v)
 
 function dlabel(w: number, d: number): string {
   const dt = new Date(2026, 5, 2 + (w - 1) * 7 + d)
-  return `${dt.getMonth() + 1}/${dt.getDate()}`
+  return fmt.monthDay(dt, () => `${dt.getMonth() + 1}/${dt.getDate()}`)
 }
 
 interface RowOpt {
@@ -78,7 +77,7 @@ export function buildWeeks(): Week[] {
 
     const day = (dow: number, rows: ExerciseRow[] | null): DayCol => ({
       dow,
-      dowLabel: DOW[dow],
+      dowLabel: S.common.weekdaysMondayFirst[dow],
       dateLabel: dlabel(w, dow),
       shiftedToDate: null,
       shiftBadge: null,
@@ -88,30 +87,30 @@ export function buildWeeks(): Week[] {
 
     const days: DayCol[] = [
       day(0, [
-        mkRow('低杆深蹲', { reps: 5, mode: 'kg', vals: ramp(sq, 5, 4) }),
-        mkRow('节奏深蹲', { reps: 3, mode: 'kg', vals: fill(tempo, 3), note: '3秒离心' }),
-        mkRow('卧推', { reps: 5, mode: 'kg', vals: ramp(bp, 2.5, 4) }),
-        mkRow('无腿卧推', { reps: '8+', mode: 'rpe', vals: amrap, note: 'AMRAP', custom: isCur }),
+        mkRow(S.editor.sampleExercises.lowBarSquat, { reps: 5, mode: 'kg', vals: ramp(sq, 5, 4) }),
+        mkRow(S.editor.sampleExercises.tempoSquat, { reps: 3, mode: 'kg', vals: fill(tempo, 3), note: S.editor.sampleEccentricNote }),
+        mkRow(S.editor.sampleExercises.benchPress, { reps: 5, mode: 'kg', vals: ramp(bp, 2.5, 4) }),
+        mkRow(S.editor.sampleExercises.larsenPress, { reps: '8+', mode: 'rpe', vals: amrap, note: 'AMRAP', custom: isCur }),
       ]),
       day(1, [
-        mkRow('传统硬拉', { reps: 3, mode: 'kg', vals: ramp(dl, 5, dlCount) }),
-        mkRow('海豹划船', { reps: 12, mode: 'rpe', vals: [6, 7, 8, 8], main: false }),
-        mkRow('安全杆深蹲', { reps: 8, mode: 'rpe', vals: [6, 7, 8, 9] }),
+        mkRow(S.editor.sampleExercises.conventionalDeadlift, { reps: 3, mode: 'kg', vals: ramp(dl, 5, dlCount) }),
+        mkRow(S.editor.sampleExercises.sealRow, { reps: 12, mode: 'rpe', vals: [6, 7, 8, 8], main: false }),
+        mkRow(S.editor.sampleExercises.safetyBarSquat, { reps: 8, mode: 'rpe', vals: [6, 7, 8, 9] }),
       ]),
       day(2, [
-        mkRow('单腿罗马尼亚硬拉', { aux: true, note: '4×12' }),
-        mkRow('保加利亚分腿蹲', { aux: true, note: '4×12' }),
-        mkRow('腹肌塑形', { aux: true, custom: true, note: '3×15 塑形' }),
+        mkRow(S.editor.sampleExercises.singleLegRdl, { aux: true, note: '4×12' }),
+        mkRow(S.editor.sampleExercises.bulgarianSplitSquat, { aux: true, note: '4×12' }),
+        mkRow(S.editor.sampleExercises.abSculpting, { aux: true, custom: true, note: S.editor.sampleSculptingNote }),
       ]),
       day(3, null),
       day(4, [
-        mkRow('低杆深蹲', { reps: 5, mode: 'kg', vals: ramp(sq + 5, 5, 4) }),
-        mkRow('节奏深蹲', { reps: 3, mode: 'kg', vals: fill(tempo + 2.5, 3), note: '3秒离心' }),
-        mkRow('卧推', { reps: 5, mode: 'kg', vals: ramp(bp + 5, 2.5, 4) }),
+        mkRow(S.editor.sampleExercises.lowBarSquat, { reps: 5, mode: 'kg', vals: ramp(sq + 5, 5, 4) }),
+        mkRow(S.editor.sampleExercises.tempoSquat, { reps: 3, mode: 'kg', vals: fill(tempo + 2.5, 3), note: S.editor.sampleEccentricNote }),
+        mkRow(S.editor.sampleExercises.benchPress, { reps: 5, mode: 'kg', vals: ramp(bp + 5, 2.5, 4) }),
       ]),
       day(5, [
-        mkRow('传统硬拉', { reps: 5, mode: 'kg', vals: ramp(dl + 5, 5, 4) }),
-        mkRow('海豹划船', { reps: 12, mode: 'rpe', vals: [6, 7, 8, 8], main: false }),
+        mkRow(S.editor.sampleExercises.conventionalDeadlift, { reps: 5, mode: 'kg', vals: ramp(dl + 5, 5, 4) }),
+        mkRow(S.editor.sampleExercises.sealRow, { reps: 12, mode: 'rpe', vals: [6, 7, 8, 8], main: false }),
       ]),
       day(6, null),
     ]

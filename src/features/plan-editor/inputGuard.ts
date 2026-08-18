@@ -1,5 +1,7 @@
 import type { ExerciseRow, IntensityMode, LoadMode, RowIntensity } from './types'
 import { isSingleValueIntensity, rowIntensity, rowIntensityBoxes, rowWeightBoxes } from './intensityModel'
+import { S } from '../../i18n/strings'
+import { STABLE_ZH } from '../../i18n/stable-zh'
 
 export const KG_MAX_EXCLUSIVE = 1000
 export const PCT_MIN = 20
@@ -13,20 +15,20 @@ export const REPS_MIN = 1
 export const REPS_MAX = 50
 
 export const INPUT_GUARD_REASONS = {
-  kg: `重量需大于 0 小于 ${KG_MAX_EXCLUSIVE}，最多两位小数`,
-  pct: `强度 % 需 ${PCT_MIN}–${PCT_MAX}，按 0.5 递增`,
-  rpe: `RPE 需 ${RPE_MIN}–${RPE_MAX} 半分档`,
-  rir: `RIR 需 ${RIR_MIN}–${RIR_MAX} 的整数`,
-  weightRange: `重量区间需两值有效且下限小于上限`,
-  rpeRange: `RPE 区间需 1–10 半分档且下限小于上限`,
-  reps: `次数需 ${REPS_MIN}–${REPS_MAX}`,
+  get kg() { return S.editor.kgGuard(KG_MAX_EXCLUSIVE) },
+  get pct() { return S.editor.pctGuard(PCT_MIN, PCT_MAX) },
+  get rpe() { return S.editor.rpeGuard(RPE_MIN, RPE_MAX) },
+  get rir() { return S.editor.rirGuard(RIR_MIN, RIR_MAX) },
+  get weightRange() { return S.editor.weightRangeGuard },
+  get rpeRange() { return S.editor.rpeRangeGuard },
+  get reps() { return S.editor.repsGuard(REPS_MIN, REPS_MAX) },
 } as const
 
 export type InputGuardReason = typeof INPUT_GUARD_REASONS[keyof typeof INPUT_GUARD_REASONS]
 
 const TARGET_VALUE_PATTERN = /^\d+(?:\.\d{1,2})?$/
-const REPS_PATTERN = /^(\d{1,2})(?:\s*(?:(?:-|–|—|~|到|至)\s*(\d{1,2})|(\+)))?$/
-const REPS_INPUT_CHARACTER = /[0-9\-–—~到至+]/
+const REPS_PATTERN = STABLE_ZH.patterns.reps
+const REPS_INPUT_CHARACTER = STABLE_ZH.patterns.repsCharacter
 
 /** Keep only decimal characters, retaining the first decimal point. */
 export function filterStrengthInput(raw: string): string {

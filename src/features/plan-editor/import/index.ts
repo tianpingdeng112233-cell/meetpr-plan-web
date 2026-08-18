@@ -3,6 +3,7 @@ import type { ExerciseResponse } from '../../../api/types'
 import type { ExerciseIndex } from '../exerciseIndex'
 import type { DayCol, ExerciseRow, IntensityMode, SetBox, Week } from '../types'
 import { currentPlanWeek, planDayDateLabel, planDayDowLabel, planWeekRangeLabel } from '../mapping'
+import { STABLE_IMPORT_SET_REPS, STABLE_ZH } from '../../../i18n/stable-zh'
 
 export interface Cell { row: number; col: number; text: string }
 
@@ -214,28 +215,22 @@ function repsText(min: string, max?: string): string {
   return `${lo}-${hi}`
 }
 
-const COUNT_TOKEN = String.raw`(?:\d{1,2}|[一二两三四五六七八九十]{1,3})`
-
 function chineseCount(token: string): number | null {
   const t = token.trim()
   if (/^\d{1,2}$/.test(t)) return Number(t)
-  const digits: Record<string, number> = {
-    一: 1, 二: 2, 两: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9,
-  }
-  if (t === '十') return 10
-  const ten = t.match(/^([一二两三四五六七八九])?十([一二两三四五六七八九])?$/)
+  const digits = STABLE_ZH.import.countDigits
+  if (t === STABLE_ZH.import.ten) return 10
+  const ten = t.match(STABLE_ZH.import.tenPattern)
   if (ten) return (ten[1] ? digits[ten[1]] : 1) * 10 + (ten[2] ? digits[ten[2]] : 0)
   return digits[t] ?? null
 }
 
 function isTimeSuffix(text: string, endIndex: number): boolean {
-  return /^\s*(?:s|S|秒)/.test(text.slice(endIndex))
+  return STABLE_ZH.import.timeSuffix.test(text.slice(endIndex))
 }
 
 function parseSetReps(text: string): { setCount: number; reps: string } {
-  const full = text.match(
-    new RegExp(`(${COUNT_TOKEN})\\s*(?:[*＊xX×]\\s*|[组組]\\s*)(${COUNT_TOKEN})(?:\\s*(?:-|–|—|~|到|至)\\s*(${COUNT_TOKEN}))?\\s*(?:个|次)?`),
-  )
+  const full = text.match(STABLE_IMPORT_SET_REPS.full)
   if (full && !isTimeSuffix(text, (full.index ?? 0) + full[0].length)) {
     const setCount = chineseCount(full[1])
     const reps = chineseCount(full[2])
@@ -243,12 +238,12 @@ function parseSetReps(text: string): { setCount: number; reps: string } {
     if (setCount != null && reps != null) return { setCount, reps: repsText(String(reps), repsMax == null ? undefined : String(repsMax)) }
   }
 
-  const setOnly = text.match(new RegExp(`(${COUNT_TOKEN})\\s*[组組]`))
+  const setOnly = text.match(STABLE_IMPORT_SET_REPS.setOnly)
   if (!setOnly) return { setCount: 0, reps: '—' }
   const setCount = chineseCount(setOnly[1]) ?? 0
 
   const rest = text.slice((setOnly.index ?? 0) + setOnly[0].length)
-  const range = rest.match(new RegExp(`(${COUNT_TOKEN})\\s*(?:-|–|—|~|到|至)\\s*(${COUNT_TOKEN})\\s*(?:个|次)?`))
+  const range = rest.match(STABLE_IMPORT_SET_REPS.range)
   if (range && !isTimeSuffix(rest, (range.index ?? 0) + range[0].length)) {
     const lo = chineseCount(range[1])
     const hi = chineseCount(range[2])
@@ -256,7 +251,7 @@ function parseSetReps(text: string): { setCount: number; reps: string } {
   }
 
   if (!/\brpe\b/i.test(rest)) {
-    const single = rest.match(new RegExp(`(${COUNT_TOKEN})\\s*(?:个|次)?`))
+    const single = rest.match(STABLE_IMPORT_SET_REPS.single)
     if (single && !isTimeSuffix(rest, (single.index ?? 0) + single[0].length)) {
       const reps = chineseCount(single[1])
       if (reps != null) return { setCount, reps: repsText(String(reps)) }
@@ -288,15 +283,15 @@ function extractMarkerNotes(fields: string[]): string[] {
     const pauseNote = pauseDurationNote(text)
     if (pauseNote) notes.push(pauseNote)
     if (/tempo/i.test(text)) notes.push(text)
-    if (/力竭/.test(text)) notes.push('力竭')
-    if (/降组/.test(text)) notes.push('降组')
-    if (/回组/.test(text)) notes.push('回组')
+    if (STABLE_ZH.import.failurePattern.test(text)) notes.push(STABLE_ZH.import.failure)
+    if (STABLE_ZH.import.dropSetPattern.test(text)) notes.push(STABLE_ZH.import.dropSet)
+    if (STABLE_ZH.import.backoffPattern.test(text)) notes.push(STABLE_ZH.import.backoff)
   }
   return notes
 }
 
 function pauseDurationNote(text: string): string {
-  const pause = text.match(/(?:长)?暂停\s*(?:卧推|深蹲|硬拉)?\s*(\d+(?:\.\d+)?)\s*(?:s|S|秒)/)
+  const pause = text.match(STABLE_ZH.import.pauseDuration)
   return pause ? `${pause[1]}s` : ''
 }
 
@@ -305,12 +300,12 @@ function pauseDurationNote(text: string): string {
  * whole field keeps pause notes such as "长暂停2s" out of this path. */
 function timedPrescriptionNote(text: string): string {
   const trimmed = text.trim()
-  const range = trimmed.match(/^(\d+(?:\.\d+)?)\s*(s|S|秒)?\s*(?:-|–|—|~|到|至)\s*(\d+(?:\.\d+)?)\s*(?:s|S|秒)$/)
+  const range = trimmed.match(STABLE_ZH.import.timedRange)
   if (range) {
     const firstUnit = range[2] ? 's' : ''
     return `${normalizeDecimal(Number(range[1]))}${firstUnit}-${normalizeDecimal(Number(range[3]))}s`
   }
-  const single = trimmed.match(/^(\d+(?:\.\d+)?)\s*(?:s|S|秒)$/)
+  const single = trimmed.match(STABLE_ZH.import.timedSingle)
   return single ? `${normalizeDecimal(Number(single[1]))}s` : ''
 }
 
@@ -318,18 +313,18 @@ function cleanValueText(text: string): string {
   return text
     .replace(/\brpe\s*/gi, '')
     .replace(/\bamrap\b/gi, '')
-    .replace(/kg|公斤/gi, '')
-    .replace(/力竭|降组|回组/g, '')
-    .replace(/(?:长)?暂停\s*(?:卧推|深蹲|硬拉)?\s*\d*\s*(?:s|S|秒)?/g, '')
+    .replace(STABLE_ZH.import.kg, '')
+    .replace(STABLE_ZH.import.markerWords, '')
+    .replace(STABLE_ZH.import.pauseCleanup, '')
     .trim()
 }
 
 function hasBodyweightCue(text: string): boolean {
-  return /自重|徒手|bodyweight|弹力带|弹力绳|弹力|band|磅数/i.test(text)
+  return STABLE_ZH.import.bodyweightCue.test(text)
 }
 
 function parseRamp(cleaned: string, setCount: number): string[] | null {
-  const match = cleaned.match(/(\d+(?:\.\d+)?)\s*(?:→|->|~)\s*(\d+(?:\.\d+)?)\s*(?:\+|递增|加)\s*(\d+(?:\.\d+)?)/)
+  const match = cleaned.match(STABLE_ZH.import.ramp)
   if (!match || setCount <= 0) return null
   const start = Number(match[1])
   const end = Number(match[2])
@@ -382,9 +377,9 @@ function parseValuesFromField(cleaned: string, setCount: number, mode: Intensity
 function unknownNoteForField(field: string): string {
   const cleaned = cleanValueText(field)
     .replace(/\d+(?:\.\d+)?\s*%\s*top|%top|\btop\b/gi, '')
-    .replace(/\b\d{1,2}\s*(?:[*＊xX×]\s*|[组組]\s*)\d{1,2}\b/g, '')
-    .replace(/\d{1,2}\s*[组組]/g, '')
-    .replace(/\d{1,2}\s*(?:-|–|—|~|到|至)\s*\d{1,2}\s*(?:个|次)?/g, '')
+    .replace(STABLE_ZH.import.setRepsCleanup, '')
+    .replace(STABLE_ZH.import.setCleanup, '')
+    .replace(STABLE_ZH.import.repRangeCleanup, '')
     .trim()
   if (!cleaned || parsePlainNumber(cleaned) != null) return ''
   return cleaned
@@ -395,7 +390,7 @@ export function parseSetLine(setsCell: string, intensityCell: string, float1: st
   const allText = fields.join(' ')
   const { setCount, reps: baseReps } = parseSetReps(allText)
   const amrap = /\bamrap\b/i.test(allText)
-  const hasFailure = /力竭/.test(allText)
+  const hasFailure = STABLE_ZH.import.failurePattern.test(allText)
   const timedNote = [intensityCell, float1, float2]
     .map(timedPrescriptionNote)
     .find(Boolean) ?? ''
@@ -404,7 +399,7 @@ export function parseSetLine(setsCell: string, intensityCell: string, float1: st
     : /\brpe\s*\d*|\brpe\b/i.test(allText) || hasFailure ? 'rpe' : 'kg'
   // Product rule: “力竭” is an RPE 10 prescription. It is consumed into the
   // structured intensity rather than duplicated in the free-text note.
-  const notes = extractMarkerNotes(fields).filter((note) => !(hasFailure && note === '力竭'))
+  const notes = extractMarkerNotes(fields).filter((note) => !(hasFailure && note === STABLE_ZH.import.failure))
   if (timedNote) notes.push(timedNote)
 
   let values: string[] = []
@@ -464,25 +459,25 @@ function splitNames(rawName: string): string[] {
 }
 
 function isEventOnlyRow(rawName: string, fields: string[]): boolean {
-  return /(?:\bIPF\b|比赛|赛事|锦标赛|公开赛|邀请赛)/i.test(rawName)
+  return STABLE_ZH.import.eventOnly.test(rawName)
     && !fields.some((field) => field.trim())
 }
 
 function normalizeParsedExerciseName(rawName: string): { rawName: string; note: string } {
   const trimmed = rawName.trim()
-  const spoto = trimmed.match(/^spoto\s*暂停(?:卧推)?\s*(\d+(?:\.\d+)?)?\s*(?:s|S|秒)?$/i)
+  const spoto = trimmed.match(STABLE_ZH.import.spoto)
   if (spoto) {
     return {
-      rawName: 'spoto 暂停卧推',
+      rawName: STABLE_ZH.import.spotoName,
       note: spoto[1] ? `${spoto[1]}s` : '',
     }
   }
 
-  const ssbTempo = trimmed.match(/^安全[杆杠]节奏(?:深)?蹲\s*([0-9０-９]{3})$/)
+  const ssbTempo = trimmed.match(STABLE_ZH.import.ssbTempo)
   if (ssbTempo) {
     const digits = ssbTempo[1].replace(/[０-９]/g, (d) => String(d.charCodeAt(0) - 0xff10))
     return {
-      rawName: '安全杠节奏深蹲',
+      rawName: STABLE_ZH.import.ssbTempoName,
       note: `tempo ${digits.split('').join('-')}`,
     }
   }
@@ -496,10 +491,10 @@ function normalizeParsedExerciseName(rawName: string): { rawName: string; note: 
     }
   }
 
-  const match = trimmed.match(/^(?:长)?暂停\s*(卧推|深蹲|硬拉)\s*(\d+(?:\.\d+)?)?\s*(?:s|S|秒)?$/)
+  const match = trimmed.match(STABLE_ZH.import.pauseName)
   if (!match) return { rawName: trimmed, note: '' }
   return {
-    rawName: `暂停${match[1]}`,
+    rawName: `${STABLE_ZH.import.pausePrefix}${match[1]}`,
     note: match[2] ? `${match[2]}s` : '',
   }
 }
@@ -526,7 +521,7 @@ export function parseDay(grid: Grid, rows: number[], dayIndex: number, offset: n
     const float2 = grid.text(row, cols.float2)
     if (![rawName, sets, intensity, float1, float2].some((text) => text.trim())) continue
 
-    if (/休息/.test(rawName) && ![sets, intensity, float1, float2].some((text) => text.trim())) {
+    if (STABLE_ZH.import.rest.test(rawName) && ![sets, intensity, float1, float2].some((text) => text.trim())) {
       sawRest = true
       continue
     }
@@ -573,11 +568,11 @@ function resolveExercise(index: ExerciseIndex, name: string): ExerciseResponse |
 }
 
 function expandCompositeExercise(exercise: ParsedExercise, index: ExerciseIndex): ParsedExercise[] {
-  if (/^二三头自选\s*[*＊xX×]\s*2$/.test(exercise.rawName)) {
-    const choices = ['二头动作自选', '三头肌自选'].map((rawName) => ({
+  if (STABLE_ZH.import.compositeArms.test(exercise.rawName)) {
+    const choices = STABLE_ZH.import.compositeChoices.map((rawName) => ({
       ...exercise,
       rawName,
-      note: appendNote(exercise.note, '自选'),
+      note: appendNote(exercise.note, STABLE_ZH.import.optionalNote),
     }))
     if (choices.every((choice) => resolveExercise(index, choice.rawName))) return choices
   }
@@ -606,6 +601,7 @@ function rowFromParsed(exercise: ParsedExercise, resolved: ExerciseResponse | nu
     conflictMessage: null,
     exerciseId: resolved?.id ?? null,
     name: resolved?.name ?? exercise.rawName,
+    ...(resolved?.name_en ? { nameEn: resolved.name_en } : {}),
     ku: resolved ? !custom : false,
     custom: resolved ? custom : false,
     isMain: resolved ? resolved.is_competition_lift || resolved.main_lift_family != null : false,

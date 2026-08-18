@@ -23,6 +23,7 @@ import {
 } from './catalogModel'
 import { usePersistentCollapse } from '../workspace/usePersistentCollapse'
 import { useGlobalKeyboardHandler } from '../workspace/globalKeyboard'
+import { fmt, resolveLocale, S } from '../../i18n/strings'
 
 interface Props {
   exerciseList: ExerciseResponse[]
@@ -68,7 +69,10 @@ export function CatalogPage({
   const isCustom = (exercise: ExerciseResponse) => (
     catalog?.get(exercise.id)?.custom ?? exercise.created_by_coach_id != null
   )
-  const displayName = (exercise: ExerciseResponse) => catalog?.get(exercise.id)?.name ?? exercise.name
+  const displayName = (exercise: ExerciseResponse) => {
+    const entry = catalog?.get(exercise.id)
+    return fmt.exerciseName({ name: entry?.name ?? exercise.name, name_en: entry?.nameEn ?? exercise.name_en })
+  }
   const trimmedQuery = query.trim()
   const searchIds = useMemo(() => {
     if (!trimmedQuery) return undefined
@@ -83,7 +87,7 @@ export function CatalogPage({
     query: trimmedQuery,
     searchIds,
     isCustom: (exercise) => catalog?.get(exercise.id)?.custom ?? exercise.created_by_coach_id != null,
-  }).sort((a, b) => displayName(a).localeCompare(displayName(b), 'zh-CN') * sortDirection),
+  }).sort((a, b) => (catalog?.get(a.id)?.name ?? a.name).localeCompare(catalog?.get(b.id)?.name ?? b.name, 'zh-CN') * sortDirection),
   // Catalog entries only change together with exerciseList in the workspace.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   [catalog, category, equipment, exerciseList, refine, searchIds, sortDirection, trimmedQuery])
@@ -135,10 +139,10 @@ export function CatalogPage({
   const closeDrawer = () => { if (creating) return; setDrawer(null) }
 
   const refineOptions: { id: CatalogRefine; label: string }[] = [
-    { id: 'all', label: '全部' },
-    { id: 'main_lift', label: '主项' },
-    { id: 'main_lift_variation', label: '主项变式' },
-    { id: 'accessory', label: '辅助' },
+    { id: 'all', label: S.common.all },
+    { id: 'main_lift', label: S.common.mainLift },
+    { id: 'main_lift_variation', label: S.common.mainLiftVariation },
+    { id: 'accessory', label: S.common.accessory },
   ]
 
   const renderRow = (exercise: ExerciseResponse) => {
@@ -160,10 +164,10 @@ export function CatalogPage({
       <div className="catalog-name-cell" role="cell">
         <div className="catalog-name">
           {displayName(exercise)}
-          {exercise.is_competition_lift && <span className="catalog-competition-badge" title="比赛动作">赛</span>}
-          {custom && <span className="catalog-tag mine">自建</span>}
+          {exercise.is_competition_lift && <span className="catalog-competition-badge" title={S.catalog.competitionExercise}>{S.catalog.competitionBadge}</span>}
+          {custom && <span className="catalog-tag mine">{S.catalog.customBadge}</span>}
         </div>
-        <div className="catalog-name-en">{exercise.name_en || '—'}</div>
+        <div className="catalog-name-en">{resolveLocale() === 'zh' ? exercise.name_en || '—' : '—'}</div>
       </div>
       <div role="cell"><span className={`catalog-tag ${exercise.exercise_type}`}>{EXERCISE_TYPE_SHORT_LABEL[exercise.exercise_type]}</span></div>
       <div className="catalog-muted" role="cell">{exercise.equipment.length ? exercise.equipment.map((item) => EQUIPMENT_LABEL[item]).join(' · ') : '—'}</div>
@@ -178,27 +182,27 @@ export function CatalogPage({
 
   return <main className="data-page catalog-page">
     <div className="catalog-body">
-      <aside className={`catalog-categories${categoriesCollapsed ? ' collapsed' : ''}`} aria-label="动作分类">
+      <aside className={`catalog-categories${categoriesCollapsed ? ' collapsed' : ''}`} aria-label={S.catalog.exerciseCategories}>
         <header className="catalog-categories-head">
-          <span>分类</span>
+          <span>{S.common.category}</span>
           <button
             type="button"
             className="column-collapse-toggle"
-            aria-label={categoriesCollapsed ? '展开动作分类' : '收起动作分类'}
+            aria-label={categoriesCollapsed ? S.catalog.expandCategories : S.catalog.collapseCategories}
             aria-expanded={!categoriesCollapsed}
-            title={categoriesCollapsed ? '展开动作分类' : '收起动作分类'}
+            title={categoriesCollapsed ? S.catalog.expandCategories : S.catalog.collapseCategories}
             onClick={toggleCategories}
           >
             {categoriesCollapsed ? '›' : '‹'}
           </button>
         </header>
-        <CategoryButton id="all" label="全部动作" count={facetCount('all', refine)} active={!trimmedQuery && category === 'all'} onChoose={chooseCategory} />
-        <CategoryButton id="mine" label="我的自建" count={facetCount('mine', refine)} active={!trimmedQuery && category === 'mine'} onChoose={chooseCategory} />
-        <div className="catalog-category-heading">比赛三项 · 按项</div>
+        <CategoryButton id="all" label={S.catalog.allExercises} count={facetCount('all', refine)} active={!trimmedQuery && category === 'all'} onChoose={chooseCategory} />
+        <CategoryButton id="mine" label={S.catalog.myCustom} count={facetCount('mine', refine)} active={!trimmedQuery && category === 'mine'} onChoose={chooseCategory} />
+        <div className="catalog-category-heading">{S.catalog.competitionByLift}</div>
         {FAMILY_CATEGORIES.map((family) => <CategoryButton
           key={family}
           id={family}
-          label={`${family === 'squat' ? 'S' : family === 'bench' ? 'B' : 'D'} ${LIFT_FAMILY_LABEL[family]}族`}
+          label={`${family === 'squat' ? 'S' : family === 'bench' ? 'B' : 'D'} ${LIFT_FAMILY_LABEL[family]}${S.catalog.familySuffix}`}
           count={facetCount(family, refine)}
           active={!trimmedQuery && category === family}
           onChoose={chooseCategory}
@@ -226,25 +230,25 @@ export function CatalogPage({
                 setQuery(event.target.value)
                 if (event.target.value.trim()) setRefine('all')
               }}
-              placeholder="搜动作名 / 英文 / 别名，回车直达"
-              aria-label="搜索动作库"
+              placeholder={S.catalog.searchPlaceholder}
+              aria-label={S.catalog.searchLibrary}
             />
-            {query && <button type="button" aria-label="清除搜索" onClick={() => setQuery('')}>✕</button>}
+            {query && <button type="button" aria-label={S.catalog.clearSearch} onClick={() => setQuery('')}>✕</button>}
           </label>
           <select
             className={`catalog-equipment-select${equipment !== 'all' ? ' active' : ''}`}
             value={equipment}
             onChange={(event) => setEquipment(event.target.value as Equipment | 'all')}
-            aria-label="按器械筛选"
+            aria-label={S.catalog.filterEquipment}
           >
-            <option value="all">器械 · 全部</option>
-            {EQUIPMENT_OPTIONS.map((item) => <option key={item} value={item}>器械 · {EQUIPMENT_LABEL[item]}</option>)}
+            <option value="all">{S.catalog.allEquipment}</option>
+            {EQUIPMENT_OPTIONS.map((item) => <option key={item} value={item}>{S.catalog.equipmentPrefix}{EQUIPMENT_LABEL[item]}</option>)}
           </select>
-          <span className="catalog-result-count">{rows.length} 个动作</span>
-          <button type="button" className="catalog-create-button" onClick={() => openCreate()}>＋ 新建动作</button>
+          <span className="catalog-result-count">{S.catalog.exerciseCount(rows.length)}</span>
+          <button type="button" className="catalog-create-button" onClick={() => openCreate()}>{S.catalog.createExercise}</button>
         </header>
         <div className="catalog-refine">
-          <span>分类</span>
+          <span>{S.common.category}</span>
           {refineOptions.map((option) => <button
             type="button"
             key={option.id}
@@ -255,25 +259,25 @@ export function CatalogPage({
             }}
           >{option.label}<small>{facetCount(category, option.id)}</small></button>)}
         </div>
-        <div className="catalog-table" role="table" aria-label="动作列表">
+        <div className="catalog-table" role="table" aria-label={S.catalog.exerciseList}>
           <div className="catalog-table-head" role="row">
             <button
               type="button"
               role="columnheader"
               aria-sort={sortDirection === 1 ? 'ascending' : 'descending'}
               onClick={() => setSortDirection((value) => value === 1 ? -1 : 1)}
-            >动作 <span className="catalog-sort-arrow">{sortDirection === 1 ? '↑' : '↓'}</span></button>
-            <span role="columnheader">分类</span><span role="columnheader">器械</span><span role="columnheader">肌群</span>
+            >{S.common.action} <span className="catalog-sort-arrow">{sortDirection === 1 ? '↑' : '↓'}</span></button>
+            <span role="columnheader">{S.common.category}</span><span role="columnheader">{S.common.equipment}</span><span role="columnheader">{S.common.muscleGroup}</span>
           </div>
           <div className="catalog-table-wrap" role="rowgroup">
             {rows.length === 0
               ? <div className="catalog-empty">{trimmedQuery
-                ? <>没有叫「{trimmedQuery}」的动作<br /><button type="button" onClick={() => openCreate(trimmedQuery)}>＋ 新建「{trimmedQuery}」</button></>
-                : '这个分类下暂无动作'}</div>
+                ? <>{S.catalog.noExerciseNamed(trimmedQuery)}<br /><button type="button" onClick={() => openCreate(trimmedQuery)}>{S.catalog.createNamed(trimmedQuery)}</button></>
+                : S.catalog.emptyCategory}</div>
               : !trimmedQuery && category === 'all'
                 ? <>
-                    {primaryRows.length > 0 && <><GroupRow label="比赛三项与变式" count={primaryRows.length} />{primaryRows.map(renderRow)}</>}
-                    {accessoryRows.length > 0 && <><GroupRow label="辅助动作" count={accessoryRows.length} />{accessoryRows.map(renderRow)}</>}
+                    {primaryRows.length > 0 && <><GroupRow label={S.catalog.competitionAndVariations} count={primaryRows.length} />{primaryRows.map(renderRow)}</>}
+                    {accessoryRows.length > 0 && <><GroupRow label={S.catalog.accessoryExercises} count={accessoryRows.length} />{accessoryRows.map(renderRow)}</>}
                   </>
                 : rows.map(renderRow)}
           </div>
@@ -302,7 +306,7 @@ export function CatalogPage({
           setQuery('')
           setSelectedId(created.id)
           setDrawer('detail')
-          setToast(`已创建「${created.name}」，现在就能写进计划`)
+          setToast(S.catalog.createdToast(created.name))
         } finally {
           setCreating(false)
         }
@@ -329,7 +333,7 @@ function GroupRow({ label, count }: { label: string; count: number }) {
 }
 
 function MetaTags<T extends string>({ values, labels, primary = false }: { values: T[]; labels: Record<T, string>; primary?: boolean }) {
-  if (values.length === 0) return <span className="catalog-muted">无</span>
+  if (values.length === 0) return <span className="catalog-muted">{S.common.nonePlain}</span>
   return <>{values.map((value, index) => <span key={value} className={`catalog-meta-tag${primary && index === 0 ? ' primary' : ''}`}>{labels[value]}</span>)}</>
 }
 
@@ -343,34 +347,34 @@ function ExerciseDetailDrawer({ exercise, displayName, custom, onClose, onUse }:
   const aliases = aliasesForExercise(exercise)
   const primaryMuscle = exercise.muscle_groups[0]
   const synergists = exercise.muscle_groups.slice(1)
-  return <aside className="writing-panel catalog-drawer" role="dialog" aria-label={`${displayName}详情`}>
+  return <aside className="writing-panel catalog-drawer" role="dialog" aria-label={S.catalog.detailsAria(displayName)}>
     <header className="catalog-drawer-header">
-      <div><h2>{displayName}</h2>{exercise.name_en && <small>{exercise.name_en}</small>}</div>
-      <button type="button" aria-label="关闭详情" onClick={onClose}>✕</button>
+      <div><h2>{displayName}</h2>{resolveLocale() === 'zh' && exercise.name_en && <small>{exercise.name_en}</small>}</div>
+      <button type="button" aria-label={S.catalog.closeDetails} onClick={onClose}>✕</button>
       <div className="catalog-drawer-badges">
         <span className={`catalog-tag ${exercise.exercise_type}`}>{EXERCISE_TYPE_LABEL[exercise.exercise_type]}</span>
-        {exercise.main_lift_family && <span className="catalog-tag neutral">{LIFT_FAMILY_LABEL[exercise.main_lift_family]}族</span>}
-        {exercise.is_competition_lift && <span className="catalog-tag main_lift">比赛动作</span>}
-        {custom && <span className="catalog-tag mine">我的自建</span>}
+        {exercise.main_lift_family && <span className="catalog-tag neutral">{LIFT_FAMILY_LABEL[exercise.main_lift_family]}{S.catalog.familySuffix}</span>}
+        {exercise.is_competition_lift && <span className="catalog-tag main_lift">{S.catalog.competitionExercise}</span>}
+        {custom && <span className="catalog-tag mine">{S.catalog.myCustom}</span>}
       </div>
     </header>
     <div className="catalog-drawer-body">
       <dl className="catalog-fields">
-        <div><dt>动作分类</dt><dd>{EXERCISE_TYPE_LABEL[exercise.exercise_type]}</dd></div>
-        <div><dt>主项族</dt><dd>{exercise.main_lift_family ? LIFT_FAMILY_LABEL[exercise.main_lift_family] : '通用 / 无（辅助动作）'}</dd></div>
-        <div><dt>动作模式</dt><dd><MetaTags values={exercise.movement_pattern} labels={MOVEMENT_PATTERN_LABEL} /></dd></div>
-        <div><dt>器械</dt><dd><MetaTags values={exercise.equipment} labels={EQUIPMENT_LABEL} /></dd></div>
-        <div><dt>主肌群</dt><dd>{primaryMuscle ? <span className="catalog-meta-tag primary">{MUSCLE_LABEL[primaryMuscle]}</span> : <span className="catalog-muted">无</span>}</dd></div>
-        <div><dt>协同肌群</dt><dd><MetaTags values={synergists} labels={MUSCLE_LABEL} /></dd></div>
-        <div><dt>别名</dt><dd>{aliases.length ? aliases.map((alias) => <span key={alias} className="catalog-meta-tag">{alias}</span>) : <span className="catalog-muted">无</span>}</dd></div>
+        <div><dt>{S.catalog.exerciseCategories}</dt><dd>{EXERCISE_TYPE_LABEL[exercise.exercise_type]}</dd></div>
+        <div><dt>{S.common.mainLift}{S.catalog.familySuffix}</dt><dd>{exercise.main_lift_family ? LIFT_FAMILY_LABEL[exercise.main_lift_family] : S.catalog.genericAccessory}</dd></div>
+        <div><dt>{S.catalog.movementPattern}</dt><dd><MetaTags values={exercise.movement_pattern} labels={MOVEMENT_PATTERN_LABEL} /></dd></div>
+        <div><dt>{S.common.equipment}</dt><dd><MetaTags values={exercise.equipment} labels={EQUIPMENT_LABEL} /></dd></div>
+        <div><dt>{S.catalog.primaryMuscle}</dt><dd>{primaryMuscle ? <span className="catalog-meta-tag primary">{MUSCLE_LABEL[primaryMuscle]}</span> : <span className="catalog-muted">{S.common.nonePlain}</span>}</dd></div>
+        <div><dt>{S.catalog.synergistMuscles}</dt><dd><MetaTags values={synergists} labels={MUSCLE_LABEL} /></dd></div>
+        <div><dt>{S.catalog.aliases}</dt><dd>{aliases.length ? aliases.map((alias) => <span key={alias} className="catalog-meta-tag">{alias}</span>) : <span className="catalog-muted">{S.common.nonePlain}</span>}</dd></div>
       </dl>
       <div className="catalog-drawer-note">{custom
-        ? <><b>我的自建动作</b>：已可在你的所有计划中使用。编辑和删除需后端端点支持。</>
-        : '系统内置动作，参数由 MeetPR 统一维护。'}</div>
+        ? <><b>{S.catalog.myCustomExercise}</b>{S.catalog.customAvailable}</>
+        : S.catalog.systemManaged}</div>
     </div>
     <footer className="catalog-drawer-footer">{custom
-      ? <><button type="button" className="catalog-disabled-action" disabled>删除 · 暂不支持</button><button type="button" className="catalog-disabled-action" disabled>编辑 · 暂不支持</button></>
-      : <button type="button" className="catalog-white-action" onClick={onUse}>＋ 在计划中使用</button>}</footer>
+      ? <><button type="button" className="catalog-disabled-action" disabled>{S.catalog.deleteUnsupported}</button><button type="button" className="catalog-disabled-action" disabled>{S.catalog.editUnsupported}</button></>
+      : <button type="button" className="catalog-white-action" onClick={onUse}>{S.catalog.useInPlan}</button>}</footer>
   </aside>
 }
 
@@ -441,10 +445,10 @@ function CreateExerciseDrawer({ initialName, onClose, onCreate }: {
   }
   const canSubmit = draft.name.trim().length > 0 && draft.primaryMuscle != null && !saving
 
-  return <aside className="writing-panel catalog-drawer" role="dialog" aria-label="新建动作">
+  return <aside className="writing-panel catalog-drawer" role="dialog" aria-label={S.catalog.newExercise}>
     <header className="catalog-drawer-header">
-      <div><h2>新建动作</h2><small>CUSTOM · 归为辅助动作 · 建完即可用</small></div>
-      <button type="button" aria-label="关闭新建动作" disabled={saving} onClick={onClose}>✕</button>
+      <div><h2>{S.catalog.newExercise}</h2><small>{S.catalog.customSubtitle}</small></div>
+      <button type="button" aria-label={S.catalog.closeCreate} disabled={saving} onClick={onClose}>✕</button>
     </header>
     <form
       className="catalog-create-form"
@@ -459,23 +463,23 @@ function CreateExerciseDrawer({ initialName, onClose, onCreate }: {
           equipmentList: draft.equipment,
           movementPattern: draft.movementPattern,
         }).catch(() => {
-          setError('创建失败，请稍后重试')
+          setError(S.catalog.createFailed)
           setSaving(false)
         })
       }}
     >
-      <label className="catalog-form-field"><span>动作名称</span><input autoFocus type="text" value={draft.name} onChange={(event) => updateName(event.target.value)} placeholder="例如：史密斯箭步蹲" /></label>
-      <div className="catalog-form-field"><span>动作分类</span><div className="catalog-locked-field"><small>LOCKED</small>辅助动作 · 三大项与主项变式由系统维护</div></div>
-      <ChipField label="主肌群" hint="单选 · 决定它归到哪个部位分类">
+      <label className="catalog-form-field"><span>{S.catalog.exerciseName}</span><input autoFocus type="text" value={draft.name} onChange={(event) => updateName(event.target.value)} placeholder={S.catalog.exampleSmithLunge} /></label>
+      <div className="catalog-form-field"><span>{S.catalog.exerciseCategories}</span><div className="catalog-locked-field"><small>LOCKED</small>{S.catalog.accessoryManagedNote}</div></div>
+      <ChipField label={S.catalog.primaryMuscle} hint={S.catalog.primaryMuscleHint}>
         {MUSCLE_OPTIONS.map((muscle) => <ChoiceChip key={muscle} active={draft.primaryMuscle === muscle} onClick={() => choosePrimary(muscle)}>{MUSCLE_LABEL[muscle]}</ChoiceChip>)}
       </ChipField>
-      <ChipField label="协同肌群" hint="可多选">
+      <ChipField label={S.catalog.synergistMuscles} hint={S.catalog.multiSelect}>
         {MUSCLE_OPTIONS.map((muscle) => <ChoiceChip key={muscle} active={draft.synergists.includes(muscle)} disabled={draft.primaryMuscle === muscle} onClick={() => toggleSynergist(muscle)}>{MUSCLE_LABEL[muscle]}</ChoiceChip>)}
       </ChipField>
-      <ChipField label="器械" hint="可多选">
+      <ChipField label={S.common.equipment} hint={S.catalog.multiSelect}>
         {EQUIPMENT_OPTIONS.map((item) => <ChoiceChip key={item} active={draft.equipment.includes(item)} onClick={() => toggleEquipment(item)}>{EQUIPMENT_LABEL[item]}</ChoiceChip>)}
       </ChipField>
-      <ChipField label="动作模式" hint="单选">
+      <ChipField label={S.catalog.movementPattern} hint={S.catalog.singleSelect}>
         {MOVEMENT_PATTERN_OPTIONS.map((pattern) => <ChoiceChip key={pattern} active={draft.movementPattern === pattern} onClick={() => {
           setAutoGuess(false)
           setDraft((current) => ({ ...current, movementPattern: pattern }))
@@ -483,8 +487,8 @@ function CreateExerciseDrawer({ initialName, onClose, onCreate }: {
       </ChipField>
       {error && <div className="catalog-form-error">{error}</div>}
       <footer className="catalog-drawer-footer catalog-create-footer">
-        <button type="button" className="catalog-ghost-action" disabled={saving} onClick={onClose}>取消</button>
-        <button type="submit" className="catalog-white-action" disabled={!canSubmit}>{saving ? '创建中…' : '创建'}</button>
+        <button type="button" className="catalog-ghost-action" disabled={saving} onClick={onClose}>{S.common.cancel}</button>
+        <button type="submit" className="catalog-white-action" disabled={!canSubmit}>{saving ? S.catalog.creating : S.catalog.create}</button>
       </footer>
     </form>
   </aside>

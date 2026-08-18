@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { AuthRoleError, clearLoginNotice, emailLogin, login, peekLoginNotice } from '../../api/auth'
 import { ApiException } from '../../api/client'
 import type { AuthUser } from '../../api/types'
+import { S } from '../../i18n/strings'
 
 interface Props {
   onLogin: (user: AuthUser) => void
@@ -9,12 +10,12 @@ interface Props {
 }
 
 const errMsg: Record<string, string> = {
-  AUTH_INVALID_CREDENTIALS: '手机号或密码不正确',
-  VALIDATION_ERROR: '请填写正确的手机号和密码',
+  AUTH_INVALID_CREDENTIALS: S.auth.invalidPhoneCredentials,
+  VALIDATION_ERROR: S.auth.enterValidPhoneCredentials,
 }
 
-const EMAIL_VALIDATION_ERROR = '请填写正确的邮箱和密码'
-const EMAIL_CREDENTIALS_ERROR = '邮箱或密码不正确'
+const EMAIL_VALIDATION_ERROR = S.auth.enterValidEmailCredentials
+const EMAIL_CREDENTIALS_ERROR = S.auth.invalidEmailCredentials
 // 与后端逐字节同源:zod@3.25.76 v3/types.ts 的 emailRegex 原样拷贝
 // (backend 校验 = z.string().trim().email().max(320);正则升级时随 zod 版本同步)。
 const emailPattern = /^(?!\.)(?!.*\.\.)([A-Z0-9_'+\-\.]*)[A-Z0-9_+-]@([A-Z0-9][A-Z0-9\-]*\.)+[A-Z]{2,}$/i
@@ -68,7 +69,7 @@ export function LoginScreen({ onLogin, onSampleMode }: Props) {
       onLogin(user)
     } catch (e2) {
       if (e2 instanceof AuthRoleError) {
-        setErr('该账号不是教练，无法编写计划')
+        setErr(S.auth.coachOnly)
         setBusy(false)
         return
       }
@@ -76,7 +77,7 @@ export function LoginScreen({ onLogin, onSampleMode }: Props) {
       const emailError = emailMode && e2 instanceof ApiException
         ? (e2.status === 401 ? EMAIL_CREDENTIALS_ERROR : code === 'VALIDATION_ERROR' ? EMAIL_VALIDATION_ERROR : null)
         : null
-      setErr(emailError ?? errMsg[code] ?? (code === 'NETWORK' ? '无法连接后端，请稍后再试' : `登录失败（${code}）`))
+      setErr(emailError ?? errMsg[code] ?? (code === 'NETWORK' ? S.auth.backendUnavailable : S.auth.loginFailed(code)))
       setBusy(false)
     }
   }
@@ -95,7 +96,7 @@ export function LoginScreen({ onLogin, onSampleMode }: Props) {
           <span style={{ fontWeight: 700, fontSize: 15, color: 'var(--txt)' }}>MeetPR</span>
           <span className="t-mono-label" style={{ color: 'var(--ink)' }}>COACH</span>
         </div>
-        <div style={{ color: 'var(--fg-tertiary)', fontSize: 13, marginBottom: 24 }}>登录编写学员计划</div>
+        <div style={{ color: 'var(--fg-tertiary)', fontSize: 13, marginBottom: 24 }}>{S.auth.title}</div>
 
         {notice && (
           <div role="status" style={{
@@ -107,17 +108,17 @@ export function LoginScreen({ onLogin, onSampleMode }: Props) {
           </div>
         )}
 
-        <label style={{ display: 'block', fontSize: 12, color: 'var(--fg-secondary)', marginBottom: 6 }}>手机号或邮箱 / Phone or email</label>
+        <label style={{ display: 'block', fontSize: 12, color: 'var(--fg-secondary)', marginBottom: 6 }}>{S.auth.accountLabel}</label>
         <div style={{ ...field, marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8, padding: 0 }}>
           {!account.includes('@') && <span style={{ padding: '11px 0 11px 13px', color: 'var(--fg-tertiary)', borderRight: '1px solid var(--border)', paddingRight: 10, fontFamily: 'var(--font-mono)' }}>+86</span>}
           <input
             style={{ flex: 1, padding: account.includes('@') ? '11px 13px' : '11px 13px 11px 0', background: 'transparent', border: 'none', color: 'var(--txt)', fontSize: 15, fontFamily: 'var(--font-mono)', outline: 'none' }}
-            value={account} onChange={(e) => setAccount(e.target.value)} inputMode={account.includes('@') ? 'email' : 'tel'} autoComplete="username" placeholder="手机号或邮箱 / Phone or email" autoCapitalize="none" spellCheck={false}
+            value={account} onChange={(e) => setAccount(e.target.value)} inputMode={account.includes('@') ? 'email' : 'tel'} autoComplete="username" placeholder={S.auth.accountPlaceholder} autoCapitalize="none" spellCheck={false}
           />
         </div>
 
-        <label style={{ display: 'block', fontSize: 12, color: 'var(--fg-secondary)', marginBottom: 6 }}>密码</label>
-        <input style={field} type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" placeholder="密码" />
+        <label style={{ display: 'block', fontSize: 12, color: 'var(--fg-secondary)', marginBottom: 6 }}>{S.common.password}</label>
+        <input style={field} type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" placeholder={S.common.password} />
 
         {err && <div style={{ color: 'var(--bad)', fontSize: 13, marginTop: 14 }}>{err}</div>}
 
@@ -126,11 +127,11 @@ export function LoginScreen({ onLogin, onSampleMode }: Props) {
           color: busy ? 'var(--mut)' : 'var(--white)', border: 'none', borderRadius: 'var(--r-md)', fontWeight: 600, fontSize: 13,
           cursor: busy ? 'default' : 'pointer', opacity: (!account || !password) ? 0.5 : 1,
         }}>
-          {busy ? '登录中…' : '登录'}
+          {busy ? S.common.signingIn : S.common.signIn}
         </button>
 
         <div onClick={onSampleMode} style={{ marginTop: 16, textAlign: 'center', color: 'var(--fg-tertiary)', fontSize: 12, cursor: 'pointer' }}>
-          用样例数据预览（不连后端）
+          {S.auth.previewSample}
         </div>
       </form>
     </div>

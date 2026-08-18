@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { getInviteCodes, createPermanentInviteCode, activePermanentCode } from '../../api/invite'
+import { S } from '../../i18n/strings'
 
 interface Props {
   /** Re-check the roster after the coach has bound a student in the app. */
@@ -44,8 +45,8 @@ export function SamplePreviewBanner({ onRefresh }: Props) {
 
   if (!open) {
     return (
-      <button onClick={() => setOpen(true)} style={chip} title="展开示例说明">
-        <span style={dot} /> 示例预览 · 无绑定学员 <span style={{ color: 'var(--fg-tertiary)' }}>▾</span>
+      <button onClick={() => setOpen(true)} style={chip} title={S.workspace.sample.expand}>
+        <span style={dot} /> {S.workspace.sample.previewNoStudents} <span style={{ color: 'var(--fg-tertiary)' }}>▾</span>
       </button>
     )
   }
@@ -54,33 +55,33 @@ export function SamplePreviewBanner({ onRefresh }: Props) {
     <div style={card}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
         <span style={dot} />
-        <span style={{ fontWeight: 700, fontSize: 13, color: 'var(--fg-primary)' }}>示例预览 · 该教练账号暂无绑定学员</span>
+        <span style={{ fontWeight: 700, fontSize: 13, color: 'var(--fg-primary)' }}>{S.workspace.sample.previewAccount}</span>
         <span style={{ flex: 1 }} />
-        <button onClick={() => setOpen(false)} style={xBtn} title="收起">✕</button>
+        <button onClick={() => setOpen(false)} style={xBtn} title={S.workspace.sample.collapse}>✕</button>
       </div>
       <div style={{ color: 'var(--fg-secondary)', fontSize: 12, lineHeight: 1.6, marginBottom: 12 }}>
-        下面是示例计划，仅用于预览编辑器界面。把你的邀请码发给学员，ta 在 MeetPR App 里输入即可绑定你；绑定后回来点刷新，就能为 ta 编写真实计划。
+        {S.workspace.sample.explanation}
       </div>
 
       <div style={inviteBox}>
-        <span style={label}>我的邀请码</span>
-        {state.kind === 'loading' && <span style={{ color: 'var(--fg-tertiary)', fontSize: 12 }}>加载中…</span>}
-        {state.kind === 'error' && <span style={{ color: 'var(--brand-red)', fontSize: 12 }}>邀请码加载失败</span>}
+        <span style={label}>{S.workspace.sample.myInvite}</span>
+        {state.kind === 'loading' && <span style={{ color: 'var(--fg-tertiary)', fontSize: 12 }}>{S.common.loadingEllipsis}</span>}
+        {state.kind === 'error' && <span style={{ color: 'var(--brand-red)', fontSize: 12 }}>{S.workspace.sample.inviteFailed}</span>}
         {state.kind === 'ready' && state.code && (
           <>
             <span style={codeText}>{grouped(state.code)}</span>
-            <button onClick={() => copy(state.code!)} style={smallBtn}>{copied ? '✓ 已复制' : '复制'}</button>
+            <button onClick={() => copy(state.code!)} style={smallBtn}>{copied ? S.workspace.sample.copied : S.workspace.sample.copy}</button>
           </>
         )}
         {state.kind === 'ready' && !state.code && (
           <>
-            <span style={{ color: 'var(--fg-tertiary)', fontSize: 12 }}>你还没有邀请码</span>
-            <button onClick={generate} disabled={generating} style={smallBtn}>{generating ? '生成中…' : '生成邀请码'}</button>
+            <span style={{ color: 'var(--fg-tertiary)', fontSize: 12 }}>{S.workspace.sample.noInvite}</span>
+            <button onClick={generate} disabled={generating} style={smallBtn}>{generating ? S.workspace.sample.generating : S.workspace.sample.generate}</button>
           </>
         )}
       </div>
 
-      <button onClick={onRefresh} style={refreshBtn}>我已绑定学员 · 刷新</button>
+      <button onClick={onRefresh} style={refreshBtn}>{S.workspace.sample.refresh}</button>
     </div>
   )
 }

@@ -1,4 +1,5 @@
 import type { ChatConversation, ChatMessage, ChatReadCursor } from '../../api/types'
+import { S } from '../../i18n/strings'
 
 export function mergeMessages(...groups: ChatMessage[][]): ChatMessage[] {
   const bySeq = new Map<number, ChatMessage>()
@@ -30,12 +31,12 @@ export function readReceiptFor(
   messages: ChatMessage[],
   myUserId: string,
   otherLastRead: ChatReadCursor | null,
-): { messageId: string; status: '已送达' | '已读' } | null {
+): { messageId: string; status: string } | null {
   const mine = [...messages].reverse().find((message) => message.sender_id === myUserId)
   if (!mine) return null
   return {
     messageId: mine.id,
-    status: (otherLastRead?.seq ?? 0) >= mine.seq ? '已读' : '已送达',
+    status: (otherLastRead?.seq ?? 0) >= mine.seq ? S.common.read : S.common.delivered,
   }
 }
 
@@ -48,16 +49,16 @@ export function chatRelativeTime(iso: string | null, now: number): string {
   const then = Date.parse(iso)
   if (!Number.isFinite(then)) return ''
   const seconds = Math.max(0, Math.floor((now - then) / 1000))
-  if (seconds < 60) return '刚刚'
-  if (seconds < 60 * 60) return `${Math.floor(seconds / 60)} 分钟前`
-  if (seconds < 24 * 60 * 60) return `${Math.floor(seconds / (60 * 60))} 小时前`
-  if (seconds < 30 * 24 * 60 * 60) return `${Math.floor(seconds / (24 * 60 * 60))} 天前`
-  if (seconds < 365 * 24 * 60 * 60) return `${Math.floor(seconds / (30 * 24 * 60 * 60))} 个月前`
-  return `${Math.floor(seconds / (365 * 24 * 60 * 60))} 年前`
+  if (seconds < 60) return S.chat.justNow
+  if (seconds < 60 * 60) return S.chat.minutesAgo(Math.floor(seconds / 60))
+  if (seconds < 24 * 60 * 60) return S.chat.hoursAgo(Math.floor(seconds / (60 * 60)))
+  if (seconds < 30 * 24 * 60 * 60) return S.chat.daysAgo(Math.floor(seconds / (24 * 60 * 60)))
+  if (seconds < 365 * 24 * 60 * 60) return S.chat.monthsAgo(Math.floor(seconds / (30 * 24 * 60 * 60)))
+  return S.chat.yearsAgo(Math.floor(seconds / (365 * 24 * 60 * 60)))
 }
 
 export function conversationPreview(conversation: ChatConversation): string {
-  return conversation.last_message?.preview ?? '还没有消息'
+  return conversation.last_message?.preview ?? S.chat.noMessages
 }
 
 export function newClientId(): string {

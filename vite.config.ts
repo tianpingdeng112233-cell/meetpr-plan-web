@@ -37,5 +37,6 @@ export default defineConfig(({ mode }) => ({
     cache: false,
     environment: 'jsdom',
     globals: true,
+    setupFiles: ['src/test/i18n-setup.ts'],
   },
 }))

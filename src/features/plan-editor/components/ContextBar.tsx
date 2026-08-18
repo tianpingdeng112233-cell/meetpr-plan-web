@@ -30,11 +30,12 @@ export function ContextBar(p: Props) {
         <span className="selected-row-label">{p.selectedRowLabel}</span>
       )}
       {p.hasRowClipboard && (
-        <span className="ctxbtn" onClick={p.onPasteRow}>粘贴动作</span>
+        <span className="ctxbtn" onClick={p.onPasteRow}>{S.editor.pasteExercise}</span>
       )}
-      <span className="ctxbtn danger" onClick={p.onClearDay}>清空本日</span>
+      <span className="ctxbtn danger" onClick={p.onClearDay}>{S.editor.clearDay}</span>
       <span className="selected-context-spacer" />
-      <span className="selected-context-close" onClick={p.onClose}>✕ 取消选择</span>
+      <span className="selected-context-close" onClick={p.onClose}>{S.editor.cancelSelection}</span>
     </div>
   )
 }
+import { S } from '../../../i18n/strings'

@@ -33,18 +33,10 @@ import { useClockTick, useVisiblePolling } from './useVisiblePolling'
 import { usePersistentCollapse } from '../workspace/usePersistentCollapse'
 import { useGlobalKeyboardHandler } from '../workspace/globalKeyboard'
 import type { VideoTarget } from '../workspace/VideosPage'
+import { resolveLocale, S } from '../../i18n/strings'
 
 const INTERACTION_WINDOW_MS = 120_000
 const MAX_MESSAGE_CHARS = 4000
-const QUICK_REPLIES = [
-  '按计划完成，很好，下周继续加。',
-  '这组速度掉得太多，下周降 5% 重量。',
-  '视频收到了，我今晚逐组给你反馈。',
-  '这周先别硬顶，睡够再练。',
-  '距比赛还有 5 周，注意控体重。',
-] as const
-const WEEKDAYS = ['日', '一', '二', '三', '四', '五', '六'] as const
-
 export interface MessagesPageProps {
   me: AuthUser
   students: CoachStudent[]
@@ -109,7 +101,7 @@ export default function MessagesPage({
   const activeMatchesSelectedStudent = activeFromList?.other_party.id === selectedStudentId
   const selectedStudent = students.find((student) => student.id === selectedStudentId) ?? null
   const selectedStudentWithoutConversation = selectedStudent != null && selectedConversation == null
-  const selectedStudentName = selectedStudent?.display_name || '未命名学员'
+  const selectedStudentName = selectedStudent?.display_name || S.chat.unnamedStudent
   const synchronizedActiveId = conversations === null || keepLocalSelection || activeMatchesSelectedStudent
     ? activeId
     : selectedConversation?.id ?? null
@@ -172,8 +164,8 @@ export default function MessagesPage({
       if (isSessionExpired(caught)) onSessionExpired()
       else if (isBindLost(caught)) {
         setUnavailableStudentIds((prev) => new Set(prev).add(studentId))
-        setOpenError('该学员已不在你的名下')
-      } else setOpenError('发起对话失败，请重试')
+        setOpenError(S.chat.bindLost)
+      } else setOpenError(S.chat.startFailed)
     } finally {
       setOpeningConversation(false)
     }
@@ -184,27 +176,27 @@ export default function MessagesPage({
     ? students.find((student) => student.id === active.other_party.id) ?? null
     : null
   const activeMeta = activeBindLost
-    ? '已解除绑定'
+    ? S.chat.unbound
     : activeStudent?.status === 'in_evaluation'
-      ? '评估期'
-      : '在训学员'
+      ? S.chat.assessment
+      : S.chat.activeStudent
   const nextUnread = () => {
     const next = conversations?.find((conversation) => conversation.unread_count > 0)
     if (next) selectConversation(next)
-    else window.dispatchEvent(new CustomEvent('meetpr:toast', { detail: '没有未读消息了' }))
+    else window.dispatchEvent(new CustomEvent('meetpr:toast', { detail: S.chat.noUnread }))
   }
 
   return <main className={`chat-page${threadCollapsed ? ' thread-collapsed' : ''}`}>
-    <aside className="chat-sidebar" aria-label="学员列表">
+    <aside className="chat-sidebar" aria-label={S.chat.studentList}>
       <header className="chat-panel-head chat-list-head">
-        <b>学员</b>
+        <b>{S.common.student}</b>
         <button type="button" className="chat-next-unread" onClick={nextUnread}>
-          下一条未读 <span>{totalUnread}</span>
+          {S.chat.nextUnread} <span>{totalUnread}</span>
         </button>
       </header>
       {openError && <div className="chat-open-error">{openError}</div>}
       {conversations === null
-        ? <div className="empty-state">加载中…</div>
+        ? <div className="empty-state">{S.common.loadingEllipsis}</div>
         : <ConversationList
             conversations={conversations}
             students={students}
@@ -219,54 +211,54 @@ export default function MessagesPage({
             onStart={(studentId) => { onStudentChange(studentId) }}
           />}
     </aside>
-    <section className={`chat-main-panel${threadCollapsed ? ' collapsed' : ''}`} aria-label="消息">
+    <section className={`chat-main-panel${threadCollapsed ? ' collapsed' : ''}`} aria-label={S.chat.messages}>
       <header className="chat-panel-head chat-thread-head">
         {active && <>
           <span className="chat-thread-avatar">{active.other_party.display_name.slice(0, 1) || '?'}</span>
-          <b>{active.other_party.display_name || '未命名学员'}</b>
+          <b>{active.other_party.display_name || S.chat.unnamedStudent}</b>
           <span className="chat-thread-meta">{activeMeta}</span>
           <button
             type="button"
             className="chat-open-plan"
             disabled={activeBindLost}
-            title={activeBindLost ? '该学员已不在你的名下，无法打开计划' : undefined}
+            title={activeBindLost ? S.chat.cannotOpenPlan : undefined}
             onClick={() => onOpenPlan(active.other_party.id)}
           >
-            打开 TA 的计划
+            {S.chat.openPlan}
           </button>
         </>}
         <button
           type="button"
           className="column-collapse-toggle chat-collapse-toggle"
-          aria-label={threadCollapsed ? '展开聊天' : '收起聊天'}
+          aria-label={threadCollapsed ? S.chat.expand : S.chat.collapse}
           aria-expanded={!threadCollapsed}
-          title={threadCollapsed ? '展开聊天' : '收起聊天'}
+          title={threadCollapsed ? S.chat.expand : S.chat.collapse}
           onClick={toggleThread}
         >
           {threadCollapsed ? '›' : '‹'}
         </button>
       </header>
       {conversations === null
-        ? <div className="empty-state">加载中…</div>
+        ? <div className="empty-state">{S.common.loadingEllipsis}</div>
         : synchronizedActiveId == null
           ? selectedStudentWithoutConversation
             ? <div className="empty-state chat-start-state">
-                <p>和 {selectedStudentName} 还没有消息</p>
+                <p>{S.chat.noMessagesWith(selectedStudentName)}</p>
                 <button
                   type="button"
                   disabled={openingConversation || sessionDead || unavailableStudentIds.has(selectedStudentId)}
                   onClick={() => { void startConversation(selectedStudentId) }}
                 >
-                  发起对话
+                  {S.chat.startConversation}
                 </button>
               </div>
-            : <div className="empty-state">选择会话开始聊天</div>
+            : <div className="empty-state">{S.chat.chooseConversation}</div>
           : active
             ? <ConversationThread
                 key={active.id}
                 me={me}
                 conversation={active}
-                studentName={active.other_party.display_name || '未命名学员'}
+                studentName={active.other_party.display_name || S.chat.unnamedStudent}
                 now={now}
                 sessionDead={sessionDead}
                 bindLost={activeBindLost}
@@ -285,7 +277,7 @@ export default function MessagesPage({
                 onSessionExpired={onSessionExpired}
                 onPlayVideo={(target) => onPlayVideo?.(active.other_party.id, target)}
               />
-            : <div className="empty-state">会话不存在</div>}
+            : <div className="empty-state">{S.chat.conversationMissing}</div>}
     </section>
   </main>
 }
@@ -319,10 +311,10 @@ function ConversationList({
   const conversationStudentIds = new Set(conversations.map((conversation) => conversation.other_party.id))
   const unstarted = students.filter((student) => !conversationStudentIds.has(student.id))
   if (conversations.length === 0 && unstarted.length === 0) {
-    return <div className="empty-state">暂无会话</div>
+    return <div className="empty-state">{S.chat.noConversations}</div>
   }
   return <div className="chat-list">{conversations.map((conversation) => {
-    const name = conversation.other_party.display_name || '未命名学员'
+    const name = conversation.other_party.display_name || S.chat.unnamedStudent
     const lost = bindLostIds.has(conversation.id) || !studentIds.has(conversation.other_party.id)
     return <button
       type="button"
@@ -333,16 +325,16 @@ function ConversationList({
     >
       <span className="chat-row-copy">
         <b>{name}</b>
-        <small>{lost && '（已解除绑定）'}{conversationPreview(conversation)}</small>
+        <small>{lost && S.chat.unboundParenthesized}{conversationPreview(conversation)}</small>
       </span>
       <span className="chat-row-meta">
         <time>{chatRelativeTime(conversation.last_message_at, now)}</time>
         <span className="chat-row-badges">
-          {conversation.unread_count > 0 && <i className="chat-unread-badge" aria-label={`${conversation.unread_count} 条未读`}>
+          {conversation.unread_count > 0 && <i className="chat-unread-badge" aria-label={S.chat.unreadCount(conversation.unread_count)}>
             {conversation.unread_count}
           </i>}
           {(pendingVideoCounts[conversation.other_party.id] ?? 0) > 0 && (
-            <i className="chat-video-badge" aria-label={`${pendingVideoCounts[conversation.other_party.id]} 条视频待审`}>
+            <i className="chat-video-badge" aria-label={S.chat.videoReviewCount(pendingVideoCounts[conversation.other_party.id])}>
               {pendingVideoCounts[conversation.other_party.id]}
             </i>
           )}
@@ -359,12 +351,12 @@ function ConversationList({
       onClick={() => onStart(student.id)}
     >
       <span className="chat-row-copy">
-        <b>{student.display_name || '未命名学员'}</b>
-        <small>{unavailableStudentIds.has(student.id) ? '该学员已不在你的名下' : '还没有消息'}</small>
+        <b>{student.display_name || S.chat.unnamedStudent}</b>
+        <small>{unavailableStudentIds.has(student.id) ? S.chat.bindLost : S.chat.noMessages}</small>
       </span>
       <span className="chat-row-actions">
         {(pendingVideoCounts[student.id] ?? 0) > 0 && (
-          <i className="chat-video-badge" aria-label={`${pendingVideoCounts[student.id]} 条视频待审`}>
+          <i className="chat-video-badge" aria-label={S.chat.videoReviewCount(pendingVideoCounts[student.id])}>
             {pendingVideoCounts[student.id]}
           </i>
         )}
@@ -478,7 +470,7 @@ function ConversationThread({
                 id: latest.id,
                 seq: latest.seq,
                 kind: latest.kind,
-                preview: latest.kind === 'text' ? latest.body ?? '' : latest.kind === 'image' ? '[图片]' : '[暂不支持的消息]',
+                preview: latest.kind === 'text' ? latest.body ?? '' : latest.kind === 'image' ? S.chat.imagePreview : S.chat.unsupportedPreview,
                 created_at: latest.created_at,
                 sender_id: latest.sender_id,
               },
@@ -668,7 +660,7 @@ function ConversationThread({
       await markReadIfNeeded(next)
       return result.pagesFetched > 1 ? Math.min(30_000, result.pagesFetched * 2_000) : 5_000
     } catch (caught) {
-      if (!initialized.current && alive.current) setError('消息加载失败，请稍后重试')
+      if (!initialized.current && alive.current) setError(S.chat.loadFailed)
       handleError(caught)
       return 5_000
     }
@@ -731,11 +723,11 @@ function ConversationThread({
   return <>
     <div className="chat-thread" ref={scrollRef} aria-busy={messages === null && !error}>
       {hasMoreHistory && <button className="chat-more" disabled={loadingHistory} onClick={() => { void loadHistory() }}>
-        {loadingHistory ? '加载中…' : '加载更早消息'}
+        {loadingHistory ? S.common.loadingEllipsis : S.chat.loadEarlier}
       </button>}
       {error && <div className="empty-state">{error}</div>}
-      {!error && messages === null && <div className="empty-state">加载中…</div>}
-      {!error && messages?.length === 0 && pendingItems.length === 0 && <div className="empty-state">还没有消息</div>}
+      {!error && messages === null && <div className="empty-state">{S.common.loadingEllipsis}</div>}
+      {!error && messages?.length === 0 && pendingItems.length === 0 && <div className="empty-state">{S.chat.noMessages}</div>}
       {!error && messageGroups.map((group, index) => <section className="chat-day-group" key={group.key}>
         <div className="chat-day-label">{group.label}</div>
         {group.messages.map((message) => <ChatBubble
@@ -762,7 +754,7 @@ function ConversationThread({
       </section>)}
       {pendingItems.length > 0 && !pendingSharesLastMessageGroup
         && <section className="chat-day-group" key={todayKey}>
-          <div className="chat-day-label">今天</div>
+          <div className="chat-day-label">{S.common.today}</div>
           {pendingItems.map((item) => <PendingBubble key={item.clientId} item={item} />)}
         </section>}
     </div>
@@ -772,18 +764,18 @@ function ConversationThread({
       disabled={sessionDead || bindLost}
       onDraftChange={onDraftChange}
     />
-    {bindLost && <em className="chat-blocked">该学员已不在你的名下，无法继续发送</em>}
+    {bindLost && <em className="chat-blocked">{S.chat.cannotSendBindLost}</em>}
   </>
 }
 
 function PendingBubble({ item }: { item: OutboxItem }) {
   const failure = item.status.state === 'failed' ? item.status : null
   return <div className="chat-message mine pending">
-    <div className="chat-message-meta"><span>我</span></div>
+    <div className="chat-message-meta"><span>{S.chat.me}</span></div>
     <div className="chat-bubble mine"><p>{item.body}</p></div>
     <small className={`chat-send-state${failure ? ' failed' : ''}`}>
-      {failure ? '发送失败' : '发送中'}
-      {failure?.retryable && <button type="button" onClick={() => chatOutbox.retry(item.clientId)}>重试</button>}
+      {failure ? S.chat.sendFailed : S.chat.sending}
+      {failure?.retryable && <button type="button" onClick={() => chatOutbox.retry(item.clientId)}>{S.common.retry}</button>}
     </small>
   </div>
 }
@@ -797,6 +789,7 @@ function ChatComposer({ conversationId, initialDraft, disabled, onDraftChange }:
   const [draft, setDraft] = useState(initialDraft)
   const draftRef = useRef(initialDraft)
   const composing = useRef(false)
+  const quickReplies = S.chat.quickReplies
 
   useEffect(() => () => onDraftChange(draftRef.current), [conversationId])
 
@@ -820,7 +813,7 @@ function ChatComposer({ conversationId, initialDraft, disabled, onDraftChange }:
     ) return false
     const shortcut = /^(?:Digit|Numpad)([1-5])$/.exec(event.code)
     const index = shortcut ? Number(shortcut[1]) - 1 : -1
-    const reply = QUICK_REPLIES[index]
+    const reply = quickReplies[index]
     if (!reply) return false
     event.preventDefault()
     applyQuickReply(reply)
@@ -846,8 +839,8 @@ function ChatComposer({ conversationId, initialDraft, disabled, onDraftChange }:
   }
 
   return <form className="chat-composer" onSubmit={submit}>
-    <div className="chat-quick-replies" aria-label="快捷回复">
-      {QUICK_REPLIES.map((reply, index) => <button
+    <div className="chat-quick-replies" aria-label={S.chat.quickRepliesAria}>
+      {quickReplies.map((reply, index) => <button
         type="button"
         className="chat-quick-reply"
         key={reply}
@@ -860,12 +853,12 @@ function ChatComposer({ conversationId, initialDraft, disabled, onDraftChange }:
     </div>
     <div className="chat-composer-row">
       <textarea
-        aria-label="输入消息"
+        aria-label={S.chat.inputMessage}
         value={draft}
         maxLength={MAX_MESSAGE_CHARS}
         rows={1}
         disabled={disabled}
-        placeholder={disabled ? '当前无法发送消息' : '输入消息'}
+        placeholder={disabled ? S.chat.cannotSend : S.chat.inputMessage}
         onCompositionStart={() => { composing.current = true }}
         onCompositionEnd={(event) => { composing.current = false; changeDraft(event.currentTarget.value) }}
         onChange={(event) => changeDraft(event.currentTarget.value)}
@@ -873,7 +866,7 @@ function ChatComposer({ conversationId, initialDraft, disabled, onDraftChange }:
         onBlur={() => onDraftChange(draftRef.current)}
       />
       <button type="submit" disabled={disabled || draft.trim() === ''}>
-        发送 <span>⌘↵</span>
+        {S.common.send} <span>⌘↵</span>
       </button>
     </div>
   </form>
@@ -883,7 +876,7 @@ function ChatBubble({ message, mine, senderLabel, receipt, imageUnavailable, onI
   message: ChatMessage
   mine: boolean
   senderLabel: string
-  receipt: '已送达' | '已读' | null
+  receipt: string | null
   imageUnavailable: boolean
   onImageError: () => void
   onPlayVideo: () => void
@@ -891,7 +884,7 @@ function ChatBubble({ message, mine, senderLabel, receipt, imageUnavailable, onI
   const hasSetRef = parseSetRefMessage(message) !== null
   return <div className={`chat-message${mine ? ' mine' : ''}`}>
     <div className="chat-message-meta">
-      <span>{mine ? '我' : senderLabel}</span>
+      <span>{mine ? S.chat.me : senderLabel}</span>
       <time>{chatClockTime(message.created_at)}</time>
     </div>
     <div className={`chat-bubble${mine ? ' mine' : ''}${hasSetRef ? ' set-ref-bubble' : ''}`}>
@@ -913,21 +906,22 @@ function localDayKey(value: string | number): string {
 
 function chatDayLabel(iso: string, now: number): string {
   const date = new Date(iso)
-  if (!Number.isFinite(date.getTime())) return '日期未知'
+  if (!Number.isFinite(date.getTime())) return S.chat.unknownDate
   const today = new Date(now)
   const yesterday = new Date(now)
   yesterday.setDate(yesterday.getDate() - 1)
   const key = localDayKey(iso)
-  if (key === localDayKey(today.getTime())) return '今天'
-  if (key === localDayKey(yesterday.getTime())) return '昨天'
+  if (key === localDayKey(today.getTime())) return S.common.today
+  if (key === localDayKey(yesterday.getTime())) return S.common.yesterday
+  if (resolveLocale() === 'en') return new Intl.DateTimeFormat('en-US', { weekday: 'short', month: 'short', day: 'numeric' }).format(date)
   const pad = (part: number) => String(part).padStart(2, '0')
-  return `${pad(date.getMonth() + 1)}-${pad(date.getDate())} 周${WEEKDAYS[date.getDay()]}`
+  return S.chat.dayLabel(pad(date.getMonth() + 1), pad(date.getDate()), S.common.weekdaysSundayFirstShort[date.getDay()])
 }
 
 function chatClockTime(iso: string): string {
   const date = new Date(iso)
   if (!Number.isFinite(date.getTime())) return ''
-  return new Intl.DateTimeFormat('zh-CN', {
+  return new Intl.DateTimeFormat(resolveLocale() === 'zh' ? 'zh-CN' : 'en-US', {
     hour: '2-digit',
     minute: '2-digit',
     hour12: false,
@@ -969,9 +963,9 @@ export function renderMessageBody(
     }
     case 'image':
       return message.image_url && !imageUnavailable
-        ? <img src={message.image_url} loading="lazy" alt="聊天图片" onError={onImageError} />
-        : <span className="chat-image-missing">图片暂不可用</span>
+        ? <img src={message.image_url} loading="lazy" alt={S.chat.chatImage} onError={onImageError} />
+        : <span className="chat-image-missing">{S.chat.imageUnavailable}</span>
     default:
-      return <span className="chat-unknown">当前版本暂不支持的消息类型</span>
+      return <span className="chat-unknown">{S.chat.unsupportedMessage}</span>
   }
 }

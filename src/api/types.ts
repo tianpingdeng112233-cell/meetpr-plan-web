@@ -156,6 +156,7 @@ export interface StudentVideo {
   created_at: string
   logged_at: string | null
   exercise_name?: string | null
+  name_en?: string | null
   set_index?: number | null
   weight_kg?: string | null
   reps?: number | null
@@ -239,6 +240,8 @@ export interface ChatConversation {
 interface ChatSetRefV1Base {
   v: 1
   exercise_name: string
+  /** Optional read-side display metadata; canonical writes still use exercise_name. */
+  name_en?: string | null
   set_number: number
   set_total: number | null
   weight_kg: string | null

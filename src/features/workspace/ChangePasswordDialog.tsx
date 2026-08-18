@@ -4,8 +4,9 @@ import { ApiException } from '../../api/client'
 import { isSessionExpired } from '../../api/errors'
 import { changePassword, logout, setLoginNotice } from '../../api/auth'
 import { useGlobalKeyboardHandler } from './globalKeyboard'
+import { S } from '../../i18n/strings'
 
-export const PASSWORD_CHANGED_NOTICE = '密码已修改，请用新密码登录。其他已登录的设备也需要重新登录。'
+export const PASSWORD_CHANGED_NOTICE = S.workspace.password.changed
 
 const overlay: CSSProperties = {
   position: 'fixed',
@@ -72,20 +73,20 @@ export function passwordFormError(
   newPassword: string,
   confirmPassword: string,
 ): string | null {
-  if (!oldPassword) return '请输入当前密码'
-  if (newPassword.length < MIN_PASSWORD_LENGTH) return `新密码至少 ${MIN_PASSWORD_LENGTH} 位`
-  if (newPassword !== confirmPassword) return '两次输入的新密码不一致'
-  if (newPassword === oldPassword) return '新密码不能和当前密码相同'
+  if (!oldPassword) return S.workspace.password.currentRequired
+  if (newPassword.length < MIN_PASSWORD_LENGTH) return S.workspace.password.tooShort(MIN_PASSWORD_LENGTH)
+  if (newPassword !== confirmPassword) return S.workspace.password.mismatch
+  if (newPassword === oldPassword) return S.workspace.password.same
   return null
 }
 
 /** Maps the backend's error codes onto wording a coach can act on. */
 export function changePasswordErrorText(error: unknown): string {
   if (error instanceof ApiException) {
-    if (error.code === 'PASSWORD_MISMATCH') return '当前密码不对，请重新输入'
-    if (error.code === 'VALIDATION_ERROR') return `新密码至少 ${MIN_PASSWORD_LENGTH} 位`
+    if (error.code === 'PASSWORD_MISMATCH') return S.workspace.password.incorrect
+    if (error.code === 'VALIDATION_ERROR') return S.workspace.password.tooShort(MIN_PASSWORD_LENGTH)
   }
-  return '修改失败，请检查网络后重试'
+  return S.workspace.password.failed
 }
 
 /**
@@ -181,12 +182,12 @@ export function ChangePasswordDialog({ open, onClose, onSessionInvalidated, onBe
   // trap this overlay under anything layered above the bar (e.g. the sample
   // preview banner at z-index 50).
   return createPortal(
-    <div style={overlay} role="dialog" aria-modal="true" aria-label="修改密码">
+    <div style={overlay} role="dialog" aria-modal="true" aria-label={S.workspace.password.title}>
       <div style={panel}>
-        <div style={{ fontWeight: 700, fontSize: 16 }}>修改密码</div>
+        <div style={{ fontWeight: 700, fontSize: 16 }}>{S.workspace.password.title}</div>
 
         <label style={{ display: 'grid', gap: 6, fontSize: 13, color: 'var(--fg-secondary)' }}>
-          当前密码
+          {S.workspace.password.current}
           <input
             ref={firstFieldRef}
             type="password"
@@ -199,7 +200,7 @@ export function ChangePasswordDialog({ open, onClose, onSessionInvalidated, onBe
         </label>
 
         <label style={{ display: 'grid', gap: 6, fontSize: 13, color: 'var(--fg-secondary)' }}>
-          新密码（至少 {MIN_PASSWORD_LENGTH} 位）
+          {S.workspace.password.newMin(MIN_PASSWORD_LENGTH)}
           <input
             type="password"
             autoComplete="new-password"
@@ -211,7 +212,7 @@ export function ChangePasswordDialog({ open, onClose, onSessionInvalidated, onBe
         </label>
 
         <label style={{ display: 'grid', gap: 6, fontSize: 13, color: 'var(--fg-secondary)' }}>
-          再输一次新密码
+          {S.workspace.password.repeat}
           <input
             type="password"
             autoComplete="new-password"
@@ -226,9 +227,9 @@ export function ChangePasswordDialog({ open, onClose, onSessionInvalidated, onBe
         {error && <div style={{ color: 'var(--brand-red)', fontSize: 13 }}>{error}</div>}
 
         <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
-          <button type="button" style={secondaryButton} disabled={saving} onClick={onClose}>取消</button>
+          <button type="button" style={secondaryButton} disabled={saving} onClick={onClose}>{S.common.cancel}</button>
           <button type="button" style={primaryButton} disabled={saving} onClick={() => { void submit() }}>
-            {saving ? '提交中…' : '确认修改'}
+            {saving ? S.workspace.password.submitting : S.workspace.password.confirm}
           </button>
         </div>
       </div>

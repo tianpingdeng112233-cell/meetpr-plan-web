@@ -1,9 +1,10 @@
 import type { DayCol, Week } from './types'
 import { isRestDay } from './types'
 import { addDays, dowLabel, mdLabel } from './mapping'
+import { S } from '../../i18n/strings'
 
-export const DAY_MOVE_STATUS_LOCKED_HINT = '已完成/已停用的计划不可移动训练日'
-export const DAY_MOVE_LOGGED_HINT = '该日含学员已打卡动作，不可移动或交换'
+export const DAY_MOVE_STATUS_LOCKED_HINT = S.editor.completedPlanMoveLocked
+export const DAY_MOVE_LOGGED_HINT = S.editor.loggedDayMoveLocked
 
 /** Shared source/target guard for whole-day moves. */
 export function dayMoveDisabledReason(day: DayCol, statusCalendarLocked: boolean): string | null {

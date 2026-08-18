@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type RefObject } from 'react'
 import type { CoachView } from './CoachShell'
 import { useGlobalKeyboardHandler } from './globalKeyboard'
+import { S } from '../../i18n/strings'
 
 export interface CommandStudent {
   id: string
@@ -32,13 +33,13 @@ interface CommandItem {
   run: () => void | Promise<void>
 }
 
-const SCREEN_COMMANDS: Array<{ view: CoachView; label: string; aliases: string }> = [
-  { view: 'board', label: '总览', aliases: '学员 看板 board' },
-  { view: 'editor', label: '计划编排', aliases: '计划 编排器 editor' },
-  { view: 'messages', label: '反馈工作区', aliases: '学员 消息 聊天 视频 message video feedback' },
-  { view: 'catalog', label: '动作库', aliases: '动作 catalog' },
-  { view: 'requests', label: '学员申请', aliases: '申请 request' },
-  { view: 'tracking', label: '追踪', aliases: '数据 图表 tracking analytics' },
+const screenCommands = (): Array<{ view: CoachView; label: string; aliases: string }> => [
+  { view: 'board', label: S.workspace.nav.overview, aliases: S.workspace.command.overviewKeywords },
+  { view: 'editor', label: S.workspace.nav.editor, aliases: S.workspace.command.editorKeywords },
+  { view: 'messages', label: S.workspace.nav.feedback, aliases: S.workspace.command.feedbackKeywords },
+  { view: 'catalog', label: S.workspace.nav.catalog, aliases: S.workspace.command.catalogKeywords },
+  { view: 'requests', label: S.workspace.nav.requests, aliases: S.workspace.command.requestsKeywords },
+  { view: 'tracking', label: S.workspace.nav.tracking, aliases: S.workspace.command.trackingKeywords },
 ]
 
 const normalized = (value: string) => value.trim().toLocaleLowerCase('zh-CN')
@@ -63,26 +64,26 @@ export function CommandPalette({
       ...students.map((student) => ({
         id: `student:${student.id}`,
         label: student.label,
-        detail: '学员 · 打开计划编排',
-        search: normalized(`${student.label} 学员 计划`),
+        detail: S.workspace.command.studentOpen,
+        search: normalized(`${student.label} ${S.common.student} ${S.common.plan}`),
         run: () => onOpenStudent(student.id),
       })),
-      ...SCREEN_COMMANDS.map((screen) => ({
+      ...screenCommands().map((screen) => ({
         id: `screen:${screen.view}`,
         label: screen.label,
-        detail: '屏幕 · 跳转',
+        detail: S.workspace.command.screenJump,
         search: normalized(`${screen.label} ${screen.aliases}`),
         run: () => onOpenView(screen.view),
       })),
       ...exercises.map((exercise) => ({
         id: `exercise:${exercise.id}`,
         label: exercise.label,
-        detail: exercise.secondary ? `动作 · ${exercise.secondary}` : '动作 · 打开详情',
-        search: normalized(`${exercise.label} ${exercise.secondary ?? ''} 动作`),
+        detail: exercise.secondary ? `${S.common.action} · ${exercise.secondary}` : S.workspace.command.exerciseOpen,
+        search: normalized(`${exercise.label} ${exercise.secondary ?? ''} ${S.common.action}`),
         run: () => onOpenExercise(exercise.id),
       })),
     ]
-    if (!queryValue) return all.slice(0, Math.max(students.length + SCREEN_COMMANDS.length, 12))
+    if (!queryValue) return all.slice(0, Math.max(students.length + screenCommands().length, 12))
     return all.filter((item) => item.search.includes(queryValue)).slice(0, 50)
   }, [exercises, onOpenExercise, onOpenStudent, onOpenView, queryValue, students])
 
@@ -159,7 +160,7 @@ export function CommandPalette({
     <div className="command-palette-layer" role="presentation" onMouseDown={(event) => {
       if (event.target === event.currentTarget) close()
     }}>
-      <section ref={dialogRef} className="command-palette" role="dialog" aria-modal="true" aria-label="命令面板">
+      <section ref={dialogRef} className="command-palette" role="dialog" aria-modal="true" aria-label={S.workspace.command.title}>
         <label className="command-palette-search">
           <span className="coach-search-icon" aria-hidden="true" />
           <input
@@ -169,8 +170,8 @@ export function CommandPalette({
               setQuery(event.target.value)
               setActiveIndex(0)
             }}
-            placeholder="跳转学员、屏幕或动作…"
-            aria-label="搜索命令"
+            placeholder={S.workspace.command.placeholder}
+            aria-label={S.workspace.command.search}
             aria-controls="command-palette-results"
             aria-activedescendant={items[activeIndex]?.id}
           />
@@ -193,9 +194,9 @@ export function CommandPalette({
               {index === activeIndex && <kbd>↵</kbd>}
             </button>
           ))}
-          {items.length === 0 && <div className="command-palette-empty">没有匹配的命令</div>}
+          {items.length === 0 && <div className="command-palette-empty">{S.workspace.command.empty}</div>}
         </div>
-        <footer><span>↑↓ 选择</span><span>↵ 执行</span><span>Esc 关闭</span></footer>
+        <footer><span>{S.workspace.command.selectHint}</span><span>{S.workspace.command.executeHint}</span><span>{S.workspace.command.closeHint}</span></footer>
       </section>
     </div>
   )

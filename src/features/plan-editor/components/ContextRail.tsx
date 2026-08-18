@@ -5,6 +5,7 @@ import type { DayCol, ExerciseRow } from '../types'
 import { rowWeightBoxes } from '../intensityModel'
 import { getBoundRowInputIssue } from '../inputGuard'
 import { kg, profileLine, shortDate, techniqueStyleLine } from '../../workspace/WorkspaceCommon'
+import { fmt, resolveLocale, S } from '../../../i18n/strings'
 
 /**
  * Progressive disclosure ladder, driven purely by how much of the row the coach
@@ -32,8 +33,8 @@ export function isRowComplete(row: ExerciseRow | null): boolean {
 }
 
 export function profileEmptyMessage(profile: StudentOnboardingProfile | null | undefined): string | null {
-  if (profile === undefined) return '画像载入中…'
-  if (profile === null) return '学员未填写画像'
+  if (profile === undefined) return S.stats.context.profileLoading
+  if (profile === null) return S.stats.context.profileMissing
   return null
 }
 
@@ -227,7 +228,7 @@ export function DayHeaderContext({ studentId, studentName, row, profile }: {
         </div>
         <details className="dayhead-profile">
           <summary onMouseDown={stop} onClick={stop}>
-            <b>{studentName}</b><span>· 画像</span>
+            <b>{studentName}</b><span>{S.stats.context.profileSuffix}</span>
           </summary>
           <div className="dayhead-profile-popover" onMouseDown={stop} onClick={stop}>
             <Profile profile={profile} compact />
@@ -244,16 +245,16 @@ export function DayHeaderContext({ studentId, studentName, row, profile }: {
   const bucket = detail && sets > 0 ? (detail.by_set_count[String(sets)] ?? []).slice(0, 2) : []
   const last = detail?.recent_sessions[0]
   return (
-    <div className="dayhead-context exercise" data-dayhead-context="" data-context-state="exercise" title={activeRow.name || '未命名动作'}>
+    <div className="dayhead-context exercise" data-dayhead-context="" data-context-state="exercise" title={fmt.exerciseName({ name: activeRow.name, name_en: activeRow.nameEn }) || S.stats.context.unnamedExercise}>
       <div className="dayhead-context-id">
-        <b className="dayhead-context-name">{activeRow.name || '未命名动作'}</b>
+        <b className="dayhead-context-name">{fmt.exerciseName({ name: activeRow.name, name_en: activeRow.nameEn }) || S.stats.context.unnamedExercise}</b>
         {/* The one-line 上次 summary duplicates the per-set panel; show it only
             while that panel is absent (loading / failed / no history). */}
         {!(last && last.sets.length > 0) && (
           <span className="dayhead-context-history">
-            {pending ? '训练记录载入中…'
-              : failedId === exerciseId ? '记录载入失败'
-                : summary ? `上次 ${summary}` : '暂无训练记录'}
+            {pending ? S.stats.context.recordsLoading
+              : failedId === exerciseId ? S.stats.context.recordsFailed
+                : summary ? `${S.stats.context.lastPrefix} ${summary}` : S.stats.context.noRecords}
           </span>
         )}
         {/* No RPE in the logs means the backend cannot compute a rolling e1RM;
@@ -261,33 +262,33 @@ export function DayHeaderContext({ studentId, studentName, row, profile }: {
         {detail && (
           <span className="dayhead-context-e1rm">
             {detail.e1rm ? `e1RM ${kg(detail.e1rm.value)}kg`
-              : detail.one_rm_reference ? `登记 1RM ${kg(detail.one_rm_reference)}kg`
+              : detail.one_rm_reference ? `${S.stats.context.registered1rm} ${kg(detail.one_rm_reference)}kg`
                 : 'e1RM —'}
           </span>
         )}
       </div>
       {detail && detail.rep_prs.length > 0 && (
         <div className="dayhead-panel" onMouseDown={stop} onClick={stop}>
-          <h4>次数 PR</h4>
+          <h4>{S.stats.context.repsPr}</h4>
           {detail.rep_prs.slice(0, 4).map((p) => (
             <div className="dayhead-panel-line" key={p.reps}>
               <span>{p.reps}RM</span>
               <b>{kg(p.weight_kg)}kg</b>
-              <em>{shortDate(p.logged_at)}{p.source === 'imported' ? ' 导' : ''}</em>
+              <em>{shortDate(p.logged_at)}{p.source === 'imported' ? S.stats.context.imported : ''}</em>
             </div>
           ))}
         </div>
       )}
       {last && last.sets.length > 0 && (
         <div className="dayhead-panel" onMouseDown={stop} onClick={stop}>
-          <h4>最近一次 · {shortDate(last.date)}</h4>
+          <h4>{S.stats.context.latest(shortDate(last.date))}</h4>
           <div className="dayhead-panel-sets">
             {/* Ordinal position, not set_index — the backend indexes sets from 0. */}
             {last.sets.map((set, index) => (
               <div className="dayhead-panel-line" key={set.set_index}>
                 <span>{index + 1}</span>
                 <b>{kg(set.weight_kg)}×{set.reps}</b>
-                <em>{set.rpe ? `@${Number(set.rpe)}` : '—'}{set.failed ? ' 力竭' : set.completed ? ' ✓' : ''}</em>
+                <em>{set.rpe ? `@${Number(set.rpe)}` : '—'}{set.failed ? S.stats.context.failureSuffix : set.completed ? ' ✓' : ''}</em>
               </div>
             ))}
           </div>
@@ -295,11 +296,11 @@ export function DayHeaderContext({ studentId, studentName, row, profile }: {
       )}
       {bucket.length > 0 && (
         <div className="dayhead-panel" onMouseDown={stop} onClick={stop}>
-          <h4>{sets} 组 · 最近 {bucket.length} 次</h4>
+          <h4>{S.stats.context.recentSets(sets, bucket.length)}</h4>
           {bucket.map((x) => (
             <div className="dayhead-panel-line" key={x.date}>
               <span>{shortDate(x.date)}</span>
-              <b>顶组 {kg(x.best_weight_kg)}kg</b>
+              <b>{S.stats.context.topSet(`${kg(x.best_weight_kg)}kg`)}</b>
               <em>{x.completed_sets}/{x.set_count}</em>
             </div>
           ))}
@@ -326,28 +327,28 @@ export function metricCells(args: {
     // Day level leads with measured rolling e1RMs (self-reported 1RM lives in
     // the profile block below); an older backend without the field reads「—」.
     return [
-      { value: overview?.e1rm?.squat ? kg(overview.e1rm.squat.value) : '—', label: '深蹲 e1RM' },
-      { value: overview?.e1rm?.bench ? kg(overview.e1rm.bench.value) : '—', label: '卧推 e1RM' },
-      { value: overview?.e1rm?.deadlift ? kg(overview.e1rm.deadlift.value) : '—', label: '硬拉 e1RM' },
+      { value: overview?.e1rm?.squat ? kg(overview.e1rm.squat.value) : '—', label: S.stats.context.squatE1rm },
+      { value: overview?.e1rm?.bench ? kg(overview.e1rm.bench.value) : '—', label: S.stats.context.benchE1rm },
+      { value: overview?.e1rm?.deadlift ? kg(overview.e1rm.deadlift.value) : '—', label: S.stats.context.deadliftE1rm },
     ]
   }
   const cells: MetricCell[] = []
   const repPr = level === 4 ? detail.rep_prs.find((p) => p.reps === reps) : undefined
   if (isMainLiftDetail(detail)) {
-    cells.push({ value: kg(detail.one_rm_reference), label: '登记 1RM' })
-    cells.push({ value: detail.e1rm ? kg(detail.e1rm.value) : '—', label: 'e1RM · 滚动' })
+    cells.push({ value: kg(detail.one_rm_reference), label: S.stats.context.registered1rm })
+    cells.push({ value: detail.e1rm ? kg(detail.e1rm.value) : '—', label: S.stats.context.rollingE1rm })
   } else {
     const best = repPr ?? detail.rep_prs[0]
-    cells.push({ value: best ? kg(best.weight_kg) : '—', label: best ? `${best.reps} 次最好` : '暂无记录' })
+    cells.push({ value: best ? kg(best.weight_kg) : '—', label: best ? S.stats.context.repsBestShort(String(best.reps)) : S.stats.context.noData })
     const last = detail.recent_sessions[0]
     const top = last ? Math.max(...last.sets.map((s) => Number(s.weight_kg))) : null
-    if (top) cells.push({ value: kg(String(top)), label: '最近一次顶组' })
+    if (top) cells.push({ value: kg(String(top)), label: S.stats.context.latestTopSet })
   }
   const e1rm = detail.e1rm ? Number(detail.e1rm.value) : null
   if (level === 4 && weight != null && e1rm) {
-    cells.push({ value: `${Math.round((weight / e1rm) * 100)}%`, label: `本次 ÷ e1RM`, tone: 'accent' })
+    cells.push({ value: `${Math.round((weight / e1rm) * 100)}%`, label: S.stats.context.ratioE1rm, tone: 'accent' })
   } else if (isMainLiftDetail(detail) && repPr) {
-    cells.push({ value: kg(repPr.weight_kg), label: `${reps} 次最好` })
+    cells.push({ value: kg(repPr.weight_kg), label: S.stats.context.repsBestShort(String(reps)) })
   }
   return cells.slice(0, 3)
 }
@@ -392,14 +393,14 @@ export function ContextRailView({
           <button
             className="rail-mode-toggle"
             onClick={onToggleMode}
-            title={mode === 'follow' ? '改为固定在右缘' : '改为跟着选中日'}
-            aria-label={mode === 'follow' ? '改为固定在右缘' : '改为跟着选中日'}
+            title={mode === 'follow' ? S.stats.context.pinRight : S.stats.context.followSelection}
+            aria-label={mode === 'follow' ? S.stats.context.pinRight : S.stats.context.followSelection}
             aria-pressed={mode === 'dock'}
           >
             {mode === 'follow' ? '⇥' : '⇤'}
           </button>
         )}
-        <button onClick={onClose} aria-label="关闭上下文栏">✕</button>
+        <button onClick={onClose} aria-label={S.stats.context.close}>✕</button>
       </header>
 
       <div className="metric-band" data-metric-band="">
@@ -417,44 +418,44 @@ export function ContextRailView({
         {level > 1 && (
           <>
             <div className="rail-row-chip">
-              <b>{row?.name}</b>
-              <span>{sets || '—'} 组 × {reps || '—'} 次</span>
+              <b>{row ? fmt.exerciseName({ name: row.name, name_en: row.nameEn }) : ''}</b>
+              <span>{S.stats.context.setsReps(sets || '—', reps || '—')}</span>
             </div>
-            {loading && <div className="empty-state">载入训练档案…</div>}
+            {loading && <div className="empty-state">{S.stats.context.loadingProfile}</div>}
             {detail && detail.recent_sessions.length === 0 && (
               <>
-                <div className="empty-state">暂无训练记录</div>
-                <details><summary>学员画像</summary><Profile profile={profile} compact /></details>
+                <div className="empty-state">{S.stats.context.noRecords}</div>
+                <details><summary>{S.stats.context.profile}</summary><Profile profile={profile} compact /></details>
               </>
             )}
 
             {level === 2 && detail && detail.recent_sessions.length > 0 && (
               <>
-                <h3>次数 PR</h3>
+                <h3>{S.stats.context.repsPr}</h3>
                 <table className="pr-table"><tbody>
                   {detail.rep_prs.slice(0, 4).map((p) => (
                     <tr key={p.reps}>
                       <td>{p.reps}RM</td>
-                      <td>{kg(p.weight_kg)} {p.source === 'imported' && <i>导</i>}</td>
+                      <td>{kg(p.weight_kg)} {p.source === 'imported' && <i>{S.stats.context.importedShort}</i>}</td>
                       <td>{shortDate(p.logged_at)}</td>
                     </tr>
                   ))}
                 </tbody></table>
-                <h3>最近一次</h3>
+                <h3>{S.stats.context.latestShort}</h3>
                 <Sessions sessions={detail.recent_sessions.slice(0, 1)} />
               </>
             )}
 
             {level === 3 && detail && (
               <>
-                <h3>{sets} 组训练 · 最近记录</h3>
+                <h3>{S.stats.context.trainingSetsRecent(sets)}</h3>
                 {bucket.slice(0, 3).map((x) => (
                   <div className="bucket-line" key={x.date}>
                     <b>{shortDate(x.date)}</b>
-                    <span>顶组 {kg(x.best_weight_kg)}kg · {x.completed_sets}/{x.set_count}</span>
+                    <span>{S.stats.context.topSet(`${kg(x.best_weight_kg)}kg`)} · {x.completed_sets}/{x.set_count}</span>
                   </div>
                 ))}
-                {bucket.length === 0 && <div className="empty-state">暂无该组数记录</div>}
+                {bucket.length === 0 && <div className="empty-state">{S.stats.context.noSetRecord}</div>}
               </>
             )}
 
@@ -465,19 +466,19 @@ export function ContextRailView({
                   return (
                     <div className="rail-best">
                       <b>{pr ? `${kg(pr.weight_kg)}kg` : '—'}</b>
-                      <span>{reps} 次最好成绩{pr ? ` · ${shortDate(pr.logged_at)}` : ''}</span>
+                      <span>{S.stats.context.repsBest(String(reps))}{pr ? ` · ${shortDate(pr.logged_at)}` : ''}</span>
                     </div>
                   )
                 })()}
-                <h3>{sets}×{reps} 历史 · 最近 2 次</h3>
+                <h3>{S.stats.context.historyRecent(sets, reps)}</h3>
                 {matching.length > 0
                   ? <Sessions sessions={matching} />
-                  : <div className="empty-state">暂无组×次匹配记录</div>}
+                  : <div className="empty-state">{S.stats.context.noMatchingRecord}</div>}
               </>
             )}
 
             {detail && detail.recent_sessions.length > 0 && (
-              <details><summary>学员画像</summary><Profile profile={profile} compact /></details>
+              <details><summary>{S.stats.context.profile}</summary><Profile profile={profile} compact /></details>
             )}
           </>
         )}
@@ -518,13 +519,13 @@ function Sessions({ sessions }: { sessions: ExerciseStatsDetail['recent_sessions
     <div className="rail-sessions">
       {sessions.map((s) => (
         <section key={s.date}>
-          <header><b>{shortDate(s.date)}</b><span>{s.sets.length} 组</span></header>
+          <header><b>{shortDate(s.date)}</b><span>{S.common.countSets(s.sets.length)}</span></header>
           {s.sets.map((set) => (
             <div className="set-line" key={set.set_index}>
               <span>{set.set_index}</span>
               <b>{kg(set.weight_kg)}kg × {set.reps}</b>
               <span>{set.rpe ? `@${Number(set.rpe)}` : '—'}</span>
-              <em className={set.failed ? 'failed' : ''}>{set.failed ? '力竭' : set.completed ? '✓' : '—'}</em>
+              <em className={set.failed ? 'failed' : ''}>{set.failed ? S.common.failure : set.completed ? '✓' : '—'}</em>
             </div>
           ))}
         </section>
@@ -537,14 +538,14 @@ function Profile({ profile, compact = false }: { profile: StudentOnboardingProfi
   if (profile == null) return <div className="empty-state">{profileEmptyMessage(profile)}</div>
   return (
     <div className={`panel-profile${compact ? ' compact' : ''}`}>
-      {!compact && <h3>学员画像 · ONBOARDING</h3>}
+      {!compact && <h3>{S.stats.context.onboarding}</h3>}
       <dl>
-        <dt>基础</dt><dd>{profileLine(profile)}</dd>
-        <dt>年限</dt><dd>{profile.training_years != null ? `${profile.training_years} 年 · 每周 ${profile.training_days?.length ?? '—'} 天` : '未填写'}</dd>
-        <dt>风格</dt><dd>{techniqueStyleLine(profile)}</dd>
-        <dt>自报</dt><dd>S {kg(profile.squat_1rm_kg)} / B {kg(profile.bench_1rm_kg)} / D {kg(profile.deadlift_1rm_kg)}</dd>
-        <dt>伤病</dt><dd>{profile.injury_notes || profile.injury_areas?.join('、') || '无'}</dd>
-        <dt>备赛</dt><dd>{profile.is_competing ? `${shortDate(profile.competition_date)} · ${profile.target_weight_class || '未填级别'}` : '暂不备赛'}</dd>
+        <dt>{S.stats.context.basics}</dt><dd>{profileLine(profile)}</dd>
+        <dt>{S.stats.context.years}</dt><dd>{profile.training_years != null ? S.workspace.requests.yearsAndDays(profile.training_years, profile.training_days?.length ?? '—') : S.common.notProvided}</dd>
+        <dt>{S.stats.context.style}</dt><dd>{techniqueStyleLine(profile)}</dd>
+        <dt>{S.stats.context.selfReport}</dt><dd>S {kg(profile.squat_1rm_kg)} / B {kg(profile.bench_1rm_kg)} / D {kg(profile.deadlift_1rm_kg)}</dd>
+        <dt>{S.stats.context.injuries}</dt><dd>{profile.injury_notes || profile.injury_areas?.join(resolveLocale() === 'zh' ? '、' : ', ') || S.common.noInjury}</dd>
+        <dt>{S.stats.context.competition}</dt><dd>{profile.is_competing ? `${shortDate(profile.competition_date)} · ${profile.target_weight_class || S.stats.context.levelMissing}` : S.stats.context.notCompeting}</dd>
       </dl>
       {profile.note_to_coach && <blockquote>“{profile.note_to_coach}”</blockquote>}
     </div>

@@ -24,30 +24,38 @@ import {
 import { usePersistentCollapse } from './usePersistentCollapse'
 import { useGlobalKeyboardHandler } from './globalKeyboard'
 import { frameStepTime, precisionScrubTime, PRECISION_SCRUB_THRESHOLD_PX, VIDEO_SPEEDS } from './videoPlayback'
+import { fmt, S } from '../../i18n/strings'
 
 type VideoFilter = 'all' | 'pending' | 'reviewed'
 type MarkerAvailability = 'loading' | 'available' | 'error' | 'unavailable'
 
-const weekdays = ['周日', '周一', '周二', '周三', '周四', '周五', '周六']
 const coachRpeOptions = Array.from({ length: 11 }, (_, index) => 5 + index * 0.5)
 
 const videoDay = (video: Pick<StudentVideo, 'logged_at' | 'created_at'>) =>
   (video.logged_at ?? video.created_at).slice(0, 10)
+const compactDayLabel = (day: string, zhSeparator = '-') => {
+  const [year, month, date] = day.slice(0, 10).split('-').map(Number)
+  return fmt.monthDay(new Date(year, month - 1, date), () => `${String(month).padStart(2, '0')}${zhSeparator}${String(date).padStart(2, '0')}`)
+}
 const dayLabel = (day: string) => {
   const [year, month, date] = day.split('-').map(Number)
-  return `${String(month).padStart(2, '0')}-${String(date).padStart(2, '0')} ${weekdays[new Date(year, month - 1, date).getDay()]}`
+  const parsed = new Date(year, month - 1, date)
+  return `${compactDayLabel(day)} ${S.common.weekdaysSundayFirst[parsed.getDay()]}`
 }
-const setLabel = (index: number | null | undefined) => index == null ? null : `第 ${index + 1} 组`
-const statusLabel = (video: StudentVideo) => video.viewed_at == null ? '待审' : '已反馈'
+const setLabel = (index: number | null | undefined) => index == null ? null : S.video.setNumber(index + 1)
+const statusLabel = (video: StudentVideo) => video.viewed_at == null ? S.video.pending : S.video.reviewed
 const loadLabel = (video: StudentVideo) => (
   video.weight_kg != null && video.reps != null
     ? `${kg(video.weight_kg)}kg × ${video.reps}`
     : video.weight_kg != null
       ? `${kg(video.weight_kg)}kg`
-      : video.reps != null ? `${video.reps} 次` : ''
+      : video.reps != null ? S.video.repCount(video.reps) : ''
 )
 const videoTitle = (video: StudentVideo) =>
-  [video.exercise_name || video.filename || '训练视频', loadLabel(video)].filter(Boolean).join(' ')
+  [fmt.exerciseName({
+    name: video.exercise_name || video.filename || S.video.trainingVideo,
+    name_en: video.name_en,
+  }), loadLabel(video)].filter(Boolean).join(' ')
 const size = (bytes: number) => bytes < 1024 * 1024
   ? `${Math.round(bytes / 1024)} KB`
   : `${(bytes / 1024 / 1024).toFixed(1)} MB`
@@ -80,12 +88,13 @@ export const videoAssociation = (video: {
   logged_at: string | null
   created_at: string | null
   exercise_name?: string | null
+  name_en?: string | null
   set_index?: number | null
 }) => {
   const day = video.logged_at ?? video.created_at
   return [
-    day ? day.slice(5, 10).replace('-', '/') : null,
-    video.exercise_name,
+    day ? compactDayLabel(day, '/') : null,
+    video.exercise_name ? fmt.exerciseName({ name: video.exercise_name, name_en: video.name_en }) : null,
     setLabel(video.set_index),
   ].filter(Boolean).join(' · ')
 }
@@ -302,7 +311,7 @@ export function VideosPage({
       .then((signed) => {
         if (request === urlRequest.current) setVideoSource({ videoId: active.id, url: signed.url })
       })
-      .catch(() => { if (request === urlRequest.current) setPlaybackError('视频链接获取失败') })
+      .catch(() => { if (request === urlRequest.current) setPlaybackError(S.video.linkFailed) })
   }, [active?.id, resetFeedback])
 
   useEffect(() => {
@@ -419,7 +428,7 @@ export function VideosPage({
     }
     if (!active || retried.current) {
       setVideoSource(null)
-      setPlaybackError('视频播放失败')
+      setPlaybackError(S.video.playbackFailed)
       return
     }
     retried.current = true
@@ -435,7 +444,7 @@ export function VideosPage({
         // Drop the dead URL so the broken <video> unmounts and the error text
         // actually becomes visible instead of hiding behind a black frame.
         setVideoSource(null)
-        setPlaybackError('视频链接已过期，续签失败')
+        setPlaybackError(S.video.renewFailed)
       })
   }
 
@@ -599,7 +608,7 @@ export function VideosPage({
     setActiveStroke(null)
     annotationPointer.current = null
     abandonAnnotationSession()
-    toast('当前视频无法安全捕获画面，标注已停用')
+    toast(S.video.captureUnavailable)
   }
 
   const openAnnotation = () => {
@@ -610,7 +619,7 @@ export function VideosPage({
     setAnnotationNote('')
     const video = videoRef.current
     if (!video || video.videoWidth <= 0 || video.videoHeight <= 0) {
-      toast('视频画面尚未就绪')
+      toast(S.video.frameNotReady)
       return
     }
     // The layer is a transparent telestrator over the LIVE video: playback
@@ -758,7 +767,7 @@ export function VideosPage({
     try {
       const marker = await createVideoMarker(videoId, {
         time_ms: timeMs,
-        note: note.trim().slice(0, 500) || '✏️ 标注',
+        note: note.trim().slice(0, 500) || S.video.annotationFallback,
         // The same chat_image attachment anchors the drawn frame onto the
         // marker so the student can view it from the player (0055).
         ...(attachmentId ? { attachment_id: attachmentId } : {}),
@@ -769,7 +778,7 @@ export function VideosPage({
         : [...current, marker].sort((left, right) => left.time_ms - right.time_ms)))
     } catch {
       if (activeVideoIdRef.current === videoId) {
-        toast('标注已发送，但打点创建失败')
+        toast(S.video.annotationMarkerFailed)
       }
     }
   }
@@ -786,7 +795,7 @@ export function VideosPage({
     try {
       const { blob: image, timeMs: frozenTimeMs } = await annotationBlob(generation)
       if (image.size > 10 * 1024 * 1024) {
-        toast('标注图片超过 10MB，无法发送')
+        toast(S.video.annotationTooLarge)
         return
       }
       let targetConversation = conversation
@@ -811,7 +820,7 @@ export function VideosPage({
         return
       }
       if (isSecurityError(caught)) degradeAnnotation()
-      else toast('发送失败')
+      else toast(S.video.sendFailed)
     } finally {
       if (sendingSessionRef.current === session) sendingSessionRef.current = null
       if (generation === annotationGeneration.current) setAnnotationSending(false)
@@ -848,7 +857,7 @@ export function VideosPage({
     } catch {
       if (request === feedbackRequest.current) {
         setFeedbackState('idle')
-        setFeedbackError('反馈发送失败，请稍后重试')
+        setFeedbackError(S.video.feedbackFailed)
       }
     }
   }
@@ -871,7 +880,7 @@ export function VideosPage({
     } catch {
       if (request === coachRpeRequest.current && activeVideoIdRef.current === videoId) {
         setCoachRpe(previous)
-        setCoachRpeError('RPE 校准失败，已恢复原值')
+        setCoachRpeError(S.video.calibrationFailed)
       }
     } finally {
       if (request === coachRpeRequest.current && activeVideoIdRef.current === videoId) {
@@ -899,7 +908,7 @@ export function VideosPage({
       setMarkerOpen(false)
       setMarkerNote('')
     } catch {
-      if (activeVideoIdRef.current === videoId) setMarkerError('打点保存失败，请稍后重试')
+      if (activeVideoIdRef.current === videoId) setMarkerError(S.video.markerSaveFailed)
     } finally {
       if (activeVideoIdRef.current === videoId) setMarkerSaving(false)
     }
@@ -921,7 +930,7 @@ export function VideosPage({
         setMarkers((current) => current.filter((item) => item.id !== marker.id))
         setMarkerError('')
       } else {
-        setMarkerError('打点删除失败，请稍后重试')
+        setMarkerError(S.video.markerDeleteFailed)
       }
     } finally {
       setDeletingMarkerIds((current) => {
@@ -948,7 +957,7 @@ export function VideosPage({
               <button
                 type="button"
                 className="video-detail-close"
-                aria-label="关闭播放"
+                aria-label={S.video.closePlayer}
                 onClick={() => setActiveId(null)}
               >×</button>
               <b>{videoTitle(active)}</b>
@@ -958,22 +967,22 @@ export function VideosPage({
               <small>{detailMeta}</small>
               <span className={`video-rpe-calibration${coachRpe != null ? ' calibrated' : ''}`}>
                 <span className="video-student-rpe">
-                  学员自报 <b>{active.rpe == null ? '未填' : `@${Number(active.rpe)}`}</b>
+                  {S.video.athleteRpe} <b>{active.rpe == null ? S.video.notProvided : `@${Number(active.rpe)}`}</b>
                 </span>
                 {coachRpe != null && (
                   <span className="video-coach-rpe">
-                    教练校准 <b>@{Number(coachRpe)}</b>
+                    {S.video.coachRpe} <b>@{Number(coachRpe)}</b>
                   </span>
                 )}
                 {active.set_log_id != null && (
                   <>
                     <select
-                      aria-label="教练校准 RPE"
+                      aria-label={S.video.calibrateRpeAria}
                       value={coachRpe == null ? '' : String(Number(coachRpe))}
                       disabled={coachRpeSaving}
                       onChange={(event) => void saveCoachRpe(Number(event.target.value))}
                     >
-                      <option value="" disabled>校准 RPE</option>
+                      <option value="" disabled>{S.video.calibrateRpe}</option>
                       {coachRpeOptions.map((value) => (
                         <option value={value} key={value}>RPE {value}</option>
                       ))}
@@ -984,9 +993,9 @@ export function VideosPage({
                       disabled={coachRpe == null || coachRpeSaving}
                       onClick={() => void saveCoachRpe(null)}
                     >
-                      清除校准
+                      {S.video.clearCalibration}
                     </button>
-                    {coachRpeSaving && <i className="video-rpe-saving">保存中…</i>}
+                    {coachRpeSaving && <i className="video-rpe-saving">{S.video.saving}</i>}
                     {coachRpeError && (
                       <i className="video-rpe-error" role="alert">{coachRpeError}</i>
                     )}
@@ -997,13 +1006,13 @@ export function VideosPage({
                 <i>{activeIndex + 1} / {visibleVideos.length}</i>
                 <button
                   type="button"
-                  aria-label="上一条视频"
+                  aria-label={S.video.previousVideo}
                   disabled={activeIndex === 0}
                   onClick={() => move(-1)}
                 >‹</button>
                 <button
                   type="button"
-                  aria-label="下一条视频"
+                  aria-label={S.video.nextVideo}
                   disabled={activeIndex === visibleVideos.length - 1}
                   onClick={() => move(1)}
                 >›</button>
@@ -1020,7 +1029,7 @@ export function VideosPage({
                         className="video-annotate"
                         disabled={duration <= 0 || annotationOpen || annotationSending}
                         onClick={openAnnotation}
-                      ><i>✏️</i>标注</button>
+                      ><i>✏️</i>{S.video.annotation}</button>
                     )}
                     {markerServiceVisible && (
                       <button
@@ -1030,7 +1039,7 @@ export function VideosPage({
                           setMarkerOpen(true)
                           setMarkerError('')
                         }}
-                      ><i>＋</i>在此处打点</button>
+                      ><i>＋</i>{S.video.addMarkerHere}</button>
                     )}
                   </div>
                 )}
@@ -1054,18 +1063,18 @@ export function VideosPage({
                       onError={playbackFailed}
                     />
                   ) : (
-                    <div className="video-loading">{playbackError || '正在获取播放链接…'}</div>
+                    <div className="video-loading">{playbackError || S.video.gettingLink}</div>
                   )}
                   {viewingAnnotation?.annotation_url && !annotationOpen && (
                     <button
                       type="button"
                       className="video-annotation-view"
-                      aria-label={`标注帧 ${timeLabel(viewingAnnotation.time_ms / 1000)}，点击关闭`}
+                      aria-label={S.video.annotatedFrameClose(timeLabel(viewingAnnotation.time_ms / 1000))}
                       onClick={() => setViewingAnnotation(null)}
                     >
                       <img
                         src={viewingAnnotation.annotation_url}
-                        alt={viewingAnnotation.note || '标注帧'}
+                        alt={viewingAnnotation.note || S.video.annotatedFrame}
                         onError={() => {
                           // Signed URL likely expired: refresh the list once
                           // so the next tap gets a fresh one.
@@ -1080,11 +1089,11 @@ export function VideosPage({
                             .catch(() => {})
                         }}
                       />
-                      <span>✏️ {timeLabel(viewingAnnotation.time_ms / 1000)} 标注帧 · 点击关闭</span>
+                      <span>{S.video.annotatedFrameHint(timeLabel(viewingAnnotation.time_ms / 1000))}</span>
                     </button>
                   )}
                   {annotationOpen && annotationFrameSize.current && (
-                    <div className="video-annotation-layer live" aria-label="视频标注图层">
+                    <div className="video-annotation-layer live" aria-label={S.video.annotationLayer}>
                       <div
                         className="video-annotation-frame"
                       >
@@ -1099,21 +1108,21 @@ export function VideosPage({
                           onLostPointerCapture={endAnnotationStroke}
                         />
                         <div className="video-annotation-tools">
-                          <span className="video-annotation-toolset" aria-label="标注工具">
+                          <span className="video-annotation-toolset" aria-label={S.video.annotationTools}>
                             <button
                               type="button"
                               className={annotationTool === 'freehand' ? 'active' : ''}
                               aria-pressed={annotationTool === 'freehand'}
                               disabled={annotationSending}
                               onClick={() => setAnnotationTool('freehand')}
-                            >画笔</button>
+                            >{S.video.pen}</button>
                             <button
                               type="button"
                               className={annotationTool === 'line' ? 'active' : ''}
                               aria-pressed={annotationTool === 'line'}
                               disabled={annotationSending}
                               onClick={() => setAnnotationTool('line')}
-                            >直线</button>
+                            >{S.video.line}</button>
                           </span>
                           <button
                             type="button"
@@ -1122,7 +1131,7 @@ export function VideosPage({
                               setAnnotationStrokes((strokes) => undoStroke(strokes))
                               invalidateAnnotationUpload()
                             }}
-                          >撤销</button>
+                          >{S.video.undo}</button>
                           <button
                             type="button"
                             disabled={annotationStrokes.length === 0 || annotationSending}
@@ -1130,23 +1139,23 @@ export function VideosPage({
                               setAnnotationStrokes(clearStrokes())
                               invalidateAnnotationUpload()
                             }}
-                          >清空</button>
+                          >{S.common.clear}</button>
                           <input
                             className="video-annotation-note"
                             maxLength={500}
                             value={annotationNote}
-                            placeholder="打点备注（选填）"
+                            placeholder={S.video.notePlaceholder}
                             disabled={annotationSending}
                             onChange={(event) => setAnnotationNote(event.target.value)}
                           />
                           <span className="video-annotation-spacer" />
-                          <button type="button" disabled={annotationSending} onClick={closeAnnotation}>取消</button>
+                          <button type="button" disabled={annotationSending} onClick={closeAnnotation}>{S.common.cancel}</button>
                           <button
                             type="button"
                             className="video-annotation-send"
                             disabled={annotationSending}
                             onClick={() => void sendAnnotation()}
-                          >{annotationSending ? '发送中…' : '发送到聊天'}</button>
+                          >{annotationSending ? S.video.sending : S.video.sendToChat}</button>
                         </div>
                       </div>
                     </div>
@@ -1157,34 +1166,34 @@ export function VideosPage({
                 <button
                   type="button"
                   className="video-play-toggle"
-                  aria-label={playing ? '暂停' : '播放'}
+                  aria-label={playing ? S.video.pause : S.video.play}
                   onClick={togglePlayback}
                 >{playing ? 'Ⅱ' : '▶'}</button>
                 <button
                   type="button"
                   className="video-frame-step"
-                  aria-label="上一帧"
+                  aria-label={S.video.previousFrame}
                   disabled={duration <= 0}
                   onClick={() => stepFrame(-1)}
                 >⏮ᶠ</button>
                 <button
                   type="button"
                   className="video-frame-step"
-                  aria-label="下一帧"
+                  aria-label={S.video.nextFrame}
                   disabled={duration <= 0}
                   onClick={() => stepFrame(1)}
                 >⏭ᶠ</button>
                 <span className="video-time">
                   {timeLabel(currentTime)} / {timeLabel(duration)}
                   {scrubFine
-                    ? <em className="video-scrub-fine">逐帧微调</em>
-                    : scrubbing && <em className="video-scrub-hint">上拉或按住 ⇧ 逐帧</em>}
+                    ? <em className="video-scrub-fine">{S.video.fineScrub}</em>
+                    : scrubbing && <em className="video-scrub-hint">{S.video.scrubHint}</em>}
                 </span>
                 <button
                   type="button"
                   className={`video-progress${scrubFine ? ' fine' : ''}`}
-                  aria-label="视频进度"
-                  title="拖动跳转 · 拖离进度条或按住 ⇧ 逐帧微调 · 滚轮逐帧"
+                  aria-label={S.video.progress}
+                  title={S.video.progressHint}
                   onPointerDown={beginScrub}
                   onPointerMove={moveScrub}
                   onPointerUp={endScrub}
@@ -1205,11 +1214,11 @@ export function VideosPage({
                 {fullscreenSupported && <button
                   type="button"
                   className="video-fullscreen-toggle"
-                  aria-label={fullscreen ? '退出全屏' : '全屏观看'}
-                  title={fullscreen ? '退出全屏 (Esc)' : '全屏观看'}
+                  aria-label={fullscreen ? S.video.exitFullscreen : S.video.watchFullscreen}
+                  title={fullscreen ? `${S.video.exitFullscreen} (Esc)` : S.video.watchFullscreen}
                   onClick={toggleFullscreen}
                 >{fullscreen ? '⤡' : '⤢'}</button>}
-                <span className="video-speeds" aria-label="播放速度">
+                <span className="video-speeds" aria-label={S.video.playbackSpeed}>
                   {VIDEO_SPEEDS.map((speed) => (
                     <button
                       type="button"
@@ -1227,8 +1236,8 @@ export function VideosPage({
                     autoFocus
                     maxLength={500}
                     value={markerNote}
-                    placeholder="写下这个时刻的动作反馈…"
-                    aria-label="打点短评"
+                    placeholder={S.video.markerFeedbackPlaceholder}
+                    aria-label={S.video.markerComment}
                     onChange={(event) => {
                       setMarkerNote(event.target.value)
                       setMarkerError('')
@@ -1245,12 +1254,12 @@ export function VideosPage({
                     className="video-marker-save"
                     disabled={!markerNote.trim() || markerSaving}
                     onClick={() => void addMarker()}
-                  >{markerSaving ? '保存中…' : '保存打点'}</button>
+                  >{markerSaving ? S.video.saving : S.video.saveMarker}</button>
                   <button
                     type="button"
                     className="video-marker-cancel"
                     onClick={() => setMarkerOpen(false)}
-                  >取消</button>
+                  >{S.common.cancel}</button>
                 </div>
               )}
             </div>
@@ -1258,13 +1267,13 @@ export function VideosPage({
             <div className="video-detail-bottom">
               <section className="video-feedback">
                 <header>
-                  <b>给学员的反馈</b>
+                  <b>{S.video.feedbackTitle}</b>
                   <span>{videoAssociation(active)}</span>
                 </header>
                 <textarea
                   value={feedback}
                   maxLength={2000}
-                  placeholder="指出动作问题、给出下一组建议…"
+                  placeholder={S.video.feedbackPlaceholder}
                   onChange={(event) => {
                     writeFeedback(event.target.value)
                     setFeedbackError('')
@@ -1284,31 +1293,31 @@ export function VideosPage({
                     disabled={!feedback.trim() || feedback.length > 2000 || feedbackState === 'sending'}
                     onClick={() => void sendFeedback()}
                   >
-                    {feedbackState === 'sending' ? '发送中…' : feedbackState === 'sent' ? '已发送 ✓' : '发送反馈'}
+                    {feedbackState === 'sending' ? S.video.sending : feedbackState === 'sent' ? S.video.sent : S.video.sendFeedback}
                     <small>⌘↵</small>
                   </button>
                 </footer>
               </section>
 
               <section className="video-data-card">
-                <h2>本组数据</h2>
+                <h2>{S.video.setData}</h2>
                 <dl>
-                  <div><dt>重量</dt><dd>{active.weight_kg == null ? '—' : `${kg(active.weight_kg)} kg`}</dd></div>
-                  <div><dt>次数</dt><dd>{active.reps == null ? '—' : active.reps}</dd></div>
-                  <div><dt>学员自报 RPE</dt><dd>{active.rpe == null ? '未填' : Number(active.rpe)}</dd></div>
-                  <div><dt>文件大小</dt><dd>{size(active.size_bytes)}</dd></div>
+                  <div><dt>{S.common.weight}</dt><dd>{active.weight_kg == null ? '—' : `${kg(active.weight_kg)} kg`}</dd></div>
+                  <div><dt>{S.common.reps}</dt><dd>{active.reps == null ? '—' : active.reps}</dd></div>
+                  <div><dt>{S.video.athleteRpeLabel}</dt><dd>{active.rpe == null ? S.video.notProvided : Number(active.rpe)}</dd></div>
+                  <div><dt>{S.video.fileSize}</dt><dd>{size(active.size_bytes)}</dd></div>
                 </dl>
               </section>
 
               {markerServiceVisible && (
                 <section className="video-markers-card">
-                  <h2>打点 · {markers.length} 处</h2>
+                  <h2>{S.video.markers(markers.length)}</h2>
                   <div>
                     {markerAvailability === 'error'
-                      ? <span className="video-marker-service-error">打点服务异常</span>
+                      ? <span className="video-marker-service-error">{S.video.markerServiceError}</span>
                       : (
                         <>
-                          {markers.length === 0 && <span className="video-markers-empty">还没有打点</span>}
+                          {markers.length === 0 && <span className="video-markers-empty">{S.video.noMarkers}</span>}
                           {markers.map((marker) => (
                             <div className="video-marker-row" key={marker.id}>
                               <button
@@ -1325,12 +1334,12 @@ export function VideosPage({
                                 <i />
                                 <time>{timeLabel(marker.time_ms / 1000)}</time>
                                 <span>{marker.note}</span>
-                                {marker.annotation_url && <em className="video-marker-annotated" aria-label="含标注帧">✏️</em>}
+                                {marker.annotation_url && <em className="video-marker-annotated" aria-label={S.video.hasAnnotation}>✏️</em>}
                               </button>
                               <button
                                 type="button"
                                 className="video-marker-delete"
-                                aria-label={`删除 ${timeLabel(marker.time_ms / 1000)} 打点`}
+                                aria-label={S.video.deleteMarker(timeLabel(marker.time_ms / 1000))}
                                 disabled={deletingMarkerIds.has(marker.id)}
                                 onClick={() => void removeMarker(marker)}
                               >×</button>
@@ -1349,23 +1358,23 @@ export function VideosPage({
 
       <aside className={`videos-master${masterCollapsed ? ' collapsed' : ''}`}>
         <header className="videos-master-head">
-          <span>{videos.length} 条 · 近 {trainingDays} 个训练日</span>
+          <span>{S.video.summary(videos.length, trainingDays)}</span>
           <button
             type="button"
             className="column-collapse-toggle"
-            aria-label={masterCollapsed ? '展开视频片段列表' : '收起视频片段列表'}
+            aria-label={masterCollapsed ? S.video.expandList : S.video.collapseList}
             aria-expanded={!masterCollapsed}
-            title={masterCollapsed ? '展开视频片段列表' : '收起视频片段列表'}
+            title={masterCollapsed ? S.video.expandList : S.video.collapseList}
             onClick={toggleMaster}
           >
             {masterCollapsed ? '›' : '‹'}
           </button>
         </header>
-        <div className="video-filter-tabs" role="tablist" aria-label="视频状态">
+        <div className="video-filter-tabs" role="tablist" aria-label={S.video.status}>
           {([
-            ['all', '全部'],
-            ['pending', '待审'],
-            ['reviewed', '已反馈'],
+            ['all', S.common.all],
+            ['pending', S.video.pending],
+            ['reviewed', S.video.reviewed],
           ] as const).map(([value, label]) => (
             <button
               type="button"
@@ -1380,12 +1389,12 @@ export function VideosPage({
           ))}
         </div>
         <div className="video-master-scroll">
-          {grouped.length === 0 && <div className="video-list-empty">暂无符合条件的视频</div>}
+          {grouped.length === 0 && <div className="video-list-empty">{S.video.noMatching}</div>}
           {grouped.map(([day, rows]) => (
             <section className="video-date-group" key={day}>
               <h2 className="video-date-heading">
                 <span>{dayLabel(day)}</span>
-                <small>· {rows.length} 条</small>
+                <small>{S.video.itemCount(rows.length)}</small>
               </h2>
               {rows.map((video) => {
                 const selected = video.id === active?.id
@@ -1401,7 +1410,7 @@ export function VideosPage({
                     <span className="video-row-copy">
                       <b>{videoTitle(video)}</b>
                       <small>
-                        {day.slice(5)} · {setLabel(video.set_index) ?? '未关联组'} · RPE {video.rpe == null ? '—' : Number(video.rpe)}
+                        {compactDayLabel(day)} · {setLabel(video.set_index) ?? S.video.unlinkedSet} · RPE {video.rpe == null ? '—' : Number(video.rpe)}
                       </small>
                     </span>
                     <span className={`video-status ${video.viewed_at == null ? 'pending' : 'reviewed'}`}>
