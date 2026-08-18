@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { acceptBindRequest, getInviteCodes, rejectBindRequest } from '../../api/coach'
 import type { CoachBindRequest, InviteCode } from '../../api/types'
 import { kg, profileLine, shortDate, techniqueStyleLine } from './WorkspaceCommon'
+import { resolveLocale, S } from '../../i18n/strings'
 
 export const REQUEST_POLL_INTERVAL_MS = 60_000
 
@@ -12,7 +13,7 @@ interface Props {
 }
 
 function requestTime(value: string): string {
-  const parts = new Intl.DateTimeFormat('zh-CN', {
+  const parts = new Intl.DateTimeFormat(resolveLocale() === 'zh' ? 'zh-CN' : 'en-US', {
     month: '2-digit',
     day: '2-digit',
     hour: '2-digit',
@@ -20,13 +21,15 @@ function requestTime(value: string): string {
     hour12: false,
   }).formatToParts(new Date(value))
   const part = (type: Intl.DateTimeFormatPartTypes) => parts.find((item) => item.type === type)?.value ?? '—'
-  return `${part('month')}-${part('day')} ${part('hour')}:${part('minute')}`
+  return resolveLocale() === 'zh'
+    ? `${part('month')}-${part('day')} ${part('hour')}:${part('minute')}`
+    : `${part('month')} ${part('day')}, ${part('hour')}:${part('minute')}`
 }
 
 function requestSummary(request: CoachBindRequest): string {
   const profile = request.onboarding
-  const training = profile.training_years == null ? '训练年限未填写' : `训练 ${profile.training_years} 年`
-  return `自报 S ${kg(profile.squat_1rm_kg)} / B ${kg(profile.bench_1rm_kg)} / D ${kg(profile.deadlift_1rm_kg)} · ${training}`
+  const training = profile.training_years == null ? S.workspace.requests.experienceMissing : S.workspace.trainingYears(profile.training_years)
+  return S.workspace.requests.selfReportSummary(kg(profile.squat_1rm_kg), kg(profile.bench_1rm_kg), kg(profile.deadlift_1rm_kg), training)
 }
 
 function toast(message: string) {
@@ -65,7 +68,7 @@ export function RequestsPage({ requests, onRequestsChanged, onAccepted }: Props)
   }
 
   const reject = async (request: CoachBindRequest) => {
-    if (!window.confirm(`拒绝 ${request.display_name} 的申请？`)) return
+    if (!window.confirm(S.workspace.requests.rejectConfirm(request.display_name))) return
     setBusy(request.id)
     try {
       await rejectBindRequest(request.id)
@@ -81,9 +84,9 @@ export function RequestsPage({ requests, onRequestsChanged, onAccepted }: Props)
       if (!navigator.clipboard) throw new Error('Clipboard API unavailable')
       await navigator.clipboard.writeText(personal.code)
       setCopied(true)
-      toast('邀请码已复制')
+      toast(S.workspace.requests.copied)
     } catch {
-      toast('复制失败，请手动复制邀请码')
+      toast(S.workspace.requests.copyFailed)
     }
   }
 
@@ -99,19 +102,19 @@ export function RequestsPage({ requests, onRequestsChanged, onAccepted }: Props)
   return (
     <main className="data-page requests-page">
       <header className="requests-head">
-        <h1>待处理申请</h1>
-        <span className="requests-count">{requests.length} 条</span>
+        <h1>{S.workspace.requests.pending}</h1>
+        <span className="requests-count">{S.workspace.requests.requestCount(requests.length)}</span>
         <span className="requests-refresh">
           <i aria-hidden="true" />
-          {REQUEST_POLL_INTERVAL_MS / 1000}s 自动刷新
+          {S.workspace.requests.autoRefresh(REQUEST_POLL_INTERVAL_MS / 1000)}
         </span>
       </header>
 
       <div className="request-list">
         {requests.length === 0 && (
           <div className="requests-empty">
-            <span>暂无待处理申请</span>
-            <small>把下方邀请码发给学员，他们注册后会出现在这里</small>
+            <span>{S.workspace.requests.empty}</span>
+            <small>{S.workspace.requests.emptyHint}</small>
           </div>
         )}
         {requests.map((request) => {
@@ -136,7 +139,7 @@ export function RequestsPage({ requests, onRequestsChanged, onAccepted }: Props)
                 <span className="request-avatar">{request.display_name.slice(0, 1)}</span>
                 <span className="request-who">
                   <b>{request.display_name}</b>
-                  <small>{request.masked_phone || '手机号未提供'} · {requestTime(request.submitted_at)} · 邀请码 {request.invite_code || '—'}</small>
+                  <small>{request.masked_phone || S.workspace.requests.phoneMissing} · {requestTime(request.submitted_at)} {S.workspace.requests.inviteCode(request.invite_code || '—')}</small>
                   <span>{requestSummary(request)}</span>
                 </span>
                 <button
@@ -147,7 +150,7 @@ export function RequestsPage({ requests, onRequestsChanged, onAccepted }: Props)
                     event.stopPropagation()
                     void reject(request)
                   }}
-                >拒绝</button>
+                >{S.workspace.requests.reject}</button>
                 <button
                   type="button"
                   className="accept"
@@ -156,18 +159,18 @@ export function RequestsPage({ requests, onRequestsChanged, onAccepted }: Props)
                     event.stopPropagation()
                     void accept(request)
                   }}
-                >{processing ? '处理中…' : '接受'}</button>
+                >{processing ? S.workspace.requests.processing : S.workspace.requests.accept}</button>
               </div>
               {expanded && (
                 <div className="request-detail">
-                  <h3>ONBOARDING · 学员自填</h3>
+                  <h3>{S.workspace.requests.onboarding}</h3>
                   <div>
-                    <span><small>基础</small><b>{profileLine(profile)}</b></span>
-                    <span><small>训练年限</small><b>{profile.training_years != null ? `${profile.training_years} 年 · 每周 ${profile.training_days?.length ?? '—'} 天` : '未填写'}</b></span>
-                    <span><small>自报 1RM</small><b>S {kg(profile.squat_1rm_kg)} / B {kg(profile.bench_1rm_kg)} / D {kg(profile.deadlift_1rm_kg)}</b></span>
-                    <span><small>技术风格</small><b>{techniqueStyleLine(profile)}</b></span>
-                    <span><small>伤病</small><b>{profile.injury_notes || profile.injury_areas?.join('、') || '无'}</b></span>
-                    <span><small>备赛</small><b>{profile.is_competing ? `${shortDate(profile.competition_date)} · ${profile.target_weight_class || '未填级别'}` : '暂不备赛'}</b></span>
+                    <span><small>{S.workspace.requests.basics}</small><b>{profileLine(profile)}</b></span>
+                    <span><small>{S.workspace.requests.experience}</small><b>{profile.training_years != null ? S.workspace.requests.yearsAndDays(profile.training_years, profile.training_days?.length ?? '—') : S.common.notProvided}</b></span>
+                    <span><small>{S.workspace.requests.selfReported1rm}</small><b>S {kg(profile.squat_1rm_kg)} / B {kg(profile.bench_1rm_kg)} / D {kg(profile.deadlift_1rm_kg)}</b></span>
+                    <span><small>{S.workspace.requests.techniqueStyle}</small><b>{techniqueStyleLine(profile)}</b></span>
+                    <span><small>{S.workspace.requests.injuries}</small><b>{profile.injury_notes || profile.injury_areas?.join('、') || S.common.noInjury}</b></span>
+                    <span><small>{S.workspace.requests.competition}</small><b>{profile.is_competing ? `${shortDate(profile.competition_date)} · ${profile.target_weight_class || S.workspace.requests.levelMissing}` : S.workspace.requests.notCompeting}</b></span>
                   </div>
                   {profile.note_to_coach && <blockquote>“{profile.note_to_coach}”</blockquote>}
                 </div>
@@ -178,10 +181,10 @@ export function RequestsPage({ requests, onRequestsChanged, onAccepted }: Props)
       </div>
 
       <footer className="invite-footer">
-        <span>我的邀请码</span>
-        <b>{personal?.code ?? '暂无可用邀请码'}</b>
+        <span>{S.workspace.requests.myInvite}</span>
+        <b>{personal?.code ?? S.workspace.requests.noInvite}</b>
         <button type="button" disabled={!personal} onClick={() => { void copyInviteCode() }}>
-          {copied ? '已复制' : '复制'}
+          {copied ? S.workspace.requests.copiedShort : S.workspace.requests.copy}
         </button>
       </footer>
     </main>

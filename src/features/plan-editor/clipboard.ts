@@ -10,21 +10,22 @@ import {
   rowPctAnchor,
   rowWeightBoxes,
 } from './intensityModel'
+import { STABLE_ZH } from '../../i18n/stable-zh'
 
 type ExerciseResolver = Pick<ExerciseIndex, 'resolve'>
 
 function clipboardMode(raw: string): IntensityMode {
   const t = raw.trim().toLowerCase()
-  if (t.includes('自重') || t.includes('body')) return 'bodyweight'
+  if (t.includes(STABLE_ZH.clipboard.bodyweight) || t.includes('body')) return 'bodyweight'
   if (t.includes('rpe')) return 'rpe'
   return 'kg'
 }
 
 export function serializeRowsForClipboard(rows: ExerciseRow[]): string {
-  const lines = ['动作\t组\t次\t强度类型\t强度值\t重量模式\t重量\t备注\t百分比锚点']
+  const lines: string[] = [STABLE_ZH.clipboard.header]
   for (const row of rows) {
     const intensity = displayedRowIntensity(row)
-    const mode = row.mode === 'bodyweight' ? '自重' : intensity?.mode ?? '无'
+    const mode = row.mode === 'bodyweight' ? STABLE_ZH.clipboard.bodyweight : intensity?.mode ?? STABLE_ZH.clipboard.none
     const intensityValue = intensity == null
       ? ''
       : isSingleValueIntensity(intensity)
@@ -35,17 +36,17 @@ export function serializeRowsForClipboard(rows: ExerciseRow[]): string {
         ? `${intensity.value}-${intensity.high}`
         : intensity.value
     const displayWeightMode = displayedWeightMode(row)
-    const weightMode = displayWeightMode === 'bodyweight' ? '自重'
-      : displayWeightMode === 'per_set' ? '逐组标重'
-        : displayWeightMode === 'weight_range' ? '重量区间'
-          : '固定重量'
+    const weightMode = displayWeightMode === 'bodyweight' ? STABLE_ZH.clipboard.bodyweight
+      : displayWeightMode === 'per_set' ? STABLE_ZH.clipboard.perSetWeight
+        : displayWeightMode === 'weight_range' ? STABLE_ZH.clipboard.weightRange
+          : STABLE_ZH.clipboard.fixedWeight
     const wireIntensity = rowIntensity(row)
-    const weights = displayWeightMode === 'bodyweight' ? '每组自重'
+    const weights = displayWeightMode === 'bodyweight' ? STABLE_ZH.clipboard.everySetBodyweight
       : displayWeightMode === 'weight_range' && wireIntensity?.mode === 'weight_range'
         ? `${wireIntensity.value}-${wireIntensity.high}`
         : rowWeightBoxes(row).map((box) => (box.empty ? '' : box.val)).join('/')
     const pctAnchor = intensity?.mode === 'pct'
-      ? rowPctAnchor(row) === 'top_set' ? '当日顶组' : rowPctAnchor(row) === 'e1rm' ? 'e1RM' : '1RM'
+      ? rowPctAnchor(row) === 'top_set' ? STABLE_ZH.clipboard.topSet : rowPctAnchor(row) === 'e1rm' ? 'e1RM' : '1RM'
       : ''
     lines.push([row.name, String(row.boxes.length), row.reps, mode, intensityValue, weightMode, weights, row.note, pctAnchor].join('\t'))
   }
@@ -61,9 +62,9 @@ export function parseClipboardRows(text: string, exerciseIndex?: ExerciseResolve
   if (lines.length === 0) return null
   const headerCells = lines[0].split('\t')
   const first = headerCells[0]?.trim()
-  const modernFormat = headerCells.includes('重量模式') && headerCells.includes('重量')
-  const pctAnchorIndex = headerCells.indexOf('百分比锚点')
-  if (first === '动作' || first?.toLowerCase() === 'exercise') lines.shift()
+  const modernFormat = headerCells.includes(STABLE_ZH.clipboard.weightMode) && headerCells.includes(STABLE_ZH.clipboard.weight)
+  const pctAnchorIndex = headerCells.indexOf(STABLE_ZH.clipboard.pctAnchor)
+  if (first === STABLE_ZH.clipboard.exercise || first?.toLowerCase() === 'exercise') lines.shift()
 
   const rows: ExerciseRow[] = []
   for (const [lineIndex, line] of lines.entries()) {
@@ -71,11 +72,11 @@ export function parseClipboardRows(text: string, exerciseIndex?: ExerciseResolve
     const name = (cells[0] ?? '').trim()
     if (!name) continue
     const modern = modernFormat
-    const legacyPerSetRpe = modern && (cells[3] ?? '').replace(/\s/g, '').toLowerCase() === '旧逐组rpe'
+    const legacyPerSetRpe = modern && (cells[3] ?? '').replace(/\s/g, '').toLowerCase() === STABLE_ZH.clipboard.legacyPerSetRpe
     const legacyMode = clipboardMode(cells[3] ?? '')
     const mode: IntensityMode = modern && legacyMode !== 'bodyweight' ? 'kg' : legacyMode
     const weightModeText = modern ? (cells[5] ?? '').trim() : ''
-    const weightRangeMode = weightModeText === '重量区间' || weightModeText === 'weight_range'
+    const weightRangeMode = weightModeText === STABLE_ZH.clipboard.weightRange || weightModeText === 'weight_range'
     const weightText = modern ? cells[6] ?? '' : legacyMode === 'kg' ? cells[4] ?? '' : ''
     const weightValues = mode === 'bodyweight' || weightRangeMode
       ? []
@@ -122,7 +123,7 @@ export function parseClipboardRows(text: string, exerciseIndex?: ExerciseResolve
     const pctAnchorText = pctAnchorIndex >= 0 ? (cells[pctAnchorIndex] ?? '').trim().toLowerCase() : ''
     const pctAnchor = loadMode === 'pct'
       ? pctAnchorText === 'e1rm' ? 'e1rm' as const
-        : pctAnchorText === '当日顶组' || pctAnchorText === 'top_set' ? 'top_set' as const
+        : pctAnchorText === STABLE_ZH.clipboard.topSet || pctAnchorText === 'top_set' ? 'top_set' as const
           : 'one_rm' as const
       : undefined
     rows.push({
@@ -133,6 +134,7 @@ export function parseClipboardRows(text: string, exerciseIndex?: ExerciseResolve
       conflictMessage: null,
       exerciseId: resolved?.id ?? null,
       name: resolved?.name ?? name,
+      ...(resolved?.name_en ? { nameEn: resolved.name_en } : {}),
       ku: resolved ? !custom : false,
       custom: resolved ? custom : false,
       isMain: resolved ? resolved.is_competition_lift || resolved.main_lift_family != null : false,
@@ -143,7 +145,7 @@ export function parseClipboardRows(text: string, exerciseIndex?: ExerciseResolve
         intensity,
         ...(pctAnchor ? { pctAnchor } : {}),
         ...(singleValue ? { intensityMode, intensityBoxes } : {}),
-        weightMode: modern && !legacyPerSetRpe && (weightModeText === '逐组' || weightModeText === '逐组标重')
+        weightMode: modern && !legacyPerSetRpe && (weightModeText === STABLE_ZH.clipboard.perSet || weightModeText === STABLE_ZH.clipboard.perSetWeight)
           ? 'per_set' as const
           : 'uniform' as const,
       } : {}),

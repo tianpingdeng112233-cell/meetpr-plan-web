@@ -1,9 +1,12 @@
 import type { PlanWithChildren, PlanExerciseResponse, PlanDayResponse } from '../../api/types'
 import type { Week, DayCol, ExerciseRow, IntensityValueMode, RowIntensity, SetBox, WeightMode } from './types'
+import { fmt, localizedArray, S } from '../../i18n/strings'
+import { zhCommon } from '../../i18n/strings-common'
+import { STABLE_ZH } from '../../i18n/stable-zh'
 
-export const DOW_LABELS = ['周一', '周二', '周三', '周四', '周五', '周六', '周日']
+export const DOW_LABELS = localizedArray(zhCommon.weekdaysMondayFirst, () => S.common.weekdaysMondayFirst)
 
-export interface CatalogEntry { name: string; custom: boolean }
+export interface CatalogEntry { name: string; nameEn?: string | null; custom: boolean }
 export type Catalog = Map<string, CatalogEntry>
 
 /** "82.50" -> "82.5", "80.00" -> "80", "9.00" -> "9". */
@@ -63,7 +66,7 @@ export function isoDate(dt: Date): string {
   return `${y}-${m}-${d}`
 }
 export function shiftISODate(iso: string, days: number): string { return isoDate(addDays(iso, days)) }
-export function mdLabel(dt: Date): string { return `${dt.getMonth() + 1}/${dt.getDate()}` }
+export function mdLabel(dt: Date): string { return fmt.monthDay(dt, () => `${dt.getMonth() + 1}/${dt.getDate()}`) }
 
 export function dowLabel(dt: Date): string {
   const mondayFirstIndex = (dt.getDay() + 6) % 7
@@ -148,7 +151,7 @@ export function resizeWeeksForCount(weeks: Week[], count: number, startDate: str
 
 function mapExercise(ex: PlanExerciseResponse, catalog: Catalog): ExerciseRow {
   const entry = catalog.get(ex.exercise_id)
-  const name = entry?.name ?? '未知动作'
+  const name = entry?.name ?? STABLE_ZH.unknownExercise
   const custom = entry?.custom ?? false
   const sets = [...ex.sets].sort((a, b) => a.set_number - b.set_number)
 
@@ -157,12 +160,12 @@ function mapExercise(ex: PlanExerciseResponse, catalog: Catalog): ExerciseRow {
     return {
       id: ex.id, serverRowId: ex.id, serverSortOrder: ex.sort_order,
       hasLogs: ex.has_logs ?? false, conflictMessage: null,
-      exerciseId: ex.exercise_id, name, ku: !custom, custom, isMain: ex.is_main_lift,
+      exerciseId: ex.exercise_id, name, ...(entry?.nameEn ? { nameEn: entry.nameEn } : {}), ku: !custom, custom, isMain: ex.is_main_lift,
       aux: true, reps: '—', mode: 'kg', intensity: null, weightMode: 'uniform', boxes: [], note: ex.notes ?? '',
     }
   }
 
-  const bodyweight = sets.every((s) => /自重|bodyweight/i.test(s.coach_note ?? ''))
+  const bodyweight = sets.every((s) => STABLE_ZH.patterns.bodyweight.test(s.coach_note ?? ''))
   const legacyRpeSource = !bodyweight && sets.every((set) => (
     set.load_mode == null && set.intensity_mode === 'rpe'
   ))
@@ -190,7 +193,7 @@ function mapExercise(ex: PlanExerciseResponse, catalog: Catalog): ExerciseRow {
   return {
     id: ex.id, serverRowId: ex.id, serverSortOrder: ex.sort_order,
     hasLogs: ex.has_logs ?? false, conflictMessage: null,
-    exerciseId: ex.exercise_id, name, ku: !custom, custom, isMain: ex.is_main_lift,
+    exerciseId: ex.exercise_id, name, ...(entry?.nameEn ? { nameEn: entry.nameEn } : {}), ku: !custom, custom, isMain: ex.is_main_lift,
     aux: false,
     reps,
     // `mode: rpe` is provenance only: reconcile keeps load_mode=null until an

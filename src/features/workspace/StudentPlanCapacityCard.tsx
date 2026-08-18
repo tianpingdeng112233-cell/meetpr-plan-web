@@ -5,6 +5,7 @@ import { ExerciseIndex } from '../plan-editor/exerciseIndex'
 import { isoDate, mapPlanToWeeks, type Catalog } from '../plan-editor/mapping'
 import { summarizeWeek, type WeekSummary } from '../plan-editor/weeklySummary'
 import { latestCapacityPlan, locateCapacityWeek } from './studentPlanCapacity'
+import { S } from '../../i18n/strings'
 
 type CapacityState =
   | { kind: 'loading' }
@@ -25,7 +26,7 @@ function LiftCapacity({ family, short, sets }: {
   return (
     <div className="student-capacity-lift" data-lift-family={family}>
       <span className="student-capacity-lift-name">{short}</span>
-      <b>{sets}<small>组</small></b>
+      <b>{sets}<small>{S.common.sets}</small></b>
     </div>
   )
 }
@@ -75,10 +76,10 @@ export function StudentPlanCapacityCard({ studentId, catalog, index }: {
   return (
     <article className="student-capacity-card" data-testid="student-plan-capacity">
       <header>
-        <div><h3>本周计划容量</h3>{capacity.kind === 'ready' && <small>{capacity.planName} · 第 {capacity.weekNumber} 周</small>}</div>
+        <div><h3>{S.stats.capacity.title}</h3>{capacity.kind === 'ready' && <small>{S.stats.capacity.subtitle(capacity.planName, capacity.weekNumber)}</small>}</div>
       </header>
-      {capacity.kind === 'loading' && <p>计划容量加载中…</p>}
-      {capacity.kind === 'empty' && <p>暂无计划容量数据</p>}
+      {capacity.kind === 'loading' && <p>{S.stats.capacity.loading}</p>}
+      {capacity.kind === 'empty' && <p>{S.stats.capacity.empty}</p>}
       {capacity.kind === 'ready' && (
         <div className="student-capacity-lifts">
           {LIFTS.map((lift) => <LiftCapacity key={lift.family} family={lift.family} short={lift.short} sets={capacity.summary[lift.sets]} />)}

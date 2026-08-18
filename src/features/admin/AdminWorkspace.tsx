@@ -18,6 +18,7 @@ import {
   type AdminUserDetailResponse,
 } from '../../api/admin'
 import type { PlanStatus } from '../../api/types'
+import { fmt, resolveLocale, S } from '../../i18n/strings'
 
 interface Props { onLogout: () => void }
 
@@ -28,11 +29,7 @@ type BadgeSpec = { label: string; color: string; background: string; border: str
 
 export const ADMIN_WRITE_ENABLED = false
 
-const pageTitles: Record<RootPage, string> = {
-  overview: '总览', users: '用户管理', bindings: '绑定关系', plans: '计划总览', exercises: '动作库',
-}
-
-const dowNames = ['周一', '周二', '周三', '周四', '周五', '周六', '周日']
+const pageTitle = (page: RootPage) => S.admin.page[page]
 
 function useResource<T>(key: string | null, load: () => Promise<T>): ResourceState<T> {
   const loader = useRef(load)
@@ -59,41 +56,41 @@ function useResource<T>(key: string | null, load: () => Promise<T>): ResourceSta
 function roleBadge(role: AdminManagedRole): BadgeSpec {
   if (role === 'admin') {
     // Mirrors the rail ADMIN chip treatment; not part of the 3-role design set.
-    return { label: '管理员', color: '#E5221E', background: 'rgba(229,34,30,0.12)', border: 'rgba(229,34,30,0.35)', weight: 700 }
+    return { label: S.admin.role.admin, color: '#E5221E', background: 'rgba(229,34,30,0.12)', border: 'rgba(229,34,30,0.35)', weight: 700 }
   }
   if (role === 'coach') {
-    return { label: '教练', color: '#E5221E', background: 'rgba(229,34,30,0.12)', border: 'rgba(229,34,30,0.32)' }
+    return { label: S.admin.role.coach, color: '#E5221E', background: 'rgba(229,34,30,0.12)', border: 'rgba(229,34,30,0.32)' }
   }
   if (role === 'coached_student') {
-    return { label: '有教练学员', color: '#FFFFFF', background: '#1F1F1F', border: '#3A3A3A' }
+    return { label: S.admin.role.coachedStudent, color: '#FFFFFF', background: '#1F1F1F', border: '#3A3A3A' }
   }
-  return { label: '自主训练', color: '#B5B5B5', background: 'transparent', border: '#3A3A3A' }
+  return { label: S.admin.role.selfTrain, color: '#B5B5B5', background: 'transparent', border: '#3A3A3A' }
 }
 
 function bindBadge(status: AdminBindingStatus): BadgeSpec {
   if (status === 'accepted') {
-    return { label: '已接受', color: '#1FB358', background: 'rgba(31,179,88,0.14)', border: 'rgba(31,179,88,0.38)', weight: 600 }
+    return { label: S.admin.binding.accepted, color: '#1FB358', background: 'rgba(31,179,88,0.14)', border: 'rgba(31,179,88,0.38)', weight: 600 }
   }
   if (status === 'pending') {
-    return { label: '待处理', color: '#E0A810', background: 'rgba(224,168,16,0.12)', border: 'rgba(224,168,16,0.3)', weight: 500 }
+    return { label: S.admin.binding.pending, color: '#E0A810', background: 'rgba(224,168,16,0.12)', border: 'rgba(224,168,16,0.3)', weight: 500 }
   }
   const labels: Record<Exclude<AdminBindingStatus, 'accepted' | 'pending'>, string> = {
-    rejected: '已拒绝', expired: '已过期', cancelled: '已取消',
+    rejected: S.admin.binding.rejected, expired: S.admin.binding.expired, cancelled: S.admin.binding.cancelled,
   }
   return { label: labels[status], color: '#737373', background: 'transparent', border: '#262626', weight: 400 }
 }
 
 function planBadge(status: PlanStatus): BadgeSpec {
   if (status === 'published') {
-    return { label: '已发布', color: '#1FB358', background: 'rgba(31,179,88,0.14)', border: 'rgba(31,179,88,0.38)' }
+    return { label: S.admin.planStatus.published, color: '#1FB358', background: 'rgba(31,179,88,0.14)', border: 'rgba(31,179,88,0.38)' }
   }
   if (status === 'draft') {
-    return { label: '草稿', color: '#B5B5B5', background: 'transparent', border: '#3A3A3A' }
+    return { label: S.admin.planStatus.draft, color: '#B5B5B5', background: 'transparent', border: '#3A3A3A' }
   }
   if (status === 'paused') {
-    return { label: '已暂停', color: '#E0A810', background: 'rgba(224,168,16,0.12)', border: 'rgba(224,168,16,0.3)' }
+    return { label: S.admin.planStatus.paused, color: '#E0A810', background: 'rgba(224,168,16,0.12)', border: 'rgba(224,168,16,0.3)' }
   }
-  return { label: '已完成', color: '#737373', background: '#161616', border: '#262626' }
+  return { label: S.admin.planStatus.completed, color: '#737373', background: '#161616', border: '#262626' }
 }
 
 function Badge({ spec }: { spec: BadgeSpec }) {
@@ -125,11 +122,15 @@ function Icon({ name, size = 20 }: { name: IconName; size?: number }) {
 }
 
 function displayName(name: string | null, phone?: string): string {
-  return name?.trim() || phone || '未设置姓名'
+  return name?.trim() || phone || S.admin.unnamed
 }
 
 function dateOnly(value: string | null | undefined): string {
-  return value ? value.slice(0, 10) : '—'
+  if (!value) return '—'
+  const iso = value.slice(0, 10)
+  if (resolveLocale() === 'zh') return iso
+  const [year, month, day] = iso.split('-').map(Number)
+  return fmt.monthDay(new Date(year, month - 1, day), () => iso)
 }
 
 function SkeletonRows({ count = 4 }: { count?: number }) {
@@ -145,8 +146,8 @@ function SkeletonRows({ count = 4 }: { count?: number }) {
 function ErrorState({ retry, roomy = true }: { retry: () => void; roomy?: boolean }) {
   return (
     <div className={roomy ? 'px-4 py-12 text-center' : 'px-4 py-8 text-center'}>
-      <div className="text-[13px] text-fg-secondary">加载失败。请检查网络后重试。</div>
-      <button type="button" onClick={retry} className="mt-3 rounded-md border border-border-strong bg-transparent px-4 py-[7px] text-[13px] text-white hover:bg-s2">重试</button>
+      <div className="text-[13px] text-fg-secondary">{S.admin.loadFailed}</div>
+      <button type="button" onClick={retry} className="mt-3 rounded-md border border-border-strong bg-transparent px-4 py-[7px] text-[13px] text-white hover:bg-s2">{S.common.retry}</button>
     </div>
   )
 }
@@ -155,7 +156,7 @@ function EmptyState({ text, clear }: { text: string; clear?: () => void }) {
   return (
     <div className="px-4 py-12 text-center">
       <div className="text-[13px] text-fg-tertiary">{text}</div>
-      {clear && <button type="button" onClick={clear} className="mt-3 rounded-md border border-border bg-transparent px-3.5 py-1.5 text-[12.5px] text-fg-secondary hover:bg-s2 hover:text-white">清除筛选</button>}
+      {clear && <button type="button" onClick={clear} className="mt-3 rounded-md border border-border bg-transparent px-3.5 py-1.5 text-[12.5px] text-fg-secondary hover:bg-s2 hover:text-white">{S.admin.clearFilters}</button>}
     </div>
   )
 }
@@ -216,10 +217,10 @@ function OverviewPage({ state, openUser, openPlan, navigate }: {
   if (state.error) return <div className="max-w-[1400px] rounded-lg border border-border bg-s1"><ErrorState retry={state.retry}/></div>
   const stats = state.data?.stats
   const statCards = [
-    ['COACHES // 教练总数', stats?.coaches, '内测期全量教练'],
-    ['STUDENTS // 学员总数', stats ? stats.coachedStudents + stats.selfTrainStudents : undefined, stats ? `有教练 ${stats.coachedStudents} · 自主训练 ${stats.selfTrainStudents}` : ' '],
-    ['BINDINGS // 生效绑定', stats?.activeBonds, '当前已接受并生效'],
-    ['PLANS // 已发布计划', stats?.publishedPlans, '当前已发布计划'],
+    [S.admin.overview.coaches, stats?.coaches, S.admin.overview.coachesHint],
+    [S.admin.overview.students, stats ? stats.coachedStudents + stats.selfTrainStudents : undefined, stats ? S.admin.overview.studentsHint(stats.coachedStudents, stats.selfTrainStudents) : ' '],
+    [S.admin.overview.bindings, stats?.activeBonds, S.admin.overview.bindingsHint],
+    [S.admin.overview.plans, stats?.publishedPlans, S.admin.overview.plansHint],
   ] as const
   return (
     <div className="flex max-w-[1400px] flex-col gap-6" data-testid="admin-overview">
@@ -228,18 +229,18 @@ function OverviewPage({ state, openUser, openPlan, navigate }: {
       </div>
       <div className="grid grid-cols-2 items-start gap-3 max-[900px]:grid-cols-1">
         <Card>
-          <CardHeader title="最近注册的用户" aside={<button type="button" onClick={() => navigate('users')} className="text-xs text-fg-tertiary hover:text-white">查看全部</button>}/>
+          <CardHeader title={S.admin.overview.recentUsers} aside={<button type="button" onClick={() => navigate('users')} className="text-xs text-fg-tertiary hover:text-white">{S.admin.viewAll}</button>}/>
           {state.loading ? <SkeletonRows count={3}/> : state.data?.recentUsers.length ? state.data.recentUsers.slice(0, 10).map((user) => {
             const name = displayName(user.displayName)
             return <button type="button" key={user.id} onClick={() => openUser(user.id, name)} className="grid h-12 w-full grid-cols-[1fr_auto_auto_16px] items-center gap-3 border-b border-[#1A1A1A] px-4 text-left hover:bg-s2"><span className="truncate font-medium">{name}</span><Badge spec={roleBadge(user.role)}/><span className="font-mono text-xs text-fg-tertiary tabular-nums">{dateOnly(user.createdAt)}</span><span className="text-fg-tertiary"><Icon name="chevron" size={14}/></span></button>
-          }) : <EmptyState text="还没有注册用户。"/>}
+          }) : <EmptyState text={S.admin.overview.noUsers}/>}
         </Card>
         <Card>
-          <CardHeader title="最近发布的计划" aside={<button type="button" onClick={() => navigate('plans')} className="text-xs text-fg-tertiary hover:text-white">查看全部</button>}/>
+          <CardHeader title={S.admin.overview.recentPlans} aside={<button type="button" onClick={() => navigate('plans')} className="text-xs text-fg-tertiary hover:text-white">{S.admin.viewAll}</button>}/>
           {state.loading ? <SkeletonRows count={3}/> : state.data?.recentPlans.length ? state.data.recentPlans.slice(0, 10).map((plan) => {
             const context: PlanContext = { id: plan.id, name: plan.name, coachName: plan.coachName, studentName: plan.studentName, status: 'published', weeks: 0, startDate: null, endDate: null }
-            return <button type="button" key={plan.id} onClick={() => openPlan(plan.id, context)} className="grid h-12 w-full grid-cols-[auto_1fr_auto_16px] items-center gap-3 border-b border-[#1A1A1A] px-4 text-left hover:bg-s2"><span className="whitespace-nowrap text-[12.5px] text-fg-secondary">{plan.coachId ? displayName(plan.coachName) : '模板'} → {displayName(plan.studentName)}</span><span className="truncate font-medium">{plan.name}</span><span className="font-mono text-xs text-fg-tertiary tabular-nums">{dateOnly(plan.publishedAt)}</span><span className="text-fg-tertiary"><Icon name="chevron" size={14}/></span></button>
-          }) : <EmptyState text="还没有发布过计划。"/>}
+            return <button type="button" key={plan.id} onClick={() => openPlan(plan.id, context)} className="grid h-12 w-full grid-cols-[auto_1fr_auto_16px] items-center gap-3 border-b border-[#1A1A1A] px-4 text-left hover:bg-s2"><span className="whitespace-nowrap text-[12.5px] text-fg-secondary">{plan.coachId ? displayName(plan.coachName) : S.admin.template} → {displayName(plan.studentName)}</span><span className="truncate font-medium">{plan.name}</span><span className="font-mono text-xs text-fg-tertiary tabular-nums">{dateOnly(plan.publishedAt)}</span><span className="text-fg-tertiary"><Icon name="chevron" size={14}/></span></button>
+          }) : <EmptyState text={S.admin.overview.noPlans}/>}
         </Card>
       </div>
     </div>
@@ -250,9 +251,9 @@ type RoleFilter = 'all' | AdminManagedRole
 
 function userRelation(user: AdminUser): string {
   if (user.role === 'admin') return '—'
-  if (user.role === 'coach') return user.relation && 'studentCount' in user.relation ? `学员 ${user.relation.studentCount} 人` : '学员 0 人'
-  if (user.role === 'self_train_student') return '自主训练'
-  return user.relation && 'coachId' in user.relation ? `教练：${displayName(user.relation.coachName)}` : '未绑定'
+  if (user.role === 'coach') return S.admin.users.coachStudents(user.relation && 'studentCount' in user.relation ? user.relation.studentCount : 0)
+  if (user.role === 'self_train_student') return S.admin.role.selfTrain
+  return user.relation && 'coachId' in user.relation ? S.admin.users.coachRelation(displayName(user.relation.coachName)) : S.admin.users.unbound
 }
 
 function UsersPage({ state, openUser }: { state: ResourceState<Awaited<ReturnType<typeof getAdminUsers>>>; openUser: (id: string, label: string) => void }) {
@@ -270,13 +271,13 @@ function UsersPage({ state, openUser }: { state: ResourceState<Awaited<ReturnTyp
   const filtered = filter !== 'all' || search.trim() !== ''
   return (
     <div className="flex max-w-[1400px] flex-col gap-4" data-testid="admin-users">
-      <div className="flex flex-wrap items-center gap-3"><FilterChips options={[["all", '全部'], ['coach', '教练'], ['coached_student', '有教练学员'], ['self_train_student', '自主训练']]} value={filter} onChange={setFilter}/><SearchBox value={search} onChange={setSearch} placeholder="搜索姓名或手机号"/><span className="text-xs text-fg-tertiary tabular-nums">{state.data ? `共 ${users.length} 个用户` : ''}</span></div>
+      <div className="flex flex-wrap items-center gap-3"><FilterChips options={[["all", S.common.all], ['coach', S.admin.role.coach], ['coached_student', S.admin.role.coachedStudent], ['self_train_student', S.admin.role.selfTrain]]} value={filter} onChange={setFilter}/><SearchBox value={search} onChange={setSearch} placeholder={S.admin.users.search}/><span className="text-xs text-fg-tertiary tabular-nums">{state.data ? S.admin.users.count(users.length) : ''}</span></div>
       <Card className="overflow-x-auto">
         <div className="min-w-[850px]">
-          <div className="grid h-10 grid-cols-[minmax(120px,1.1fr)_130px_160px_140px_minmax(150px,1.3fr)_24px] items-center gap-3 border-b border-border px-4 font-mono text-[10.5px] uppercase tracking-[0.08em] text-fg-tertiary"><span>姓名</span><span>角色</span><span>手机号</span><button type="button" onClick={() => setDescending((value) => !value)} className="flex items-center gap-1 text-left hover:text-white">注册时间 <span className="text-[9px]">{descending ? '▼' : '▲'}</span></button><span>关键关系</span><span/></div>
-          {state.loading ? <SkeletonRows/> : state.error ? <ErrorState retry={state.retry}/> : users.length === 0 ? <EmptyState text={filtered ? '没有匹配的用户。' : '还没有注册用户。'} clear={filtered ? () => { setFilter('all'); setSearch('') } : undefined}/> : <>
+          <div className="grid h-10 grid-cols-[minmax(120px,1.1fr)_130px_160px_140px_minmax(150px,1.3fr)_24px] items-center gap-3 border-b border-border px-4 font-mono text-[10.5px] uppercase tracking-[0.08em] text-fg-tertiary"><span>{S.admin.users.name}</span><span>{S.admin.users.role}</span><span>{S.admin.users.phone}</span><button type="button" onClick={() => setDescending((value) => !value)} className="flex items-center gap-1 text-left hover:text-white">{S.admin.users.registeredAt} <span className="text-[9px]">{descending ? '▼' : '▲'}</span></button><span>{S.admin.users.keyRelation}</span><span/></div>
+          {state.loading ? <SkeletonRows/> : state.error ? <ErrorState retry={state.retry}/> : users.length === 0 ? <EmptyState text={filtered ? S.admin.users.noMatch : S.admin.overview.noUsers} clear={filtered ? () => { setFilter('all'); setSearch('') } : undefined}/> : <>
             {users.map((user) => { const name = displayName(user.displayName, user.phone); return <button type="button" key={user.id} onClick={() => openUser(user.id, name)} className="grid h-12 w-full grid-cols-[minmax(120px,1.1fr)_130px_160px_140px_minmax(150px,1.3fr)_24px] items-center gap-3 border-b border-[#1A1A1A] px-4 text-left hover:bg-s2"><span className="truncate font-medium">{name}</span><span><Badge spec={roleBadge(user.role)}/></span><span className="font-mono text-[12.5px] text-fg-secondary tabular-nums">{user.phone}</span><span className="font-mono text-[12.5px] text-fg-tertiary tabular-nums">{dateOnly(user.createdAt)}</span><span className="truncate text-[12.5px] text-fg-secondary">{userRelation(user)}</span><span className="text-fg-tertiary"><Icon name="chevron" size={14}/></span></button> })}
-            <div className="px-4 py-2.5 text-[11.5px] text-fg-tertiary tabular-nums">共 {users.length} 条 · 内测期全量展示 · 预留「每页 50 条」分页降级</div>
+            <div className="px-4 py-2.5 text-[11.5px] text-fg-tertiary tabular-nums">{S.admin.users.rowsHint(users.length)}</div>
           </>}
         </div>
       </Card>
@@ -290,8 +291,8 @@ function DangerCard({ detail, onToast }: { detail: AdminUserDetailResponse; onTo
   const target = displayName(detail.user.displayName, detail.user.phone)
   const unlocked = modal !== 'deactivate' || typed.trim() === target
   return <>
-    <div className="rounded-lg border border-[rgba(229,34,30,0.35)] bg-s1 p-4"><div className="mb-1.5 font-mono text-[10.5px] uppercase tracking-[0.08em] text-brand">DANGER // 管理操作</div><div className="mb-3.5 text-xs text-fg-tertiary">危险操作需要二次确认。操作清单后续扩充。</div><div className="flex items-center justify-between"><div><div className="text-[13px] font-medium">停用账号</div><div className="mt-0.5 text-[11.5px] text-fg-tertiary">用户将无法登录，数据保留</div></div><button type="button" onClick={() => { setTyped(''); setModal('deactivate') }} className="rounded-md border border-[rgba(229,34,30,0.45)] px-3.5 py-1.5 text-[12.5px] font-medium text-brand hover:bg-brand-soft">停用</button></div><div className="my-2 h-px bg-[#1A1A1A]"/><div className="flex items-center justify-between"><div><div className="text-[13px] font-medium">解绑关系</div><div className="mt-0.5 text-[11.5px] text-fg-tertiary">解除现有绑定，双方都会收到通知</div></div><button type="button" onClick={() => setModal('unbind')} className="rounded-md border border-[rgba(229,34,30,0.45)] px-3.5 py-1.5 text-[12.5px] font-medium text-brand hover:bg-brand-soft">解绑</button></div></div>
-    {modal && <div role="presentation" onMouseDown={() => setModal(null)} className="fixed inset-0 z-50 flex items-center justify-center bg-[rgba(0,0,0,0.72)]"><div role="dialog" aria-modal="true" onMouseDown={(event) => event.stopPropagation()} className="w-[420px] max-w-[calc(100vw-48px)] rounded-xl border border-border-strong bg-s2 p-6"><div className="font-mono text-[10.5px] uppercase tracking-[0.1em] text-brand">DANGER // 二次确认</div><div className="mt-2.5 text-lg font-bold">{modal === 'deactivate' ? `停用 ${target} 的账号` : `解除 ${target} 的绑定关系`}</div><div className="mt-2 text-[13px] leading-6 text-fg-secondary">{modal === 'deactivate' ? '停用后该用户将无法登录 MeetPR。历史训练数据与计划保留，可随时恢复。' : '解绑立即生效，双方都会收到通知。'}</div><div className="mt-3 rounded-md border border-[rgba(229,34,30,0.3)] bg-brand-soft px-3 py-2.5 text-[12.5px] leading-5">进行中的计划将暂停或失去教练访问能力，请确认影响范围。</div>{modal === 'deactivate' && <label className="mt-3.5 block text-xs text-fg-tertiary">输入 <span className="font-mono text-white">{target}</span> 以确认：<input value={typed} onChange={(event) => setTyped(event.target.value)} placeholder={target} className="mt-1.5 h-[38px] w-full box-border rounded-md border border-border bg-s1 px-3 text-[13px] text-white outline-none focus:border-white"/></label>}<div className="mt-5 flex justify-end gap-2"><button type="button" onClick={() => setModal(null)} className="rounded-md border border-border-strong px-4 py-2 text-[13px] hover:bg-s3">取消</button><button type="button" disabled={!unlocked} onClick={() => { setModal(null); onToast(modal === 'deactivate' ? `已停用 ${target} 的账号` : `已解除 ${target} 的绑定`) }} className="rounded-md bg-brand px-4 py-2 text-[13px] font-semibold text-white disabled:opacity-[0.35]">{modal === 'deactivate' ? '停用账号' : '确认解绑'}</button></div></div></div>}
+    <div className="rounded-lg border border-[rgba(229,34,30,0.35)] bg-s1 p-4"><div className="mb-1.5 font-mono text-[10.5px] uppercase tracking-[0.08em] text-brand">{S.admin.danger.title}</div><div className="mb-3.5 text-xs text-fg-tertiary">{S.admin.danger.hint}</div><div className="flex items-center justify-between"><div><div className="text-[13px] font-medium">{S.admin.danger.deactivateAccount}</div><div className="mt-0.5 text-[11.5px] text-fg-tertiary">{S.admin.danger.deactivateHint}</div></div><button type="button" onClick={() => { setTyped(''); setModal('deactivate') }} className="rounded-md border border-[rgba(229,34,30,0.45)] px-3.5 py-1.5 text-[12.5px] font-medium text-brand hover:bg-brand-soft">{S.admin.danger.deactivate}</button></div><div className="my-2 h-px bg-[#1A1A1A]"/><div className="flex items-center justify-between"><div><div className="text-[13px] font-medium">{S.admin.danger.unbindRelation}</div><div className="mt-0.5 text-[11.5px] text-fg-tertiary">{S.admin.danger.unbindHint}</div></div><button type="button" onClick={() => setModal('unbind')} className="rounded-md border border-[rgba(229,34,30,0.45)] px-3.5 py-1.5 text-[12.5px] font-medium text-brand hover:bg-brand-soft">{S.admin.danger.unbind}</button></div></div>
+    {modal && <div role="presentation" onMouseDown={() => setModal(null)} className="fixed inset-0 z-50 flex items-center justify-center bg-[rgba(0,0,0,0.72)]"><div role="dialog" aria-modal="true" onMouseDown={(event) => event.stopPropagation()} className="w-[420px] max-w-[calc(100vw-48px)] rounded-xl border border-border-strong bg-s2 p-6"><div className="font-mono text-[10.5px] uppercase tracking-[0.1em] text-brand">{S.admin.danger.confirmTitle}</div><div className="mt-2.5 text-lg font-bold">{modal === 'deactivate' ? S.admin.danger.deactivateTitle(target) : S.admin.danger.unbindTitle(target)}</div><div className="mt-2 text-[13px] leading-6 text-fg-secondary">{modal === 'deactivate' ? S.admin.danger.deactivateBody : S.admin.danger.unbindBody}</div><div className="mt-3 rounded-md border border-[rgba(229,34,30,0.3)] bg-brand-soft px-3 py-2.5 text-[12.5px] leading-5">{S.admin.danger.impact}</div>{modal === 'deactivate' && <label className="mt-3.5 block text-xs text-fg-tertiary">{S.admin.danger.typeToConfirm} <span className="font-mono text-white">{target}</span> {S.admin.danger.confirmSuffix}<input value={typed} onChange={(event) => setTyped(event.target.value)} placeholder={target} className="mt-1.5 h-[38px] w-full box-border rounded-md border border-border bg-s1 px-3 text-[13px] text-white outline-none focus:border-white"/></label>}<div className="mt-5 flex justify-end gap-2"><button type="button" onClick={() => setModal(null)} className="rounded-md border border-border-strong px-4 py-2 text-[13px] hover:bg-s3">{S.common.cancel}</button><button type="button" disabled={!unlocked} onClick={() => { setModal(null); onToast(modal === 'deactivate' ? S.admin.danger.deactivated(target) : S.admin.danger.unbound(target)) }} className="rounded-md bg-brand px-4 py-2 text-[13px] font-semibold text-white disabled:opacity-[0.35]">{modal === 'deactivate' ? S.admin.danger.deactivateAccount : S.admin.danger.confirmUnbind}</button></div></div></div>}
   </>
 }
 
@@ -306,13 +307,13 @@ function UserDetailPage({ state, openUser, openPlan, onToast }: {
   const detail = state.data
   const user = detail.user
   const name = displayName(user.displayName, user.phone)
-  const relationTitle = user.role === 'coach' ? '名下学员' : user.role === 'admin' ? '绑定关系' : '绑定教练'
-  const relationEmpty = user.role === 'admin' ? '管理员账号，无绑定关系。' : user.role === 'self_train_student' ? '自主训练学员，无教练绑定。' : user.role === 'coach' ? '暂无绑定学员。' : '尚未绑定教练。'
+  const relationTitle = user.role === 'coach' ? S.admin.users.assignedStudents : user.role === 'admin' ? S.admin.users.bindingRelation : S.admin.users.assignedCoach
+  const relationEmpty = user.role === 'admin' ? S.admin.users.adminNoRelation : user.role === 'self_train_student' ? S.admin.users.selfNoCoach : user.role === 'coach' ? S.admin.users.noStudents : S.admin.users.noCoach
   return <div className="flex max-w-[1100px] flex-col gap-4" data-testid="admin-user-detail">
-    <div className="flex items-center gap-3.5"><div className="flex h-12 w-12 items-center justify-center rounded-pill bg-s3 text-lg font-bold">{name.slice(0, 1)}</div><div><div className="flex items-center gap-2.5"><span className="text-[22px] font-bold">{name}</span><Badge spec={roleBadge(user.role)}/></div><div className="mt-1 font-mono text-xs text-fg-tertiary tabular-nums">{user.phone} · 注册于 {dateOnly(user.createdAt)}</div></div></div>
-    <div className="grid grid-cols-[340px_1fr] items-start gap-3 max-[800px]:grid-cols-1"><div className="flex flex-col gap-3"><Card className="p-4"><div className="mb-3 font-mono text-[10.5px] uppercase tracking-[0.08em] text-fg-tertiary">基本信息</div>{[['姓名', name], ['角色', roleBadge(user.role).label], ['手机号', user.phone], ['注册时间', dateOnly(user.createdAt)]].map(([key, value]) => <div key={key} className="flex items-center justify-between border-b border-[#1A1A1A] py-2"><span className="text-[12.5px] text-fg-tertiary">{key}</span><span className="font-mono text-[13px] tabular-nums">{value}</span></div>)}</Card>{ADMIN_WRITE_ENABLED && <DangerCard detail={detail} onToast={onToast}/>}</div>
-      <div className="flex flex-col gap-3"><Card><CardHeader title={relationTitle} aside={<span className="text-xs text-fg-tertiary tabular-nums">{detail.relations.length ? `${detail.relations.length} ${user.role === 'coach' ? '人' : '位'}` : ''}</span>}/>{detail.relations.length === 0 ? <EmptyState text={relationEmpty}/> : detail.relations.map((relation) => { const relationName = displayName(relation.displayName); return <button type="button" key={relation.userId} onClick={() => openUser(relation.userId, relationName)} className="grid h-[46px] w-full grid-cols-[1fr_auto_auto_16px] items-center gap-3 border-b border-[#1A1A1A] px-4 text-left hover:bg-s2"><span className="font-medium">{relationName}</span><Badge spec={bindBadge('accepted')}/><span className="font-mono text-xs text-fg-tertiary">绑定于 {dateOnly(relation.bondAcceptedAt)}</span><span className="text-fg-tertiary"><Icon name="chevron" size={14}/></span></button> })}</Card>
-        <Card><CardHeader title="相关计划" aside={<span className="text-xs text-fg-tertiary tabular-nums">{detail.plans.length} 份</span>}/>{detail.plans.length === 0 ? <EmptyState text="暂无相关计划。"/> : detail.plans.map((plan) => { const context: PlanContext = { id: plan.id, name: plan.name, coachName: plan.coachName, studentName: plan.studentName, status: plan.status, weeks: plan.weeks, startDate: null, endDate: null }; return <button type="button" key={plan.id} onClick={() => openPlan(plan.id, context)} className="grid h-[46px] w-full grid-cols-[1fr_auto_auto_auto_16px] items-center gap-3 border-b border-[#1A1A1A] px-4 text-left hover:bg-s2"><span className="truncate font-medium">{plan.name}</span><Badge spec={planBadge(plan.status)}/><span className="whitespace-nowrap text-xs text-fg-secondary">{plan.weeks} 周</span><span className="font-mono text-xs text-fg-tertiary">{dateOnly(plan.createdAt)}</span><span className="text-fg-tertiary"><Icon name="chevron" size={14}/></span></button> })}</Card></div>
+    <div className="flex items-center gap-3.5"><div className="flex h-12 w-12 items-center justify-center rounded-pill bg-s3 text-lg font-bold">{name.slice(0, 1)}</div><div><div className="flex items-center gap-2.5"><span className="text-[22px] font-bold">{name}</span><Badge spec={roleBadge(user.role)}/></div><div className="mt-1 font-mono text-xs text-fg-tertiary tabular-nums">{user.phone} · {S.admin.users.registeredOn(dateOnly(user.createdAt))}</div></div></div>
+    <div className="grid grid-cols-[340px_1fr] items-start gap-3 max-[800px]:grid-cols-1"><div className="flex flex-col gap-3"><Card className="p-4"><div className="mb-3 font-mono text-[10.5px] uppercase tracking-[0.08em] text-fg-tertiary">{S.admin.users.basicInfo}</div>{[[S.admin.users.name, name], [S.admin.users.role, roleBadge(user.role).label], [S.admin.users.phone, user.phone], [S.admin.users.registeredAt, dateOnly(user.createdAt)]].map(([key, value]) => <div key={key} className="flex items-center justify-between border-b border-[#1A1A1A] py-2"><span className="text-[12.5px] text-fg-tertiary">{key}</span><span className="font-mono text-[13px] tabular-nums">{value}</span></div>)}</Card>{ADMIN_WRITE_ENABLED && <DangerCard detail={detail} onToast={onToast}/>}</div>
+      <div className="flex flex-col gap-3"><Card><CardHeader title={relationTitle} aside={<span className="text-xs text-fg-tertiary tabular-nums">{detail.relations.length ? (user.role === 'coach' ? S.admin.users.people(detail.relations.length) : S.admin.users.persons(detail.relations.length)) : ''}</span>}/>{detail.relations.length === 0 ? <EmptyState text={relationEmpty}/> : detail.relations.map((relation) => { const relationName = displayName(relation.displayName); return <button type="button" key={relation.userId} onClick={() => openUser(relation.userId, relationName)} className="grid h-[46px] w-full grid-cols-[1fr_auto_auto_16px] items-center gap-3 border-b border-[#1A1A1A] px-4 text-left hover:bg-s2"><span className="font-medium">{relationName}</span><Badge spec={bindBadge('accepted')}/><span className="font-mono text-xs text-fg-tertiary">{S.admin.users.boundOn(dateOnly(relation.bondAcceptedAt))}</span><span className="text-fg-tertiary"><Icon name="chevron" size={14}/></span></button> })}</Card>
+        <Card><CardHeader title={S.admin.users.relatedPlans} aside={<span className="text-xs text-fg-tertiary tabular-nums">{S.admin.users.planCount(detail.plans.length)}</span>}/>{detail.plans.length === 0 ? <EmptyState text={S.admin.users.noRelatedPlans}/> : detail.plans.map((plan) => { const context: PlanContext = { id: plan.id, name: plan.name, coachName: plan.coachName, studentName: plan.studentName, status: plan.status, weeks: plan.weeks, startDate: null, endDate: null }; return <button type="button" key={plan.id} onClick={() => openPlan(plan.id, context)} className="grid h-[46px] w-full grid-cols-[1fr_auto_auto_auto_16px] items-center gap-3 border-b border-[#1A1A1A] px-4 text-left hover:bg-s2"><span className="truncate font-medium">{plan.name}</span><Badge spec={planBadge(plan.status)}/><span className="whitespace-nowrap text-xs text-fg-secondary">{S.common.countWeeks(plan.weeks)}</span><span className="font-mono text-xs text-fg-tertiary">{dateOnly(plan.createdAt)}</span><span className="text-fg-tertiary"><Icon name="chevron" size={14}/></span></button> })}</Card></div>
     </div>
   </div>
 }
@@ -324,7 +325,7 @@ function BindingsPage({ state, openUser }: { state: ResourceState<Awaited<Return
   const [search, setSearch] = useState('')
   const rows = useMemo(() => { const query = search.trim().toLocaleLowerCase(); return [...(state.data?.bindings ?? [])].filter((binding) => (filter === 'all' || binding.status === filter) && (!query || displayName(binding.coachName).toLocaleLowerCase().includes(query) || displayName(binding.studentName).toLocaleLowerCase().includes(query))).sort((a, b) => b.submittedAt.localeCompare(a.submittedAt)) }, [filter, search, state.data])
   const filtered = filter !== 'all' || search.trim() !== ''
-  return <div className="flex max-w-[1200px] flex-col gap-4" data-testid="admin-bindings"><div className="flex flex-wrap items-center gap-3"><FilterChips options={[["all", '全部'], ['accepted', '已接受'], ['pending', '待处理'], ['rejected', '已拒绝'], ['expired', '已过期'], ['cancelled', '已取消']]} value={filter} onChange={setFilter}/><SearchBox value={search} onChange={setSearch} placeholder="搜索教练或学员姓名"/><span className="text-xs text-fg-tertiary tabular-nums">{state.data ? `共 ${rows.length} 条关系` : ''}</span></div><Card className="overflow-x-auto"><div className="min-w-[820px]"><div className="grid h-10 grid-cols-[minmax(120px,1fr)_20px_minmax(120px,1fr)_120px_140px_140px] items-center gap-3 border-b border-border px-4 font-mono text-[10.5px] uppercase tracking-[0.08em] text-fg-tertiary"><span>教练</span><span/><span>学员</span><span>状态</span><span>发起时间</span><span>响应时间</span></div>{state.loading ? <SkeletonRows/> : state.error ? <ErrorState retry={state.retry}/> : rows.length === 0 ? <EmptyState text={filtered ? '没有匹配的绑定关系。' : '暂无绑定关系。'} clear={filtered ? () => { setFilter('all'); setSearch('') } : undefined}/> : <>{rows.map((binding: AdminBinding) => <div key={binding.id} className="grid h-12 grid-cols-[minmax(120px,1fr)_20px_minmax(120px,1fr)_120px_140px_140px] items-center gap-3 border-b border-[#1A1A1A] px-4" style={{ opacity: binding.status === 'accepted' || binding.status === 'pending' ? 1 : 0.55 }}><button type="button" onClick={() => openUser(binding.coachId, displayName(binding.coachName))} className="truncate text-left font-medium hover:text-brand">{displayName(binding.coachName)}</button><span className="text-fg-tertiary"><Icon name="arrow" size={14}/></span><button type="button" onClick={() => openUser(binding.studentId, displayName(binding.studentName))} className="truncate text-left font-medium hover:text-brand">{displayName(binding.studentName)}</button><span><Badge spec={bindBadge(binding.status)}/></span><span className="font-mono text-[12.5px] text-fg-tertiary tabular-nums">{dateOnly(binding.submittedAt)}</span><span className="font-mono text-[12.5px] text-fg-tertiary tabular-nums">{dateOnly(binding.respondedAt)}</span></div>)}<div className="px-4 py-2.5 text-[11.5px] text-fg-tertiary">共 {rows.length} 条 · 内测期全量展示 · 预留「每页 50 条」分页降级</div></>}</div></Card></div>
+  return <div className="flex max-w-[1200px] flex-col gap-4" data-testid="admin-bindings"><div className="flex flex-wrap items-center gap-3"><FilterChips options={[["all", S.common.all], ['accepted', S.admin.binding.accepted], ['pending', S.admin.binding.pending], ['rejected', S.admin.binding.rejected], ['expired', S.admin.binding.expired], ['cancelled', S.admin.binding.cancelled]]} value={filter} onChange={setFilter}/><SearchBox value={search} onChange={setSearch} placeholder={S.admin.bindings.search}/><span className="text-xs text-fg-tertiary tabular-nums">{state.data ? S.admin.bindings.count(rows.length) : ''}</span></div><Card className="overflow-x-auto"><div className="min-w-[820px]"><div className="grid h-10 grid-cols-[minmax(120px,1fr)_20px_minmax(120px,1fr)_120px_140px_140px] items-center gap-3 border-b border-border px-4 font-mono text-[10.5px] uppercase tracking-[0.08em] text-fg-tertiary"><span>{S.admin.bindings.coach}</span><span/><span>{S.admin.bindings.student}</span><span>{S.admin.bindings.status}</span><span>{S.admin.bindings.submittedAt}</span><span>{S.admin.bindings.respondedAt}</span></div>{state.loading ? <SkeletonRows/> : state.error ? <ErrorState retry={state.retry}/> : rows.length === 0 ? <EmptyState text={filtered ? S.admin.bindings.noMatch : S.admin.bindings.empty} clear={filtered ? () => { setFilter('all'); setSearch('') } : undefined}/> : <>{rows.map((binding: AdminBinding) => <div key={binding.id} className="grid h-12 grid-cols-[minmax(120px,1fr)_20px_minmax(120px,1fr)_120px_140px_140px] items-center gap-3 border-b border-[#1A1A1A] px-4" style={{ opacity: binding.status === 'accepted' || binding.status === 'pending' ? 1 : 0.55 }}><button type="button" onClick={() => openUser(binding.coachId, displayName(binding.coachName))} className="truncate text-left font-medium hover:text-brand">{displayName(binding.coachName)}</button><span className="text-fg-tertiary"><Icon name="arrow" size={14}/></span><button type="button" onClick={() => openUser(binding.studentId, displayName(binding.studentName))} className="truncate text-left font-medium hover:text-brand">{displayName(binding.studentName)}</button><span><Badge spec={bindBadge(binding.status)}/></span><span className="font-mono text-[12.5px] text-fg-tertiary tabular-nums">{dateOnly(binding.submittedAt)}</span><span className="font-mono text-[12.5px] text-fg-tertiary tabular-nums">{dateOnly(binding.respondedAt)}</span></div>)}<div className="px-4 py-2.5 text-[11.5px] text-fg-tertiary">{S.admin.bindings.rowsHint(rows.length)}</div></>}</div></Card></div>
 }
 
 type PlanFilter = 'all' | PlanStatus
@@ -336,14 +337,10 @@ function PlansPage({ state, openPlan }: { state: ResourceState<Awaited<ReturnTyp
   const coaches = useMemo(() => [...new Map(plans.filter((plan) => plan.coachId).map((plan) => [plan.coachId as string, displayName(plan.coachName)])).entries()], [plans])
   const rows = plans.filter((plan) => (filter === 'all' || plan.status === filter) && (coach === 'all' || (coach === 'template' ? !plan.coachId : plan.coachId === coach)))
   const filtered = filter !== 'all' || coach !== 'all'
-  return <div className="flex max-w-[1400px] flex-col gap-4" data-testid="admin-plans"><div className="flex flex-wrap items-center gap-3"><FilterChips options={[["all", '全部'], ['published', '已发布'], ['draft', '草稿'], ['completed', '已完成'], ['paused', '已暂停']]} value={filter} onChange={setFilter}/><select value={coach} onChange={(event) => setCoach(event.target.value)} className="h-9 cursor-pointer rounded-md border border-border bg-s1 px-3 text-[13px] text-white outline-none"><option value="all">全部教练</option>{coaches.map(([id, name]) => <option key={id} value={id}>{name}</option>)}<option value="template">模板（自主）</option></select><span className="text-xs text-fg-tertiary tabular-nums">{state.data ? `共 ${rows.length} 份计划` : ''}</span></div><Card className="overflow-x-auto"><div className="min-w-[930px]"><div className="grid h-10 grid-cols-[minmax(170px,1.4fr)_110px_110px_100px_90px_180px_24px] items-center gap-3 border-b border-border px-4 font-mono text-[10.5px] uppercase tracking-[0.08em] text-fg-tertiary"><span>计划名</span><span>教练</span><span>学员</span><span>状态</span><span>周期</span><span>起止日期</span><span/></div>{state.loading ? <SkeletonRows/> : state.error ? <ErrorState retry={state.retry}/> : rows.length === 0 ? <EmptyState text={filtered ? '没有匹配的计划。' : '暂无计划。'} clear={filtered ? () => { setFilter('all'); setCoach('all') } : undefined}/> : <>{rows.map((plan) => <button type="button" key={plan.id} onClick={() => openPlan(plan.id, planContext(plan))} className="grid h-12 w-full grid-cols-[minmax(170px,1.4fr)_110px_110px_100px_90px_180px_24px] items-center gap-3 border-b border-[#1A1A1A] px-4 text-left hover:bg-s2"><span className="truncate font-medium">{plan.name}</span><span className="truncate text-[12.5px] text-fg-secondary">{plan.coachId ? displayName(plan.coachName) : '—（模板）'}</span><span className="truncate text-[12.5px] text-fg-secondary">{displayName(plan.studentName)}</span><span><Badge spec={planBadge(plan.status)}/></span><span className="text-[12.5px] text-fg-secondary">{plan.weeks} 周</span><span className="font-mono text-xs text-fg-tertiary tabular-nums">{plan.startDate ? `${dateOnly(plan.startDate)} → ${dateOnly(plan.endDate)}` : '未排期'}</span><span className="text-fg-tertiary"><Icon name="chevron" size={14}/></span></button>)}<div className="px-4 py-2.5 text-[11.5px] text-fg-tertiary">共 {rows.length} 条 · 内测期全量展示 · 预留「每页 50 条」分页降级</div></>}</div></Card></div>
+  return <div className="flex max-w-[1400px] flex-col gap-4" data-testid="admin-plans"><div className="flex flex-wrap items-center gap-3"><FilterChips options={[["all", S.common.all], ['published', S.admin.planStatus.published], ['draft', S.admin.planStatus.draft], ['completed', S.admin.planStatus.completed], ['paused', S.admin.planStatus.paused]]} value={filter} onChange={setFilter}/><select value={coach} onChange={(event) => setCoach(event.target.value)} className="h-9 cursor-pointer rounded-md border border-border bg-s1 px-3 text-[13px] text-white outline-none"><option value="all">{S.admin.plans.allCoaches}</option>{coaches.map(([id, name]) => <option key={id} value={id}>{name}</option>)}<option value="template">{S.admin.plans.selfTemplate}</option></select><span className="text-xs text-fg-tertiary tabular-nums">{state.data ? S.admin.plans.count(rows.length) : ''}</span></div><Card className="overflow-x-auto"><div className="min-w-[930px]"><div className="grid h-10 grid-cols-[minmax(170px,1.4fr)_110px_110px_100px_90px_180px_24px] items-center gap-3 border-b border-border px-4 font-mono text-[10.5px] uppercase tracking-[0.08em] text-fg-tertiary"><span>{S.admin.plans.name}</span><span>{S.admin.plans.coach}</span><span>{S.admin.plans.student}</span><span>{S.admin.plans.status}</span><span>{S.admin.plans.cycle}</span><span>{S.admin.plans.dates}</span><span/></div>{state.loading ? <SkeletonRows/> : state.error ? <ErrorState retry={state.retry}/> : rows.length === 0 ? <EmptyState text={filtered ? S.admin.plans.noMatch : S.admin.plans.empty} clear={filtered ? () => { setFilter('all'); setCoach('all') } : undefined}/> : <>{rows.map((plan) => <button type="button" key={plan.id} onClick={() => openPlan(plan.id, planContext(plan))} className="grid h-12 w-full grid-cols-[minmax(170px,1.4fr)_110px_110px_100px_90px_180px_24px] items-center gap-3 border-b border-[#1A1A1A] px-4 text-left hover:bg-s2"><span className="truncate font-medium">{plan.name}</span><span className="truncate text-[12.5px] text-fg-secondary">{plan.coachId ? displayName(plan.coachName) : S.admin.plans.templateDash}</span><span className="truncate text-[12.5px] text-fg-secondary">{displayName(plan.studentName)}</span><span><Badge spec={planBadge(plan.status)}/></span><span className="text-[12.5px] text-fg-secondary">{S.common.countWeeks(plan.weeks)}</span><span className="font-mono text-xs text-fg-tertiary tabular-nums">{plan.startDate ? `${dateOnly(plan.startDate)} → ${dateOnly(plan.endDate)}` : S.admin.unscheduled}</span><span className="text-fg-tertiary"><Icon name="chevron" size={14}/></span></button>)}<div className="px-4 py-2.5 text-[11.5px] text-fg-tertiary">{S.admin.plans.rowsHint(rows.length)}</div></>}</div></Card></div>
 }
 
-const exerciseTypeLabels: Record<string, string> = {
-  main_lift: '主项',
-  main_lift_variation: '主项变式',
-  accessory: '辅助动作',
-}
+const exerciseTypeLabel = (type: string): string => S.common.exerciseType[type as keyof typeof S.common.exerciseType] ?? type
 
 function ExerciseUsagePage({ state }: { state: ResourceState<Awaited<ReturnType<typeof getAdminExerciseUsage>>> }) {
   const [search, setSearch] = useState('')
@@ -353,31 +350,32 @@ function ExerciseUsagePage({ state }: { state: ResourceState<Awaited<ReturnType<
       .map((exercise, sourceIndex) => ({ exercise, sourceIndex }))
       .filter(({ exercise }) => !query
         || exercise.name.toLowerCase().includes(query)
-        || (exerciseTypeLabels[exercise.exercise_type] ?? exercise.exercise_type).toLowerCase().includes(query))
+        || (exercise.name_en?.toLowerCase().includes(query) ?? false)
+        || exerciseTypeLabel(exercise.exercise_type).toLowerCase().includes(query))
       .sort((a, b) => b.exercise.plan_count - a.exercise.plan_count || a.sourceIndex - b.sourceIndex)
       .map(({ exercise }) => exercise)
   }, [search, state.data])
   return (
     <div className="flex max-w-[1200px] flex-col gap-4" data-testid="admin-exercises">
       <div className="flex flex-wrap items-center gap-3">
-        <SearchBox value={search} onChange={setSearch} placeholder="搜索动作名或类型"/>
-        <span className="text-xs text-fg-tertiary tabular-nums">{state.data ? `共 ${rows.length} 个动作` : ''}</span>
+        <SearchBox value={search} onChange={setSearch} placeholder={S.admin.exercises.search}/>
+        <span className="text-xs text-fg-tertiary tabular-nums">{state.data ? S.admin.exercises.count(rows.length) : ''}</span>
       </div>
       <Card className="overflow-x-auto">
         <div className="min-w-[720px]">
           <div className="grid h-10 grid-cols-[minmax(220px,1fr)_160px_150px_150px] items-center gap-3 border-b border-border px-4 font-mono text-[10.5px] uppercase tracking-[0.08em] text-fg-tertiary">
-            <span>动作名</span><span>类型</span><span>使用计划数</span><span>使用教练数</span>
+            <span>{S.admin.exercises.name}</span><span>{S.admin.exercises.type}</span><span>{S.admin.exercises.planUses}</span><span>{S.admin.exercises.coachUses}</span>
           </div>
           {state.loading ? <SkeletonRows/> : state.error ? <ErrorState retry={state.retry}/> : rows.length === 0
-            ? <EmptyState text={search.trim() ? '没有匹配的动作。' : '暂无动作使用数据。'} clear={search.trim() ? () => setSearch('') : undefined}/>
+            ? <EmptyState text={search.trim() ? S.admin.exercises.noMatch : S.admin.exercises.empty} clear={search.trim() ? () => setSearch('') : undefined}/>
             : <>{rows.map((exercise: AdminExerciseUsage) => (
               <div key={exercise.exercise_id} className="grid h-12 grid-cols-[minmax(220px,1fr)_160px_150px_150px] items-center gap-3 border-b border-[#1A1A1A] px-4">
-                <span className="truncate font-medium">{exercise.name}</span>
-                <span className="text-[12.5px] text-fg-secondary">{exerciseTypeLabels[exercise.exercise_type] ?? exercise.exercise_type}</span>
+                <span className="truncate font-medium">{fmt.exerciseName(exercise)}</span>
+                <span className="text-[12.5px] text-fg-secondary">{exerciseTypeLabel(exercise.exercise_type)}</span>
                 <span className="font-mono text-[12.5px] tabular-nums">{exercise.plan_count}</span>
                 <span className="font-mono text-[12.5px] text-fg-secondary tabular-nums">{exercise.coach_count}</span>
               </div>
-            ))}<div className="px-4 py-2.5 text-[11.5px] text-fg-tertiary">共 {rows.length} 条 · 按使用计划数降序</div></>}
+            ))}<div className="px-4 py-2.5 text-[11.5px] text-fg-tertiary">{S.admin.exercises.rowsHint(rows.length)}</div></>}
         </div>
       </Card>
     </div>
@@ -410,7 +408,11 @@ function buildMatrix(plan: AdminPlanWithChildren): MatrixDay[] {
     const slots = new Map<string, { name: string; sortOrder: number; main: boolean }>()
     days.forEach((day) => day.exercises.forEach((exercise) => {
       const key = `${exercise.sort_order}:${exercise.exercise_id}`
-      if (!slots.has(key)) slots.set(key, { name: exercise.exercise_name, sortOrder: exercise.sort_order, main: exercise.is_main_lift })
+      if (!slots.has(key)) slots.set(key, {
+        name: fmt.exerciseName({ name: exercise.exercise_name, name_en: exercise.name_en }),
+        sortOrder: exercise.sort_order,
+        main: exercise.is_main_lift,
+      })
     }))
     const rows = [...slots.entries()].sort((a, b) => a[1].sortOrder - b[1].sortOrder).map(([key, slot]) => {
       let previous = ''
@@ -419,9 +421,10 @@ function buildMatrix(plan: AdminPlanWithChildren): MatrixDay[] {
         const exercise = day?.exercises.find((item) => `${item.sort_order}:${item.exercise_id}` === key)
         if (!exercise) { previous = ''; return null }
         const text = exercisePrescription(exercise)
-        const tag = index === 0 ? '基线' : previous === text ? '同上周' : '教练手填'
+        const sameAsLastWeek = index > 0 && previous === text
+        const tag = index === 0 ? S.admin.detail.baseline : sameAsLastWeek ? S.admin.detail.sameAsLastWeek : S.admin.detail.coachEntered
         previous = text
-        return { text, tag, tagColor: index === 0 ? '#1FB358' : tag === '同上周' ? '#565656' : '#B5B5B5' }
+        return { text, tag, tagColor: index === 0 ? '#1FB358' : sameAsLastWeek ? '#565656' : '#B5B5B5' }
       })
       return { key, name: slot.name, main: slot.main, cells }
     })
@@ -438,17 +441,17 @@ function PlanDetailPage({ state, context }: { state: ResourceState<AdminPlanWith
   const minWidth = Math.max(420, 220 + plan.plan_weeks * 170)
   // Template plans have no coach_id; a bound coach with an unset profile name
   // must read as 未设置姓名, never as a template and never as a raw UUID.
-  const coach = plan.coach_id ? displayName(context?.coachName ?? null) : '模板'
+  const coach = plan.coach_id ? displayName(context?.coachName ?? null) : S.admin.template
   const student = displayName(context?.studentName ?? null)
-  return <div className="flex max-w-[1400px] flex-col gap-4" data-testid="admin-plan-detail"><div className="flex items-center gap-2.5 rounded-md border border-border-strong bg-s1 px-3.5 py-2.5 text-fg-secondary"><Icon name="lock" size={14}/><span className="font-mono text-[11px] tracking-[0.08em]">READ-ONLY //</span><span className="text-[12.5px]">只读视图 — 管理员不能编辑计划内容。修改需由所属教练在教练工作台完成。</span></div><div className="flex flex-wrap items-baseline gap-3"><span className="text-[22px] font-bold">{plan.name}</span><Badge spec={planBadge(plan.status)}/><span className="text-[13px] text-fg-secondary">{coach} → {student}</span><span className="font-mono text-xs text-fg-tertiary tabular-nums">{plan.start_date ? `${dateOnly(plan.start_date)} → ${dateOnly(plan.end_date)}` : '未排期'} · {plan.plan_weeks} 周</span></div><Card className="overflow-x-auto"><div style={{ minWidth }}><div className="grid border-b border-border" style={{ gridTemplateColumns: columnTemplate }}><div className="px-4 py-3 font-mono text-[10.5px] uppercase tracking-[0.08em] text-fg-tertiary">动作</div>{Array.from({ length: plan.plan_weeks }, (_, index) => <div key={index} className="border-l border-[#1A1A1A] px-4 py-3"><span className="font-mono text-[11px] font-bold tracking-[0.08em] text-brand">WEEK {index + 1}</span><span className="ml-1.5 text-[11px] text-fg-tertiary">{index === 0 ? (plan.plan_weeks === 1 ? '单周计划' : '基线 · 教练手填') : '计划值'}</span></div>)}</div>{matrix.length === 0 ? <EmptyState text="该计划还没有训练内容。"/> : matrix.map((day, dayIndex) => <div key={day.dayOfWeek}><div className="border-b border-[#1A1A1A] bg-[#0A0A0A] px-4 py-2.5 text-[12.5px] font-bold text-fg-secondary">{dowNames[day.dayOfWeek - 1]} · DAY {dayIndex + 1}</div>{day.exercises.map((exercise) => <div key={exercise.key} className="grid border-b border-[#1A1A1A]" style={{ gridTemplateColumns: columnTemplate }}><div className="flex items-center gap-2 px-4 py-2.5"><span className={`text-[13px] ${exercise.main ? 'font-semibold' : 'font-normal'}`}>{exercise.name}</span>{exercise.main && <span className="rounded-[3px] border border-border px-[5px] py-px font-mono text-[9.5px] tracking-[0.06em] text-fg-tertiary">主项</span>}</div>{exercise.cells.map((cell, index) => <div key={index} className="border-l border-[#1A1A1A] px-4 py-2.5">{cell ? <><div className="whitespace-nowrap font-mono text-[13px] tabular-nums">{cell.text}</div><div className="mt-0.5 text-[10.5px]" style={{ color: cell.tagColor }}>{cell.tag}</div></> : <div className="font-mono text-[13px] text-fg-tertiary">—</div>}</div>)}</div>)}</div>)}</div></Card></div>
+  return <div className="flex max-w-[1400px] flex-col gap-4" data-testid="admin-plan-detail"><div className="flex items-center gap-2.5 rounded-md border border-border-strong bg-s1 px-3.5 py-2.5 text-fg-secondary"><Icon name="lock" size={14}/><span className="font-mono text-[11px] tracking-[0.08em]">READ-ONLY //</span><span className="text-[12.5px]">{S.admin.detail.readOnly}</span></div><div className="flex flex-wrap items-baseline gap-3"><span className="text-[22px] font-bold">{plan.name}</span><Badge spec={planBadge(plan.status)}/><span className="text-[13px] text-fg-secondary">{coach} → {student}</span><span className="font-mono text-xs text-fg-tertiary tabular-nums">{plan.start_date ? `${dateOnly(plan.start_date)} → ${dateOnly(plan.end_date)}` : S.admin.unscheduled} · {S.common.countWeeks(plan.plan_weeks)}</span></div><Card className="overflow-x-auto"><div style={{ minWidth }}><div className="grid border-b border-border" style={{ gridTemplateColumns: columnTemplate }}><div className="px-4 py-3 font-mono text-[10.5px] uppercase tracking-[0.08em] text-fg-tertiary">{S.admin.detail.action}</div>{Array.from({ length: plan.plan_weeks }, (_, index) => <div key={index} className="border-l border-[#1A1A1A] px-4 py-3"><span className="font-mono text-[11px] font-bold tracking-[0.08em] text-brand">WEEK {index + 1}</span><span className="ml-1.5 text-[11px] text-fg-tertiary">{index === 0 ? (plan.plan_weeks === 1 ? S.admin.detail.singleWeek : S.admin.detail.baselineEntered) : S.admin.detail.plannedValue}</span></div>)}</div>{matrix.length === 0 ? <EmptyState text={S.admin.detail.empty}/> : matrix.map((day, dayIndex) => <div key={day.dayOfWeek}><div className="border-b border-[#1A1A1A] bg-[#0A0A0A] px-4 py-2.5 text-[12.5px] font-bold text-fg-secondary">{S.common.weekdaysMondayFirst[day.dayOfWeek - 1]} · DAY {dayIndex + 1}</div>{day.exercises.map((exercise) => <div key={exercise.key} className="grid border-b border-[#1A1A1A]" style={{ gridTemplateColumns: columnTemplate }}><div className="flex items-center gap-2 px-4 py-2.5"><span className={`text-[13px] ${exercise.main ? 'font-semibold' : 'font-normal'}`}>{exercise.name}</span>{exercise.main && <span className="rounded-[3px] border border-border px-[5px] py-px font-mono text-[9.5px] tracking-[0.06em] text-fg-tertiary">{S.common.mainLift}</span>}</div>{exercise.cells.map((cell, index) => <div key={index} className="border-l border-[#1A1A1A] px-4 py-2.5">{cell ? <><div className="whitespace-nowrap font-mono text-[13px] tabular-nums">{cell.text}</div><div className="mt-0.5 text-[10.5px]" style={{ color: cell.tagColor }}>{cell.tag}</div></> : <div className="font-mono text-[13px] text-fg-tertiary">—</div>}</div>)}</div>)}</div>)}</div></Card></div>
 }
 
 function AdminRail({ page, navigate, onLogout }: { page: AdminPage; navigate: (page: RootPage) => void; onLogout: () => void }) {
   const tabs: Array<{ page: RootPage; label: string; icon: IconName }> = [
-    { page: 'overview', label: '总览', icon: 'overview' }, { page: 'users', label: '用户管理', icon: 'users' }, { page: 'bindings', label: '绑定关系', icon: 'bindings' }, { page: 'plans', label: '计划总览', icon: 'plans' }, { page: 'exercises', label: '动作库', icon: 'exercises' },
+    { page: 'overview', label: S.admin.page.overview, icon: 'overview' }, { page: 'users', label: S.admin.page.users, icon: 'users' }, { page: 'bindings', label: S.admin.page.bindings, icon: 'bindings' }, { page: 'plans', label: S.admin.page.plans, icon: 'plans' }, { page: 'exercises', label: S.admin.page.exercises, icon: 'exercises' },
   ]
   const activeRoot: RootPage = page === 'userDetail' ? 'users' : page === 'planDetail' ? 'plans' : page
-  return <nav className="flex w-[92px] flex-none flex-col items-center border-r border-border bg-black pb-3 pt-4"><div className="flex h-10 w-10 items-center justify-center rounded-md border border-border-strong text-lg font-black tracking-[-0.02em]">M</div><div className="mt-2 rounded-[4px] border border-[rgba(229,34,30,0.35)] bg-brand-soft px-2 py-[3px] font-mono text-[9px] font-bold tracking-[0.12em] text-brand">ADMIN</div><div className="mt-6 flex w-full flex-col gap-0.5">{tabs.map((tab) => { const active = activeRoot === tab.page; return <button type="button" key={tab.page} onClick={() => navigate(tab.page)} className={`relative flex flex-col items-center gap-[5px] py-3 pb-2.5 text-[11px] font-medium ${active ? 'bg-s1 text-white' : 'text-fg-tertiary hover:text-white'}`}><span className={`absolute bottom-2 left-0 top-2 w-0.5 ${active ? 'bg-brand' : 'bg-transparent'}`}/><Icon name={tab.icon}/><span>{tab.label}</span></button> })}</div><div className="flex-1"/><div className="h-px w-[60px] bg-border"/><div className="mt-2.5 flex h-8 w-8 items-center justify-center rounded-pill bg-s3 text-[13px] font-bold">创</div><div className="mt-1 text-[10px] text-fg-tertiary">创始人</div><button type="button" title="退出登录" aria-label="退出登录" onClick={onLogout} className="mt-2 flex h-8 w-8 items-center justify-center rounded-md text-fg-tertiary hover:bg-s2 hover:text-white"><Icon name="logout" size={16}/></button></nav>
+  return <nav className="flex w-[92px] flex-none flex-col items-center border-r border-border bg-black pb-3 pt-4"><div className="flex h-10 w-10 items-center justify-center rounded-md border border-border-strong text-lg font-black tracking-[-0.02em]">M</div><div className="mt-2 rounded-[4px] border border-[rgba(229,34,30,0.35)] bg-brand-soft px-2 py-[3px] font-mono text-[9px] font-bold tracking-[0.12em] text-brand">ADMIN</div><div className="mt-6 flex w-full flex-col gap-0.5">{tabs.map((tab) => { const active = activeRoot === tab.page; return <button type="button" key={tab.page} onClick={() => navigate(tab.page)} className={`relative flex flex-col items-center gap-[5px] py-3 pb-2.5 text-[11px] font-medium ${active ? 'bg-s1 text-white' : 'text-fg-tertiary hover:text-white'}`}><span className={`absolute bottom-2 left-0 top-2 w-0.5 ${active ? 'bg-brand' : 'bg-transparent'}`}/><Icon name={tab.icon}/><span>{tab.label}</span></button> })}</div><div className="flex-1"/><div className="h-px w-[60px] bg-border"/><div className="mt-2.5 flex h-8 w-8 items-center justify-center rounded-pill bg-s3 text-[13px] font-bold">{S.admin.detail.founderInitial}</div><div className="mt-1 text-[10px] text-fg-tertiary">{S.admin.detail.founder}</div><button type="button" title={S.common.signOut} aria-label={S.common.signOut} onClick={onLogout} className="mt-2 flex h-8 w-8 items-center justify-center rounded-md text-fg-tertiary hover:bg-s2 hover:text-white"><Icon name="logout" size={16}/></button></nav>
 }
 
 export function AdminWorkspace({ onLogout }: Props) {
@@ -480,7 +483,7 @@ export function AdminWorkspace({ onLogout }: Props) {
   const showToast = (text: string) => { setToast(text); window.setTimeout(() => setToast(''), 2600) }
   const active = page === 'overview' ? overview : page === 'users' ? users : page === 'userDetail' ? userDetail : page === 'bindings' ? bindings : page === 'plans' ? plans : page === 'exercises' ? exercises : detail
   const detailPage = page === 'userDetail' || page === 'planDetail'
-  const leaf = page === 'userDetail' ? (userDetail.data ? displayName(userDetail.data.user.displayName, userDetail.data.user.phone) : userLabel) : page === 'planDetail' ? (detail.data?.name ?? selectedPlan?.name ?? '') : pageTitles[page]
+  const leaf = page === 'userDetail' ? (userDetail.data ? displayName(userDetail.data.user.displayName, userDetail.data.user.phone) : userLabel) : page === 'planDetail' ? (detail.data?.name ?? selectedPlan?.name ?? '') : pageTitle(page)
 
-  return <div className="flex h-screen overflow-hidden bg-bg font-sans text-sm leading-[1.4] text-white" data-testid="admin-workspace"><AdminRail page={page} navigate={navigate} onLogout={onLogout}/><div className="relative flex min-w-0 flex-1 flex-col">{active.loading && <div className="absolute left-0 right-0 top-0 z-30 h-0.5 overflow-hidden"><div className="admin-loadbar absolute top-0 h-0.5 w-[30%] bg-brand"/></div>}<header className="flex h-14 flex-none items-center gap-3 border-b border-border px-6"><span className="text-base font-black tracking-[-0.01em]">MeetPR</span><span className="font-mono text-[11px] font-medium tracking-[0.08em] text-brand">ADMIN /</span>{detailPage && <><button type="button" onClick={goBack} className="-ml-1 flex items-center gap-1.5 rounded-[6px] px-2 py-1 text-[13px] text-fg-secondary hover:bg-s2 hover:text-white"><Icon name="back" size={15}/>{pageTitles[page === 'userDetail' ? 'users' : 'plans']}</button><span className="text-[13px] text-fg-tertiary">/</span></>}<span className="text-sm font-semibold">{leaf}</span><div className="flex-1"/></header><main className="min-w-0 flex-1 overflow-y-auto p-6">{page === 'overview' && <OverviewPage state={overview} openUser={openUser} openPlan={openPlan} navigate={navigate}/>} {page === 'users' && <UsersPage state={users} openUser={openUser}/>} {page === 'userDetail' && <UserDetailPage state={userDetail} openUser={openUser} openPlan={openPlan} onToast={showToast}/>} {page === 'bindings' && <BindingsPage state={bindings} openUser={openUser}/>} {page === 'plans' && <PlansPage state={plans} openPlan={openPlan}/>} {page === 'exercises' && <ExerciseUsagePage state={exercises}/>} {page === 'planDetail' && <PlanDetailPage state={detail} context={selectedPlan}/>}</main></div>{toast && <div className="fixed bottom-6 left-1/2 z-[60] -translate-x-1/2 rounded-md border border-border-strong bg-s2 px-[18px] py-2.5 text-[13px]">{toast}</div>}</div>
+  return <div className="flex h-screen overflow-hidden bg-bg font-sans text-sm leading-[1.4] text-white" data-testid="admin-workspace"><AdminRail page={page} navigate={navigate} onLogout={onLogout}/><div className="relative flex min-w-0 flex-1 flex-col">{active.loading && <div className="absolute left-0 right-0 top-0 z-30 h-0.5 overflow-hidden"><div className="admin-loadbar absolute top-0 h-0.5 w-[30%] bg-brand"/></div>}<header className="flex h-14 flex-none items-center gap-3 border-b border-border px-6"><span className="text-base font-black tracking-[-0.01em]">MeetPR</span><span className="font-mono text-[11px] font-medium tracking-[0.08em] text-brand">ADMIN /</span>{detailPage && <><button type="button" onClick={goBack} className="-ml-1 flex items-center gap-1.5 rounded-[6px] px-2 py-1 text-[13px] text-fg-secondary hover:bg-s2 hover:text-white"><Icon name="back" size={15}/>{pageTitle(page === 'userDetail' ? 'users' : 'plans')}</button><span className="text-[13px] text-fg-tertiary">/</span></>}<span className="text-sm font-semibold">{leaf}</span><div className="flex-1"/></header><main className="min-w-0 flex-1 overflow-y-auto p-6">{page === 'overview' && <OverviewPage state={overview} openUser={openUser} openPlan={openPlan} navigate={navigate}/>} {page === 'users' && <UsersPage state={users} openUser={openUser}/>} {page === 'userDetail' && <UserDetailPage state={userDetail} openUser={openUser} openPlan={openPlan} onToast={showToast}/>} {page === 'bindings' && <BindingsPage state={bindings} openUser={openUser}/>} {page === 'plans' && <PlansPage state={plans} openPlan={openPlan}/>} {page === 'exercises' && <ExerciseUsagePage state={exercises}/>} {page === 'planDetail' && <PlanDetailPage state={detail} context={selectedPlan}/>}</main></div>{toast && <div className="fixed bottom-6 left-1/2 z-[60] -translate-x-1/2 rounded-md border border-border-strong bg-s2 px-[18px] py-2.5 text-[13px]">{toast}</div>}</div>
 }

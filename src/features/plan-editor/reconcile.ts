@@ -16,6 +16,8 @@ import {
 import { ApiException } from '../../api/client'
 import { addDays, type Catalog } from './mapping'
 import { isLegacyRpeRow, rowIntensity, rowIntensityBoxes, rowWeightBoxes } from './intensityModel'
+import { S } from '../../i18n/strings'
+import { STABLE_ZH } from '../../i18n/stable-zh'
 
 interface DesiredExercise {
   exercise_id: string
@@ -88,7 +90,7 @@ function assertSupportedServerTree(server: PlanWithChildren): void {
     const sets = [...exercise.sets].sort((a, b) => a.set_number - b.set_number)
     if (sets.length === 0) continue
     const first = sets[0]
-    const bodyweight = sets.every((set) => /自重|bodyweight/i.test(set.coach_note ?? ''))
+    const bodyweight = sets.every((set) => STABLE_ZH.patterns.bodyweight.test(set.coach_note ?? ''))
     const newIntensity = (set: typeof first) => JSON.stringify([
       set.load_mode ?? null,
       numNullable(set.target_pct), numNullable(set.target_rpe), numNullable(set.rir_target),
@@ -130,7 +132,7 @@ function canonicalPctAnchor(anchor: PlanExerciseResponse['sets'][number]['pct_an
 
 function canonCoachNote(note: string | null | undefined): string | null {
   if (note == null) return null
-  return /自重|bodyweight/i.test(note) ? 'bodyweight' : note
+  return STABLE_ZH.patterns.bodyweight.test(note) ? 'bodyweight' : note
 }
 
 function fmtNum(v: string | number): string {
@@ -139,7 +141,7 @@ function fmtNum(v: string | number): string {
 }
 
 function parseReps(reps: string): { reps: number; repsMax: number | null; amrap: boolean } {
-  const range = reps.match(/(\d{1,2})\s*(?:-|–|—|~|到|至)\s*(\d{1,2})/)
+  const range = reps.match(STABLE_ZH.patterns.repRange)
   if (range) {
     const lo = Math.min(Math.max(Number(range[1]), 1), 50)
     const hi = Math.min(Math.max(Number(range[2]), lo), 50)
@@ -163,7 +165,7 @@ function rowToDesired(row: ExerciseRow): DesiredExercise | null {
       intensity_mode: 'rpe',
       target_value: '10',
       set_type: (amrap && i === row.boxes.length - 1 ? 'amrap' : 'working') as SetType,
-      coach_note: '自重',
+      coach_note: STABLE_ZH.bodyweight,
     }))
   } else {
     const intensity = rowIntensity(row)
@@ -215,7 +217,7 @@ function rowToDesired(row: ExerciseRow): DesiredExercise | null {
 }
 
 function canonicalSet(set: CreatePlanSetBody | PlanExerciseResponse['sets'][number]): unknown[] {
-  const bodyweight = /自重|bodyweight/i.test(set.coach_note ?? '')
+  const bodyweight = STABLE_ZH.patterns.bodyweight.test(set.coach_note ?? '')
   const useNewShape = !bodyweight && (
     set.load_mode != null
     || (set.intensity_mode === 'weight' && set.target_value !== undefined)
@@ -350,7 +352,7 @@ function serverToRow(exercise: PlanExerciseResponse, local: ExerciseRow | undefi
   const catalogEntry = catalog?.get(exercise.exercise_id)
   const custom = catalogEntry?.custom ?? (local?.exerciseId === exercise.exercise_id ? local.custom : false)
   const sets = [...exercise.sets].sort((a, b) => a.set_number - b.set_number)
-  const bodyweight = sets.length > 0 && sets.every((set) => /自重|bodyweight/i.test(set.coach_note ?? ''))
+  const bodyweight = sets.length > 0 && sets.every((set) => STABLE_ZH.patterns.bodyweight.test(set.coach_note ?? ''))
   const legacyRpeSource = !bodyweight && sets.length > 0 && sets.every((set) => (
     set.load_mode == null && set.intensity_mode === 'rpe'
   ))
@@ -413,7 +415,8 @@ function serverToRow(exercise: PlanExerciseResponse, local: ExerciseRow | undefi
     hasLogs: exercise.has_logs ?? false,
     conflictMessage: local?.conflictMessage ?? null,
     exerciseId: exercise.exercise_id,
-    name: catalogEntry?.name ?? (local?.exerciseId === exercise.exercise_id ? local.name : '未知动作'),
+    name: catalogEntry?.name ?? (local?.exerciseId === exercise.exercise_id ? local.name : STABLE_ZH.unknownExercise),
+    ...(catalogEntry?.nameEn ? { nameEn: catalogEntry.nameEn } : local?.nameEn ? { nameEn: local.nameEn } : {}),
     ku: !custom,
     custom,
     isMain: exercise.is_main_lift,
@@ -522,7 +525,7 @@ function merge409(
         const existing = index >= 0 ? localDay.rows[index] : undefined
         const restored = serverToRow(freshExercise, existing, options.catalog)
         restored.hasLogs = true
-        restored.conflictMessage = '学员刚打了卡,该行已锁定并还原'
+        restored.conflictMessage = S.editor.loggedRowRestored
         if (index >= 0) localDay.rows[index] = restored
         else {
           const insertAt = localDay.rows.findIndex((row) => (row.serverSortOrder ?? Number.MAX_SAFE_INTEGER) > freshExercise.sort_order)
@@ -534,7 +537,7 @@ function merge409(
   }
 
   const topMessage = error.code === 'PLAN_HISTORY_IMMUTABLE'
-    ? '计划已有训练记录,日历不可改'
+    ? S.editor.calendarHasLogs
     : null
   return new ReconcileConflict(error.code, merged, topMessage)
 }
@@ -600,7 +603,7 @@ function validateMixedWork(work: DayWork, lockedMutationRows: string[]): void {
     if (claim) bindClaim(entry.row, claim)
     if ((entry.row.hasLogs || (claim?.has_logs ?? false))
       && (!claim || canonDesiredOne(entry.desired) !== canonServerOne(claim))) {
-      entry.row.conflictMessage = '学员已打卡,锁定行不能修改'
+      entry.row.conflictMessage = S.editor.loggedRowCannotChange
       lockedMutationRows.push(entry.row.id)
     }
   }

@@ -9,6 +9,7 @@ import {
   rowWeightBoxes,
 } from './intensityModel'
 import { trainingDayOrdinal } from './weekBandModel'
+import { S, fmt } from '../../i18n/strings'
 
 export const DAY_COLUMNS = ['A', 'B', 'C', 'D', 'E', 'F', 'G'] as const
 
@@ -150,27 +151,31 @@ function rowNumberInWeek(week: Week, dayIndex: number, rowIndex: number): number
 }
 
 function cellLabel(row: ExerciseRow, field: PlanCellField, setIndex?: number): string {
+  const name =
+    fmt.exerciseName({ name: row.name, name_en: row.nameEn }).trim() || S.common.unnamedExercise
   switch (field) {
-    case 'name': return `动作 · ${row.name.trim() || '未命名动作'}`
-    case 'sets': return `组数 · ${row.name.trim() || '未命名动作'}`
-    case 'reps': return `次数 · ${row.name.trim() || '未命名动作'}`
-    case 'intensity': return `${setIndex == null || inferredIntensityMode(row) === 'uniform' ? '强度' : `第 ${setIndex + 1} 组强度`} · ${row.name.trim() || '未命名动作'}`
+    case 'name': return S.editor.cellNameLabel(name)
+    case 'sets': return S.editor.cellSetsLabel(name)
+    case 'reps': return S.editor.cellRepsLabel(name)
+    case 'intensity': return setIndex == null || inferredIntensityMode(row) === 'uniform'
+      ? S.editor.cellIntensityLabel(name)
+      : S.editor.cellSetIntensityLabel(setIndex + 1, name)
     case 'weight': {
       const mode = displayedWeightMode(row)
-      const label = mode === 'fixed_weight' ? '固定重量'
-        : mode === 'weight_range' ? '重量区间'
-          : mode === 'bodyweight' ? '自重'
-            : `第 ${(setIndex ?? 0) + 1} 组重量`
-      return `${label} · ${row.name.trim() || '未命名动作'}`
+      const label = mode === 'fixed_weight' ? S.editor.fixedWeight
+        : mode === 'weight_range' ? S.editor.weightRange
+          : mode === 'bodyweight' ? S.common.bodyweight
+            : S.editor.setWeight((setIndex ?? 0) + 1)
+      return S.editor.cellWeightLabel(label, name)
     }
   }
 }
 
 function cellValue(row: ExerciseRow, field: PlanCellField, setIndex?: number): string {
   switch (field) {
-    case 'name': return row.name || '/'
-    case 'sets': return row.boxes.length > 0 ? `${row.boxes.length} 组` : '/'
-    case 'reps': return row.reps && row.reps !== '—' ? `${row.reps} 次` : '/'
+    case 'name': return fmt.exerciseName({ name: row.name, name_en: row.nameEn }) || '/'
+    case 'sets': return row.boxes.length > 0 ? S.common.countSets(row.boxes.length) : '/'
+    case 'reps': return row.reps && row.reps !== '—' ? S.common.countReps(row.reps) : '/'
     case 'intensity': {
       if (row.mode === 'bodyweight') return 'BW'
       const intensity = displayedRowIntensity(row)

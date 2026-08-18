@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import type { PlanStatus } from '../../../api/types'
 import { shiftISODate } from '../mapping'
 import { mmdd, WeekdayDateSelector } from './PlanCalendarControls'
+import { S } from '../../../i18n/strings'
 
 interface Option { id: string; label: string; tag?: string; sub?: string }
 
@@ -91,13 +92,13 @@ function Dropdown({ open, anchor, onClose, options, currentId, onPick, onNew, ne
         {onRenameCurrent && (
           <div className="popitem" onClick={(e) => { e.stopPropagation(); onRenameCurrent() }}
             style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '9px 12px', color: 'var(--sec)', borderTop: '1px solid var(--line)' }}>
-            <span>✎</span> {renameLabel ?? '重命名当前计划'}
+            <span>✎</span> {renameLabel ?? S.editor.renameCurrentPlan}
           </div>
         )}
         {onNew && (
           <div className="popitem" onClick={(e) => { e.stopPropagation(); onNew() }}
             style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '9px 12px', color: 'var(--sec)', borderTop: '1px solid var(--line)' }}>
-            <span style={{ color: 'var(--ink)' }}>＋</span> {newLabel ?? '新建'}
+            <span style={{ color: 'var(--ink)' }}>＋</span> {newLabel ?? S.editor.new}
           </div>
         )}
         {actions?.map((action) => (
@@ -127,13 +128,13 @@ function StartDateControl({ startDate, locked, lockedHint, saving, onApply }: {
   return (
     <span style={{ position: 'relative' }}>
       <button type="button" disabled={disabled}
-        title={locked ? lockedHint ?? '已发布计划的周期与日期不可修改' : undefined}
+        title={locked ? lockedHint ?? S.editor.calendarLocked : undefined}
         onClick={() => { setDraft(startDate); setOpen((value) => !value) }} style={{
           background: 'transparent', color: disabled ? 'var(--faint)' : 'var(--sec)', border: '1px solid var(--bd)',
           height: 28, boxSizing: 'border-box', borderRadius: 'var(--r-md)', padding: '0 10px', fontFamily: 'var(--font-sans)', fontWeight: 600, fontSize: 12,
           cursor: disabled ? 'not-allowed' : 'pointer', lineHeight: 1,
         }}>
-        起始 {mmdd(startDate)} ▼
+        {S.editor.startDateCompact(mmdd(startDate))}
       </button>
       {open && !locked && (
         <>
@@ -143,16 +144,16 @@ function StartDateControl({ startDate, locked, lockedHint, saving, onApply }: {
             display: 'grid', gap: 'var(--sp-md)', padding: 'var(--sp-base)', background: 'var(--panel-bg)', border: '1px solid var(--bd)',
             borderRadius: 'var(--r-md)', boxShadow: 'var(--elev-modal)',
           }}>
-            <span style={{ color: 'var(--mut)', fontSize: 12, fontWeight: 600 }}>开始日期（= Day 1）</span>
+            <span style={{ color: 'var(--mut)', fontSize: 12, fontWeight: 600 }}>{S.editor.startDateDayOne}</span>
             <WeekdayDateSelector value={draft} onChange={setDraft} compact />
-            <span style={{ color: 'var(--mut)', fontSize: 11 }}>快捷选周几（从当前起始日起向后调整到最近的该周几）</span>
+            <span style={{ color: 'var(--mut)', fontSize: 11 }}>{S.editor.weekdayShortcutHint}</span>
             <span style={{ display: 'flex', justifyContent: 'flex-end', gap: 'var(--sp-sm)' }}>
-              <button type="button" onClick={() => setDraft((value) => shiftISODate(value, 1))} style={{ ...smallButton, color: 'var(--sec)' }}>后移 1 天</button>
+              <button type="button" onClick={() => setDraft((value) => shiftISODate(value, 1))} style={{ ...smallButton, color: 'var(--sec)' }}>{S.editor.shiftOneDay}</button>
               <button type="button" disabled={applying || draft === startDate} onClick={() => {
                 setApplying(true)
                 void onApply(draft).then(() => setOpen(false)).catch(() => undefined).finally(() => setApplying(false))
               }} style={{ ...smallButton, background: 'var(--txt)', color: 'var(--page-bg)', borderColor: 'var(--txt)', opacity: (applying || draft === startDate) ? 0.5 : 1 }}>
-                {applying ? '应用中…' : '应用'}
+                {applying ? S.editor.applying : S.editor.apply}
               </button>
             </span>
           </span>
@@ -185,7 +186,7 @@ export function TopBar(p: Props) {
     <div
       className="plan-context-bar"
       data-plan-context-bar=""
-      aria-label="计划上下文"
+      aria-label={S.editor.planContext}
       style={{
         height: 38,
         flex: '0 0 38px',
@@ -202,7 +203,7 @@ export function TopBar(p: Props) {
             className="plan-context-back"
             onClick={() => { void p.onBackToBoard?.() }}
           >
-            ← 总览
+            {S.editor.backToOverview}
           </button>
           <span className="plan-context-divider" aria-hidden="true" />
         </>
@@ -213,7 +214,7 @@ export function TopBar(p: Props) {
           <Dropdown open={menu === 'student'} anchor={studentAnchorRef.current} onClose={close} options={p.students!} currentId={p.currentStudentId}
             onPick={(id) => { close(); void p.onSwitchStudent?.(id) }}
             onRenameCurrent={p.onRenameStudent ? () => { close(); p.onRenameStudent!() } : undefined}
-            renameLabel="修改学员姓名" />
+            renameLabel={S.editor.renameStudent} />
         )}
       </span>
 
@@ -221,18 +222,18 @@ export function TopBar(p: Props) {
         {p.planName} <span style={caret}>▼</span>
         {connected && (
           <Dropdown open={menu === 'plan'} anchor={planAnchorRef.current} onClose={close} options={p.plans ?? []} currentId={p.currentPlanId}
-            onPick={(id) => { close(); void p.onSwitchPlan?.(id) }} onNew={p.onNewPlan ? () => { close(); void p.onNewPlan!() } : undefined} newLabel="新建计划"
+            onPick={(id) => { close(); void p.onSwitchPlan?.(id) }} onNew={p.onNewPlan ? () => { close(); void p.onNewPlan!() } : undefined} newLabel={S.editor.newPlan}
             onRenameCurrent={p.onRenamePlan ? () => { close(); p.onRenamePlan!() } : undefined}
-            renameLabel="重命名当前计划"
+            renameLabel={S.editor.renameCurrentPlan}
             actions={[
               ...(p.currentPlanStatus === 'published' && p.onMarkComplete
-                ? [{ label: '标记完成', tone: 'success' as const, icon: '✓', onClick: () => { close(); return p.onMarkComplete!() } }]
+                ? [{ label: S.editor.markCompleted, tone: 'success' as const, icon: '✓', onClick: () => { close(); return p.onMarkComplete!() } }]
                 : []),
               ...(p.onBackfillHistory
-                ? [{ label: '补记过去训练', tone: 'neutral' as const, icon: '↺', onClick: () => { close(); return p.onBackfillHistory!() } }]
+                ? [{ label: S.editor.backfillPastTraining, tone: 'neutral' as const, icon: '↺', onClick: () => { close(); return p.onBackfillHistory!() } }]
                 : []),
               ...(p.currentPlanStatus === 'draft' && p.onDeleteCurrentDraft
-                ? [{ label: '删除当前草稿', tone: 'danger' as const, icon: '删', onClick: () => { close(); return p.onDeleteCurrentDraft!() } }]
+                ? [{ label: S.editor.deleteCurrentDraft, tone: 'danger' as const, icon: S.editor.deleteGlyph, onClick: () => { close(); return p.onDeleteCurrentDraft!() } }]
                 : []),
             ]} />
         )}
@@ -244,7 +245,7 @@ export function TopBar(p: Props) {
           background: 'var(--warn-soft)', color: 'var(--warn)', border: '1px solid var(--warn)',
           borderRadius: 'var(--r-sm)', fontSize: 11, fontWeight: 600, lineHeight: 1, whiteSpace: 'nowrap',
         }}>
-          学员已整体顺延 {p.totalShiftDays} 天
+          {S.editor.studentShifted(p.totalShiftDays ?? 0)}
         </span>
       )}
       <span className="plan-context-spacer" />
@@ -254,7 +255,7 @@ export function TopBar(p: Props) {
           height: 28, borderRadius: 'var(--r-sm)', padding: '0 10px', fontFamily: 'var(--font-sans)', fontWeight: 600, fontSize: 12,
           cursor: p.saving ? 'default' : 'pointer', lineHeight: 1, opacity: p.saving ? 0.6 : 1,
         }}>
-          ＋ 动作
+          {S.editor.addExercise}
         </button>
       )}
       {p.onImport && (
@@ -275,7 +276,7 @@ export function TopBar(p: Props) {
             height: 28, borderRadius: 'var(--r-sm)', padding: '0 10px', fontFamily: 'var(--font-sans)', fontWeight: 600, fontSize: 12,
             cursor: p.saving ? 'default' : 'pointer', lineHeight: 1, opacity: p.saving ? 0.6 : 1,
           }}>
-            导入 .xlsx
+            {S.editor.importXlsx}
           </button>
         </>
       )}
@@ -288,7 +289,7 @@ export function TopBar(p: Props) {
           background: 'var(--warn-soft)', color: 'var(--warn)', border: '1px solid var(--warn)',
           borderRadius: 'var(--r-sm)', fontSize: 11, fontWeight: 600, cursor: 'pointer', lineHeight: 1,
         }}>
-          ! {p.issueCount} 处待核对
+          {S.editor.issuesToReview(p.issueCount ?? 0)}
         </button>
       )}
       {p.onSave && (
@@ -297,13 +298,13 @@ export function TopBar(p: Props) {
           height: 28, borderRadius: 'var(--r-sm)', padding: '0 10px', fontFamily: 'var(--font-sans)', fontWeight: 600, fontSize: 12,
           cursor: p.saving ? 'default' : 'pointer', lineHeight: 1, opacity: p.saving ? 0.6 : 1,
         }}>
-          {p.saving ? '保存中…' : (p.published ? '更新计划' : '保存草稿')}
+          {p.saving ? S.editor.saving : (p.published ? S.editor.updatePlan : S.editor.saveDraft)}
         </button>
       )}
       <button
         onClick={p.onPublish}
         disabled={p.readOnly || p.published || p.saving}
-        title={p.readOnly ? '已完成或暂停的历史计划只能查看' : p.published ? '已发布给学员；未打卡动作可通过「更新计划」调整' : undefined}
+        title={p.readOnly ? S.editor.historicalReadOnlyHint : p.published ? S.editor.publishedUpdateHint : undefined}
         style={{
           background: p.published ? 'transparent' : 'var(--ink)', color: p.published ? 'var(--ok)' : 'var(--white)',
           height: 28, border: p.published ? '1px solid var(--ok)' : '1px solid var(--ink)', borderRadius: 'var(--r-sm)', padding: '0 12px',
@@ -312,9 +313,9 @@ export function TopBar(p: Props) {
           opacity: p.readOnly ? 0.55 : p.published ? 0.75 : (p.saving ? 0.6 : 1),
         }}
       >
-        {p.readOnly ? '历史计划 · 只读' : p.published ? '已发布 · 不可撤回' : '发布给学员'}
+        {p.readOnly ? S.editor.historicalReadOnly : p.published ? S.editor.publishedIrrevocable : S.editor.publishToStudent}
       </button>
-      {p.published && <span className="plan-published-badge">已发布</span>}
+      {p.published && <span className="plan-published-badge">{S.common.published}</span>}
       <span className="plan-autosave-status" role="status">
         <span className={p.published ? 'published' : ''} aria-hidden="true" />
         {p.statusText}

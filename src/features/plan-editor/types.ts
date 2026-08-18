@@ -35,6 +35,8 @@ export interface ExerciseRow {
   conflictMessage: string | null
   exerciseId: string | null   // bound catalog exercise id; null = unbound (not yet saveable)
   name: string
+  /** English display name only; canonical binding and write paths always use `name`. */
+  nameEn?: string | null
   ku: boolean        // matched the exercise catalog
   custom: boolean    // coach-created custom exercise
   isMain: boolean    // backend is_main_lift flag (independent of aux)

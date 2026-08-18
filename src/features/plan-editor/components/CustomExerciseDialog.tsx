@@ -2,6 +2,9 @@ import { useEffect, useRef, useState } from 'react'
 import type { CreateCustomExerciseInput } from '../../../api/exercises'
 import type { Equipment, LiftFamily, MovementPattern, MuscleGroup } from '../../../api/types'
 import { useGlobalKeyboardHandler } from '../../workspace/globalKeyboard'
+import { S } from '../../../i18n/strings'
+import { EQUIPMENT_LABEL, LIFT_FAMILY_LABEL, MOVEMENT_PATTERN_LABEL, MUSCLE_LABEL } from '../../catalog/catalogModel'
+import { STABLE_ZH } from '../../../i18n/stable-zh'
 
 interface Props {
   open: boolean
@@ -14,97 +17,65 @@ interface Props {
   onSubmit: (input: CreateCustomExerciseInput) => void | Promise<void>
 }
 
-const muscleOptions: { value: MuscleGroup; label: string }[] = [
-  { value: 'core', label: '核心' },
-  { value: 'chest', label: '胸' },
-  { value: 'back', label: '背' },
-  { value: 'shoulder', label: '肩' },
-  { value: 'triceps', label: '三头' },
-  { value: 'biceps', label: '二头' },
-  { value: 'quad', label: '股四头' },
-  { value: 'hamstring', label: '腘绳肌' },
-  { value: 'glute', label: '臀' },
-  { value: 'hip', label: '髋' },
-  { value: 'mobility', label: '灵活性' },
-  { value: 'calf', label: '小腿' },
-  { value: 'forearm', label: '前臂' },
-  { value: 'trap', label: '斜方肌' },
-  { value: 'adductor', label: '内收肌' },
+const muscleOptions: MuscleGroup[] = [
+  'core', 'chest', 'back', 'shoulder', 'triceps', 'biceps', 'quad', 'hamstring',
+  'glute', 'hip', 'mobility', 'calf', 'forearm', 'trap', 'adductor',
 ]
 
-const equipmentOptions: { value: Equipment; label: string }[] = [
-  { value: 'bodyweight', label: '徒手' },
-  { value: 'barbell', label: '杠铃' },
-  { value: 'dumbbell', label: '哑铃' },
-  { value: 'cable', label: '绳索' },
-  { value: 'machine', label: '器械' },
-  { value: 'band', label: '弹力带' },
-  { value: 'kettlebell', label: '壶铃' },
-  { value: 'specialty_bar', label: '特殊杆' },
-  { value: 'other', label: '其他' },
+const equipmentOptions: Equipment[] = [
+  'bodyweight', 'barbell', 'dumbbell', 'cable', 'machine', 'band', 'kettlebell',
+  'specialty_bar', 'other',
 ]
 
-const typeOptions: { value: 'accessory' | 'main_lift_variation'; label: string }[] = [
-  { value: 'accessory', label: '辅助项' },
-  { value: 'main_lift_variation', label: '主项变式' },
-]
+const typeOptions: ('accessory' | 'main_lift_variation')[] = ['accessory', 'main_lift_variation']
 
-const familyOptions: { value: LiftFamily; label: string }[] = [
-  { value: 'squat', label: '深蹲' },
-  { value: 'bench', label: '卧推' },
-  { value: 'deadlift', label: '硬拉' },
-]
+const familyOptions: LiftFamily[] = ['squat', 'bench', 'deadlift']
 
 export function guessLiftFamily(rawName: string): LiftFamily | null {
   const name = rawName.toLowerCase()
-  if (/卧推|bench/.test(name)) return 'bench'
-  if (/硬拉|deadlift/.test(name)) return 'deadlift'
-  if (/蹲|squat/.test(name)) return 'squat'
+  if (STABLE_ZH.catalogGuess.lift.bench.test(name)) return 'bench'
+  if (STABLE_ZH.catalogGuess.lift.deadlift.test(name)) return 'deadlift'
+  if (STABLE_ZH.catalogGuess.lift.squat.test(name)) return 'squat'
   return null
 }
 
-const movementOptions: { value: MovementPattern; label: string }[] = [
-  { value: 'other', label: '其他' },
-  { value: 'squat', label: '蹲' },
-  { value: 'hip_hinge', label: '髋铰链' },
-  { value: 'horizontal_push', label: '水平推' },
-  { value: 'vertical_push', label: '垂直推' },
-  { value: 'horizontal_pull', label: '水平拉' },
-  { value: 'vertical_pull', label: '垂直拉' },
-  { value: 'warm_up', label: '热身' },
+const movementOptions: MovementPattern[] = [
+  'other', 'squat', 'hip_hinge', 'horizontal_push', 'vertical_push', 'horizontal_pull',
+  'vertical_pull', 'warm_up',
 ]
 
 function guessFields(rawName: string): Pick<CreateCustomExerciseInput, 'muscleGroup' | 'equipment' | 'movementPattern'> {
   const name = rawName.toLowerCase()
+  const patterns = STABLE_ZH.catalogGuess
   const equipment: Equipment =
-    /哑铃|db|dumbbell/.test(name) ? 'dumbbell'
-      : /杠铃|barbell/.test(name) ? 'barbell'
-        : /绳索|龙门|cable/.test(name) ? 'cable'
-          : /弹力|弹力带|band/.test(name) ? 'band'
-            : /器械|machine|史密斯/.test(name) ? 'machine'
-              : /壶铃|kettlebell/.test(name) ? 'kettlebell'
-                : /安全杆|ssb|特殊杆/.test(name) ? 'specialty_bar'
+    patterns.equipment.dumbbell.test(name) ? 'dumbbell'
+      : patterns.equipment.barbell.test(name) ? 'barbell'
+        : patterns.equipment.cable.test(name) ? 'cable'
+          : patterns.equipment.band.test(name) ? 'band'
+            : patterns.equipment.machine.test(name) ? 'machine'
+              : patterns.equipment.kettlebell.test(name) ? 'kettlebell'
+                : patterns.equipment.specialty_bar.test(name) ? 'specialty_bar'
                   : 'bodyweight'
   const muscleGroup: MuscleGroup =
-    /平板|支撑|腹|卷腹|核心|core|plank/.test(name) ? 'core'
-      : /卧推|俯卧撑|胸|夹胸|chest|push.?up/.test(name) ? 'chest'
-        : /划船|下拉|引体|背|row|pulldown|pull.?up/.test(name) ? 'back'
-          : /肩|推举|侧平举|shoulder|press/.test(name) ? 'shoulder'
-            : /三头|臂屈伸|triceps/.test(name) ? 'triceps'
-              : /二头|弯举|biceps|curl/.test(name) ? 'biceps'
-                : /臀|glute|臀推|髋推/.test(name) ? 'glute'
-                  : /腘|腿弯举|hamstring/.test(name) ? 'hamstring'
-                    : /髋|hip/.test(name) ? 'hip'
-                      : /蹲|腿举|腿屈伸|quad|股四/.test(name) ? 'quad'
+    patterns.muscle.core.test(name) ? 'core'
+      : patterns.muscle.chest.test(name) ? 'chest'
+        : patterns.muscle.back.test(name) ? 'back'
+          : patterns.muscle.shoulder.test(name) ? 'shoulder'
+            : patterns.muscle.triceps.test(name) ? 'triceps'
+              : patterns.muscle.biceps.test(name) ? 'biceps'
+                : patterns.muscle.glute.test(name) ? 'glute'
+                  : patterns.muscle.hamstring.test(name) ? 'hamstring'
+                    : patterns.muscle.hip.test(name) ? 'hip'
+                      : patterns.muscle.quad.test(name) ? 'quad'
                         : 'core'
   const movementPattern: MovementPattern =
-    /蹲|腿举|squat/.test(name) ? 'squat'
-      : /硬拉|臀推|髋推|hinge|deadlift/.test(name) ? 'hip_hinge'
-        : /卧推|俯卧撑|夹胸|horizontal.*push/.test(name) ? 'horizontal_push'
-          : /推举|实力推|肩推|press/.test(name) ? 'vertical_push'
-            : /划船|row/.test(name) ? 'horizontal_pull'
-              : /下拉|引体|pulldown|pull.?up/.test(name) ? 'vertical_pull'
-                : /热身|激活|warm/.test(name) ? 'warm_up'
+    patterns.movement.squat.test(name) ? 'squat'
+      : patterns.movement.hip_hinge.test(name) ? 'hip_hinge'
+        : patterns.movement.horizontal_push.test(name) ? 'horizontal_push'
+          : patterns.movement.vertical_push.test(name) ? 'vertical_push'
+            : patterns.movement.horizontal_pull.test(name) ? 'horizontal_pull'
+              : patterns.movement.vertical_pull.test(name) ? 'vertical_pull'
+                : patterns.movement.warm_up.test(name) ? 'warm_up'
                   : 'other'
   return { muscleGroup, equipment, movementPattern }
 }
@@ -194,33 +165,33 @@ export function CustomExerciseDialog({ open, initialName, initialTier, saving, e
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <div style={{ fontSize: 16, fontWeight: 800, color: 'var(--txt)' }}>新建动作</div>
+          <div style={{ fontSize: 16, fontWeight: 800, color: 'var(--txt)' }}>{S.catalog.newExercise}</div>
           <span style={{ color: 'var(--mut)', fontFamily: 'var(--font-mono)', fontSize: 10 }}>CUSTOM</span>
         </div>
 
         <label style={fieldWrap}>
-          <span style={label}>动作名称</span>
+          <span style={label}>{S.catalog.exerciseName}</span>
           <input
             ref={nameRef}
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder="例如：平板侧支撑"
+            placeholder={S.catalog.customDialogExample}
             style={input}
           />
         </label>
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
           <label style={fieldWrap}>
-            <span style={label}>分类</span>
+            <span style={label}>{S.common.category}</span>
             <select value={exerciseType} onChange={(e) => setExerciseType(e.target.value as 'accessory' | 'main_lift_variation')} style={input}>
-              {typeOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+              {typeOptions.map((value) => <option key={value} value={value}>{value === 'accessory' ? S.common.accessoryItem : S.common.mainLiftVariation}</option>)}
             </select>
           </label>
           {exerciseType === 'main_lift_variation' && (
             <label style={fieldWrap}>
-              <span style={label}>所属主项</span>
+              <span style={label}>{S.catalog.belongsToMainLift}</span>
               <select value={mainLiftFamily} onChange={(e) => setMainLiftFamily(e.target.value as LiftFamily)} style={input}>
-                {familyOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                {familyOptions.map((value) => <option key={value} value={value}>{LIFT_FAMILY_LABEL[value]}</option>)}
               </select>
             </label>
           )}
@@ -228,23 +199,23 @@ export function CustomExerciseDialog({ open, initialName, initialTier, saving, e
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
           <label style={fieldWrap}>
-            <span style={label}>目标部位</span>
+            <span style={label}>{S.catalog.targetArea}</span>
             <select value={muscleGroup} onChange={(e) => setMuscleGroup(e.target.value as MuscleGroup)} style={input}>
-              {muscleOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+              {muscleOptions.map((value) => <option key={value} value={value}>{MUSCLE_LABEL[value]}</option>)}
             </select>
           </label>
           <label style={fieldWrap}>
-            <span style={label}>器械</span>
+            <span style={label}>{S.common.equipment}</span>
             <select value={equipment} onChange={(e) => setEquipment(e.target.value as Equipment)} style={input}>
-              {equipmentOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+              {equipmentOptions.map((value) => <option key={value} value={value}>{EQUIPMENT_LABEL[value]}</option>)}
             </select>
           </label>
         </div>
 
         <label style={fieldWrap}>
-          <span style={label}>动作模式</span>
+          <span style={label}>{S.catalog.movementPattern}</span>
           <select value={movementPattern} onChange={(e) => setMovementPattern(e.target.value as MovementPattern)} style={input}>
-            {movementOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+            {movementOptions.map((value) => <option key={value} value={value}>{MOVEMENT_PATTERN_LABEL[value]}</option>)}
           </select>
         </label>
 
@@ -265,7 +236,7 @@ export function CustomExerciseDialog({ open, initialName, initialTier, saving, e
               cursor: saving ? 'default' : 'pointer',
             }}
           >
-            取消
+            {S.common.cancel}
           </button>
           <button
             type="submit"
@@ -281,7 +252,7 @@ export function CustomExerciseDialog({ open, initialName, initialTier, saving, e
               opacity: !trimmed || saving ? 0.6 : 1,
             }}
           >
-            {saving ? '创建中…' : '创建'}
+            {saving ? S.catalog.creating : S.catalog.create}
           </button>
         </div>
       </form>

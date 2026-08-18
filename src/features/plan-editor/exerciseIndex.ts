@@ -7,6 +7,7 @@ import aliasesData from '../../data/exercise-aliases.json'
 import type { ExerciseResponse } from '../../api/types'
 import type { ExerciseUsageStat } from '../../api/exercises'
 import type { CatalogClassification } from './weeklySummary'
+import { STABLE_ZH } from '../../i18n/stable-zh'
 
 interface AliasEntry { alias: string; canonical: string }
 const ALIASES: AliasEntry[] = (aliasesData as { aliases: AliasEntry[] }).aliases
@@ -14,7 +15,7 @@ const ALIASES: AliasEntry[] = (aliasesData as { aliases: AliasEntry[] }).aliases
 export type DeadliftStylePreference = 'conventional' | 'sumo' | null | undefined
 
 export function displayExerciseName(name: string): string {
-  return name === '哑铃卧推' ? '平板哑铃卧推' : name
+  return name === STABLE_ZH.aliases.dumbbellBench ? STABLE_ZH.aliases.flatDumbbellBench : name
 }
 
 function normalizeLookupName(name: string): string {
@@ -24,7 +25,7 @@ function normalizeLookupName(name: string): string {
     .replace(/[·・\s_\-‐‑–—]/g, '')
 }
 
-export interface ExerciseHit { id: string; name: string; via?: string }
+export interface ExerciseHit { id: string; name: string; name_en?: string | null; via?: string }
 
 export class ExerciseIndex {
   private byName = new Map<string, ExerciseResponse>()
@@ -52,13 +53,14 @@ export class ExerciseIndex {
       this.aliasToCanonical.set(a.alias, a.canonical)
       this.aliasToCanonical.set(normalizeLookupName(a.alias), a.canonical)
     }
-    this.aliasToCanonical.set('哑铃卧推', '哑铃卧推')
-    this.aliasToCanonical.set('平板哑铃卧推', '哑铃卧推')
-    this.aliasToCanonical.set('平躺哑铃卧推', '哑铃卧推')
-    this.aliasToCanonical.set('任意二头弯举', '哑铃二头弯举')
-    this.aliasToCanonical.set('任意二头', '哑铃二头弯举')
-    this.aliasToCanonical.set('二头', '哑铃二头弯举')
-    this.aliasToCanonical.set('暂停硬拉', opts.deadliftStyle === 'sumo' ? '相扑暂停硬拉' : '传统暂停硬拉')
+    const names = STABLE_ZH.aliases
+    this.aliasToCanonical.set(names.dumbbellBench, names.dumbbellBench)
+    this.aliasToCanonical.set(names.flatDumbbellBench, names.dumbbellBench)
+    this.aliasToCanonical.set(names.lyingDumbbellBench, names.dumbbellBench)
+    this.aliasToCanonical.set(names.anyBicepsCurl, names.dumbbellCurl)
+    this.aliasToCanonical.set(names.anyBiceps, names.dumbbellCurl)
+    this.aliasToCanonical.set(names.biceps, names.dumbbellCurl)
+    this.aliasToCanonical.set(names.pauseDeadlift, opts.deadliftStyle === 'sumo' ? names.sumoPauseDeadlift : names.conventionalPauseDeadlift)
   }
 
   /** Strict resolve: exact catalog name or exact alias only — safe for auto-binding on blur. */
@@ -78,8 +80,8 @@ export class ExerciseIndex {
     const exact = this.resolveExact(input)
     if (exact) return exact
     const normalized = normalizeLookupName(input.trim())
-    if (/二头.*弯举|弯举.*二头/.test(normalized)) {
-      const curl = this.byName.get('哑铃二头弯举')
+    if (STABLE_ZH.patterns.curl.test(normalized)) {
+      const curl = this.byName.get(STABLE_ZH.aliases.dumbbellCurl)
       if (curl) return curl
     }
     return null
@@ -94,15 +96,15 @@ export class ExerciseIndex {
     const seen = new Set<string>()
     const push = (e: ExerciseResponse, via?: string) => {
       if (seen.has(e.id)) return
-      seen.add(e.id); hits.push({ id: e.id, name: e.name, via })
+      seen.add(e.id); hits.push({ id: e.id, name: e.name, name_en: e.name_en, via })
     }
     const normalized = normalizeLookupName(q)
     const aliases = [
       ...ALIASES,
-      { alias: '哑铃卧推', canonical: '哑铃卧推' },
-      { alias: '平板哑铃卧推', canonical: '哑铃卧推' },
-      { alias: '任意二头弯举', canonical: '哑铃二头弯举' },
-      { alias: '暂停硬拉', canonical: this.opts.deadliftStyle === 'sumo' ? '相扑暂停硬拉' : '传统暂停硬拉' },
+      { alias: STABLE_ZH.aliases.dumbbellBench, canonical: STABLE_ZH.aliases.dumbbellBench },
+      { alias: STABLE_ZH.aliases.flatDumbbellBench, canonical: STABLE_ZH.aliases.dumbbellBench },
+      { alias: STABLE_ZH.aliases.anyBicepsCurl, canonical: STABLE_ZH.aliases.dumbbellCurl },
+      { alias: STABLE_ZH.aliases.pauseDeadlift, canonical: this.opts.deadliftStyle === 'sumo' ? STABLE_ZH.aliases.sumoPauseDeadlift : STABLE_ZH.aliases.conventionalPauseDeadlift },
     ]
     for (const a of aliases) {
       if (a.alias.includes(q) || normalizeLookupName(a.alias).includes(normalized)) {
@@ -140,6 +142,12 @@ export class ExerciseIndex {
   /** Catalog tier for a bound exercise id; null when unknown (e.g. custom before reload). */
   typeById(id: string): ExerciseResponse['exercise_type'] | null {
     return this.byId.get(id)?.exercise_type ?? null
+  }
+
+  /** Canonical catalog names for locale-aware display; binding still uses `name`. */
+  namesById(id: string): Pick<ExerciseResponse, 'name' | 'name_en'> | null {
+    const exercise = this.byId.get(id)
+    return exercise ? { name: exercise.name, name_en: exercise.name_en } : null
   }
 
   /** Exact catalog metadata used by derived weekly capacity summaries. */

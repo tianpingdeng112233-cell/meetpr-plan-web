@@ -6,7 +6,7 @@ interface Props {
 
 function savedTime(iso: string): string {
   try {
-    return new Intl.DateTimeFormat('zh-CN', {
+    return new Intl.DateTimeFormat(resolveLocale() === 'zh' ? 'zh-CN' : 'en-US', {
       month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit',
     }).format(new Date(iso))
   } catch {
@@ -43,10 +43,11 @@ export function DraftMirrorBanner({ savedAt, onRestore, onDiscard }: Props) {
       boxShadow: 'inset 3px 0 0 var(--warn)',
       fontSize: 12,
     }}>
-      <span style={{ color: 'var(--warn)', fontWeight: 700 }}>本地草稿</span>
-      <span style={{ flex: 1 }}>检测到 {savedTime(savedAt)} 的未保存本地草稿</span>
-      <button type="button" onClick={onRestore} style={{ ...action, borderColor: 'var(--warn)' }}>恢复</button>
-      <button type="button" onClick={onDiscard} style={action}>丢弃</button>
+      <span style={{ color: 'var(--warn)', fontWeight: 700 }}>{S.editor.localDraft}</span>
+      <span style={{ flex: 1 }}>{S.editor.unsavedLocalDraft(savedTime(savedAt))}</span>
+      <button type="button" onClick={onRestore} style={{ ...action, borderColor: 'var(--warn)' }}>{S.editor.restore}</button>
+      <button type="button" onClick={onDiscard} style={action}>{S.editor.discard}</button>
     </div>
   )
 }
+import { resolveLocale, S } from '../../../i18n/strings'

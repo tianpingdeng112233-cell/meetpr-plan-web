@@ -7,6 +7,7 @@ import { buildWeeks } from './features/plan-editor/sampleData'
 import { currentUser, logout } from './api/auth'
 import type { AuthUser } from './api/types'
 import { chatOutbox } from './features/chat/chatOutbox'
+import { S } from './i18n/strings'
 
 type View = 'login' | 'workspace' | 'sample'
 
@@ -34,14 +35,14 @@ export default function App() {
         <PlanEditor
           initialWeeks={buildWeeks()}
           weeksCount={12}
-          studentName="吕子豪"
-          planName="Monster · 力型兼备"
+          studentName={S.app.sampleStudent}
+          planName={S.app.samplePlan}
         />
         <button
           onClick={() => setView('login')}
           style={{ position: 'absolute', left: 12, bottom: 12, zIndex: 70, background: 'var(--card-bg)', color: 'var(--txt)', border: '1px solid var(--bd)', borderRadius: 'var(--r-sm)', padding: '7px 12px', fontSize: 12, cursor: 'pointer' }}
         >
-          ← 退出样例
+          {S.app.exitSample}
         </button>
       </div>
     )

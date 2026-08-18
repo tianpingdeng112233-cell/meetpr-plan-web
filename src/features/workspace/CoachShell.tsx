@@ -8,37 +8,34 @@ import {
 } from './CommandPalette'
 import { usePersistentCollapse } from './usePersistentCollapse'
 import { useGlobalKeyboardHandler } from './globalKeyboard'
+import { fmt, S } from '../../i18n/strings'
 
 export type CoachView = 'board' | 'editor' | 'messages' | 'catalog' | 'requests' | 'tracking'
 
 type Badge = { count: number; tone: 'danger' | 'muted'; label: string }
 
-const NAV_ITEMS: { id: CoachView; label: string; short: string }[] = [
-  { id: 'board', label: '总览', short: '总' },
-  { id: 'editor', label: '计划编排', short: '编' },
-  { id: 'messages', label: '反馈工作区', short: '反' },
-  { id: 'catalog', label: '动作库', short: '动' },
-  { id: 'requests', label: '学员申请', short: '申' },
-  { id: 'tracking', label: '追踪', short: '追' },
+const navItems = (): { id: CoachView; label: string; short: string }[] => [
+  { id: 'board', label: S.workspace.nav.overview, short: S.workspace.nav.overviewShort },
+  { id: 'editor', label: S.workspace.nav.editor, short: S.workspace.nav.editorShort },
+  { id: 'messages', label: S.workspace.nav.feedback, short: S.workspace.nav.feedbackShort },
+  { id: 'catalog', label: S.workspace.nav.catalog, short: S.workspace.nav.catalogShort },
+  { id: 'requests', label: S.workspace.nav.requests, short: S.workspace.nav.requestsShort },
+  { id: 'tracking', label: S.workspace.nav.tracking, short: S.workspace.nav.trackingShort },
 ]
 
-const VIEW_SHORTCUTS: Record<CoachView, string> = {
-  board: 'J / K 移动 · ↵ 打开编排器 · ⌘K 命令',
-  editor: '⌥← / ⌥→ 翻周 · Tab / ⇧Tab 横移 · ↵ / ↑↓ 纵移 · ⌘D 向下填充 · ⌘C / ⌘V · ⌘Z',
-  messages: '⌥1–5 快捷回复 · ↵ 发送 · ← / → 切视频 · 空格播放 · ⌘↵ 反馈',
-  catalog: '⌘K 搜动作 / 跳转',
+const viewShortcuts = (): Record<CoachView, string> => ({
+  board: S.workspace.shortcuts.board,
+  editor: S.workspace.shortcuts.editor,
+  messages: S.workspace.shortcuts.feedback,
+  catalog: S.workspace.shortcuts.catalog,
   requests: '',
   tracking: '',
-}
+})
 
-const VIEW_CRUMBS: Record<CoachView, string> = {
-  board: '总览',
-  editor: '计划编排',
-  messages: '反馈工作区',
-  catalog: '动作库',
-  requests: '学员申请',
-  tracking: '追踪',
-}
+const viewCrumbs = (): Record<CoachView, string> => ({
+  board: S.workspace.nav.overview, editor: S.workspace.nav.editor, messages: S.workspace.nav.feedback,
+  catalog: S.workspace.nav.catalog, requests: S.workspace.nav.requests, tracking: S.workspace.nav.tracking,
+})
 
 export interface CoachShellProps {
   children: React.ReactNode
@@ -86,11 +83,11 @@ export function CoachShell({
       count: unreadCount + (videoCount ?? 0),
       tone: unreadCount > 0 ? 'danger' : 'muted',
       label: videoCount == null
-        ? `${unreadCount} 条未读`
-        : `${unreadCount} 条未读，${videoCount} 条视频待审`,
+        ? S.workspace.unreadBadge(unreadCount)
+        : S.workspace.unreadVideoBadge(unreadCount, videoCount),
     },
-    requests: { count: requestCount, tone: 'danger', label: `${requestCount} 条待处理` },
-    catalog: { count: exerciseCount, tone: 'muted', label: `${exerciseCount} 个动作` },
+    requests: { count: requestCount, tone: 'danger', label: S.workspace.pendingBadge(requestCount) },
+    catalog: { count: exerciseCount, tone: 'muted', label: S.workspace.exerciseBadge(exerciseCount) },
   }), [exerciseCount, requestCount, unreadCount, videoCount])
   const [toast, setToast] = useState('')
   const [commandOpen, setCommandOpen] = useState(false)
@@ -135,9 +132,9 @@ export function CoachShell({
         <main className="coach-main">{children}</main>
       </div>
       <footer className="coach-statusbar">
-        <span>待排 {pendingCount}</span>
-        <span>未读 {unreadCount}</span>
-        <span className="coach-statusbar-shortcuts">{VIEW_SHORTCUTS[view]}</span>
+        <span>{S.workspace.queued(pendingCount)}</span>
+        <span>{S.workspace.unread(unreadCount)}</span>
+        <span className="coach-statusbar-shortcuts">{viewShortcuts()[view]}</span>
       </footer>
       {toast && <div className="coach-toast" role="status">{toast}</div>}
       <CommandPalette
@@ -170,7 +167,7 @@ function CoachTopBar({
   commandTriggerRef: React.RefObject<HTMLButtonElement>
 }) {
   // Login has no display name today; switch to GET /me when the backend exposes it.
-  const coachName = me.display_name?.trim() || '教'
+  const coachName = me.display_name?.trim() || S.workspace.coachAvatar
   const [menuOpen, setMenuOpen] = useState(false)
   const [passwordOpen, setPasswordOpen] = useState(false)
   const accountRef = useRef<HTMLDivElement>(null)
@@ -227,10 +224,10 @@ function CoachTopBar({
   return (
     <header className="coach-topbar">
       <span className="coach-mark">M</span>
-      <span className="coach-breadcrumb">COACH / {VIEW_CRUMBS[view]}</span>
-      <button ref={commandTriggerRef} className="coach-search-shell" type="button" aria-label="打开命令面板" onClick={onOpenCommand}>
+      <span className="coach-breadcrumb">COACH / {viewCrumbs()[view]}</span>
+      <button ref={commandTriggerRef} className="coach-search-shell" type="button" aria-label={S.workspace.openCommandPalette} onClick={onOpenCommand}>
         <span className="coach-search-icon" aria-hidden="true" />
-        <span>跳转学员、屏幕、动作…</span>
+        <span>{S.workspace.commandPlaceholder}</span>
         <kbd>⌘K</kbd>
       </button>
       <div className="coach-account" ref={accountRef}>
@@ -239,7 +236,7 @@ function CoachTopBar({
           type="button"
           className="coach-avatar"
           title={coachName}
-          aria-label={`${coachName}账户菜单`}
+          aria-label={S.workspace.accountMenu(coachName)}
           aria-haspopup="menu"
           aria-controls={menuOpen ? 'coach-account-menu' : undefined}
           aria-expanded={menuOpen}
@@ -253,7 +250,7 @@ function CoachTopBar({
             id="coach-account-menu"
             className="coach-account-menu"
             role="menu"
-            aria-label={`${coachName}账户菜单`}
+            aria-label={S.workspace.accountMenu(coachName)}
             onKeyDown={handleMenuKeyDown}
           >
             <button
@@ -264,10 +261,10 @@ function CoachTopBar({
                 setPasswordOpen(true)
               }}
             >
-              改密码
+              {S.workspace.changePassword}
             </button>
             <button type="button" role="menuitem" onClick={() => { void handleLogout() }}>
-              退出
+              {S.workspace.signOut}
             </button>
           </div>
         )}
@@ -305,21 +302,21 @@ function CoachNavigation({
   const week = weekRange(new Date())
   const [collapsed, toggleCollapsed] = usePersistentCollapse('meetpr:sidebar:coach-shell')
   return (
-    <nav className={`coach-navigation${collapsed ? ' collapsed' : ''}`} aria-label="教练工作区">
+    <nav className={`coach-navigation${collapsed ? ' collapsed' : ''}`} aria-label={S.workspace.coachWorkspace}>
       <div className="coach-nav-head">
-        <span className="coach-nav-heading">工作区</span>
+        <span className="coach-nav-heading">{S.workspace.workspace}</span>
         <button
           type="button"
           className="column-collapse-toggle"
-          aria-label={collapsed ? '展开工作区导航' : '收起工作区导航'}
+          aria-label={collapsed ? S.workspace.expandNavigation : S.workspace.collapseNavigation}
           aria-expanded={!collapsed}
-          title={collapsed ? '展开工作区导航' : '收起工作区导航'}
+          title={collapsed ? S.workspace.expandNavigation : S.workspace.collapseNavigation}
           onClick={toggleCollapsed}
         >
           {collapsed ? '›' : '‹'}
         </button>
       </div>
-      {NAV_ITEMS.map((item) => {
+      {navItems().map((item) => {
         const badge = badges[item.id]
         const collapsedLabel = collapsedNavLabel(item.label, badge)
         return (
@@ -345,7 +342,7 @@ function CoachNavigation({
       })}
       {!collapsed && (
         <>
-          <span className="coach-nav-heading coach-queue-heading">待排队列 · {pendingCount}</span>
+          <span className="coach-nav-heading coach-queue-heading">{S.workspace.queue(pendingCount)}</span>
           {pendingStudents.slice(0, 4).map((student) => (
             <button
               key={student.id}
@@ -359,9 +356,9 @@ function CoachNavigation({
         </>
       )}
       <span className="coach-nav-footer">
-        本周 {week}
+        {S.workspace.thisWeek(week)}
         <br />
-        已同步 {lastSyncedAt ? formatTime(lastSyncedAt) : '—'}
+        {S.workspace.synced(lastSyncedAt ? formatTime(lastSyncedAt) : '—')}
       </span>
     </nav>
   )
@@ -382,7 +379,7 @@ function weekRange(date: Date): string {
 }
 
 function formatMonthDay(date: Date): string {
-  return `${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+  return fmt.monthDay(date, () => `${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`)
 }
 
 function formatTime(date: Date): string {

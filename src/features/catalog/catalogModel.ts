@@ -7,69 +7,39 @@ import type {
   MovementPattern,
   MuscleGroup,
 } from '../../api/types'
+import { localizedRecord, S } from '../../i18n/strings'
+import { zhCommon } from '../../i18n/strings-common'
+import { STABLE_ZH } from '../../i18n/stable-zh'
 
-export const EXERCISE_TYPE_LABEL: Record<ExerciseType, string> = {
-  main_lift: '主项',
-  main_lift_variation: '主项变式',
-  accessory: '辅助动作',
-}
+export const EXERCISE_TYPE_LABEL = localizedRecord<ExerciseType>(
+  zhCommon.exerciseType,
+  () => S.common.exerciseType,
+)
 
-export const EXERCISE_TYPE_SHORT_LABEL: Record<ExerciseType, string> = {
-  main_lift: '主项',
-  main_lift_variation: '变式',
-  accessory: '辅助',
-}
+export const EXERCISE_TYPE_SHORT_LABEL = localizedRecord<ExerciseType>(
+  zhCommon.exerciseTypeShort,
+  () => S.common.exerciseTypeShort,
+)
 
-export const LIFT_FAMILY_LABEL: Record<LiftFamily, string> = {
-  squat: '深蹲',
-  bench: '卧推',
-  deadlift: '硬拉',
-}
+export const LIFT_FAMILY_LABEL = localizedRecord<LiftFamily>(
+  zhCommon.liftFamily,
+  () => S.common.liftFamily,
+)
 
-export const MUSCLE_LABEL: Record<MuscleGroup, string> = {
-  adductor: '内收肌',
-  back: '背',
-  biceps: '二头',
-  calf: '小腿',
-  cardio: '心肺',
-  chest: '胸',
-  core: '核心',
-  forearm: '前臂',
-  glute: '臀',
-  grip: '握力',
-  hamstring: '腘绳肌',
-  hip: '髋',
-  hip_flexor: '髋屈肌',
-  mobility: '灵活性',
-  quad: '股四头',
-  shoulder: '肩',
-  tibialis: '胫骨前肌',
-  trap: '斜方肌',
-  triceps: '三头',
-}
+export const MUSCLE_LABEL = localizedRecord<MuscleGroup>(
+  zhCommon.muscle,
+  () => S.common.muscle,
+)
 
-export const EQUIPMENT_LABEL: Record<Equipment, string> = {
-  band: '弹力带',
-  barbell: '杠铃',
-  bodyweight: '徒手',
-  cable: '绳索',
-  dumbbell: '哑铃',
-  kettlebell: '壶铃',
-  machine: '器械',
-  other: '其他',
-  specialty_bar: '特殊杆',
-}
+export const EQUIPMENT_LABEL = localizedRecord<Equipment>(
+  zhCommon.equipmentLabels,
+  () => S.common.equipmentLabels,
+)
 
-export const MOVEMENT_PATTERN_LABEL: Record<MovementPattern, string> = {
-  squat: '蹲',
-  hip_hinge: '髋铰链',
-  horizontal_push: '水平推',
-  vertical_push: '垂直推',
-  horizontal_pull: '水平拉',
-  vertical_pull: '垂直拉',
-  warm_up: '热身',
-  other: '其他',
-}
+export const MOVEMENT_PATTERN_LABEL = localizedRecord<MovementPattern>(
+  zhCommon.movementPattern,
+  () => S.common.movementPattern,
+)
 
 export const MUSCLE_OPTIONS = (Object.keys(MUSCLE_LABEL) as MuscleGroup[])
 /** Stable head-to-toe order for compact target pickers (non-anatomical utilities last). */
@@ -82,11 +52,11 @@ export const EQUIPMENT_OPTIONS = (Object.keys(EQUIPMENT_LABEL) as Equipment[])
 export const MOVEMENT_PATTERN_OPTIONS = (Object.keys(MOVEMENT_PATTERN_LABEL) as MovementPattern[])
 export const FAMILY_CATEGORIES: LiftFamily[] = ['squat', 'bench', 'deadlift']
 
-const REGION_DEFINITIONS: { id: string; label: string; muscles: MuscleGroup[] }[] = [
-  { id: 'lower', label: '辅助 · 下肢', muscles: ['quad', 'glute', 'hamstring', 'adductor', 'hip', 'hip_flexor', 'calf', 'tibialis'] },
-  { id: 'push', label: '辅助 · 上肢推', muscles: ['chest', 'shoulder', 'triceps'] },
-  { id: 'pull', label: '辅助 · 上肢拉', muscles: ['back', 'biceps', 'trap', 'forearm', 'grip'] },
-  { id: 'core', label: '辅助 · 核心 / 其他', muscles: ['core', 'mobility', 'cardio'] },
+const REGION_DEFINITIONS: { id: keyof typeof S.catalog.regions; muscles: MuscleGroup[] }[] = [
+  { id: 'lower', muscles: ['quad', 'glute', 'hamstring', 'adductor', 'hip', 'hip_flexor', 'calf', 'tibialis'] },
+  { id: 'push', muscles: ['chest', 'shoulder', 'triceps'] },
+  { id: 'pull', muscles: ['back', 'biceps', 'trap', 'forearm', 'grip'] },
+  { id: 'core', muscles: ['core', 'mobility', 'cardio'] },
 ]
 
 export type CatalogCategory = 'all' | 'mine' | LiftFamily | MuscleGroup
@@ -133,7 +103,7 @@ export function availableMuscleRegions(exercises: ExerciseResponse[]) {
     .map((exercise) => exercise.muscle_groups[0])
     .filter((muscle): muscle is MuscleGroup => muscle != null))
   return REGION_DEFINITIONS
-    .map((region) => ({ ...region, muscles: region.muscles.filter((muscle) => present.has(muscle)) }))
+    .map((region) => ({ ...region, label: S.catalog.regions[region.id], muscles: region.muscles.filter((muscle) => present.has(muscle)) }))
     .filter((region) => region.muscles.length > 0)
 }
 
@@ -150,35 +120,36 @@ export function guessCatalogFields(rawName: string): {
   movementPattern: MovementPattern
 } {
   const name = rawName.toLowerCase()
+  const patterns = STABLE_ZH.catalogGuess
   const equipment: Equipment =
-    /哑铃|db|dumbbell/.test(name) ? 'dumbbell'
-      : /杠铃|barbell/.test(name) ? 'barbell'
-        : /绳索|龙门|cable/.test(name) ? 'cable'
-          : /弹力|弹力带|band/.test(name) ? 'band'
-            : /器械|machine|史密斯/.test(name) ? 'machine'
-              : /壶铃|kettlebell/.test(name) ? 'kettlebell'
-                : /安全杆|ssb|特殊杆/.test(name) ? 'specialty_bar'
+    patterns.equipment.dumbbell.test(name) ? 'dumbbell'
+      : patterns.equipment.barbell.test(name) ? 'barbell'
+        : patterns.equipment.cable.test(name) ? 'cable'
+          : patterns.equipment.band.test(name) ? 'band'
+            : patterns.equipment.machine.test(name) ? 'machine'
+              : patterns.equipment.kettlebell.test(name) ? 'kettlebell'
+                : patterns.equipment.specialty_bar.test(name) ? 'specialty_bar'
                   : 'bodyweight'
   const primaryMuscle: MuscleGroup =
-    /平板|支撑|腹|卷腹|核心|core|plank/.test(name) ? 'core'
-      : /卧推|俯卧撑|胸|夹胸|chest|push.?up/.test(name) ? 'chest'
-        : /划船|下拉|引体|背|row|pulldown|pull.?up/.test(name) ? 'back'
-          : /肩|推举|侧平举|shoulder|press/.test(name) ? 'shoulder'
-            : /三头|臂屈伸|triceps/.test(name) ? 'triceps'
-              : /二头|弯举|biceps|curl/.test(name) ? 'biceps'
-                : /臀|glute|臀推|髋推/.test(name) ? 'glute'
-                  : /腘|腿弯举|hamstring/.test(name) ? 'hamstring'
-                    : /髋|hip/.test(name) ? 'hip'
-                      : /蹲|腿举|腿屈伸|quad|股四/.test(name) ? 'quad'
+    patterns.muscle.core.test(name) ? 'core'
+      : patterns.muscle.chest.test(name) ? 'chest'
+        : patterns.muscle.back.test(name) ? 'back'
+          : patterns.muscle.shoulder.test(name) ? 'shoulder'
+            : patterns.muscle.triceps.test(name) ? 'triceps'
+              : patterns.muscle.biceps.test(name) ? 'biceps'
+                : patterns.muscle.glute.test(name) ? 'glute'
+                  : patterns.muscle.hamstring.test(name) ? 'hamstring'
+                    : patterns.muscle.hip.test(name) ? 'hip'
+                      : patterns.muscle.quad.test(name) ? 'quad'
                         : 'core'
   const movementPattern: MovementPattern =
-    /蹲|腿举|squat/.test(name) ? 'squat'
-      : /硬拉|臀推|髋推|hinge|deadlift/.test(name) ? 'hip_hinge'
-        : /卧推|俯卧撑|夹胸|horizontal.*push/.test(name) ? 'horizontal_push'
-          : /推举|实力推|肩推|press/.test(name) ? 'vertical_push'
-            : /划船|row/.test(name) ? 'horizontal_pull'
-              : /下拉|引体|pulldown|pull.?up/.test(name) ? 'vertical_pull'
-                : /热身|激活|warm/.test(name) ? 'warm_up'
+    patterns.movement.squat.test(name) ? 'squat'
+      : patterns.movement.hip_hinge.test(name) ? 'hip_hinge'
+        : patterns.movement.horizontal_push.test(name) ? 'horizontal_push'
+          : patterns.movement.vertical_push.test(name) ? 'vertical_push'
+            : patterns.movement.horizontal_pull.test(name) ? 'horizontal_pull'
+              : patterns.movement.vertical_pull.test(name) ? 'vertical_pull'
+                : patterns.movement.warm_up.test(name) ? 'warm_up'
                   : 'other'
   return { primaryMuscle, equipment, movementPattern }
 }

@@ -1,5 +1,6 @@
 import type { CSSProperties } from 'react'
-import { addDays, DOW_LABELS, isoDate } from '../mapping'
+import { addDays, isoDate } from '../mapping'
+import { fmt, resolveLocale, S } from '../../../i18n/strings'
 
 export function todayISO(): string {
   return isoDate(new Date())
@@ -21,7 +22,7 @@ export function planEndISO(startDate: string, weeks: number): string {
 
 export function mmdd(iso: string): string {
   const [, month, day] = iso.split('-')
-  return `${month}-${day}`
+  return fmt.monthDay(addDays(iso, 0), () => `${month}-${day}`)
 }
 
 const chip: CSSProperties = {
@@ -62,7 +63,7 @@ export function WeekdayDateSelector({ value, onChange, compact = false, disabled
   return (
     <div style={{ display: 'grid', gap: 'var(--sp-md)' }}>
       <div style={{ display: 'flex', gap: 'var(--sp-sm)', flexWrap: 'wrap' }}>
-        {DOW_LABELS.map((day, index) => (
+        {S.common.weekdaysMondayFirst.map((day, index) => (
           <button
             key={day}
             type="button"
@@ -80,7 +81,7 @@ export function WeekdayDateSelector({ value, onChange, compact = false, disabled
               cursor: disabled ? 'default' : 'pointer',
             }}
           >
-            {compact ? day.slice(1) : day}
+            {compact && resolveLocale() === 'zh' ? day.slice(1) : day}
           </button>
         ))}
       </div>
@@ -89,7 +90,7 @@ export function WeekdayDateSelector({ value, onChange, compact = false, disabled
         type="date"
         value={value}
         disabled={disabled}
-        aria-label="开始日期"
+        aria-label={S.editor.startDate}
         onChange={(event) => { if (event.target.value) onChange(event.target.value) }}
         style={{ ...dateInput, opacity: disabled ? 0.45 : 1 }}
       />
