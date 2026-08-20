@@ -9,6 +9,7 @@ import type {
 import { isStudentPendingNextWeek } from './pendingPlan'
 import { completionRateTone } from './metricThresholds'
 import { S } from '../../i18n/strings'
+import type { StudentPlanCursor } from '../plan-editor/mapping'
 
 export type RosterTab = 'all' | 'pending' | 'attention'
 
@@ -17,6 +18,8 @@ export interface RosterDataEntry {
   profile?: StudentOnboardingProfile | null
   profileError?: boolean
   weekTonnageKg?: number | null
+  /** undefined = not fetched; null = no trustworthy published-plan cursor. */
+  planCursor?: StudentPlanCursor | null
 }
 
 export type RosterDataByStudent = Record<string, RosterDataEntry>

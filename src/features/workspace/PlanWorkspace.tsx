@@ -7,7 +7,7 @@ import {
 import { listExercises, createCustomExercise, getExerciseUsageStats } from '../../api/exercises'
 import type { CreateCustomExerciseInput } from '../../api/exercises'
 import { ApiException } from '../../api/client'
-import { mapPlanToWeeks, type Catalog } from '../plan-editor/mapping'
+import { deriveStudentPlanCursor, mapPlanToWeeks, type Catalog } from '../plan-editor/mapping'
 import { displayExerciseName, ExerciseIndex } from '../plan-editor/exerciseIndex'
 import { reconcilePlan, reconcileImportedPlan, resizeServerPlanWeeks } from '../plan-editor/reconcile'
 import { PlanEditor } from '../plan-editor/PlanEditor'
@@ -37,7 +37,6 @@ import {
   deriveRosterCounts,
   deriveRosterRows,
   filterRosterRows,
-  findCurrentPublishedPlan,
   type RosterDataByStudent,
 } from './rosterOverview'
 
@@ -245,24 +244,29 @@ export function PlanWorkspace({ onLogout, me }: Props) {
   ) => {
     const key = `week-tonnage:${id}`
     const version = rosterDataRequestVersions.current.issue(key)
-    const current = findCurrentPublishedPlan(studentPlans)
+    const current = [...studentPlans]
+      .filter((plan) => plan.status === 'published')
+      .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())[0]
     let weekTonnageKg: number | null = null
+    let planCursor: RosterDataByStudent[string]['planCursor'] = null
     if (current) {
       try {
         const plan = await getPlan(current.id)
         weekTonnageKg = currentPublishedWeekTonnage(plan)
+        planCursor = deriveStudentPlanCursor(plan)
       } catch {
         weekTonnageKg = null
+        planCursor = null
       }
     }
     if (!canApply() || !rosterDataRequestVersions.current.isLatest(key, version)) return
-    updateRosterData(id, { weekTonnageKg })
+    updateRosterData(id, { weekTonnageKg, planCursor })
   }, [updateRosterData])
 
   const refreshRosterWeekTonnage = useCallback((id: string, studentPlans: PlanResponse[]) => {
     const key = `week-tonnage:${id}`
     rosterDataRequestVersions.current.invalidate(key)
-    updateRosterData(id, { weekTonnageKg: undefined })
+    updateRosterData(id, { weekTonnageKg: undefined, planCursor: undefined })
     void fetchRosterWeekTonnage(id, studentPlans)
   }, [fetchRosterWeekTonnage, updateRosterData])
 
@@ -781,6 +785,10 @@ export function PlanWorkspace({ onLogout, me }: Props) {
   }))
   const historicalReadOnly = loaded?.plan.status === 'completed' || loaded?.plan.status === 'paused'
   const planContentEditable = loaded?.plan.status === 'draft' || loaded?.plan.status === 'published'
+  const activePublishedPlanId = plans.find((plan) => plan.status === 'published')?.id
+  const studentPlanCursor = loaded?.plan.trainee_id === studentId && loaded.plan.id === activePublishedPlanId
+    ? deriveStudentPlanCursor(loaded.plan)
+    : rosterDataByStudent[studentId]?.planCursor
 
   return (
     <CoachShell
@@ -834,6 +842,7 @@ export function PlanWorkspace({ onLogout, me }: Props) {
         planStartDate={loaded?.plan.start_date}
         planStatus={loaded?.plan.status}
         totalShiftDays={loaded?.plan.total_shift_days}
+        studentPlanCursor={studentPlanCursor}
         readOnly={historicalReadOnly}
         initialPublished={loaded?.plan.status === 'published'}
         onPublish={loaded?.plan.status === 'draft' ? async () => {

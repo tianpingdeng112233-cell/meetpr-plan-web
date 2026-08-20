@@ -164,6 +164,39 @@ describe('RosterBoard overview', () => {
     }
   })
 
+  it('renders progress and lag badges only when cursor metadata is trustworthy', async () => {
+    await act(async () => {
+      root.render(
+        <RosterBoard
+          students={students}
+          selectedStudentId="a"
+          dataByStudent={{
+            a: {
+              ...dataByStudent.a,
+              planCursor: {
+                kind: 'day', dayId: 'cursor', weekNumber: 2, dayOrdinal: 3,
+                calendarDate: '2026-07-23', lagDays: 4,
+              },
+            },
+            b: { ...dataByStudent.b, planCursor: { kind: 'completed' } },
+            // Legacy/missing completed_at is represented by no derived cursor.
+            c: dataByStudent.c,
+          }}
+          plansByStudent={{ a: [], b: [plan({})], c: [] }}
+          conversations={[conversation]}
+          onSelect={onSelect}
+          onOpen={onOpen}
+        />,
+      )
+    })
+
+    expect(host.querySelector('[data-student-id="a"] [data-student-cursor]')?.textContent)
+      .toBe('进行至 W2D3滞后 4 天')
+    expect(host.querySelector('[data-student-id="b"] [data-student-cursor]')?.textContent)
+      .toBe('已完成全部')
+    expect(host.querySelector('[data-student-id="c"] [data-student-cursor]')).toBeNull()
+  })
+
   it('distinguishes an unavailable profile from an explicit non-competitor', async () => {
     expect(competitionDistance(undefined)).toEqual({ days: null, registered: null })
     expect(competitionDistance(profile(), true)).toEqual({ days: null, registered: null })

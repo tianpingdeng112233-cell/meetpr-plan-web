@@ -1,9 +1,10 @@
 import { useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import type { PlanStatus } from '../../../api/types'
-import { shiftISODate } from '../mapping'
+import { shiftISODate, type StudentPlanCursor } from '../mapping'
 import { mmdd, WeekdayDateSelector } from './PlanCalendarControls'
 import { S } from '../../../i18n/strings'
+import { StudentPlanCursorBadges } from './StudentPlanCursorBadges'
 
 interface Option { id: string; label: string; tag?: string; sub?: string }
 
@@ -45,6 +46,7 @@ interface Props {
   issueHint?: string
   onJumpIssue?: () => void
   totalShiftDays?: number
+  studentPlanCursor?: StudentPlanCursor | null
 }
 
 const pill: React.CSSProperties = {
@@ -217,6 +219,8 @@ export function TopBar(p: Props) {
             renameLabel={S.editor.renameStudent} />
         )}
       </span>
+
+      <StudentPlanCursorBadges cursor={p.studentPlanCursor} />
 
       <span ref={planAnchorRef} style={pill} onClick={connected ? (e) => { e.stopPropagation(); setMenu(menu === 'plan' ? null : 'plan') } : undefined}>
         {p.planName} <span style={caret}>▼</span>

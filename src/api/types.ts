@@ -357,6 +357,10 @@ export interface PlanDayResponse {
   week_number: number // 1..52
   sort_order: number
   shifted_to_date: string | null
+  /** Optional while older backend responses without progress metadata remain in circulation. */
+  completed_at?: string | null
+  /** Optional while older backend responses without progress metadata remain in circulation. */
+  completion_source?: string | null
   exercises: PlanExerciseResponse[]
 }
 export interface PlanWithChildren extends PlanResponse {
