@@ -3,6 +3,7 @@ import type { Week, DayCol, ExerciseRow, IntensityValueMode, RowIntensity, SetBo
 import { fmt, localizedArray, S } from '../../i18n/strings'
 import { zhCommon } from '../../i18n/strings-common'
 import { STABLE_ZH } from '../../i18n/stable-zh'
+import { trainingDayOrdinalFromDows } from './weekBandModel'
 
 export const DOW_LABELS = localizedArray(zhCommon.weekdaysMondayFirst, () => S.common.weekdaysMondayFirst)
 
@@ -96,12 +97,67 @@ export function currentPlanWeek(startDate: string): number {
   return dayDiff >= 0 ? Math.floor(dayDiff / 7) + 1 : -1
 }
 
-function dateOnlyDiff(from: string, to: string): number {
+export function dateOnlyDiff(from: string, to: string): number {
   const [fromYear, fromMonth, fromDay] = from.split('-').map(Number)
   const [toYear, toMonth, toDay] = to.split('-').map(Number)
   return Math.round((
     Date.UTC(toYear, toMonth - 1, toDay) - Date.UTC(fromYear, fromMonth - 1, fromDay)
   ) / 86_400_000)
+}
+
+export type StudentPlanCursor =
+  | {
+      kind: 'day'
+      dayId: string
+      weekNumber: number
+      dayOrdinal: number
+      calendarDate: string
+      lagDays: number
+    }
+  | { kind: 'completed' }
+
+/**
+ * Derive the athlete's progress cursor from completion metadata only. Calendar
+ * time affects the lag annotation, never which plan day is selected.
+ *
+ * Returning null is deliberate for draft/history plans, empty published plans,
+ * and legacy responses that omit completed_at on any day: partial metadata
+ * cannot safely distinguish a pending day from an old wire shape.
+ */
+export function deriveStudentPlanCursor(
+  plan: PlanWithChildren,
+  localToday = isoDate(new Date()),
+): StudentPlanCursor | null {
+  if (plan.status !== 'published' || plan.days.length === 0) return null
+  if (plan.days.some((day) => !Object.hasOwn(day, 'completed_at'))) return null
+
+  const ordered = plan.days
+    .map((day, stableIndex) => ({ day, stableIndex }))
+    .sort((a, b) => (
+      a.day.week_number - b.day.week_number
+      || a.day.day_of_week - b.day.day_of_week
+      || a.stableIndex - b.stableIndex
+    ))
+  const pending = ordered.find(({ day }) => day.completed_at == null)?.day
+  if (!pending) return { kind: 'completed' }
+
+  const weekDows = plan.days
+    .filter((day) => day.week_number === pending.week_number)
+    .map((day) => day.day_of_week - 1)
+  const dayOrdinal = trainingDayOrdinalFromDows(weekDows, pending.day_of_week - 1)
+  if (dayOrdinal == null) return null
+  const calendarDate = pending.shifted_to_date
+    ?? isoDate(planDayDate(plan.start_date, pending.week_number, pending.day_of_week - 1))
+  const lagDays = Math.max(0, dateOnlyDiff(calendarDate, localToday))
+
+  return {
+    kind: 'day',
+    dayId: pending.id,
+    weekNumber: pending.week_number,
+    dayOrdinal,
+    calendarDate,
+    lagDays,
+  }
 }
 
 export function relabelWeeksForStartDate(weeks: Week[], startDate: string): Week[] {

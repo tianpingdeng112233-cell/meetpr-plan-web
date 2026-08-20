@@ -2,6 +2,10 @@ import type { Translations } from './types'
 import { countUnit } from './plural'
 
 export const zhCommon = {
+  progressTo: (position: string) => `进行至 ${position}`,
+  weekDayPosition: (week: number, day: number) => `W${week}D${day}`,
+  laggingDays: (days: number) => `滞后 ${days} 天`,
+  completedAll: '已完成全部',
   save: '保存',
   cancel: '取消',
   confirm: '确定',
@@ -123,6 +127,10 @@ export const zhCommon = {
 } as const
 
 export const enCommon = {
+  progressTo: (position) => `At ${position}`,
+  weekDayPosition: (week, day) => `W${week}D${day}`,
+  laggingDays: (days) => `${countUnit(days, 'day', 'days')} behind`,
+  completedAll: 'All completed',
   save: 'Save', cancel: 'Cancel', confirm: 'Confirm', done: 'Done', delete: 'Delete', retry: 'Retry',
   send: 'Send', continue: 'Continue', back: 'Back', close: 'Close', edit: 'Edit', add: 'Add',
   search: 'Search', filter: 'Filter', clear: 'Clear', all: 'All', today: 'Today', yesterday: 'Yesterday',

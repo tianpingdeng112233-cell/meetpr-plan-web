@@ -28,7 +28,7 @@ import {
 } from './reconcile'
 import { createSaveController } from './autosave'
 import { parseClipboardRows, serializeDayForClipboard, serializeRowsForClipboard } from './clipboard'
-import { isoDate, relabelWeeksForStartDate, resizeWeeksForCount } from './mapping'
+import { isoDate, relabelWeeksForStartDate, resizeWeeksForCount, type StudentPlanCursor } from './mapping'
 import { dayMoveDisabledReason, moveDayInWeek } from './dayMove'
 import { compareWeekMetric, summarizeWeek } from './weeklySummary'
 import { WeekCapacitySummary } from './components/WeekCapacitySummary'
@@ -90,6 +90,8 @@ export interface PlanEditorProps {
   initialPublished?: boolean
   planStatus?: PlanStatus
   totalShiftDays?: number
+  /** Read-only athlete progress cursor derived from the active published plan. */
+  studentPlanCursor?: StudentPlanCursor | null
   /** Completed/paused historical plans render as a true non-persisting viewer. */
   readOnly?: boolean
   /** Real publish call; when omitted the button just toggles locally (sample mode). */
@@ -2178,6 +2180,7 @@ export function PlanEditor(props: PlanEditorProps) {
         onNewExercise={!readOnly && props.onCreateExercise ? () => openCreateExercise() : undefined}
         issueCount={readOnly ? 0 : issues.length} issueHint={issueHint} onJumpIssue={jumpToNextIssue}
         totalShiftDays={props.totalShiftDays}
+        studentPlanCursor={props.studentPlanCursor}
       />
       {recoveryMirror && (
         <DraftMirrorBanner

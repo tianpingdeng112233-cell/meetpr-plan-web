@@ -401,6 +401,11 @@ textarea {
   font-size: 10px;
   font-weight: 600;
 }
+.student-cursor-badges { display: inline-flex; align-items: center; gap: 5px; min-width: 0; white-space: nowrap; }
+.student-cursor-badge { height: 22px; padding: 0 8px; border: 1px solid var(--bd); border-radius: var(--r-pill); display: inline-flex; align-items: center; box-sizing: border-box; color: var(--sec); background: var(--panel-bg); font: 600 10px var(--font-mono); white-space: nowrap; }
+.student-cursor-badge.completed { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 40%, var(--bd)); background: var(--ok-soft); }
+.student-cursor-badge.lagging { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 55%, var(--bd)); background: var(--warn-soft); font-family: var(--font-sans); }
+.student-cursor-badge.compact { height: 18px; padding: 0 6px; font-size: 9px; }
 .plan-autosave-status {
   display: inline-flex;
   align-items: center;

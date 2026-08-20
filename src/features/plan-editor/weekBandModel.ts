@@ -79,11 +79,16 @@ export function closestWeekToViewportCenter(
  * not consume a D number; storage and all day_of_week semantics stay intact.
  */
 export function trainingDayOrdinal(week: Pick<Week, 'days'>, dow: number): number | null {
-  let ordinal = 0
-  for (const day of week.days) {
-    const hasActions = day.rows.length > 0
-    if (hasActions) ordinal += 1
-    if (day.dow === dow) return hasActions ? ordinal : null
-  }
-  return null
+  return trainingDayOrdinalFromDows(
+    week.days.filter((day) => day.rows.length > 0).map((day) => day.dow),
+    dow,
+  )
+}
+
+/** Shared wire/display form of the week-band D ordinal. Duplicate server days
+ * on one weekday still describe the same visible training-day position. */
+export function trainingDayOrdinalFromDows(trainingDows: readonly number[], dow: number): number | null {
+  const ordered = [...new Set(trainingDows)].sort((a, b) => a - b)
+  const index = ordered.indexOf(dow)
+  return index < 0 ? null : index + 1
 }
