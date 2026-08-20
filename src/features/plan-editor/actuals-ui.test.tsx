@@ -67,6 +67,7 @@ describe('plan editor actual-set chips (SPEC-038)', () => {
   afterEach(() => {
     act(() => root.unmount())
     host.remove()
+    vi.useRealTimers()
     vi.restoreAllMocks()
   })
 
@@ -113,5 +114,28 @@ describe('plan editor actual-set chips (SPEC-038)', () => {
 
     expect(api.getStudentSetLogs).not.toHaveBeenCalled()
     expect(host.querySelector('[data-actuals]')).toBeNull()
+  })
+
+  it('uses the browser-local calendar date as the actuals upper bound', async () => {
+    vi.useFakeTimers()
+    const localNow = new Date(2026, 7, 22, 0, 30)
+    vi.setSystemTime(localNow)
+    const nativeToISOString = Date.prototype.toISOString
+    vi.spyOn(Date.prototype, 'toISOString').mockImplementation(function (this: Date) {
+      return this.getTime() === localNow.getTime()
+        ? '2026-08-21T23:30:00.000Z'
+        : nativeToISOString.call(this)
+    })
+    api.getStudentSetLogs.mockResolvedValue([])
+
+    await act(async () => {
+      root.render(
+        <PlanEditor initialWeeks={[week()]} weeksCount={1} studentId="student-1" studentName="吕子豪"
+          planName="Monster" planStartDate="2026-08-22" />,
+      )
+      await Promise.resolve()
+    })
+
+    expect(api.getStudentSetLogs).toHaveBeenCalledWith('student-1', '2026-08-22', '2026-08-22')
   })
 })

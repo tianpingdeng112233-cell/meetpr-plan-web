@@ -4,7 +4,7 @@ import MessagesPage, { type MessagesPageProps } from '../chat/MessagesPage'
 import { VideosPage, type VideoTarget } from './VideosPage'
 
 interface StudentHubPageProps extends Omit<MessagesPageProps, 'pendingVideoCounts' | 'onPlayVideo'> {
-  videosByStudent: Readonly<Record<string, StudentVideo[]>>
+  videosByStudent: Readonly<Record<string, StudentVideo[] | null | undefined>>
   onRefreshVideos: (studentId: string) => Promise<void>
 }
 
@@ -21,10 +21,11 @@ export function StudentHubPage({
     conversation.other_party.id === selectedStudentId
   )) ?? null
   const pendingVideoCounts = useMemo(() => Object.fromEntries(
-    Object.entries(videosByStudent).map(([studentId, videos]) => [
-      studentId,
-      videos.filter((video) => video.viewed_at == null).length,
-    ]),
+    Object.entries(videosByStudent).flatMap(([studentId, videos]) => (
+      Array.isArray(videos)
+        ? [[studentId, videos.filter((video) => video.viewed_at == null).length]]
+        : []
+    )),
   ), [videosByStudent])
 
   return (
@@ -40,7 +41,7 @@ export function StudentHubPage({
       />
       <VideosPage
         studentId={selectedStudentId}
-        videos={videosByStudent[selectedStudentId] ?? []}
+        videos={videosByStudent[selectedStudentId]}
         onRefreshVideos={onRefreshVideos}
         conversation={selectedConversation}
         onConversationOpened={(opened) => {

@@ -1074,6 +1074,16 @@ textarea {
   color: var(--faint);
   font-size: 12px;
 }
+.video-list-state { display: flex; flex-direction: column; gap: 10px; }
+.video-list-state button {
+  border: 1px solid var(--bd);
+  border-radius: var(--r-md);
+  padding: 7px 14px;
+  color: var(--txt);
+  background: var(--card-bg);
+  font: 600 12px var(--font-sans);
+  cursor: pointer;
+}
 .videos-detail {
   min-width: 0;
   min-height: 0;

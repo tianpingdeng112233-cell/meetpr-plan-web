@@ -43,6 +43,11 @@ import {
 
 interface Props { onLogout: () => void | Promise<void>; me: AuthUser }
 type Loaded = { plan: PlanWithChildren; weeks: Week[]; weeksCount: number }
+type WorkspaceRetry =
+  | { kind: 'boot'; fallback: string }
+  | { kind: 'student'; id: string; fallback: string; openEditor: boolean }
+  | { kind: 'plan'; id: string; fallback: string }
+type WorkspaceError = { message: string; retry: WorkspaceRetry }
 const LAST_PLAN_PREFIX = 'mpw.lastPlan.'
 const BIND_REQUESTS_KEY = 'bind-requests'
 const sortedPlans = (list: PlanResponse[]) => [...list].sort((a, b) => (
@@ -77,12 +82,17 @@ export function PlanWorkspace({ onLogout, me }: Props) {
   const [plans, setPlans] = useState<PlanResponse[]>([])
   const [plansByStudent, setPlansByStudent] = useState<Record<string, PlanResponse[]>>({})
   const [rosterDataByStudent, setRosterDataByStudent] = useState<RosterDataByStudent>({})
-  const [videosByStudent, setVideosByStudent] = useState<Record<string, StudentVideo[]>>({})
+  // Same three-state convention as TrackingDashboard:
+  // undefined = loading/not fetched, null = failed, array = successful (including empty).
+  const [videosByStudent, setVideosByStudent] = useState<Record<string, StudentVideo[] | null | undefined>>({})
   const [lastSyncedAt, setLastSyncedAt] = useState<Date | null>(null)
   const [planId, setPlanId] = useState<string>('')
   const [loaded, setLoaded] = useState<Loaded | null>(null)
-  const [error, setError] = useState('')
+  const [error, setError] = useState<WorkspaceError | null>(null)
   const [booting, setBooting] = useState(true)
+  const [bootAttempt, setBootAttempt] = useState(0)
+  const [studentSwitching, setStudentSwitching] = useState(false)
+  const [errorRetrying, setErrorRetrying] = useState(false)
   const [newPlanOpen, setNewPlanOpen] = useState(false)
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [deleting, setDeleting] = useState(false)
@@ -156,9 +166,20 @@ export function PlanWorkspace({ onLogout, me }: Props) {
 
   const refreshStudentVideos = useCallback(async (id: string, canApply: () => boolean = () => true) => {
     const version = videoRequestVersions.current.issue(id)
-    const rows = await getStudentVideos(id)
-    if (!canApply() || !videoRequestVersions.current.isLatest(id, version)) return
-    setVideosByStudent((prev) => ({ ...prev, [id]: rows }))
+    // Keep a successful list mounted during an in-place refresh (feedback,
+    // viewed state, calibration). First load and failure retries still expose
+    // the loading state instead of a misleading empty array.
+    setVideosByStudent((prev) => (
+      Array.isArray(prev[id]) ? prev : { ...prev, [id]: undefined }
+    ))
+    try {
+      const rows = await getStudentVideos(id)
+      if (!canApply() || !videoRequestVersions.current.isLatest(id, version)) return
+      setVideosByStudent((prev) => ({ ...prev, [id]: rows }))
+    } catch {
+      if (!canApply() || !videoRequestVersions.current.isLatest(id, version)) return
+      setVideosByStudent((prev) => ({ ...prev, [id]: null }))
+    }
   }, [])
 
   const updateRosterData = useCallback((id: string, patch: RosterDataByStudent[string]) => {
@@ -287,6 +308,7 @@ export function PlanWorkspace({ onLogout, me }: Props) {
     // selection, and remove both the current list and its cached mount in the
     // same render. Until the foreground response wins, this student is unknown.
     planRequestVersions.current.invalidate(id)
+    setStudentSwitching(true)
     setStudentId(id); setOnboarding(undefined); setLoaded(null); setPlanId('')
     setPlans([])
     if (Object.hasOwn(plansByStudentRef.current, id)) {
@@ -315,6 +337,8 @@ export function PlanWorkspace({ onLogout, me }: Props) {
     } catch (e) {
       if (generation !== loadGeneration.current) return false
       throw e
+    } finally {
+      if (generation === loadGeneration.current) setStudentSwitching(false)
     }
   }, [exerciseList, fetchRosterOverview, fetchRosterProfile, fetchStudentPlans, loadPlan])
 
@@ -366,16 +390,11 @@ export function PlanWorkspace({ onLogout, me }: Props) {
       )
       if (generation !== rosterBackgroundGeneration.current) return
 
-      try {
-        await refreshStudentVideos(
-          student.id,
-          () => generation === rosterBackgroundGeneration.current,
-        )
-        if (generation !== rosterBackgroundGeneration.current) return
-      } catch {
-        // Leave this student absent: the aggregate stays hidden until every
-        // roster member has an authoritative video array.
-      }
+      await refreshStudentVideos(
+        student.id,
+        () => generation === rosterBackgroundGeneration.current,
+      )
+      if (generation !== rosterBackgroundGeneration.current) return
     }
   }, [
     fetchRosterOverview,
@@ -450,7 +469,10 @@ export function PlanWorkspace({ onLogout, me }: Props) {
         }
         setLastSyncedAt(new Date())
       } catch (e) {
-        if (alive) setError(errText(e, S.workspace.plan.backendUnavailable))
+        if (alive) {
+          const fallback = S.workspace.plan.backendUnavailable
+          setError({ message: errText(e, fallback), retry: { kind: 'boot', fallback } })
+        }
       } finally {
         if (alive) setBooting(false)
       }
@@ -460,7 +482,7 @@ export function PlanWorkspace({ onLogout, me }: Props) {
       rosterBackgroundGeneration.current += 1
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [bootAttempt])
 
   useVisiblePolling(refreshBindRequests, REQUEST_POLL_INTERVAL_MS, {
     enabled: !sessionDead,
@@ -481,7 +503,8 @@ export function PlanWorkspace({ onLogout, me }: Props) {
     try {
       await loadStudent(id, catalog)
     } catch (e) {
-      setError(errText(e, S.workspace.plan.switchStudentFailed))
+      const fallback = S.workspace.plan.switchStudentFailed
+      setError({ message: errText(e, fallback), retry: { kind: 'student', id, fallback, openEditor: false } })
     }
   }
   const selectBoardStudent = (id: string) => {
@@ -509,7 +532,8 @@ export function PlanWorkspace({ onLogout, me }: Props) {
     try {
       await loadPlan(id, catalog)
     } catch (e) {
-      setError(errText(e, S.workspace.plan.openPlanFailed))
+      const fallback = S.workspace.plan.openPlanFailed
+      setError({ message: errText(e, fallback), retry: { kind: 'plan', id, fallback } })
     }
   }
   const newPlan = () => {
@@ -678,11 +702,42 @@ export function PlanWorkspace({ onLogout, me }: Props) {
     filterRosterRows(rosterRows, 'pending').map((row) => row.student)
   ), [rosterRows])
 
+  const retryWorkspace = async () => {
+    if (!error || errorRetrying) return
+    const action = error.retry
+    if (action.kind === 'boot') {
+      setError(null)
+      setBooting(true)
+      setBootAttempt((attempt) => attempt + 1)
+      return
+    }
+    if (!catalog) return
+    setErrorRetrying(true)
+    try {
+      if (action.kind === 'student') {
+        await loadStudent(action.id, catalog)
+        if (action.openEditor) setView('editor')
+      } else {
+        await loadPlan(action.id, catalog)
+      }
+      setError(null)
+    } catch (caught) {
+      setError({ message: errText(caught, action.fallback), retry: action })
+    } finally {
+      setErrorRetrying(false)
+    }
+  }
+
   if (error) {
     return (
       <Centered>
-        <div style={{ color: 'var(--brand-red)', marginBottom: 14 }}>{error}</div>
-        <button onClick={onLogout} style={btn}>{S.workspace.plan.signInAgain}</button>
+        <div style={{ color: 'var(--brand-red)', marginBottom: 14 }}>{error.message}</div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button type="button" onClick={() => { void retryWorkspace() }} disabled={errorRetrying} style={{ ...btn, background: 'var(--ink)', color: 'var(--white)' }}>
+            {errorRetrying ? S.common.loadingEllipsis : S.common.retry}
+          </button>
+          <button type="button" onClick={onLogout} style={btn}>{S.workspace.plan.signInAgain}</button>
+        </div>
       </Centered>
     )
   }
@@ -692,10 +747,10 @@ export function PlanWorkspace({ onLogout, me }: Props) {
   const sampleWeeks = hasStudents ? [] : buildSampleWeeks()
   const studentName = students.find((s) => s.id === studentId)?.display_name ?? ''
   const studentOpts = students.map((s) => ({ id: s.id, label: s.display_name, tag: s.status === 'in_evaluation' ? S.workspace.plan.assessment : undefined }))
-  const hasEveryVideoArray = students.every((student) => Object.hasOwn(videosByStudent, student.id))
+  const hasEveryVideoArray = students.every((student) => Array.isArray(videosByStudent[student.id]))
   const videoCount = hasEveryVideoArray
     ? students.reduce((total, student) => (
-        total + videosByStudent[student.id].filter((video) => video.viewed_at == null).length
+        total + (videosByStudent[student.id] ?? []).filter((video) => video.viewed_at == null).length
       ), 0)
     : null
   const unreadCount = unreadTotal(conversations)
@@ -706,7 +761,8 @@ export function PlanWorkspace({ onLogout, me }: Props) {
       await loadStudent(id, catalog)
       if (view !== 'editor') setView('editor')
     } catch (e) {
-      setError(errText(e, S.workspace.plan.openStudentPlanFailed))
+      const fallback = S.workspace.plan.openStudentPlanFailed
+      setError({ message: errText(e, fallback), retry: { kind: 'student', id, fallback, openEditor: true } })
     }
   }
   const openExerciseFromCommand = async (id: string) => {
@@ -901,8 +957,12 @@ export function PlanWorkspace({ onLogout, me }: Props) {
       )}
       {!loaded && (
         <div style={{ position: 'absolute', inset: '120px 0 0', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-start', paddingTop: 80, pointerEvents: 'none' }}>
-          <div style={{ color: 'var(--fg-secondary)', marginBottom: 14 }}>{S.workspace.plan.studentNoPlan(studentName)}</div>
-          <button onClick={newPlan} style={{ ...btn, pointerEvents: 'auto' }}>{S.workspace.plan.newPlan}</button>
+          {studentSwitching
+            ? <div style={{ color: 'var(--fg-tertiary)' }}>{S.common.loadingEllipsis}</div>
+            : <>
+                <div style={{ color: 'var(--fg-secondary)', marginBottom: 14 }}>{S.workspace.plan.studentNoPlan(studentName)}</div>
+                <button onClick={newPlan} style={{ ...btn, pointerEvents: 'auto' }}>{S.workspace.plan.newPlan}</button>
+              </>}
         </div>
       )}
       <BackfillHistoryDialog

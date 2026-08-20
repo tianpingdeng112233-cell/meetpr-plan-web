@@ -133,18 +133,26 @@ const buttonWithText = (host: HTMLElement, text: string) =>
   [...host.querySelectorAll('button')].find((button) => button.textContent?.includes(text)) ?? null
 
 function VideosHarness({ studentId, target }: { studentId: string; target?: VideoTarget | null }) {
-  const [rowsByStudent, setRowsByStudent] = useState<Record<string, StudentVideo[]>>({})
+  const [rowsByStudent, setRowsByStudent] = useState<Record<string, StudentVideo[] | null | undefined>>({})
   const requestVersions = useRef(createKeyedRequestVersions())
   const refreshVideos = useCallback(async (id: string) => {
     const version = requestVersions.current.issue(id)
-    const next = await api.getStudentVideos(id)
-    if (!requestVersions.current.isLatest(id, version)) return
-    setRowsByStudent((previous) => ({ ...previous, [id]: next }))
+    setRowsByStudent((previous) => (
+      Array.isArray(previous[id]) ? previous : { ...previous, [id]: undefined }
+    ))
+    try {
+      const next = await api.getStudentVideos(id)
+      if (!requestVersions.current.isLatest(id, version)) return
+      setRowsByStudent((previous) => ({ ...previous, [id]: next }))
+    } catch {
+      if (!requestVersions.current.isLatest(id, version)) return
+      setRowsByStudent((previous) => ({ ...previous, [id]: null }))
+    }
   }, [])
   return (
     <VideosPage
       studentId={studentId}
-      videos={rowsByStudent[studentId] ?? []}
+      videos={rowsByStudent[studentId]}
       onRefreshVideos={refreshVideos}
       target={target}
     />
@@ -249,6 +257,27 @@ describe('VideosPage master-detail interactions', () => {
     await act(settle)
     expect(host.querySelectorAll('.video-master-row')).toHaveLength(1)
     expect(host.querySelector('.video-master-row .video-status')?.textContent).toBe('已反馈')
+  })
+
+  it('shows a retryable failure instead of an empty list and recovers on the next successful load', async () => {
+    api.getStudentVideos
+      .mockRejectedValueOnce(new Error('video unavailable'))
+      .mockResolvedValueOnce(videos)
+
+    await renderHarness()
+
+    expect(host.querySelector('.video-list-state')?.textContent).toContain('视频加载失败')
+    expect(host.textContent).not.toContain('暂无符合条件的视频')
+    expect(host.querySelector('.videos-master-head')?.textContent).not.toContain('0 条')
+
+    await act(async () => {
+      buttonWithText(host, '重试')?.click()
+      await settle()
+    })
+
+    expect(api.getStudentVideos).toHaveBeenCalledTimes(2)
+    expect(host.querySelectorAll('.video-master-row')).toHaveLength(3)
+    expect(host.querySelector('.videos-master-head')?.textContent).toContain('3 条 · 近 2 个训练日')
   })
 
   it('marks a pending video viewed at halfway and does not resend after success', async () => {

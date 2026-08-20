@@ -109,7 +109,7 @@ export interface VideoTarget {
 
 export function VideosPage({
   studentId,
-  videos,
+  videos: videoState,
   onRefreshVideos,
   conversation = null,
   onConversationOpened,
@@ -117,13 +117,16 @@ export function VideosPage({
   onDetailOpenChange,
 }: {
   studentId: string
-  videos: StudentVideo[]
+  /** undefined = loading, null = failed, array = successful (including empty). */
+  videos: StudentVideo[] | null | undefined
   onRefreshVideos: (studentId: string) => Promise<void>
   conversation?: ChatConversation | null
   onConversationOpened?: (conversation: ChatConversation) => void
   target?: VideoTarget | null
   onDetailOpenChange?: (open: boolean) => void
 }) {
+  const videos = videoState ?? []
+  const videosReady = Array.isArray(videoState)
   const [masterCollapsed, toggleMaster] = usePersistentCollapse('meetpr:sidebar:videos')
   const [filter, setFilter] = useState<VideoFilter>('all')
   const [activeId, setActiveId] = useState<string | null>(null)
@@ -207,11 +210,7 @@ export function VideosPage({
   }
   const refreshVideos = useCallback(async () => {
     if (!studentId) return
-    try {
-      await onRefreshVideos(studentId)
-    } catch {
-      // Preserve the last authoritative array when the refresh fails.
-    }
+    await onRefreshVideos(studentId)
   }, [onRefreshVideos, studentId])
 
   useEffect(() => {
@@ -1358,7 +1357,7 @@ export function VideosPage({
 
       <aside className={`videos-master${masterCollapsed ? ' collapsed' : ''}`}>
         <header className="videos-master-head">
-          <span>{S.video.summary(videos.length, trainingDays)}</span>
+          {videosReady && <span>{S.video.summary(videos.length, trainingDays)}</span>}
           <button
             type="button"
             className="column-collapse-toggle"
@@ -1370,7 +1369,7 @@ export function VideosPage({
             {masterCollapsed ? '›' : '‹'}
           </button>
         </header>
-        <div className="video-filter-tabs" role="tablist" aria-label={S.video.status}>
+        {videosReady && <div className="video-filter-tabs" role="tablist" aria-label={S.video.status}>
           {([
             ['all', S.common.all],
             ['pending', S.video.pending],
@@ -1387,40 +1386,46 @@ export function VideosPage({
               {label}<span>{counts[value]}</span>
             </button>
           ))}
-        </div>
+        </div>}
         <div className="video-master-scroll">
-          {grouped.length === 0 && <div className="video-list-empty">{S.video.noMatching}</div>}
-          {grouped.map(([day, rows]) => (
-            <section className="video-date-group" key={day}>
-              <h2 className="video-date-heading">
-                <span>{dayLabel(day)}</span>
-                <small>{S.video.itemCount(rows.length)}</small>
-              </h2>
-              {rows.map((video) => {
-                const selected = video.id === active?.id
-                return (
-                  <button
-                    type="button"
-                    className={`video-master-row${selected ? ' selected' : ''}`}
-                    aria-current={selected ? 'true' : undefined}
-                    onClick={() => pickVideo(video)}
-                    key={video.id}
-                  >
-                    <span className="video-thumb" aria-hidden="true">▶</span>
-                    <span className="video-row-copy">
-                      <b>{videoTitle(video)}</b>
-                      <small>
-                        {compactDayLabel(day)} · {setLabel(video.set_index) ?? S.video.unlinkedSet} · RPE {video.rpe == null ? '—' : Number(video.rpe)}
-                      </small>
-                    </span>
-                    <span className={`video-status ${video.viewed_at == null ? 'pending' : 'reviewed'}`}>
-                      {statusLabel(video)}
-                    </span>
-                  </button>
-                )
-              })}
-            </section>
-          ))}
+          {!videosReady
+            ? <div className="video-list-empty video-list-state">
+                <span>{videoState === null ? S.video.loadFailed : S.common.loadingEllipsis}</span>
+                {videoState === null && <button type="button" onClick={() => { void refreshVideos() }}>{S.common.retry}</button>}
+              </div>
+            : grouped.length === 0
+              ? <div className="video-list-empty">{S.video.noMatching}</div>
+              : grouped.map(([day, rows]) => (
+                  <section className="video-date-group" key={day}>
+                    <h2 className="video-date-heading">
+                      <span>{dayLabel(day)}</span>
+                      <small>{S.video.itemCount(rows.length)}</small>
+                    </h2>
+                    {rows.map((video) => {
+                      const selected = video.id === active?.id
+                      return (
+                        <button
+                          type="button"
+                          className={`video-master-row${selected ? ' selected' : ''}`}
+                          aria-current={selected ? 'true' : undefined}
+                          onClick={() => pickVideo(video)}
+                          key={video.id}
+                        >
+                          <span className="video-thumb" aria-hidden="true">▶</span>
+                          <span className="video-row-copy">
+                            <b>{videoTitle(video)}</b>
+                            <small>
+                              {compactDayLabel(day)} · {setLabel(video.set_index) ?? S.video.unlinkedSet} · RPE {video.rpe == null ? '—' : Number(video.rpe)}
+                            </small>
+                          </span>
+                          <span className={`video-status ${video.viewed_at == null ? 'pending' : 'reviewed'}`}>
+                            {statusLabel(video)}
+                          </span>
+                        </button>
+                      )
+                    })}
+                  </section>
+              ))}
         </div>
       </aside>
     </main>
