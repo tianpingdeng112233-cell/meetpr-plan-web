@@ -503,6 +503,112 @@ describe('PlanWorkspace editor remount', () => {
     expect(studentTab?.querySelector('.coach-nav-badge')).toBeNull()
   }, 15_000)
 
+  it('retries a workspace boot failure without logging out or clearing draft mirrors', async () => {
+    const onLogout = vi.fn()
+    const mirrorKey = 'meetpr.planEditor.draftMirror.keep-me'
+    window.localStorage.setItem(mirrorKey, 'local-draft')
+    api.getCoachStudents.mockRejectedValueOnce(new Error('offline'))
+    api.getPlan.mockResolvedValue(plan('重试后恢复'))
+
+    await act(async () => {
+      root.render(<PlanWorkspace onLogout={onLogout} me={me} />)
+      await settle()
+    })
+    expect(host.textContent).toContain('无法连接后端')
+
+    await act(async () => {
+      clickButton(host, '重试')
+      await settle()
+    })
+
+    expect(host.querySelector('[data-testid="editor-note"]')?.textContent).toBe('重试后恢复')
+    expect(onLogout).not.toHaveBeenCalled()
+    expect(window.localStorage.getItem(mirrorKey)).toBe('local-draft')
+  }, 15_000)
+
+  it('retries the failed student switch in place and restores that student context', async () => {
+    const studentAPlan = studentPlan({ id: 'plan-a', studentId: 'student-a', name: '甲学员计划' })
+    const studentBPlan = studentPlan({ id: 'plan-b', studentId: 'student-b', name: '乙学员计划' })
+    let studentBRequests = 0
+    api.getCoachStudents.mockResolvedValue([
+      { id: 'student-a', display_name: '甲学员', status: 'active', evaluation: null },
+      { id: 'student-b', display_name: '乙学员', status: 'active', evaluation: null },
+    ])
+    api.getStudentPlans.mockImplementation((id: string) => {
+      if (id === 'student-a') return Promise.resolve([studentAPlan])
+      studentBRequests += 1
+      if (studentBRequests === 1) return Promise.resolve([])
+      if (studentBRequests === 2) return Promise.reject(new Error('switch failed'))
+      return Promise.resolve([studentBPlan])
+    })
+    api.getPlan.mockImplementation((id: string) => Promise.resolve(id === 'plan-a' ? studentAPlan : studentBPlan))
+
+    await act(async () => {
+      root.render(<PlanWorkspace onLogout={vi.fn()} me={me} />)
+      await settle()
+    })
+    await act(async () => {
+      host.querySelector<HTMLButtonElement>('[data-testid="switch-student-b"]')?.click()
+      await settle()
+    })
+    expect(host.textContent).toContain('切换学员失败')
+
+    await act(async () => {
+      clickButton(host, '重试')
+      await settle()
+    })
+
+    expect(api.getStudentPlans).toHaveBeenCalledTimes(4)
+    expect(host.querySelector('[data-testid="current-student"]')?.textContent).toBe('student-b')
+    expect(host.querySelector('[data-testid="plan-options"]')?.textContent).toBe('乙学员计划')
+  }, 15_000)
+
+  it('keeps create-plan unavailable while a student switch is pending, then shows it for a confirmed empty plan list', async () => {
+    const studentAPlan = studentPlan({ id: 'plan-a', studentId: 'student-a', name: '甲学员计划' })
+    let resolveBackgroundB!: (rows: PlanResponse[]) => void
+    let resolveForegroundB!: (rows: PlanResponse[]) => void
+    let studentBRequests = 0
+    api.getCoachStudents.mockResolvedValue([
+      { id: 'student-a', display_name: '甲学员', status: 'active', evaluation: null },
+      { id: 'student-b', display_name: '乙学员', status: 'active', evaluation: null },
+    ])
+    api.getStudentPlans.mockImplementation((id: string) => {
+      if (id === 'student-a') return Promise.resolve([studentAPlan])
+      studentBRequests += 1
+      return new Promise<PlanResponse[]>((resolve) => {
+        if (studentBRequests === 1) resolveBackgroundB = resolve
+        else resolveForegroundB = resolve
+      })
+    })
+    api.getPlan.mockResolvedValue(studentAPlan)
+
+    await act(async () => {
+      root.render(<PlanWorkspace onLogout={vi.fn()} me={me} />)
+      await settle()
+    })
+    await act(async () => {
+      host.querySelector<HTMLButtonElement>('[data-testid="switch-student-b"]')?.click()
+      await settle()
+    })
+
+    expect(host.textContent).toContain('加载中…')
+    expect(host.textContent).not.toContain('乙学员 暂无计划')
+    expect([...host.querySelectorAll('button')].some((button) => button.textContent?.includes('新建计划'))).toBe(false)
+
+    await act(async () => {
+      resolveForegroundB([])
+      await settle()
+    })
+
+    expect(host.textContent).toContain('乙学员 暂无计划')
+    expect([...host.querySelectorAll('button')].some((button) => button.textContent?.includes('新建计划'))).toBe(true)
+
+    await act(async () => {
+      resolveBackgroundB([])
+      await settle()
+    })
+  }, 15_000)
+
   it('切换学员时清空旧计划挂载，且较早的后台计划响应不能覆盖较新的结果', async () => {
 // Keep the “next week” expectation stable: these fixtures cover Aug 3–9.
     vi.useFakeTimers({ shouldAdvanceTime: true })

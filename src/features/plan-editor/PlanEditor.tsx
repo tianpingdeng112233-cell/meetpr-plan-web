@@ -28,7 +28,7 @@ import {
 } from './reconcile'
 import { createSaveController } from './autosave'
 import { parseClipboardRows, serializeDayForClipboard, serializeRowsForClipboard } from './clipboard'
-import { relabelWeeksForStartDate, resizeWeeksForCount } from './mapping'
+import { isoDate, relabelWeeksForStartDate, resizeWeeksForCount } from './mapping'
 import { dayMoveDisabledReason, moveDayInWeek } from './dayMove'
 import { compareWeekMetric, summarizeWeek } from './weeklySummary'
 import { WeekCapacitySummary } from './components/WeekCapacitySummary'
@@ -361,7 +361,7 @@ export function PlanEditor(props: PlanEditorProps) {
   useEffect(() => {
     const studentId = props.studentId
     const from = planStartDate
-    const today = new Date().toISOString().slice(0, 10)
+    const today = isoDate(new Date())
     if (!studentId || !from || !anyRowHasLogs || from > today) return
     let cancelled = false
     void getStudentSetLogs(studentId, from, today)
