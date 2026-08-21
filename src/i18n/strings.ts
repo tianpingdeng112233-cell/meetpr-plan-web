@@ -9,6 +9,7 @@ import { enChat, zhChat } from './strings-chat'
 import { enStats, zhStats } from './strings-stats'
 import { enAdmin, zhAdmin } from './strings-admin'
 import { enVideo, zhVideo } from './strings-video'
+import { enStates, zhStates } from './strings-states'
 import type { Translations } from './types'
 
 const zh = {
@@ -22,6 +23,7 @@ const zh = {
   stats: zhStats,
   admin: zhAdmin,
   video: zhVideo,
+  states: zhStates,
 } as const
 
 const en = {
@@ -35,6 +37,7 @@ const en = {
   stats: enStats,
   admin: enAdmin,
   video: enVideo,
+  states: enStates,
 } satisfies Translations<typeof zh>
 
 type Strings = Translations<typeof zh>

@@ -8,8 +8,8 @@ import type {
   PlanResponse,
   StudentOnboardingProfile,
 } from '../../api/types'
-import { RosterBoard, ROSTER_GRID_COLUMNS } from './StatsViews'
-import { competitionDistance, type RosterDataByStudent } from './rosterOverview'
+import { RosterBoard, RosterE1rmBadges, ROSTER_GRID_COLUMNS } from './StatsViews'
+import { competitionDistance, FAILED_ROSTER_DATUM, type RosterDataByStudent } from './rosterOverview'
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
@@ -221,9 +221,74 @@ describe('RosterBoard overview', () => {
       )
     })
 
-    expect(host.querySelector('[data-student-id="a"] .roster-distance')?.textContent).toBe('—')
-    expect(host.querySelector('[data-student-id="b"] .roster-distance')?.textContent).toBe('—')
+    expect(host.querySelector('[data-student-id="a"] .roster-distance')).toBeNull()
+    expect(host.querySelector('[data-student-id="b"] .state-inline-fail')?.textContent).toBe('↻失败')
     expect(host.querySelector('[data-student-id="c"] .roster-distance')?.textContent).toBe('未报名')
+  })
+
+  it('renders delayed cell skeletons without changing the row height', async () => {
+    await act(async () => {
+      root.render(
+        <RosterBoard
+          students={[students[0]]}
+          selectedStudentId="a"
+          dataByStudent={{ a: {} }}
+          plansByStudent={{}}
+          conversations={null}
+          onSelect={onSelect}
+          onOpen={onOpen}
+        />,
+      )
+    })
+    expect(host.querySelectorAll('[data-student-id="a"] .state-cell-skeleton')).toHaveLength(0)
+    await act(async () => vi.advanceTimersByTime(150))
+    expect(host.querySelectorAll('[data-student-id="a"] .state-cell-skeleton').length).toBeGreaterThanOrEqual(5)
+    expect(host.querySelector<HTMLElement>('[data-student-id="a"]')?.classList.contains('roster-overview-row')).toBe(true)
+  })
+
+  it('isolates a failed field, retries its request, and restores successful content', async () => {
+    const retryTonnage = vi.fn()
+    const failed: RosterDataByStudent = {
+      a: { ...dataByStudent.a, weekTonnageKg: FAILED_ROSTER_DATUM },
+    }
+    const render = async (data: RosterDataByStudent) => act(async () => root.render(
+      <RosterBoard
+        students={[students[0]]}
+        selectedStudentId="a"
+        dataByStudent={data}
+        plansByStudent={{ a: [] }}
+        conversations={null}
+        onSelect={onSelect}
+        onOpen={onOpen}
+        onRetryWeekTonnage={retryTonnage}
+      />,
+    ))
+
+    await render(failed)
+    const row = host.querySelector('[data-student-id="a"]')!
+    expect(row.querySelector('.roster-completion')?.textContent).toContain('90%')
+    expect(row.querySelector('.state-inline-fail')?.textContent).toBe('↻失败')
+    await act(async () => row.querySelector<HTMLButtonElement>('.state-inline-fail')?.click())
+    expect(retryTonnage).toHaveBeenCalledWith('a')
+    expect(onSelect).not.toHaveBeenCalled()
+
+    await render({ a: { ...dataByStudent.a, weekTonnageKg: 6200 } })
+    expect(host.querySelector('[data-student-id="a"] .roster-number')?.textContent).toBe('6.2t')
+    expect(host.querySelector('[data-student-id="a"] .state-inline-fail')).toBeNull()
+  })
+
+  it('keeps e1RM failure separate from an authoritative empty response', async () => {
+    const retryOverview = vi.fn()
+    await act(async () => root.render(
+      <RosterE1rmBadges overview={FAILED_ROSTER_DATUM} onRetry={retryOverview} />,
+    ))
+    expect(host.textContent).toContain('e1RM 拉取失败')
+    expect(host.textContent).not.toContain('尚无实测或登记值')
+    await act(async () => host.querySelector<HTMLButtonElement>('.state-inline-fail')?.click())
+    expect(retryOverview).toHaveBeenCalledTimes(1)
+
+    await act(async () => root.render(<RosterE1rmBadges overview={overview(0)} />))
+    expect(host.textContent).toBe('尚无实测或登记值')
   })
 
   it('moves the selected row with J/K, opens it with Enter, and exempts focused inputs', async () => {
@@ -300,7 +365,7 @@ describe('RosterBoard overview', () => {
         deadlift: { trend: 'up', points: [{ date: '2026-07-20', value: '180.2' }] },
       },
     }
-    // 乙:老后端无 e1rm_series——回落登记值置灰;丙:两者皆无——显示 —。
+    // 乙:老后端无 e1rm_series——回落登记值置灰;丙:两者皆无——显示明确空态。
     dataByStudent.b.overview = { ...overview(.7), one_rm: { squat: '120', bench: '80', deadlift: '150' } }
     await renderBoard()
 
@@ -314,8 +379,6 @@ describe('RosterBoard overview', () => {
     expect(badge(1, 'squat').textContent).toBe('S120')
     expect(badge(1, 'squat').classList.contains('registered')).toBe(true)
     expect(badge(1, 'squat').getAttribute('title')).toContain('登记值')
-    expect(badge(2, 'deadlift').textContent).toBe('D—')
-    // 纯无数据态不带 .registered——三态视觉不合并。
-    expect(badge(2, 'deadlift').classList.contains('registered')).toBe(false)
+    expect(host.querySelector('[data-student-id="c"] .roster-e1rm-empty')?.textContent).toBe('尚无实测或登记值')
   })
 })

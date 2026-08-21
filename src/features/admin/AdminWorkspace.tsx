@@ -19,6 +19,7 @@ import {
 } from '../../api/admin'
 import type { PlanStatus } from '../../api/types'
 import { fmt, resolveLocale, S } from '../../i18n/strings'
+import { EmptyState, ErrorState, SkeletonRows, useDelayedLoading } from '../../components/states'
 
 interface Props { onLogout: () => void }
 
@@ -50,7 +51,8 @@ function useResource<T>(key: string | null, load: () => Promise<T>): ResourceSta
     return () => { cancelled = true }
   }, [key, attempt])
 
-  return { ...state, retry: () => setAttempt((value) => value + 1) }
+  const visibleSkeleton = useDelayedLoading(state.loading)
+  return { ...state, loading: state.loading || visibleSkeleton, retry: () => setAttempt((value) => value + 1) }
 }
 
 function roleBadge(role: AdminManagedRole): BadgeSpec {
@@ -133,34 +135,6 @@ function dateOnly(value: string | null | undefined): string {
   return fmt.monthDay(new Date(year, month - 1, day), () => iso)
 }
 
-function SkeletonRows({ count = 4 }: { count?: number }) {
-  return (
-    <div className="px-4 pb-4 pt-2">
-      {Array.from({ length: count }, (_, index) => (
-        <div key={index} className="admin-shimmer mt-4 h-3.5 rounded-[4px] bg-s3" style={{ width: `${100 - index * 7}%` }} />
-      ))}
-    </div>
-  )
-}
-
-function ErrorState({ retry, roomy = true }: { retry: () => void; roomy?: boolean }) {
-  return (
-    <div className={roomy ? 'px-4 py-12 text-center' : 'px-4 py-8 text-center'}>
-      <div className="text-[13px] text-fg-secondary">{S.admin.loadFailed}</div>
-      <button type="button" onClick={retry} className="mt-3 rounded-md border border-border-strong bg-transparent px-4 py-[7px] text-[13px] text-white hover:bg-s2">{S.common.retry}</button>
-    </div>
-  )
-}
-
-function EmptyState({ text, clear }: { text: string; clear?: () => void }) {
-  return (
-    <div className="px-4 py-12 text-center">
-      <div className="text-[13px] text-fg-tertiary">{text}</div>
-      {clear && <button type="button" onClick={clear} className="mt-3 rounded-md border border-border bg-transparent px-3.5 py-1.5 text-[12.5px] text-fg-secondary hover:bg-s2 hover:text-white">{S.admin.clearFilters}</button>}
-    </div>
-  )
-}
-
 function FilterChips<T extends string>({ options, value, onChange }: { options: Array<[T, string]>; value: T; onChange: (value: T) => void }) {
   return (
     <div className="flex gap-0.5 rounded-[6px] border border-border p-0.5">
@@ -214,7 +188,7 @@ function OverviewPage({ state, openUser, openPlan, navigate }: {
   openPlan: (id: string, context: PlanContext) => void
   navigate: (page: RootPage) => void
 }) {
-  if (state.error) return <div className="max-w-[1400px] rounded-lg border border-border bg-s1"><ErrorState retry={state.retry}/></div>
+  if (state.error && !state.loading) return <div className="max-w-[1400px] rounded-lg border border-border bg-s1"><ErrorState retry={state.retry}/></div>
   const stats = state.data?.stats
   const statCards = [
     [S.admin.overview.coaches, stats?.coaches, S.admin.overview.coachesHint],

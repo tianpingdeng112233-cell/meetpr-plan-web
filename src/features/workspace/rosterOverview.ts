@@ -13,11 +13,20 @@ import type { StudentPlanCursor } from '../plan-editor/mapping'
 
 export type RosterTab = 'all' | 'pending' | 'attention'
 
+export interface FailedRosterDatum { kind: 'failed' }
+export const FAILED_ROSTER_DATUM: FailedRosterDatum = Object.freeze({ kind: 'failed' })
+export const isFailedRosterDatum = (value: unknown): value is FailedRosterDatum => (
+  typeof value === 'object' && value !== null && Reflect.get(value, 'kind') === 'failed'
+)
+
 export interface RosterDataEntry {
-  overview?: ExerciseStatsOverview | null
+  /** undefined = loading/not fetched; failed = request failed; null = authoritative empty. */
+  overview?: ExerciseStatsOverview | null | FailedRosterDatum
   profile?: StudentOnboardingProfile | null
   profileError?: boolean
-  weekTonnageKg?: number | null
+  /** undefined = loading/not fetched; failed = plan request failed; null = outside a published plan. */
+  weekTonnageKg?: number | null | FailedRosterDatum
+  plansError?: boolean
   /** undefined = not fetched; null = no trustworthy published-plan cursor. */
   planCursor?: StudentPlanCursor | null
 }
@@ -60,8 +69,8 @@ function dateOnlyDiff(from: string, to: string): number | null {
   ) / 86_400_000)
 }
 
-export function completionPercent(overview: ExerciseStatsOverview | null | undefined): number | null {
-  if (!overview || !Number.isFinite(overview.recent_4w.completion_rate)) return null
+export function completionPercent(overview: ExerciseStatsOverview | null | FailedRosterDatum | undefined): number | null {
+  if (!overview || isFailedRosterDatum(overview) || !Number.isFinite(overview.recent_4w.completion_rate)) return null
   return Math.round(overview.recent_4w.completion_rate * 100)
 }
 
