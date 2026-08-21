@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="design_doc_mode" content="canvas">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;700;800;900&family=IBM+Plex+Mono:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;700;900&display=swap" rel="stylesheet">
+<style>
+html,body{margin:0;padding:0;background:#050506}
+a{color:#F5A623;text-decoration:none}
+a:hover{color:#FBBF3E}
+@keyframes shimmer{0%{opacity:.55}50%{opacity:1}100%{opacity:.55}}
+</style>
+</helmet>
+<div style="min-height:100vh;background:radial-gradient(130% 80% at 50% -10%,#1A1A1E,#050506);padding:44px 48px 72px;font-family:'Noto Sans SC',-apple-system,sans-serif;color:#EDEDED">
+
+<div style="max-width:940px;margin-bottom:40px;display:flex;flex-direction:column;gap:10px">
+<span style="font-family:'IBM Plex Mono','Noto Sans SC',monospace;font-size:11px;letter-spacing:.14em;color:#8A8A90">MEETPR 空状态 · 第三批（2026-08-21 补全单 · 第一批 · 重做版）</span>
+<span style="font-size:26px;font-weight:900">S13 · W0 · W4</span>
+<span style="font-size:14px;line-height:1.7;color:#A1A1A6;max-width:720px">S13 按 08-21 拍板口径出目标态：<strong style="color:#EDEDED">% 处方全部由 app 换算，学员不动手</strong>（登记 1RM 是注册必填，永远有基准）。W0 是 web 全站通用三态组件规范；W4 是花名册单元格级三态，套 W0。学员端金色双主题正典，web 端墨蓝亮色 v3，<strong style="color:#EDEDED">虚线框标出的槽位是本批改动，虚线不实装</strong>。</span>
+</div>
+
+<div style="display:flex;flex-direction:column;gap:56px">
+
+<!-- ================= S13 ================= -->
+<div style="display:flex;flex-direction:column;gap:16px">
+<div style="display:flex;flex-direction:column;gap:5px;max-width:720px">
+<span style="font-family:'IBM Plex Mono',monospace;font-size:13px;font-weight:700;color:#F5A623">S13 · 今日训练 · % 强度处方（app 直接换算）</span>
+<span style="font-size:13px;line-height:1.65;color:#8A8A90">三种锚：<strong style="color:#C8C8CC">1RM 锚</strong>（默认，登记 1RM × %，直接预填）、<strong style="color:#C8C8CC">e1RM 锚</strong>（e1RM 为空时静默回落登记 1RM，来源标注改写）、<strong style="color:#C8C8CC">当日顶组锚</strong>（顶组录完才换算，之前显示等待态）。组行以换算结果为主、来源为辅；辅助项没有登记 1RM，只显原文不换算。换算按 2.5 kg 取整，前缀「≈」。</span>
+</div>
+<div style="display:flex;flex-wrap:wrap;gap:32px;align-items:flex-start">
+
+<!-- S13 暗色 组列表 -->
+<div style="display:flex;flex-direction:column;gap:12px">
+<span style="font-size:12px;color:#8A8A90;font-family:'IBM Plex Mono','Noto Sans SC',monospace">暗色 · 今日训练组列表（三种锚同屏）</span>
+<div style="width:390px;height:800px;background:#0A0A0C;border:1px solid #2E2E32;border-radius:40px;overflow:hidden;display:flex;flex-direction:column;color:#EDEDED">
+<div style="flex:none;height:44px;display:flex;align-items:center;justify-content:space-between;padding:0 30px 0 34px;font-family:'IBM Plex Mono',monospace;font-size:15px;font-weight:600">21:35<span style="width:17px;height:11px;border:1px solid #8A8A90;border-radius:3px;position:relative"><span style="position:absolute;inset:1.5px;right:5px;background:#EDEDED;border-radius:1px"></span></span></div>
+<div style="flex:1;min-height:0;overflow:hidden;padding:8px 20px 0;display:flex;flex-direction:column;gap:12px">
+<div style="font-family:'Archivo','Noto Sans SC',sans-serif;font-weight:800;font-size:22px;line-height:1">今日训练</div>
+<div style="font-size:12px;color:#8A8A90;font-family:'IBM Plex Mono','Noto Sans SC',monospace;margin-top:-6px">共 3 个动作 · 6 组 · 硬拉日</div>
+<div style="outline:1.5px dashed rgba(245,166,35,.55);outline-offset:5px;border-radius:14px">
+<div style="background:#141416;border-radius:14px;overflow:hidden">
+<div style="display:flex;align-items:center;gap:11px;min-height:44px;padding:11px 16px">
+<span style="width:3px;height:20px;border-radius:2px;background:#F5A623"></span>
+<span style="flex:1;min-width:0;display:flex;flex-direction:column;gap:3px"><span style="font-size:14.5px;font-weight:700">竞技深蹲</span><span style="font-size:11px;color:#8A8A90;font-family:'IBM Plex Mono','Noto Sans SC',monospace">% 处方 · 按你登记的 1RM 200 kg 换算</span></span>
+<span style="font-family:'IBM Plex Mono','Noto Sans SC',monospace;font-size:12px;font-weight:600;color:#6E6E75">0 / 2 组</span>
+</div>
+<div style="display:grid;grid-template-columns:22px 1fr 1fr 1fr 40px;padding:5px 14px;border-top:1px solid #1E1E22;font-family:'IBM Plex Mono','Noto Sans SC',monospace;font-size:10px;letter-spacing:.05em;color:#6E6E75"><span>#</span><span>重量</span><span style="text-align:center">次数</span><span style="text-align:center">RPE</span><span></span></div>
+<div style="display:grid;grid-template-columns:22px 1fr 1fr 1fr 40px;align-items:center;min-height:46px;padding:2px 14px;border-bottom:1px solid #1E1E22;font-family:'IBM Plex Mono',monospace;font-size:14px;color:#C8C8CC"><span style="color:#6E6E75;font-size:11px">1</span><span style="display:flex;flex-direction:column;gap:1px"><span style="font-weight:700;color:#EDEDED">≈ 120 <span style="font-size:11px;color:#8A8A90;font-weight:500">kg</span></span><span style="font-size:9.5px;color:#8A8A90">60% · 1RM</span></span><span style="text-align:center">5</span><span style="text-align:center;color:#4A4A50">—</span><span></span></div>
+<div style="display:grid;grid-template-columns:22px 1fr 1fr 1fr 40px;align-items:center;min-height:46px;padding:2px 14px;font-family:'IBM Plex Mono',monospace;font-size:14px;color:#C8C8CC"><span style="color:#6E6E75;font-size:11px">2</span><span style="display:flex;flex-direction:column;gap:1px"><span style="font-weight:700;color:#EDEDED">≈ 150 <span style="font-size:11px;color:#8A8A90;font-weight:500">kg</span></span><span style="font-size:9.5px;color:#8A8A90">75% · 1RM</span></span><span style="text-align:center">3</span><span style="text-align:center;color:#4A4A50">—</span><span></span></div>
+</div>
+</div>
+<div style="outline:1.5px dashed rgba(245,166,35,.55);outline-offset:5px;border-radius:14px">
+<div style="background:#141416;border-radius:14px;overflow:hidden">
+<div style="display:flex;align-items:center;gap:11px;min-height:44px;padding:11px 16px">
+<span style="width:3px;height:20px;border-radius:2px;background:#3E3E44"></span>
+<span style="flex:1;min-width:0;display:flex;flex-direction:column;gap:3px"><span style="font-size:14.5px;font-weight:700">传统硬拉</span><span style="font-size:11px;color:#8A8A90;font-family:'IBM Plex Mono','Noto Sans SC',monospace">顶组 @8 · 退让组按当日顶组换算</span></span>
+<span style="font-family:'IBM Plex Mono','Noto Sans SC',monospace;font-size:12px;font-weight:600;color:#6E6E75">0 / 3 组</span>
+</div>
+<div style="display:grid;grid-template-columns:22px 1fr 1fr 1fr 40px;padding:5px 14px;border-top:1px solid #1E1E22;font-family:'IBM Plex Mono','Noto Sans SC',monospace;font-size:10px;letter-spacing:.05em;color:#6E6E75"><span>#</span><span>重量</span><span style="text-align:center">次数</span><span style="text-align:center">RPE</span><span></span></div>
+<div style="display:grid;grid-template-columns:22px 1fr 1fr 1fr 40px;align-items:center;min-height:46px;padding:2px 14px;border-bottom:1px solid #1E1E22;font-family:'IBM Plex Mono','Noto Sans SC',monospace;font-size:14px;color:#C8C8CC"><span style="color:#6E6E75;font-size:11px">1</span><span style="display:flex;flex-direction:column;gap:1px"><span style="font-weight:700;color:#EDEDED">当日顶组</span><span style="font-size:9.5px;color:#8A8A90">自选 · @8</span></span><span style="text-align:center">1</span><span style="text-align:center">8</span><span></span></div>
+<div style="display:grid;grid-template-columns:22px 1fr 1fr 1fr 40px;align-items:center;min-height:46px;padding:2px 14px;border-bottom:1px solid #1E1E22;font-family:'IBM Plex Mono','Noto Sans SC',monospace;font-size:14px;color:#6E6E75"><span style="font-size:11px">2</span><span style="display:flex;flex-direction:column;gap:1px"><span style="font-weight:600;color:#8A8A90">85% × 顶组</span><span style="font-size:9.5px;color:#6E6E75">先完成顶组</span></span><span style="text-align:center">5</span><span style="text-align:center;color:#4A4A50">—</span><span></span></div>
+<div style="display:grid;grid-template-columns:22px 1fr 1fr 1fr 40px;align-items:center;min-height:46px;padding:2px 14px;font-family:'IBM Plex Mono','Noto Sans SC',monospace;font-size:14px;color:#6E6E75"><span style="font-size:11px">3</span><span style="display:flex;flex-direction:column;gap:1px"><span style="font-weight:600;color:#8A8A90">85% × 顶组</span><span style="font-size:9.5px;color:#6E6E75">先完成顶组</span></span><span style="text-align:center">5</span><span style="text-align:center;color:#4A4A50">—</span><span></span></div>
+</div>
+</div>
+<div style="background:#141416;border-radius:14px;overflow:hidden">
+<div style="display:flex;align-items:center;gap:11px;min-height:44px;padding:11px 16px">
+<span style="width:3px;height:20px;border-radius:2px;background:#3E3E44"></span>
+<span style="flex:1;min-width:0;display:flex;flex-direction:column;gap:3px"><span style="font-size:14.5px;font-weight:700">山羊挺身</span><span style="font-size:11px;color:#8A8A90;font-family:'IBM Plex Mono','Noto Sans SC',monospace">辅助项 · 教练以 % 设定，不换算</span></span>
+<span style="font-family:'IBM Plex Mono','Noto Sans SC',monospace;font-size:12px;font-weight:600;color:#6E6E75">0 / 1 组</span>
+</div>
+<div style="display:grid;grid-template-columns:22px 1fr 1fr 1fr 40px;align-items:center;min-height:46px;padding:2px 14px;border-top:1px solid #1E1E22;font-family:'IBM Plex Mono',monospace;font-size:14px;color:#6E6E75"><span style="font-size:11px">1</span><span style="font-weight:600">60%</span><span style="text-align:center">12</span><span style="text-align:center;color:#4A4A50">—</span><span></span></div>
+</div>
+</div>
+<div style="flex:none;height:83px;border-top:1px solid #1E1E22;display:flex;justify-content:space-around;align-items:flex-start;padding-top:9px;background:#141416">
+<div style="display:flex;flex-direction:column;align-items:center;gap:4px;width:64px"><svg width="24" height="24" viewBox="0 0 24 24" fill="#FFB800" stroke="#FFB800" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><circle cx="11.5" cy="12.5" r="8.6" fill="none"></circle><circle cx="11.5" cy="12.5" r="4.8" fill="none"></circle><circle cx="11.5" cy="12.5" r="1.6" stroke="none"></circle><path d="M14.4 8.6 L21.5 2.3" fill="none" stroke-width="2"></path></svg><span style="font-size:11px;color:#FFB800">今日</span></div>
+<div style="display:flex;flex-direction:column;align-items:center;gap:4px;width:64px"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#A1A1A6" stroke-width="2" stroke-linecap="round"><path d="M3 9v6M6 7v10M18 7v10M21 9v6M6 12h12"></path></svg><span style="font-size:11px;color:#A1A1A6">训练</span></div>
+<div style="display:flex;flex-direction:column;align-items:center;gap:4px;width:64px"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#A1A1A6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19V5M4 19h16M8 15l3-4 3 3 4-6"></path></svg><span style="font-size:11px;color:#A1A1A6">成长</span></div>
+<div style="display:flex;flex-direction:column;align-items:center;gap:4px;width:64px"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#A1A1A6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="3.2"></circle><path d="M5.5 20a6.5 6.5 0 0113 0"></path></svg><span style="font-size:11px;color:#A1A1A6">我的</span></div>
+</div>
+</div>
+<span style="font-family:'IBM Plex Mono','Noto Sans SC',monospace;font-size:10px;color:#6E6E75;max-width:390px;line-height:1.6">换算结果为主（≈ 120 kg 加粗）、来源为辅（60% · 1RM 小字），沿用 D1「重量永远占主数字位」。顶组锚未完成时退让组降为弱色等待态「85% × 顶组 · 先完成顶组」，顶组录完即时换算点亮。辅助项只显原文 60%，不换算不预填。</span>
+</div>
+
+<!-- S13 浅色 组列表 -->
+<div style="display:flex;flex-direction:column;gap:12px">
+<span style="font-size:12px;color:#8A8A90;font-family:'IBM Plex Mono','Noto Sans SC',monospace">浅色 · 今日训练组列表</span>
+<div style="width:390px;height:800px;background:#F5F6F8;border:1px solid #D1D5DB;border-radius:40px;overflow:hidden;box-shadow:0 18px 50px rgba(17,24,39,.14);display:flex;flex-direction:column;color:#111827">
+<div style="flex:none;height:44px;display:flex;align-items:center;justify-content:space-between;padding:0 30px 0 34px;font-family:'IBM Plex Mono',monospace;font-size:15px;font-weight:600">21:35<span style="width:17px;height:11px;border:1px solid #5C6371;border-radius:3px;position:relative"><span style="position:absolute;inset:1.5px;right:5px;background:#111827;border-radius:1px"></span></span></div>
+<div style="flex:1;min-height:0;overflow:hidden;padding:8px 20px 0;display:flex;flex-direction:column;gap:12px">
+<div style="font-family:'Archivo','Noto Sans SC',sans-serif;font-weight:800;font-size:22px;line-height:1">今日训练</div>
+<div style="font-size:12px;color:#5C6371;font-family:'IBM Plex Mono','Noto Sans SC',monospace;margin-top:-6px">共 3 个动作 · 6 组 · 硬拉日</div>
+<div style="outline:1.5px dashed rgba(217,119,6,.55);outline-offset:5px;border-radius:14px">
+<div style="background:#FFFFFF;border-radius:14px;overflow:hidden;box-shadow:0 1px 3px rgba(17,24,39,.06)">
+<div style="display:flex;align-items:center;gap:11px;min-height:44px;padding:11px 16px">
+<span style="width:3px;height:20px;border-radius:2px;background:#D97706"></span>
+<span style="flex:1;min-width:0;display:flex;flex-direction:column;gap:3px"><span style="font-size:14.5px;font-weight:700">竞技深蹲</span><span style="font-size:11px;color:#5C6371;font-family:'IBM Plex Mono','Noto Sans SC',monospace">% 处方 · 按你登记的 1RM 200 kg 换算</span></span>
+<span style="font-family:'IBM Plex Mono','Noto Sans SC',monospace;font-size:12px;font-weight:600;color:#9CA3AF">0 / 2 组</span>
+</div>
+<div style="display:grid;grid-template-columns:22px 1fr 1fr 1fr 40px;padding:5px 14px;border-top:1px solid #F0F1F4;font-family:'IBM Plex Mono','Noto Sans SC',monospace;font-size:10px;letter-spacing:.05em;color:#9CA3AF"><span>#</span><span>重量</span><span style="text-align:center">次数</span><span style="text-align:center">RPE</span><span></span></div>
+<div style="display:grid;grid-template-columns:22px 1fr 1fr 1fr 40px;align-items:center;min-height:46px;padding:2px 14px;border-bottom:1px solid #F0F1F4;font-family:'IBM Plex Mono',monospace;font-size:14px;color:#374151"><span style="color:#9CA3AF;font-size:11px">1</span><span style="display:flex;flex-direction:column;gap:1px"><span style="font-weight:700;color:#111827">≈ 120 <span style="font-size:11px;color:#6B7280;font-weight:500">kg</span></span><span style="font-size:9.5px;color:#6B7280">60% · 1RM</span></span><span style="text-align:center">5</span><span style="text-align:center;color:#C6CAD1">—</span><span></span></div>
+<div style="display:grid;grid-template-columns:22px 1fr 1fr 1fr 40px;align-items:center;min-height:46px;padding:2px 14px;font-family:'IBM Plex Mono',monospace;font-size:14px;color:#374151"><span style="color:#9CA3AF;font-size:11px">2</span><span style="display:flex;flex-direction:column;gap:1px"><span style="font-weight:700;color:#111827">≈ 150 <span style="font-size:11px;color:#6B7280;font-weight:500">kg</span></span><span style="font-size:9.5px;color:#6B7280">75% · 1RM</span></span><span style="text-align:center">3</span><span style="text-align:center;color:#C6CAD1">—</span><span></span></div>
+</div>
+</div>
+<div style="outline:1.5px dashed rgba(217,119,6,.55);outline-offset:5px;border-radius:14px">
+<div style="background:#FFFFFF;border-radius:14px;overflow:hidden;box-shadow:0 1px 3px rgba(17,24,39,.06)">
+<div style="display:flex;align-items:center;gap:11px;min-height:44px;padding:11px 16px">
+<span style="width:3px;height:20px;border-radius:2px;background:#D1D5DB"></span>
+<span style="flex:1;min-width:0;display:flex;flex-direction:column;gap:3px"><span style="font-size:14.5px;font-weight:700">传统硬拉</span><span style="font-size:11px;color:#5C6371;font-family:'IBM Plex Mono','Noto Sans SC',monospace">顶组 @8 · 退让组按当日顶组换算</span></span>
+<span style="font-family:'IBM Plex Mono','Noto Sans SC',monospace;font-size:12px;font-weight:600;color:#9CA3AF">0 / 3 组</span>
+</div>
+<div style="display:grid;grid-template-columns:22px 1fr 1fr 1fr 40px;padding:5px 14px;border-top:1px solid #F0F1F4;font-family:'IBM Plex Mono','Noto Sans SC',monospace;font-size:10px;letter-spacing:.05em;color:#9CA3AF"><span>#</span><span>重量</span><span style="text-align:center">次数</span><span style="text-align:center">RPE</span><span></span></div>
+<div style="display:grid;grid-template-columns:22px 1fr 1fr 1fr 40px;align-items:center;min-height:46px;padding:2px 14px;border-bottom:1px solid #F0F1F4;font-family:'IBM Plex Mono','Noto Sans SC',monospace;font-size:14px;color:#374151"><span style="color:#9CA3AF;font-size:11px">1</span><span style="display:flex;flex-direction:column;gap:1px"><span style="font-weight:700;color:#111827">当日顶组</span><span style="font-size:9.5px;color:#6B7280">自选 · @8</span></span><span style="text-align:center">1</span><span style="text-align:center">8</span><span></span></div>
+<div style="display:grid;grid-template-columns:22px 1fr 1fr 1fr 40px;align-items:center;min-height:46px;padding:2px 14px;border-bottom:1px solid #F0F1F4;font-family:'IBM Plex Mono','Noto Sans SC',monospace;font-size:14px;color:#9CA3AF"><span style="font-size:11px">2</span><span style="display:flex;flex-direction:column;gap:1px"><span style="font-weight:600;color:#6B7280">85% × 顶组</span><span style="font-size:9.5px;color:#9CA3AF">先完成顶组</span></span><span style="text-align:center">5</span><span style="text-align:center;color:#C6CAD1">—</span><span></span></div>
+<div style="display:grid;grid-template-columns:22px 1fr 1fr 1fr 40px;align-items:center;min-height:46px;padding:2px 14px;font-family:'IBM Plex Mono','Noto Sans SC',monospace;font-size:14px;color:#9CA3AF"><span style="font-size:11px">3</span><span style="display:flex;flex-direction:column;gap:1px"><span style="font-weight:600;color:#6B7280">85% × 顶组</span><span style="font-size:9.5px;color:#9CA3AF">先完成顶组</span></span><span style="text-align:center">5</span><span style="text-align:center;color:#C6CAD1">—</span><span></span></div>
+</div>
+</div>
+<div style="background:#FFFFFF;border-radius:14px;overflow:hidden;box-shadow:0 1px 3px rgba(17,24,39,.06)">
+<div style="display:flex;align-items:center;gap:11px;min-height:44px;padding:11px 16px">
+<span style="width:3px;height:20px;border-radius:2px;background:#D1D5DB"></span>
+<span style="flex:1;min-width:0;display:flex;flex-direction:column;gap:3px"><span style="font-size:14.5px;font-weight:700">山羊挺身</span><span style="font-size:11px;color:#5C6371;font-family:'IBM Plex Mono','Noto Sans SC',monospace">辅助项 · 教练以 % 设定，不换算</span></span>
+<span style="font-family:'IBM Plex Mono','Noto Sans SC',monospace;font-size:12px;font-weight:600;color:#9CA3AF">0 / 1 组</span>
+</div>
+<div style="display:grid;grid-template-columns:22px 1fr 1fr 1fr 40px;align-items:center;min-height:46px;padding:2px 14px;border-top:1px solid #F0F1F4;font-family:'IBM Plex Mono',monospace;font-size:14px;color:#9CA3AF"><span style="font-size:11px">1</span><span style="font-weight:600;color:#6B7280">60%</span><span style="text-align:center">12</span><span style="text-align:center;color:#C6CAD1">—</span><span></span></div>
+</div>
+</div>
+<div style="flex:none;height:83px;border-top:1px solid #E5E7EB;display:flex;justify-content:space-around;align-items:flex-start;padding-top:9px;background:#FFFFFF">
+<div style="display:flex;flex-direction:column;align-items:center;gap:4px;width:64px"><svg width="24" height="24" viewBox="0 0 24 24" fill="#B45309" stroke="#B45309" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><circle cx="11.5" cy="12.5" r="8.6" fill="none"></circle><circle cx="11.5" cy="12.5" r="4.8" fill="none"></circle><circle cx="11.5" cy="12.5" r="1.6" stroke="none"></circle><path d="M14.4 8.6 L21.5 2.3" fill="none" stroke-width="2"></path></svg><span style="font-size:11px;color:#B45309">今日</span></div>
+<div style="display:flex;flex-direction:column;align-items:center;gap:4px;width:64px"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#5C6371" stroke-width="2" stroke-linecap="round"><path d="M3 9v6M6 7v10M18 7v10M21 9v6M6 12h12"></path></svg><span style="font-size:11px;color:#5C6371">训练</span></div>
+<div style="display:flex;flex-direction:column;align-items:center;gap:4px;width:64px"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#5C6371" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19V5M4 19h16M8 15l3-4 3 3 4-6"></path></svg><span style="font-size:11px;color:#5C6371">成长</span></div>
+<div style="display:flex;flex-direction:column;align-items:center;gap:4px;width:64px"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#5C6371" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="3.2"></circle><path d="M5.5 20a6.5 6.5 0 0113 0"></path></svg><span style="font-size:11px;color:#5C6371">我的</span></div>
+</div>
+</div>
+<span style="font-family:'IBM Plex Mono','Noto Sans SC',monospace;font-size:10px;color:#6E6E75;max-width:390px;line-height:1.6">浅色镜像。等待态与辅助项原文用弱色层级（#6B7280/#9CA3AF），换算结果保持正文最强层级，与 kg 处方视觉一致——学员不需要知道这是算出来的才能开练。</span>
+</div>
+
+<!-- S13 录入面板 暗色 -->
+<div style="display:flex;flex-direction:column;gap:12px">
+<span style="font-size:12px;color:#8A8A90;font-family:'IBM Plex Mono','Noto Sans SC',monospace">暗色 · 录入面板（1RM 锚 · 已预填）</span>
+<div style="width:390px;background:#101013;border:1px solid #2E2E32;border-radius:28px 28px 22px 22px;padding:10px 20px 20px;display:flex;flex-direction:column;gap:14px;color:#EDEDED">
+<div style="width:38px;height:4px;border-radius:2px;background:#3E3E44;margin:0 auto"></div>
+<div style="display:flex;flex-direction:column;gap:3px">
+<span style="font-family:'Archivo','Noto Sans SC',sans-serif;font-weight:800;font-size:19px">竞技深蹲</span>
+<span style="font-size:12px;color:#8A8A90;font-family:'IBM Plex Mono','Noto Sans SC',monospace">第 1 / 2 组 · 处方 60% × 5</span>
+</div>
+<div style="display:flex;flex-direction:column;gap:8px">
+<div style="display:flex;align-items:center;justify-content:space-between"><span style="font-family:'IBM Plex Mono',monospace;font-size:12px;font-weight:500;letter-spacing:.96px;color:#8A8A90">重量</span><span style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:#8A8A90">± 2.5</span></div>
+<div style="display:flex;align-items:center;gap:12px">
+<div style="width:48px;height:48px;flex:none;border-radius:50%;background:rgba(245,166,35,.12);border:1px solid rgba(245,166,35,.3);display:flex;align-items:center;justify-content:center"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#F5A623" stroke-width="2.4" stroke-linecap="round"><path d="M5 12h14"></path></svg></div>
+<div style="outline:1.5px dashed rgba(245,166,35,.55);outline-offset:5px;border-radius:16px;flex:1">
+<div style="position:relative;height:54px;border-radius:16px;background:#141416;border:1.5px dotted rgba(245,166,35,.45);display:flex;align-items:baseline;justify-content:center;gap:6px"><span style="font-family:'IBM Plex Mono',monospace;font-size:34px;font-weight:800;color:#A1A1A6;line-height:1;align-self:center">120</span><span style="font-size:14px;font-weight:700;color:#8A8A90;align-self:center;padding-top:12px">KG</span><span style="position:absolute;top:-7px;right:10px;background:#101013;padding:0 5px;font-family:'IBM Plex Mono','Noto Sans SC',monospace;font-size:9px;letter-spacing:.08em;color:#F5A623">自动换算</span></div>
+</div>
+<div style="width:48px;height:48px;flex:none;border-radius:50%;background:rgba(245,166,35,.12);border:1px solid rgba(245,166,35,.3);display:flex;align-items:center;justify-content:center"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#F5A623" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg></div>
+</div>
+<div style="display:flex;align-items:center;gap:6px;padding:0 62px"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#8A8A90" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"></circle><path d="M12 8v5M12 16.5v.1"></path></svg><span style="font-family:'IBM Plex Mono','Noto Sans SC',monospace;font-size:10px;color:#8A8A90">按登记 1RM 200 kg 换算 · 改动后按你填的为准</span></div>
+</div>
+<div style="display:flex;flex-direction:column;gap:8px">
+<div style="display:flex;align-items:center;justify-content:space-between"><span style="font-family:'IBM Plex Mono',monospace;font-size:12px;font-weight:500;letter-spacing:.96px;color:#8A8A90">次数</span><span style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:#8A8A90">± 1</span></div>
+<div style="display:flex;align-items:center;gap:12px">
+<div style="width:48px;height:48px;flex:none;border-radius:50%;background:rgba(245,166,35,.12);border:1px solid rgba(245,166,35,.3);display:flex;align-items:center;justify-content:center"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#F5A623" stroke-width="2.4" stroke-linecap="round"><path d="M5 12h14"></path></svg></div>
+<div style="flex:1;height:54px;border-radius:16px;background:#141416;display:flex;align-items:baseline;justify-content:center;gap:6px"><span style="font-family:'IBM Plex Mono',monospace;font-size:34px;font-weight:800;color:#EDEDED;line-height:1;align-self:center">5</span><span style="font-size:14px;font-weight:700;color:#8A8A90;align-self:center;padding-top:12px">次</span></div>
+<div style="width:48px;height:48px;flex:none;border-radius:50%;background:rgba(245,166,35,.12);border:1px solid rgba(245,166,35,.3);display:flex;align-items:center;justify-content:center"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#F5A623" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg></div>
+</div>
+</div>
+<div style="display:flex;flex-direction:column;gap:8px">
+<div style="display:flex;align-items:center;justify-content:space-between"><span style="font-family:'IBM Plex Mono',monospace;font-size:12px;font-weight:500;letter-spacing:.96px;color:#8A8A90">RPE</span><span style="font-family:'IBM Plex Mono','Noto Sans SC',monospace;font-size:10px;color:#8A8A90">完成后自评 · 5–10</span></div>
+<div style="background:#141416;border-radius:16px;padding:13px 14px;display:flex;align-items:baseline;justify-content:space-between"><span style="font-family:'IBM Plex Mono',monospace;font-size:32px;font-weight:800;color:#4A4A50;line-height:1">—</span><span style="font-size:12px;color:#8A8A90">处方没有 RPE 目标，按实际感受选</span></div>
+</div>
+<div style="position:relative;overflow:hidden;height:52px;border-radius:999px;background:#F5A623;color:#1A1206;display:flex;align-items:center;justify-content:center;gap:8px;box-shadow:inset 0 1.5px 0 rgba(255,255,255,.55),inset 0 -2px 3px rgba(120,60,0,.25),0 8px 26px rgba(245,166,35,.38)"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#1A1206" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"></path></svg><span style="font-size:16px;font-weight:800">完成本组</span></div>
+</div>
+<span style="font-family:'IBM Plex Mono','Noto Sans SC',monospace;font-size:10px;color:#6E6E75;max-width:390px;line-height:1.6">沿用 D2 约定：系统算出的值用弱色 + 点线框 + 「自动换算」角标；学员一改动即转实色、点线框消失。来源行替换原「无法建议」整行。</span>
+</div>
+
+<!-- S13 录入面板 浅色 + 来源行变体 -->
+<div style="display:flex;flex-direction:column;gap:12px">
+<span style="font-size:12px;color:#8A8A90;font-family:'IBM Plex Mono','Noto Sans SC',monospace">浅色 · 录入面板 + 来源行全部变体</span>
+<div style="width:390px;background:#FFFFFF;border:1px solid #D1D5DB;border-radius:28px 28px 22px 22px;padding:10px 20px 20px;display:flex;flex-direction:column;gap:14px;color:#111827;box-shadow:0 18px 50px rgba(17,24,39,.14)">
+<div style="width:38px;height:4px;border-radius:2px;background:#D1D5DB;margin:0 auto"></div>
+<div style="display:flex;flex-direction:column;gap:3px">
+<span style="font-family:'Archivo','Noto Sans SC',sans-serif;font-weight:800;font-size:19px">竞技深蹲</span>
+<span style="font-size:12px;color:#5C6371;font-family:'IBM Plex Mono','Noto Sans SC',monospace">第 1 / 2 组 · 处方 60% × 5</span>
+</div>
+<div style="display:flex;flex-direction:column;gap:8px">
+<div style="display:flex;align-items:center;justify-content:space-between"><span style="font-family:'IBM Plex Mono',monospace;font-size:12px;font-weight:500;letter-spacing:.96px;color:#5C6371">重量</span><span style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:#5C6371">± 2.5</span></div>
+<div style="display:flex;align-items:center;gap:12px">
+<div style="width:48px;height:48px;flex:none;border-radius:50%;background:rgba(217,119,6,.1);border:1px solid rgba(217,119,6,.35);display:flex;align-items:center;justify-content:center"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#D97706" stroke-width="2.4" stroke-linecap="round"><path d="M5 12h14"></path></svg></div>
+<div style="outline:1.5px dashed rgba(217,119,6,.55);outline-offset:5px;border-radius:16px;flex:1">
+<div style="position:relative;height:54px;border-radius:16px;background:#F3F4F6;border:1.5px dotted rgba(180,83,9,.5);display:flex;align-items:baseline;justify-content:center;gap:6px"><span style="font-family:'IBM Plex Mono',monospace;font-size:34px;font-weight:800;color:#6B7280;line-height:1;align-self:center">120</span><span style="font-size:14px;font-weight:700;color:#5C6371;align-self:center;padding-top:12px">KG</span><span style="position:absolute;top:-7px;right:10px;background:#FFFFFF;padding:0 5px;font-family:'IBM Plex Mono','Noto Sans SC',monospace;font-size:9px;letter-spacing:.08em;color:#B45309">自动换算</span></div>
+</div>
+<div style="width:48px;height:48px;flex:none;border-radius:50%;background:rgba(217,119,6,.1);border:1px solid rgba(217,119,6,.35);display:flex;align-items:center;justify-content:center"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#D97706" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg></div>
+</div>
+<div style="display:flex;align-items:center;gap:6px;padding:0 62px"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#5C6371" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"></circle><path d="M12 8v5M12 16.5v.1"></path></svg><span style="font-family:'IBM Plex Mono','Noto Sans SC',monospace;font-size:10px;color:#5C6371">按登记 1RM 200 kg 换算 · 改动后按你填的为准</span></div>
+</div>
+<div style="position:relative;overflow:hidden;height:52px;border-radius:999px;background:#F5A623;color:#1A1206;display:flex;align-items:center;justify-content:center;gap:8px;box-shadow:inset 0 1.5px 0 rgba(255,255,255,.55),inset 0 -2px 3px rgba(120,60,0,.25),0 8px 26px rgba(245,166,35,.38)"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#1A1206" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"></path></svg><span style="font-size:16px;font-weight:800">完成本组</span></div>
+</div>
+<div style="width:390px;border-radius:14px;background:#0E0E12;border:1px solid #1E1E24;padding:15px 16px;display:flex;flex-direction:column;gap:10px">
+<span style="font-family:'IBM Plex Mono','Noto Sans SC',monospace;font-size:10px;letter-spacing:.1em;color:#8A8A90">来源行 · 四种变体（工程按锚替换同一行）</span>
+<div style="display:flex;gap:9px"><span style="flex:none;width:52px;font-family:'IBM Plex Mono',monospace;font-size:10px;color:#F5A623;padding-top:1px">1RM</span><span style="flex:1;font-family:'IBM Plex Mono','Noto Sans SC',monospace;font-size:11px;line-height:1.6;color:#D6D6DB">按登记 1RM 200 kg 换算 · 改动后按你填的为准</span></div>
+<div style="display:flex;gap:9px"><span style="flex:none;width:52px;font-family:'IBM Plex Mono',monospace;font-size:10px;color:#F5A623;padding-top:1px">e1RM</span><span style="flex:1;font-family:'IBM Plex Mono','Noto Sans SC',monospace;font-size:11px;line-height:1.6;color:#D6D6DB">按当前 e1RM 196 kg 换算 · 改动后按你填的为准</span></div>
+<div style="display:flex;gap:9px"><span style="flex:none;width:52px;font-family:'IBM Plex Mono',monospace;font-size:10px;color:#F5A623;padding-top:1px">回落</span><span style="flex:1;font-family:'IBM Plex Mono','Noto Sans SC',monospace;font-size:11px;line-height:1.6;color:#D6D6DB">e1RM 为空时静默回落：文案直接写「按登记 1RM 200 kg 换算」，不解释回落过程</span></div>
+<div style="display:flex;gap:9px"><span style="flex:none;width:52px;font-family:'IBM Plex Mono',monospace;font-size:10px;color:#F5A623;padding-top:1px">顶组</span><span style="flex:1;font-family:'IBM Plex Mono','Noto Sans SC',monospace;font-size:11px;line-height:1.6;color:#D6D6DB">已完成：「按当日顶组 150 kg 换算 ≈ 127.5 kg」；未完成：重量框不预填显「—」，来源行「先完成顶组，退让组会自动算好」</span></div>
+</div>
+</div>
+
+</div>
+</div>
+
+<!-- ================= W0 ================= -->
+<div style="display:flex;flex-direction:column;gap:16px">
+<div style="display:flex;flex-direction:column;gap:5px;max-width:720px">
+<span style="font-family:'IBM Plex Mono',monospace;font-size:13px;font-weight:700;color:#7FA8D9">W0 · Web 通用三态组件规范（墨蓝亮色 v3）</span>
+<span style="font-size:13px;line-height:1.65;color:#8A8A90">以 admin 面板现有 SkeletonRows / ErrorState / EmptyState 为基准，抽成全站五件套。核心裁决：<strong style="color:#C8C8CC">失败 ≠ 空</strong>——凡是请求失败，一律用失败件并带重试，禁止渲染成空态或「—」。W1–W11 全部套用此规范。</span>
+</div>
+<div style="background:#F6F7F9;border:1px solid #D6DAE0;border-radius:14px;padding:22px;display:flex;gap:20px;align-items:flex-start;max-width:1180px;color:#0E1726;font-family:'Noto Sans SC',-apple-system,sans-serif">
+<div style="flex:1;min-width:0;display:grid;grid-template-columns:1fr 1fr;gap:16px">
+
+<div style="background:#fff;border:1px solid #E7EAEE;border-radius:10px;padding:16px;display:flex;flex-direction:column;gap:10px">
+<span style="font-family:'IBM Plex Mono','Noto Sans SC',monospace;font-size:10px;letter-spacing:.1em;color:#6B7686">1 · 列表骨架 SKELETONROWS</span>
+<div style="display:flex;flex-direction:column;gap:10px;animation:shimmer 1.4s ease-in-out infinite">
+<div style="display:flex;align-items:center;gap:10px"><span style="width:22px;height:22px;border-radius:50%;background:#E7EAEE"></span><span style="width:38%;height:10px;border-radius:4px;background:#E7EAEE"></span><span style="width:20%;height:10px;border-radius:4px;background:#EDEFF2;margin-left:auto"></span></div>
+<div style="display:flex;align-items:center;gap:10px"><span style="width:22px;height:22px;border-radius:50%;background:#E7EAEE"></span><span style="width:52%;height:10px;border-radius:4px;background:#E7EAEE"></span><span style="width:14%;height:10px;border-radius:4px;background:#EDEFF2;margin-left:auto"></span></div>
+<div style="display:flex;align-items:center;gap:10px"><span style="width:22px;height:22px;border-radius:50%;background:#E7EAEE"></span><span style="width:44%;height:10px;border-radius:4px;background:#E7EAEE"></span><span style="width:24%;height:10px;border-radius:4px;background:#EDEFF2;margin-left:auto"></span></div>
+</div>
+<span style="font-size:11px;line-height:1.6;color:#6B7686">行数 = 预期条数（3–8），条色 #E7EAEE/#EDEFF2，1.4s 呼吸。加载超 150ms 才出现，最短停留 300ms 防闪。只用于首次加载；轮询与后台刷新不闪骨架。</span>
+</div>
+
+<div style="background:#fff;border:1px solid #E7EAEE;border-radius:10px;padding:16px;display:flex;flex-direction:column;gap:10px">
+<span style="font-family:'IBM Plex Mono','Noto Sans SC',monospace;font-size:10px;letter-spacing:.1em;color:#6B7686">2 · 卡片骨架 SKELETONCARD</span>
+<div style="border:1px solid #EDEFF2;border-radius:10px;padding:14px;display:flex;flex-direction:column;gap:9px;animation:shimmer 1.4s ease-in-out infinite">
+<span style="width:34%;height:11px;border-radius:4px;background:#E7EAEE"></span>
+<span style="width:88%;height:9px;border-radius:4px;background:#EDEFF2"></span>
+<span style="width:64%;height:9px;border-radius:4px;background:#EDEFF2"></span>
+</div>
+<span style="font-size:11px;line-height:1.6;color:#6B7686">用于编辑器区切换学员（W1）、追踪 overview 等卡片位。骨架轮廓 = 真实卡片轮廓，高度一致，杜绝加载完成后跳版。</span>
+</div>
+
+<div style="background:#fff;border:1px solid #E7EAEE;border-radius:10px;padding:16px;display:flex;flex-direction:column;gap:10px">
+<span style="font-family:'IBM Plex Mono','Noto Sans SC',monospace;font-size:10px;letter-spacing:.1em;color:#6B7686">3 · 失败卡 ERRORSTATE</span>
+<div style="border:1px solid #E7EAEE;border-radius:10px;padding:22px 16px;display:flex;flex-direction:column;align-items:center;gap:8px;text-align:center">
+<span style="width:34px;height:34px;border-radius:50%;background:rgba(168,30,23,.08);display:flex;align-items:center;justify-content:center"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#A81E17" stroke-width="2.2" stroke-linecap="round"><path d="M12 8v5"></path><circle cx="12" cy="16.5" r="0.6" fill="#A81E17"></circle><path d="M10.3 3.8 2.6 17a2 2 0 001.7 3h15.4a2 2 0 001.7-3L13.7 3.8a2 2 0 00-3.4 0z"></path></svg></span>
+<span style="font-size:13px;font-weight:700">视频列表没能加载出来</span>
+<span style="font-size:12px;color:#6B7686;line-height:1.6;max-width:260px">网络或服务出了点问题，不是学员没有上传。</span>
+<span style="height:28px;padding:0 16px;border-radius:4px;background:#17395C;color:#fff;display:flex;align-items:center;font-size:12px;font-weight:600;cursor:pointer;margin-top:4px">重试</span>
+<span style="font-size:11px;color:#98A0AC;cursor:pointer">仍然失败？重新登录</span>
+</div>
+<span style="font-size:11px;line-height:1.6;color:#6B7686">标题写「哪块没加载出来」，正文必须排除误判（“不是学员没有上传”）。重试只重发该请求，不整页刷新。次操作（重新登录）永远是弱链接，不做按钮。</span>
+</div>
+
+<div style="background:#fff;border:1px solid #E7EAEE;border-radius:10px;padding:16px;display:flex;flex-direction:column;gap:10px">
+<span style="font-family:'IBM Plex Mono','Noto Sans SC',monospace;font-size:10px;letter-spacing:.1em;color:#6B7686">4 · 空态卡 EMPTYSTATE</span>
+<div style="border:1px solid #E7EAEE;border-radius:10px;padding:22px 16px;display:flex;flex-direction:column;align-items:center;gap:8px;text-align:center">
+<span style="width:34px;height:34px;border-radius:50%;background:#EAEFF5;display:flex;align-items:center;justify-content:center"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#17395C" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="3.2"></circle><path d="M5.5 20a6.5 6.5 0 0113 0"></path></svg></span>
+<span style="font-size:13px;font-weight:700">还没有学员申请</span>
+<span style="font-size:12px;color:#6B7686;line-height:1.6;max-width:260px">学员在 app 里输入你的邀请码后，申请会出现在这里。</span>
+<span style="font-size:12px;color:#17395C;font-weight:600;cursor:pointer;margin-top:4px">去复制邀请码 →</span>
+</div>
+<span style="font-size:11px;line-height:1.6;color:#6B7686">三段式文案：为什么空 → 什么时候会有 → 现在能做什么。禁用「暂无数据」「空空如也」。行动项是 ink 色文字链，不抢主操作的按钮层级。</span>
+</div>
+
+<div style="background:#fff;border:1px solid #E7EAEE;border-radius:10px;padding:16px;display:flex;flex-direction:column;gap:10px;grid-column:1 / -1">
+<span style="font-family:'IBM Plex Mono','Noto Sans SC',monospace;font-size:10px;letter-spacing:.1em;color:#6B7686">5 · 行内失败标记 INLINEFAIL（表格单元格三义）</span>
+<div style="display:flex;gap:14px;flex-wrap:wrap">
+<div style="flex:1;min-width:150px;border:1px solid #EDEFF2;border-radius:8px;padding:10px 12px;display:flex;flex-direction:column;gap:7px"><span style="font-family:'IBM Plex Mono','Noto Sans SC',monospace;font-size:9px;letter-spacing:.08em;color:#98A0AC">加载中</span><span style="width:44px;height:9px;border-radius:4px;background:#E7EAEE;animation:shimmer 1.4s ease-in-out infinite"></span></div>
+<div style="flex:1;min-width:150px;border:1px solid #EDEFF2;border-radius:8px;padding:10px 12px;display:flex;flex-direction:column;gap:6px"><span style="font-family:'IBM Plex Mono','Noto Sans SC',monospace;font-size:9px;letter-spacing:.08em;color:#98A0AC">拉取失败 · 可点重试</span><span style="align-self:flex-start;height:20px;padding:0 7px;border-radius:4px;background:rgba(168,30,23,.08);display:flex;align-items:center;gap:5px;cursor:pointer"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#A81E17" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 11-2.6-6.4M21 3v6h-6"></path></svg><span style="font-family:'IBM Plex Mono','Noto Sans SC',monospace;font-size:10.5px;color:#A81E17;font-weight:600">失败</span></span></div>
+<div style="flex:1;min-width:150px;border:1px solid #EDEFF2;border-radius:8px;padding:10px 12px;display:flex;flex-direction:column;gap:7px"><span style="font-family:'IBM Plex Mono','Noto Sans SC',monospace;font-size:9px;letter-spacing:.08em;color:#98A0AC">确实没有数据</span><span style="font-family:'IBM Plex Mono',monospace;font-size:13px;color:#98A0AC">—</span></div>
+</div>
+<span style="font-size:11px;line-height:1.6;color:#6B7686">「—」从此只表示<strong style="color:#0E1726">事实上没有数据</strong>。失败一律用红标（bad 8% 底 + 红字 + ↻），点击=单元格级重试。三者一眼可分，这是 W4 的地基。</span>
+</div>
+
+</div>
+<div style="flex:none;width:280px;background:#fff;border:1px solid #E7EAEE;border-radius:10px;padding:16px;display:flex;flex-direction:column;gap:11px">
+<span style="font-family:'IBM Plex Mono','Noto Sans SC',monospace;font-size:10px;letter-spacing:.1em;color:#6B7686">使用规则</span>
+<div style="display:flex;gap:9px"><span style="flex:none;width:14px;font-family:'IBM Plex Mono',monospace;font-size:11px;color:#17395C;font-weight:700">1</span><span style="font-size:12px;line-height:1.65;color:#3F4A5A">失败 ≠ 空。请求失败一律用失败件，禁止渲染成空态、「—」或假 loading。</span></div>
+<div style="display:flex;gap:9px"><span style="flex:none;width:14px;font-family:'IBM Plex Mono',monospace;font-size:11px;color:#17395C;font-weight:700">2</span><span style="font-size:12px;line-height:1.65;color:#3F4A5A">失败必带重试，作用域 = 该请求本身，不整页刷新、不登出。</span></div>
+<div style="display:flex;gap:9px"><span style="flex:none;width:14px;font-family:'IBM Plex Mono',monospace;font-size:11px;color:#17395C;font-weight:700">3</span><span style="font-size:12px;line-height:1.65;color:#3F4A5A">空态三段式：为什么空 · 什么时候有 · 现在能做什么。</span></div>
+<div style="display:flex;gap:9px"><span style="flex:none;width:14px;font-family:'IBM Plex Mono',monospace;font-size:11px;color:#17395C;font-weight:700">4</span><span style="font-size:12px;line-height:1.65;color:#3F4A5A">骨架只出现在首次加载；轮询自愈类失败（W8 收件箱）用行内失败标记，恢复后自动消失。</span></div>
+<div style="display:flex;gap:9px"><span style="flex:none;width:14px;font-family:'IBM Plex Mono',monospace;font-size:11px;color:#17395C;font-weight:700">5</span><span style="font-size:12px;line-height:1.65;color:#3F4A5A">数字一律 IBM Plex Mono；色值只用 v3 token（ink #17395C · bad #A81E17 · line #E7EAEE），不新造色。</span></div>
+</div>
+</div>
+</div>
+
+<!-- ================= W4 ================= -->
+<div style="display:flex;flex-direction:column;gap:16px">
+<div style="display:flex;flex-direction:column;gap:5px;max-width:720px">
+<span style="font-family:'IBM Plex Mono',monospace;font-size:13px;font-weight:700;color:#7FA8D9">W4 · 花名册行 · 单元格级三态</span>
+<span style="font-size:13px;line-height:1.65;color:#8A8A90">总览表 grid 与列不动（150 / 104 / 116 / 84 / 78 / 80 / 1fr），只把每个单元格接上 W0 的三义。最关键的修复：<strong style="color:#C8C8CC">e1RM 拉取失败时绝不能写成「尚无实测或登记值」</strong>——失败是网络事实，不是学员数据事实。</span>
+</div>
+<div style="background:#F6F7F9;border:1px solid #D6DAE0;border-radius:14px;padding:22px;max-width:1180px;display:flex;flex-direction:column;gap:18px;color:#0E1726;font-family:'Noto Sans SC',-apple-system,sans-serif">
+<div style="background:#fff;border:1px solid #E7EAEE;border-radius:10px;overflow:hidden">
+<div style="display:grid;grid-template-columns:150px 104px 116px 84px 78px 80px 1fr;align-items:center;height:26px;padding:0 14px;background:#FAFBFC;border-bottom:1px solid #E7EAEE;font-family:'IBM Plex Mono','Noto Sans SC',monospace;font-size:10px;color:#6B7686">
+<span>学员</span><span>级别 / 体重</span><span>完成率</span><span style="text-align:right">周总量</span><span style="text-align:right">RPE</span><span style="text-align:right">距赛</span><span style="padding-left:12px">下周计划</span>
+</div>
+<div style="display:grid;grid-template-columns:150px 104px 116px 84px 78px 80px 1fr;align-items:center;height:36px;padding:0 14px;border-bottom:1px solid #EDEFF2">
+<span style="display:flex;align-items:center;gap:8px"><span style="width:20px;height:20px;border-radius:4px;background:#EAEFF5;color:#17395C;font-family:'IBM Plex Mono',monospace;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center">1</span><span style="font-size:13px;font-weight:600">何雨桐</span></span>
+<span style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:#6B7686">63kg · 62.4</span>
+<span style="display:flex;align-items:center;gap:8px"><span style="width:48px;height:4px;border-radius:4px;background:#E7EAEE;overflow:hidden;display:block"><span style="display:block;width:85%;height:100%;background:#10715A"></span></span><span style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:#10715A;font-weight:600">85</span></span>
+<span style="text-align:right;font-family:'IBM Plex Mono',monospace;font-size:12px">6.2<span style="font-size:10px;color:#98A0AC;margin-left:2px">t</span></span>
+<span style="text-align:right;font-family:'IBM Plex Mono',monospace;font-size:12px">7.8</span>
+<span style="text-align:right;font-family:'IBM Plex Mono',monospace;font-size:11px;color:#6B7686">112</span>
+<span style="padding-left:12px;display:flex;align-items:center;gap:9px;min-width:0"><span style="flex:none;white-space:nowrap;height:18px;padding:0 7px;border-radius:4px;background:#EDF7F2;color:#10715A;font-size:10.5px;font-weight:600;display:flex;align-items:center">已排</span><span style="font-size:11px;color:#98A0AC;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">正常 · 全部实测</span></span>
+</div>
+<div style="outline:1.5px dashed rgba(23,57,92,.5);outline-offset:-3px">
+<div style="display:grid;grid-template-columns:150px 104px 116px 84px 78px 80px 1fr;align-items:center;height:36px;padding:0 14px;border-bottom:1px solid #EDEFF2">
+<span style="display:flex;align-items:center;gap:8px"><span style="width:20px;height:20px;border-radius:4px;background:#EAEFF5;color:#17395C;font-family:'IBM Plex Mono',monospace;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center">2</span><span style="font-size:13px;font-weight:600">吕子豪</span></span>
+<span style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:#6B7686">74kg · 73.4</span>
+<span style="animation:shimmer 1.4s ease-in-out infinite"><span style="display:block;width:56px;height:9px;border-radius:4px;background:#E7EAEE"></span></span>
+<span style="display:flex;justify-content:flex-end;animation:shimmer 1.4s ease-in-out infinite"><span style="display:block;width:30px;height:9px;border-radius:4px;background:#E7EAEE"></span></span>
+<span style="display:flex;justify-content:flex-end;animation:shimmer 1.4s ease-in-out infinite"><span style="display:block;width:24px;height:9px;border-radius:4px;background:#E7EAEE"></span></span>
+<span style="display:flex;justify-content:flex-end;animation:shimmer 1.4s ease-in-out infinite"><span style="display:block;width:24px;height:9px;border-radius:4px;background:#E7EAEE"></span></span>
+<span style="padding-left:12px;animation:shimmer 1.4s ease-in-out infinite"><span style="display:block;width:64px;height:14px;border-radius:4px;background:#E7EAEE"></span></span>
+</div>
+<div style="display:grid;grid-template-columns:150px 104px 116px 84px 78px 80px 1fr;align-items:center;height:36px;padding:0 14px;border-bottom:1px solid #EDEFF2">
+<span style="display:flex;align-items:center;gap:8px"><span style="width:20px;height:20px;border-radius:4px;background:#EAEFF5;color:#17395C;font-family:'IBM Plex Mono',monospace;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center">3</span><span style="font-size:13px;font-weight:600">高见</span></span>
+<span style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:#6B7686">74kg · 74.9</span>
+<span style="display:flex;align-items:center;gap:8px"><span style="width:48px;height:4px;border-radius:4px;background:#E7EAEE;overflow:hidden;display:block"><span style="display:block;width:74%;height:100%;background:#A15C00"></span></span><span style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:#A15C00;font-weight:600">74</span></span>
+<span style="display:flex;justify-content:flex-end"><span style="flex:none;white-space:nowrap;height:20px;padding:0 7px;border-radius:4px;background:rgba(168,30,23,.08);display:flex;align-items:center;gap:5px;cursor:pointer"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#A81E17" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 11-2.6-6.4M21 3v6h-6"></path></svg><span style="font-family:'IBM Plex Mono','Noto Sans SC',monospace;font-size:10.5px;color:#A81E17;font-weight:600">失败</span></span></span>
+<span style="text-align:right;font-family:'IBM Plex Mono',monospace;font-size:12px">8.3</span>
+<span style="text-align:right;font-family:'IBM Plex Mono',monospace;font-size:11px;color:#6B7686">35</span>
+<span style="padding-left:12px;display:flex;align-items:center;gap:9px;min-width:0"><span style="flex:none;white-space:nowrap;height:20px;padding:0 7px;border-radius:4px;background:rgba(168,30,23,.08);display:flex;align-items:center;gap:5px;cursor:pointer"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#A81E17" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 11-2.6-6.4M21 3v6h-6"></path></svg><span style="font-family:'IBM Plex Mono','Noto Sans SC',monospace;font-size:10.5px;color:#A81E17;font-weight:600">失败</span></span><span style="font-size:11px;color:#98A0AC;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">其余列正常显示 · 只标失败的格</span></span>
+</div>
+<div style="display:grid;grid-template-columns:150px 104px 116px 84px 78px 80px 1fr;align-items:center;height:36px;padding:0 14px">
+<span style="display:flex;align-items:center;gap:8px"><span style="width:20px;height:20px;border-radius:4px;background:#EAEFF5;color:#17395C;font-family:'IBM Plex Mono',monospace;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center">4</span><span style="font-size:13px;font-weight:600">陈默</span></span>
+<span style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:#6B7686">83kg · 82.1</span>
+<span style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:#98A0AC;padding-left:20px">—</span>
+<span style="text-align:right;font-family:'IBM Plex Mono',monospace;font-size:12px;color:#98A0AC">—</span>
+<span style="text-align:right;font-family:'IBM Plex Mono',monospace;font-size:12px;color:#98A0AC">—</span>
+<span style="text-align:right;font-family:'IBM Plex Mono',monospace;font-size:11px;color:#98A0AC">—</span>
+<span style="padding-left:12px;display:flex;align-items:center;gap:9px;min-width:0"><span style="flex:none;white-space:nowrap;height:18px;padding:0 7px;border-radius:4px;background:#FDF6E7;color:#A15C00;font-size:10.5px;font-weight:600;display:flex;align-items:center">待排</span><span style="font-size:11px;color:#98A0AC;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">刚接收 · 还没有任何训练记录</span></span>
+</div>
+</div>
+</div>
+<div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start">
+<div style="flex:1;min-width:330px;background:#fff;border:1px solid #E7EAEE;border-radius:10px;padding:16px;display:flex;flex-direction:column;gap:10px">
+<span style="font-family:'IBM Plex Mono','Noto Sans SC',monospace;font-size:10px;letter-spacing:.1em;color:#6B7686">E1RM 徽章 · 四态定稿</span>
+<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+<span style="height:22px;padding:0 9px;border-radius:4px;background:#EAEFF5;color:#17395C;display:flex;align-items:center;gap:5px;font-family:'IBM Plex Mono','Noto Sans SC',monospace;font-size:11px;font-weight:600;white-space:nowrap">深蹲 e1RM 172.5</span>
+<span style="height:22px;width:96px;border-radius:4px;background:#E7EAEE;animation:shimmer 1.4s ease-in-out infinite"></span>
+<span style="height:22px;padding:0 9px;border-radius:4px;background:rgba(168,30,23,.08);display:flex;align-items:center;gap:5px;cursor:pointer;white-space:nowrap"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#A81E17" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 11-2.6-6.4M21 3v6h-6"></path></svg><span style="font-family:'IBM Plex Mono','Noto Sans SC',monospace;font-size:11px;color:#A81E17;font-weight:600">e1RM 拉取失败</span></span>
+<span style="height:22px;padding:0 9px;border-radius:4px;border:1px dashed #D6DAE0;color:#98A0AC;display:flex;align-items:center;font-family:'IBM Plex Mono','Noto Sans SC',monospace;font-size:11px;white-space:nowrap">尚无实测或登记值</span>
+</div>
+<span style="font-size:11px;line-height:1.6;color:#6B7686">正常（tint 底 ink 字）→ 加载骨架 → 失败（红标可点重试）→ 真无数据（虚线描边灰字）。「尚无实测或登记值」只允许出现在服务端明确返回空的情况。</span>
+</div>
+<div style="flex:1;min-width:330px;background:#fff;border:1px solid #E7EAEE;border-radius:10px;padding:16px;display:flex;flex-direction:column;gap:10px">
+<span style="font-family:'IBM Plex Mono','Noto Sans SC',monospace;font-size:10px;letter-spacing:.1em;color:#6B7686">判定规则</span>
+<div style="display:flex;gap:9px"><span style="flex:none;width:14px;font-family:'IBM Plex Mono',monospace;font-size:11px;color:#17395C;font-weight:700">1</span><span style="font-size:12px;line-height:1.65;color:#3F4A5A">三态按<strong>单元格</strong>判定，不按整行——一行里失败的格标红，其余格照常显示。</span></div>
+<div style="display:flex;gap:9px"><span style="flex:none;width:14px;font-family:'IBM Plex Mono',monospace;font-size:11px;color:#17395C;font-weight:700">2</span><span style="font-size:12px;line-height:1.65;color:#3F4A5A">点击红标只重试该字段的请求；同请求覆盖的多个格共享一次重试。</span></div>
+<div style="display:flex;gap:9px"><span style="flex:none;width:14px;font-family:'IBM Plex Mono',monospace;font-size:11px;color:#17395C;font-weight:700">3</span><span style="font-size:12px;line-height:1.65;color:#3F4A5A">骨架条宽随列宽（完成率 56px · 数字列 24–30px），高 9px，与文字基线对齐，避免行高跳动。</span></div>
+<div style="display:flex;gap:9px"><span style="flex:none;width:14px;font-family:'IBM Plex Mono',monospace;font-size:11px;color:#17395C;font-weight:700">4</span><span style="font-size:12px;line-height:1.65;color:#3F4A5A">「—」保持 faint #98A0AC，不加提示、不可点——它现在是三态里唯一的「事实无数据」。</span></div>
+</div>
+</div>
+</div>
+</div>
+
+<!-- ================= 文案清单 + 落地规则 ================= -->
+<div style="display:flex;flex-wrap:wrap;gap:26px;max-width:1180px">
+<div style="flex:1;min-width:340px;border-radius:16px;background:#0E0E12;border:1px solid #1E1E24;padding:18px 20px;display:flex;flex-direction:column;gap:12px">
+<span style="font-family:'IBM Plex Mono','Noto Sans SC',monospace;font-size:10px;letter-spacing:.1em;color:#8A8A90">本批文案清单（可直接拷走）</span>
+<div style="display:flex;gap:10px"><span style="flex:none;width:34px;font-family:'IBM Plex Mono',monospace;font-size:11px;color:#F5A623">S13</span><span style="flex:1;font-size:12.5px;line-height:1.65;color:#D6D6DB">动作副标题：「% 处方 · 按你登记的 1RM 200 kg 换算」「顶组 @8 · 退让组按当日顶组换算」「辅助项 · 教练以 % 设定，不换算」。组行：「≈ 120 kg / 60% · 1RM」「当日顶组 / 自选 · @8」「85% × 顶组 / 先完成顶组」。</span></div>
+<div style="display:flex;gap:10px"><span style="flex:none;width:34px;font-family:'IBM Plex Mono',monospace;font-size:11px;color:#F5A623">S13</span><span style="flex:1;font-size:12.5px;line-height:1.65;color:#D6D6DB">面板来源行：「按登记 1RM 200 kg 换算 · 改动后按你填的为准」「按当前 e1RM 196 kg 换算 · …」「按当日顶组 150 kg 换算 · …」；顶组未完成：「先完成顶组，退让组会自动算好」。RPE 提示：「处方没有 RPE 目标，按实际感受选」。</span></div>
+<div style="display:flex;gap:10px"><span style="flex:none;width:34px;font-family:'IBM Plex Mono',monospace;font-size:11px;color:#7FA8D9">W0</span><span style="flex:1;font-size:12.5px;line-height:1.65;color:#D6D6DB">失败卡范式：「〈内容〉没能加载出来 / 网络或服务出了点问题，〈排除误判〉。/ 重试 / 仍然失败？重新登录」。</span></div>
+<div style="display:flex;gap:10px"><span style="flex:none;width:34px;font-family:'IBM Plex Mono',monospace;font-size:11px;color:#7FA8D9">W4</span><span style="flex:1;font-size:12.5px;line-height:1.65;color:#D6D6DB">e1RM 徽章失败态：「e1RM 拉取失败」（点击重试）；「尚无实测或登记值」仅限服务端明确返回空。</span></div>
+</div>
+<div style="flex:1;min-width:340px;border-radius:16px;background:#0E0E12;border:1px solid #1E1E24;padding:18px 20px;display:flex;flex-direction:column;gap:12px">
+<span style="font-family:'IBM Plex Mono','Noto Sans SC',monospace;font-size:10px;letter-spacing:.1em;color:#8A8A90">落地规则</span>
+<div style="display:flex;gap:10px"><span style="flex:none;width:16px;font-family:'IBM Plex Mono',monospace;font-size:11px;color:#F5A623">1</span><span style="flex:1;font-size:12.5px;line-height:1.65;color:#D6D6DB">换算按 2.5 kg 取整（杠铃最小加载），显示前缀「≈」；预填值可改，提交以学员实际填的为准，% 原文随组入库供教练复盘。</span></div>
+<div style="display:flex;gap:10px"><span style="flex:none;width:16px;font-family:'IBM Plex Mono',monospace;font-size:11px;color:#F5A623">2</span><span style="flex:1;font-size:12.5px;line-height:1.65;color:#D6D6DB">e1RM 锚且 e1RM 为空 → 静默回落登记 1RM，来源行直接写「按登记 1RM 换算」，不向学员解释回落。</span></div>
+<div style="display:flex;gap:10px"><span style="flex:none;width:16px;font-family:'IBM Plex Mono',monospace;font-size:11px;color:#F5A623">3</span><span style="flex:1;font-size:12.5px;line-height:1.65;color:#D6D6DB">顶组锚：顶组「完成本组」提交的瞬间换算所有退让组，等待态原位点亮为「≈ 127.5 kg / 85% · 顶组」，并预填面板。</span></div>
+<div style="display:flex;gap:10px"><span style="flex:none;width:16px;font-family:'IBM Plex Mono',monospace;font-size:11px;color:#F5A623">4</span><span style="flex:1;font-size:12.5px;line-height:1.65;color:#D6D6DB">辅助项没有登记 1RM：只显原文「60%」，不换算不预填（工程兜底，不单独出图）。</span></div>
+<div style="display:flex;gap:10px"><span style="flex:none;width:16px;font-family:'IBM Plex Mono',monospace;font-size:11px;color:#7FA8D9">5</span><span style="flex:1;font-size:12.5px;line-height:1.65;color:#D6D6DB">W0 五件套做成独立组件后，W1/W2/W3/W5–W9 全部是「套用 + 换文案」；W4 的骨架/红标/「—」不改列宽与行高（36px），加载完成不跳版。</span></div>
+</div>
+</div>
+
+</div>
+</div>
+
+</x-dc>
+</body>
+</html>

@@ -36,7 +36,9 @@ import {
   currentPublishedWeekTonnage,
   deriveRosterCounts,
   deriveRosterRows,
+  FAILED_ROSTER_DATUM,
   filterRosterRows,
+  isFailedRosterDatum,
   type RosterDataByStudent,
 } from './rosterOverview'
 
@@ -113,7 +115,7 @@ export function PlanWorkspace({ onLogout, me }: Props) {
   const rosterDataRequestVersions = useRef(createKeyedRequestVersions())
   const rosterOverviewRequests = useRef(new Map<string, {
     version: number
-    promise: Promise<ExerciseStatsOverview | null>
+    promise: Promise<ExerciseStatsOverview>
   }>())
   const bindRequestVersions = useRef(createKeyedRequestVersions())
   const plansByStudentRef = useRef<Record<string, PlanResponse[]>>({})
@@ -153,15 +155,33 @@ export function PlanWorkspace({ onLogout, me }: Props) {
     bindRequestVersions.current.invalidate(BIND_REQUESTS_KEY)
     setBindRequests(rows)
   }, [])
+
+  const updateRosterData = useCallback((id: string, patch: RosterDataByStudent[string]) => {
+    const next = {
+      ...rosterDataByStudentRef.current,
+      [id]: { ...rosterDataByStudentRef.current[id], ...patch },
+    }
+    rosterDataByStudentRef.current = next
+    setRosterDataByStudent(next)
+  }, [])
+
   const fetchStudentPlans = useCallback(async (id: string, canApply: () => boolean = () => true) => {
     const version = planRequestVersions.current.issue(id)
-    const rows = sortedPlans(await getStudentPlans(id))
-    if (!canApply() || !planRequestVersions.current.isLatest(id, version)) return null
-    const next = { ...plansByStudentRef.current, [id]: rows }
-    plansByStudentRef.current = next
-    setPlansByStudent(next)
-    return rows
-  }, [])
+    try {
+      const rows = sortedPlans(await getStudentPlans(id))
+      if (!canApply() || !planRequestVersions.current.isLatest(id, version)) return null
+      const next = { ...plansByStudentRef.current, [id]: rows }
+      plansByStudentRef.current = next
+      setPlansByStudent(next)
+      updateRosterData(id, { plansError: false })
+      return rows
+    } catch (caught) {
+      if (canApply() && planRequestVersions.current.isLatest(id, version)) {
+        updateRosterData(id, { plansError: true })
+      }
+      throw caught
+    }
+  }, [updateRosterData])
 
   const refreshStudentVideos = useCallback(async (id: string, canApply: () => boolean = () => true) => {
     const version = videoRequestVersions.current.issue(id)
@@ -181,42 +201,45 @@ export function PlanWorkspace({ onLogout, me }: Props) {
     }
   }, [])
 
-  const updateRosterData = useCallback((id: string, patch: RosterDataByStudent[string]) => {
-    const next = {
-      ...rosterDataByStudentRef.current,
-      [id]: { ...rosterDataByStudentRef.current[id], ...patch },
-    }
-    rosterDataByStudentRef.current = next
-    setRosterDataByStudent(next)
-  }, [])
-
   const fetchRosterOverview = useCallback(async (
     id: string,
     canApply: () => boolean = () => true,
+    force = false,
   ) => {
-    if (Object.hasOwn(rosterDataByStudentRef.current[id] ?? {}, 'overview')) return
+    const cached = rosterDataByStudentRef.current[id]?.overview
+    if (!force && cached !== undefined) return
     const key = `overview:${id}`
     let request = rosterOverviewRequests.current.get(id)
     if (!request) {
       const version = rosterDataRequestVersions.current.issue(key)
-      const promise = getExerciseStatsOverview(id).catch(() => null)
+      const promise = getExerciseStatsOverview(id)
       request = { version, promise }
       rosterOverviewRequests.current.set(id, request)
-      void promise.finally(() => {
+      const clearRequest = () => {
         if (rosterOverviewRequests.current.get(id) === request) {
           rosterOverviewRequests.current.delete(id)
         }
-      })
+      }
+      void promise.then(clearRequest, clearRequest)
     }
-    const overview = await request.promise
-    if (!canApply() || !rosterDataRequestVersions.current.isLatest(key, request.version)) return
-    if (Object.hasOwn(rosterDataByStudentRef.current[id] ?? {}, 'overview')) return
-    updateRosterData(id, { overview })
+    try {
+      const overview = await request.promise
+      if (!canApply() || !rosterDataRequestVersions.current.isLatest(key, request.version)) return
+      updateRosterData(id, { overview })
+    } catch {
+      if (!canApply() || !rosterDataRequestVersions.current.isLatest(key, request.version)) return
+      updateRosterData(id, { overview: FAILED_ROSTER_DATUM })
+    }
   }, [updateRosterData])
+
+  const refreshRosterOverview = useCallback((id: string) => {
+    updateRosterData(id, { overview: undefined })
+    void fetchRosterOverview(id, () => true, true)
+  }, [fetchRosterOverview, updateRosterData])
 
   // Tracking tab reuses the roster overview cache — one GET per student, ever (rate-limit budget).
   const ensureTrackingOverview = useCallback((id: string) => {
-    void fetchRosterOverview(id)
+    void fetchRosterOverview(id, () => true, isFailedRosterDatum(rosterDataByStudentRef.current[id]?.overview))
   }, [fetchRosterOverview])
 
   const fetchRosterProfile = useCallback(async (
@@ -237,6 +260,11 @@ export function PlanWorkspace({ onLogout, me }: Props) {
     }
   }, [updateRosterData])
 
+  const refreshRosterProfile = useCallback((id: string) => {
+    updateRosterData(id, { profile: undefined, profileError: false })
+    void fetchRosterProfile(id)
+  }, [fetchRosterProfile, updateRosterData])
+
   const fetchRosterWeekTonnage = useCallback(async (
     id: string,
     studentPlans: PlanResponse[],
@@ -247,7 +275,7 @@ export function PlanWorkspace({ onLogout, me }: Props) {
     const current = [...studentPlans]
       .filter((plan) => plan.status === 'published')
       .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())[0]
-    let weekTonnageKg: number | null = null
+    let weekTonnageKg: RosterDataByStudent[string]['weekTonnageKg'] = null
     let planCursor: RosterDataByStudent[string]['planCursor'] = null
     if (current) {
       try {
@@ -255,7 +283,7 @@ export function PlanWorkspace({ onLogout, me }: Props) {
         weekTonnageKg = currentPublishedWeekTonnage(plan)
         planCursor = deriveStudentPlanCursor(plan)
       } catch {
-        weekTonnageKg = null
+        weekTonnageKg = FAILED_ROSTER_DATUM
         planCursor = null
       }
     }
@@ -263,12 +291,27 @@ export function PlanWorkspace({ onLogout, me }: Props) {
     updateRosterData(id, { weekTonnageKg, planCursor })
   }, [updateRosterData])
 
-  const refreshRosterWeekTonnage = useCallback((id: string, studentPlans: PlanResponse[]) => {
+  const refreshRosterWeekTonnage = useCallback((
+    id: string,
+    studentPlans: PlanResponse[],
+    showLoadingState = false,
+  ) => {
     const key = `week-tonnage:${id}`
     rosterDataRequestVersions.current.invalidate(key)
-    updateRosterData(id, { weekTonnageKg: undefined, planCursor: undefined })
+    if (showLoadingState || isFailedRosterDatum(rosterDataByStudentRef.current[id]?.weekTonnageKg)) {
+      updateRosterData(id, { weekTonnageKg: undefined, planCursor: undefined })
+    }
     void fetchRosterWeekTonnage(id, studentPlans)
   }, [fetchRosterWeekTonnage, updateRosterData])
+
+  const refreshRosterPlans = useCallback((id: string) => {
+    updateRosterData(id, { plansError: false })
+    void fetchStudentPlans(id).then((studentPlans) => {
+      if (studentPlans && rosterDataByStudentRef.current[id]?.weekTonnageKg === undefined) {
+        void fetchRosterWeekTonnage(id, studentPlans)
+      }
+    }).catch(() => undefined)
+  }, [fetchRosterWeekTonnage, fetchStudentPlans, updateRosterData])
 
   const updateStudentPlans = useCallback((
     id: string,
@@ -387,11 +430,13 @@ export function PlanWorkspace({ onLogout, me }: Props) {
       }
       if (generation !== rosterBackgroundGeneration.current) return
 
-      await fetchRosterWeekTonnage(
-        student.id,
-        studentPlans ?? [],
-        () => generation === rosterBackgroundGeneration.current,
-      )
+      if (studentPlans) {
+        await fetchRosterWeekTonnage(
+          student.id,
+          studentPlans,
+          () => generation === rosterBackgroundGeneration.current,
+        )
+      }
       if (generation !== rosterBackgroundGeneration.current) return
 
       await refreshStudentVideos(
@@ -837,7 +882,7 @@ export function PlanWorkspace({ onLogout, me }: Props) {
         studentName={studentName}
         studentId={studentId}
         onboardingProfile={onboarding}
-        exerciseStatsOverview={rosterDataByStudent[studentId]?.overview}
+        exerciseStatsOverview={isFailedRosterDatum(rosterDataByStudent[studentId]?.overview) ? null : rosterDataByStudent[studentId]?.overview}
         planName={loaded?.plan.name ?? S.workspace.plan.noPlanParenthesized}
         planStartDate={loaded?.plan.start_date}
         planStatus={loaded?.plan.status}
@@ -1024,6 +1069,10 @@ export function PlanWorkspace({ onLogout, me }: Props) {
           counts={rosterCounts}
           onSelect={selectBoardStudent}
           onOpen={(id) => { void openStudentEditor(id) }}
+          onRetryOverview={refreshRosterOverview}
+          onRetryProfile={refreshRosterProfile}
+          onRetryWeekTonnage={(id) => refreshRosterWeekTonnage(id, plansByStudentRef.current[id] ?? [], true)}
+          onRetryPlans={refreshRosterPlans}
         />
       : <div className="empty-page">{S.workspace.plan.acceptForOverview}</div>)}
     {view === 'requests' && <RequestsPage requests={bindRequests} onRequestsChanged={applyBindRequests} onAccepted={refreshStudentsAfterAccept} />}
@@ -1032,7 +1081,7 @@ export function PlanWorkspace({ onLogout, me }: Props) {
           students={students}
           selectedStudentId={studentId}
           onStudentChange={setStudentId}
-          overview={rosterDataByStudent[studentId]?.overview}
+          overview={isFailedRosterDatum(rosterDataByStudent[studentId]?.overview) ? null : rosterDataByStudent[studentId]?.overview}
           onEnsureOverview={ensureTrackingOverview}
         />
       : <div className="empty-page">{S.workspace.plan.acceptForTracking}</div>)}

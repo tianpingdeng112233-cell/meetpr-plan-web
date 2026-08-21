@@ -460,6 +460,40 @@ describe('PlanWorkspace editor remount', () => {
     expect(api.getExerciseStatsOverview).toHaveBeenCalledWith('student')
   }, 15_000)
 
+  it('does not cache an overview rejection as empty and retries only that request from the roster cell', async () => {
+    api.getPlan.mockResolvedValue(plan('概览失败可重试'))
+    api.getExerciseStatsOverview
+      .mockRejectedValueOnce(new Error('overview offline'))
+      .mockResolvedValueOnce({
+        exercises: [],
+        one_rm: { squat: '140', bench: '90', deadlift: '170' },
+        last_trained_at: null,
+        recent_4w: { trained_days: 3, total_planned_days: 4, completion_rate: .75 },
+      })
+
+    await act(async () => {
+      root.render(<PlanWorkspace onLogout={vi.fn()} me={me} />)
+      await settle()
+    })
+    await act(async () => {
+      clickButton(host, '总览')
+      await settle()
+    })
+
+    expect(api.getExerciseStatsOverview).toHaveBeenCalledTimes(1)
+    expect(host.textContent).toContain('e1RM 拉取失败')
+    expect(host.textContent).not.toContain('尚无实测或登记值')
+
+    await act(async () => {
+      clickButton(host, 'e1RM 拉取失败')
+      await settle()
+    })
+
+    expect(api.getExerciseStatsOverview).toHaveBeenCalledTimes(2)
+    expect(host.textContent).not.toContain('e1RM 拉取失败')
+    expect(host.querySelector('[data-student-id="student"] .roster-completion')?.textContent).toContain('75%')
+  }, 15_000)
+
   it('silently boots with catalog ordering when usage stats are unavailable', async () => {
     api.getExerciseUsageStats.mockRejectedValue(new Error('404'))
     api.getPlan.mockResolvedValue(plan('频次接口降级'))

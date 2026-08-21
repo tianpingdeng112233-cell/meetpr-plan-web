@@ -28,6 +28,8 @@ import { StudentPlanCapacityCard } from './StudentPlanCapacityCard'
 import { useGlobalKeyboardHandler } from './globalKeyboard'
 import { fmt, S } from '../../i18n/strings'
 import { StudentPlanCursorBadges } from '../plan-editor/components/StudentPlanCursorBadges'
+import { InlineFail, useDelayedLoading } from '../../components/states'
+import { isFailedRosterDatum, type FailedRosterDatum } from './rosterOverview'
 
 export function RmStrip({ detail, weight }: { detail: ExerciseStatsDetail; weight?: number | null }) {
   // Main lift = backend supplies a 登记 1RM reference (null for non-main lifts). Show the
@@ -51,7 +53,27 @@ const E1RM_TREND_ARROWS: Record<E1rmTrend, string> = { up: '↑', flat: '→', d
 /** 趋势方向一律采用后端 e1rm_series[family].trend,前端不重算。 */
 export const e1rmTrendArrow = (trend: E1rmTrend | undefined): string => trend ? E1RM_TREND_ARROWS[trend] : ''
 
-export function RosterE1rmBadges({ overview }: { overview: ExerciseStatsOverview | null | undefined }) {
+export function RosterE1rmBadges({ overview, onRetry }: {
+  overview: ExerciseStatsOverview | null | FailedRosterDatum | undefined
+  onRetry?: () => void
+}) {
+  const loading = overview === undefined
+  const visibleSkeleton = useDelayedLoading(loading)
+  if (loading || visibleSkeleton) {
+    return <span className="roster-e1rm roster-e1rm-loading">{visibleSkeleton && <i className="state-cell-skeleton" />}</span>
+  }
+  if (isFailedRosterDatum(overview)) {
+    return <span className="roster-e1rm roster-e1rm-failed"><InlineFail label={S.stats.board.e1rmFetchFailed} retry={() => onRetry?.()} /></span>
+  }
+  const hasAnyValue = overview != null && E1RM_FAMILIES.some((family) => {
+    const registered = overview.one_rm[family]
+    const points = overview.e1rm_series?.[family]?.points ?? []
+    return (registered != null && Number.isFinite(Number(registered)))
+      || points.some((point) => Number.isFinite(Number(point.value)))
+  })
+  if (overview === null || !hasAnyValue) {
+    return <span className="roster-e1rm roster-e1rm-empty">{S.stats.board.e1rmEmpty}</span>
+  }
   return <span className="roster-e1rm">{E1RM_FAMILIES.map((family) => {
     const series = overview?.e1rm_series?.[family]
     const point = series?.points.length ? series.points[series.points.length - 1] : null
@@ -80,6 +102,28 @@ export interface RosterBoardProps {
   counts?: RosterCounts
   onSelect: (studentId: string) => void
   onOpen: (studentId: string) => void
+  onRetryOverview?: (studentId: string) => void
+  onRetryProfile?: (studentId: string) => void
+  onRetryWeekTonnage?: (studentId: string) => void
+  onRetryPlans?: (studentId: string) => void
+}
+
+function RosterCellState({ loading, width, align = 'right', className = '', children }: {
+  loading: boolean
+  width: number
+  align?: 'left' | 'right'
+  className?: string
+  children: React.ReactNode
+}) {
+  const visible = useDelayedLoading(loading)
+  if (loading || visible) {
+    return <span className={`roster-cell-skeleton ${align} ${className}`.trim()}>{visible && <i className="state-cell-skeleton" style={{ width }} />}</span>
+  }
+  return <>{children}</>
+}
+
+function MissingValue({ className = '' }: { className?: string }) {
+  return <span className={`roster-missing ${className}`.trim()}>—</span>
 }
 
 function profileMetric(profile: StudentOnboardingProfile | null | undefined): string {
@@ -99,6 +143,10 @@ export function RosterBoard({
   counts: suppliedCounts,
   onSelect,
   onOpen,
+  onRetryOverview,
+  onRetryProfile,
+  onRetryWeekTonnage,
+  onRetryPlans,
 }: RosterBoardProps) {
   const [tab, setTab] = useState<RosterTab>('all')
   const derivedRows = useMemo(() => deriveRosterRows({
@@ -179,8 +227,13 @@ export function RosterBoard({
       <div className="roster-overview-scroll">
         {visibleRows.map((row) => {
           const selected = row.student.id === selectedStudentId
+          const overviewLoading = row.data.overview === undefined
+          const overviewFailed = isFailedRosterDatum(row.data.overview)
+          const profileLoading = row.data.profile === undefined && !row.data.profileError
+          const tonnageLoading = row.data.weekTonnageKg === undefined && !row.data.plansError
+          const tonnageFailed = isFailedRosterDatum(row.data.weekTonnageKg) || (row.data.weekTonnageKg === undefined && row.data.plansError === true)
+          const plansLoaded = Object.hasOwn(plansByStudent, row.student.id)
           const completionTone = completionRateTone(row.completionPercent)
-          const completion = row.completionPercent == null ? '—' : `${row.completionPercent}%`
           const tonnage = typeof row.data.weekTonnageKg === 'number'
             ? (row.data.weekTonnageKg / 1000).toFixed(1)
             : null
@@ -204,21 +257,44 @@ export function RosterBoard({
                 <StudentPlanCursorBadges cursor={row.data.planCursor} compact />
               </span>
               <span className="roster-overview-profile">{profileMetric(row.data.profile)}</span>
-              <span className={`roster-completion ${completionTone}`}>
-                <i><em style={{ width: `${row.completionPercent == null ? 0 : Math.max(0, Math.min(100, row.completionPercent))}%` }} /></i>
-                <b>{completion}</b>
-              </span>
-              <span className="roster-number">{tonnage ?? '—'}{tonnage != null && <small>t</small>}</span>
+              <RosterCellState loading={overviewLoading} width={56} align="left">
+                {overviewFailed
+                  ? <InlineFail retry={() => onRetryOverview?.(row.student.id)} />
+                  : row.completionPercent == null
+                    ? <MissingValue className="roster-completion-missing" />
+                    : <span className={`roster-completion ${completionTone}`}>
+                        <i><em style={{ width: `${Math.max(0, Math.min(100, row.completionPercent))}%` }} /></i>
+                        <b>{row.completionPercent}%</b>
+                      </span>}
+              </RosterCellState>
+              <RosterCellState loading={tonnageLoading} width={30}>
+                {tonnageFailed
+                  ? <span className="roster-cell-right"><InlineFail retry={() => row.data.plansError ? onRetryPlans?.(row.student.id) : onRetryWeekTonnage?.(row.student.id)} /></span>
+                  : <span className="roster-number">{tonnage ?? '—'}{tonnage != null && <small>t</small>}</span>}
+              </RosterCellState>
               {/* No roster-level RPE aggregate exists yet; keep the shared thresholds ready for the backend field. */}
-              <span className="roster-number roster-rpe">—</span>
-              <RosterE1rmBadges overview={row.data.overview} />
-              <span className="roster-number roster-distance">{distance}</span>
-              <span className="roster-plan-cell">
-                <span className={`roster-plan-badge ${row.pending == null ? 'unknown' : row.pending ? 'pending' : 'planned'}`}>
-                  {row.pending == null ? '—' : row.pending ? S.stats.board.pending : S.stats.board.planned}
-                </span>
-                {row.redFlag && <span className="roster-red-flag">{row.redFlag}</span>}
-                {row.pending === true && (
+              <RosterCellState loading={overviewLoading} width={24}>
+                {overviewFailed
+                  ? <span className="roster-cell-right"><InlineFail retry={() => onRetryOverview?.(row.student.id)} /></span>
+                  : <MissingValue className="roster-rpe" />}
+              </RosterCellState>
+              <RosterE1rmBadges overview={row.data.overview} onRetry={() => onRetryOverview?.(row.student.id)} />
+              <RosterCellState loading={profileLoading} width={24}>
+                {row.data.profileError
+                  ? <span className="roster-cell-right"><InlineFail retry={() => onRetryProfile?.(row.student.id)} /></span>
+                  : <span className="roster-number roster-distance">{distance}</span>}
+              </RosterCellState>
+              <RosterCellState loading={!plansLoaded && !row.data.plansError} width={64} align="left" className="roster-plan-cell">
+                {row.data.plansError
+                  ? <span className="roster-plan-cell"><InlineFail retry={() => onRetryPlans?.(row.student.id)} /></span>
+                  : <span className="roster-plan-cell">
+                    {row.pending == null
+                      ? <MissingValue />
+                      : <span className={`roster-plan-badge ${row.pending ? 'pending' : 'planned'}`}>
+                          {row.pending ? S.stats.board.pending : S.stats.board.planned}
+                        </span>}
+                    {row.redFlag && <span className="roster-red-flag">{row.redFlag}</span>}
+                    {row.pending === true && (
                   <button
                     type="button"
                     className="roster-write"
@@ -229,8 +305,9 @@ export function RosterBoard({
                   >
                     {S.stats.board.planNextWeek}
                   </button>
-                )}
-              </span>
+                    )}
+                  </span>}
+              </RosterCellState>
             </div>
           )
         })}
