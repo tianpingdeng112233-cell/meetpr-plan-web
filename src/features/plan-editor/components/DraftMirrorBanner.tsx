@@ -1,5 +1,6 @@
 interface Props {
   savedAt: string
+  source?: 'local' | 'remote'
   onRestore: () => void
   onDiscard: () => void
 }
@@ -25,7 +26,7 @@ const action: React.CSSProperties = {
   cursor: 'pointer',
 }
 
-export function DraftMirrorBanner({ savedAt, onRestore, onDiscard }: Props) {
+export function DraftMirrorBanner({ savedAt, source = 'local', onRestore, onDiscard }: Props) {
   return (
     <div role="status" data-testid="draft-mirror-banner" style={{
       minHeight: 42,
@@ -43,8 +44,14 @@ export function DraftMirrorBanner({ savedAt, onRestore, onDiscard }: Props) {
       boxShadow: 'inset 3px 0 0 var(--warn)',
       fontSize: 12,
     }}>
-      <span style={{ color: 'var(--warn)', fontWeight: 700 }}>{S.editor.localDraft}</span>
-      <span style={{ flex: 1 }}>{S.editor.unsavedLocalDraft(savedTime(savedAt))}</span>
+      <span style={{ color: 'var(--warn)', fontWeight: 700 }}>
+        {source === 'remote' ? S.editor.remoteDraft : S.editor.localDraft}
+      </span>
+      <span style={{ flex: 1 }}>
+        {source === 'remote'
+          ? S.editor.unsavedRemoteDraft(savedTime(savedAt))
+          : S.editor.unsavedLocalDraft(savedTime(savedAt))}
+      </span>
       <button type="button" onClick={onRestore} style={{ ...action, borderColor: 'var(--warn)' }}>{S.editor.restore}</button>
       <button type="button" onClick={onDiscard} style={action}>{S.editor.discard}</button>
     </div>

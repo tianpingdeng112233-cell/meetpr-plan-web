@@ -1190,6 +1190,26 @@ describe('PlanWorkspace editor remount', () => {
     expect(props.onPublish).toBeUndefined()
   })
 
+  it('appends the pending-revision tag to plans with unpushed changes', async () => {
+    const pending = {
+      ...studentPlan({ id: 'pending-plan', studentId: 'student', name: '待更新计划', status: 'published' }),
+      pending_revision_saved_at: '2026-08-22T10:00:00Z',
+    }
+    api.getStudentPlans.mockResolvedValue([pending])
+    api.getPlan.mockResolvedValue(pending)
+
+    await act(async () => {
+      root.render(<PlanWorkspace onLogout={vi.fn()} me={me} />)
+      await settle()
+    })
+
+    const props = api.captureEditorProps.mock.calls.at(-1)?.[0] as {
+      plans?: Array<{ id: string; tag?: string }>
+    }
+    expect(props.plans?.find((item) => item.id === 'pending-plan')?.tag)
+      .toBe('已发布 · 有未推送修改')
+  })
+
   it('patches start/end together and keeps the plan week count unchanged', async () => {
     const updated = {
       ...plan('加载时快照'),

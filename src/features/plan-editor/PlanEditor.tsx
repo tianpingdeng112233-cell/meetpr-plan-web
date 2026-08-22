@@ -34,8 +34,10 @@ import { compareWeekMetric, summarizeWeek } from './weeklySummary'
 import { WeekCapacitySummary } from './components/WeekCapacitySummary'
 import {
   clearDraftMirror, clearDraftMirrorIfHash, createDraftMirrorWriter, draftContentHash,
-  loadDraftMirror, saveDraftMirror, type DraftMirror, type DraftMirrorContent,
+  loadDraftMirror, parseDraftMirror, saveDraftMirror, type DraftMirror, type DraftMirrorContent,
 } from './draftMirror'
+import { createRemoteMirrorWriter, type RemoteMirrorState, type RemoteMirrorWriter } from './remoteMirror'
+import { getPendingRevision, type PendingRevisionResponse } from '../../api/pendingRevision'
 import { DraftMirrorBanner } from './components/DraftMirrorBanner'
 import { FormulaBar } from './components/FormulaBar'
 import {
@@ -48,7 +50,7 @@ import {
   type PlanCellSelection,
 } from './selectionModel'
 import { useGlobalKeyboardHandler } from '../workspace/globalKeyboard'
-import { S, fmt } from '../../i18n/strings'
+import { S, fmt, resolveLocale } from '../../i18n/strings'
 import { MUSCLE_LABEL } from '../catalog/catalogModel'
 import {
   closestWeekToViewportCenter,
@@ -77,6 +79,7 @@ const COPY_LABEL = S.editor.copyLastWeek
 const DAY_MOVE_THRESHOLD = 5
 
 interface Switcher { id: string; label: string; tag?: string }
+interface RecoveryMirror { mirror: DraftMirror; source: 'local' | 'remote' }
 
 export interface PlanEditorProps {
   initialWeeks: Week[]
@@ -127,6 +130,8 @@ export interface PlanEditorProps {
   onBackToBoard?: () => void | Promise<void>
   /** Registers the guarded-leave path used by workspace navigation and account controls. */
   onLeaveGuardChange?: (guard: (() => Promise<boolean>) | null) => void
+  /** Keeps the parent-owned plan switcher tag synchronized with remote mirror writes/deletes. */
+  onPendingRevisionSavedAtChange?: (savedAt: string | null) => void
   /** While true (guarded view switch in flight) global shortcuts must not mutate weeks. */
   suspended?: boolean
   /** Current plan start date; enables xlsx import date remapping. */
@@ -141,6 +146,26 @@ function hasGridContent(weeks: Week[]): boolean {
 
 function mirrorContent(weeks: Week[], planStartDate: string | null, weeksCount = weeks.length): DraftMirrorContent {
   return { weeks, planStartDate, weeksCount }
+}
+
+function pendingResponseMirror(planId: string, response: PendingRevisionResponse): DraftMirror | null {
+  return parseDraftMirror({
+    version: response.version,
+    planId: response.plan_id,
+    savedAt: response.saved_at,
+    contentHash: response.content_hash,
+    content: response.content,
+  }, planId)
+}
+
+function savedClock(iso: string): string {
+  try {
+    return new Intl.DateTimeFormat(resolveLocale() === 'zh' ? 'zh-CN' : 'en-US', {
+      hour: '2-digit', minute: '2-digit', hour12: false,
+    }).format(new Date(iso))
+  } catch {
+    return iso
+  }
 }
 
 function hasParsedWeekContent(week: ParsedWeek): boolean {
@@ -338,11 +363,82 @@ export function PlanEditor(props: PlanEditorProps) {
   ))
   const serverMirrorHash = useRef(draftContentHash(initialServerMirrorContent.current))
   const mountedMirror = useRef<DraftMirror | null>(readOnly ? null : loadDraftMirror(mirrorPlanId))
-  const [recoveryMirror, setRecoveryMirror] = useState<DraftMirror | null>(() => {
-    const mirror = mountedMirror.current
-    return mirror && mirror.contentHash !== serverMirrorHash.current ? mirror : null
+  const waitsForRemoteRecovery = !!mirrorPlanId && initialPublished && !readOnly
+  const mountedLocalCandidate = mountedMirror.current?.contentHash !== serverMirrorHash.current
+    ? mountedMirror.current
+    : null
+  const [recoveryMirror, setRecoveryMirror] = useState<RecoveryMirror | null>(() => {
+    if (waitsForRemoteRecovery || !mountedLocalCandidate) return null
+    return { mirror: mountedLocalCandidate, source: 'local' }
   })
+  const [recoveryReady, setRecoveryReady] = useState(!waitsForRemoteRecovery)
+  const [remoteMirrorState, setRemoteMirrorState] = useState<RemoteMirrorState>({ status: 'idle' })
+  const remoteMirrorStateRef = useRef(remoteMirrorState)
+  remoteMirrorStateRef.current = remoteMirrorState
+  const remoteHasDirtyContent = useRef(false)
+  const pendingRevisionChangeRef = useRef(props.onPendingRevisionSavedAtChange)
+  pendingRevisionChangeRef.current = props.onPendingRevisionSavedAtChange
+  const remoteWriter = useRef<RemoteMirrorWriter | null>(null)
+  const [publishedDirty, setPublishedDirty] = useState(false)
+  const publishedDirtyRef = useRef(publishedDirty)
+  publishedDirtyRef.current = publishedDirty
   const mirrorWriter = useRef(createDraftMirrorWriter({ planId: mirrorPlanId }))
+
+  useEffect(() => {
+    if (!mirrorPlanId) return
+    const writer = createRemoteMirrorWriter({
+      planId: mirrorPlanId,
+      // PlanEditor owns the single beforeunload hook so local and remote
+      // mirrors flush together without issuing duplicate keepalive PUTs.
+      eventTarget: null,
+      onState: (state) => {
+        setRemoteMirrorState(state)
+        if (state.status === 'saved') pendingRevisionChangeRef.current?.(state.savedAt)
+      },
+    })
+    remoteWriter.current = writer
+    return () => {
+      writer.dispose()
+      if (remoteWriter.current === writer) remoteWriter.current = null
+    }
+  }, [mirrorPlanId])
+
+  useEffect(() => {
+    const local = mountedMirror.current
+    if (!waitsForRemoteRecovery || !mirrorPlanId) {
+      if (local && local.contentHash === serverMirrorHash.current) clearDraftMirror(mirrorPlanId)
+      return
+    }
+    let cancelled = false
+    void getPendingRevision(mirrorPlanId)
+      .then((response) => {
+        if (cancelled) return
+        let remote = response ? pendingResponseMirror(mirrorPlanId, response) : null
+        if (response && (!remote || remote.contentHash === serverMirrorHash.current)) {
+          remote = null
+          remoteWriter.current?.clear()
+          pendingRevisionChangeRef.current?.(null)
+        } else if (remote) {
+          pendingRevisionChangeRef.current?.(remote.savedAt)
+        }
+        const localCandidate = local && local.contentHash !== serverMirrorHash.current ? local : null
+        if (local && !localCandidate) clearDraftMirror(mirrorPlanId)
+        const candidates: RecoveryMirror[] = [
+          ...(localCandidate ? [{ mirror: localCandidate, source: 'local' as const }] : []),
+          ...(remote ? [{ mirror: remote, source: 'remote' as const }] : []),
+        ]
+        candidates.sort((a, b) => Date.parse(b.mirror.savedAt) - Date.parse(a.mirror.savedAt))
+        setRecoveryMirror(candidates[0] ?? null)
+        setRecoveryReady(true)
+      })
+      .catch(() => {
+        if (cancelled) return
+        const localCandidate = local && local.contentHash !== serverMirrorHash.current ? local : null
+        setRecoveryMirror(localCandidate ? { mirror: localCandidate, source: 'local' } : null)
+        setRecoveryReady(true)
+      })
+    return () => { cancelled = true }
+  }, [mirrorPlanId, waitsForRemoteRecovery])
   const suspendedRef = useRef(false)
   suspendedRef.current = !!props.suspended
   // Keep the displayed start date separate from the metadata change waiting to
@@ -474,39 +570,82 @@ export function PlanEditor(props: PlanEditorProps) {
     serverMirrorHash.current = hash
     mirrorWriter.current.dropPendingIfHash(hash)
     clearDraftMirrorIfHash(mirrorPlanId, hash)
-  }, [mirrorPlanId])
+    if (published) {
+      remoteWriter.current?.markCovered(hash)
+      pendingRevisionChangeRef.current?.(null)
+      const current = mirrorContent(
+        latestWeeks.current,
+        currentPlanStart.current,
+        latestWeeks.current.length || props.weeksCount,
+      )
+      const stillDirty = draftContentHash(current) !== hash
+      remoteHasDirtyContent.current = stillDirty
+      setPublishedDirty(stillDirty)
+    }
+  }, [mirrorPlanId, props.weeksCount, published])
 
   useEffect(() => {
     // The writer keeps running while the recovery banner is open: the banner's
     // candidate lives in React state, so edits typed before the coach decides
     // still reach storage instead of going unprotected.
-    if (!mirrorPlanId || readOnly) return
+    if (readOnly) return
     const content = mirrorContent(
       weeks,
       currentPlanStart.current,
       weeks.length || props.weeksCount,
     )
     const hash = draftContentHash(content)
+    if (published && !recoveryReady) {
+      // Do not overwrite/delete an unread remote candidate. Fresh edits still
+      // reach the fast local mirror while the GET is in flight.
+      if (hash !== serverMirrorHash.current) {
+        setPublishedDirty(true)
+        if (mirrorPlanId) mirrorWriter.current.schedule(content)
+      }
+      return
+    }
     if (hash === serverMirrorHash.current) {
+      if (published) setPublishedDirty(false)
+      if (!mirrorPlanId) return
       // Content is back at the server baseline (e.g. undo): there is no draft
       // left to protect, so drop ANY pending write and wipe the stored mirror
       // outright — a hash-conditional clean would leave the undone draft to
       // resurrect on reload. An open banner still owns its stored candidate.
       mirrorWriter.current.cancel()
-      if (!recoveryMirror) clearDraftMirror(mirrorPlanId)
+      if (!recoveryMirror) {
+        clearDraftMirror(mirrorPlanId)
+        if (published && remoteHasDirtyContent.current) {
+          remoteWriter.current?.clear()
+          remoteHasDirtyContent.current = false
+          pendingRevisionChangeRef.current?.(null)
+        }
+      }
       return
     }
+    if (published) {
+      setPublishedDirty(true)
+      if (!mirrorPlanId) return
+      remoteHasDirtyContent.current = true
+      remoteWriter.current?.schedule(content)
+    }
+    if (!mirrorPlanId) return
     mirrorWriter.current.schedule(content)
-  }, [mirrorPlanId, props.weeksCount, readOnly, recoveryMirror, weeks])
+  }, [mirrorPlanId, props.weeksCount, published, readOnly, recoveryMirror, recoveryReady, weeks])
 
   useEffect(() => {
     const writer = mirrorWriter.current
-    return () => writer.cancel()
+    return () => {
+      writer.cancel()
+    }
   }, [])
 
   const restoreDraftMirror = useCallback(() => {
     if (!recoveryMirror || readOnly) return
-    const { content } = recoveryMirror
+    const { content } = recoveryMirror.mirror
+    clearDraftMirror(mirrorPlanId)
+    remoteWriter.current?.clear()
+    remoteHasDirtyContent.current = false
+    pendingRevisionChangeRef.current?.(null)
     // Restoring means the coach chose this candidate as THE current draft, so
     // it synchronously takes over the single storage slot — replacing even a
     // newer mirror written while the banner was open. An immediate save then
@@ -540,11 +679,12 @@ export function PlanEditor(props: PlanEditorProps) {
   }, [mirrorPlanId, props.weeksCount, published, readOnly, recoveryMirror, setWeeksWithHistory])
 
   const discardDraftMirror = useCallback(() => {
-    // Only the discarded candidate is removed; a newer mirror written while
-    // the banner was open (edits keep mirroring) must survive the discard.
-    clearDraftMirrorIfHash(mirrorPlanId, recoveryMirror?.contentHash ?? '')
+    clearDraftMirror(mirrorPlanId)
+    remoteWriter.current?.clear()
+    remoteHasDirtyContent.current = false
+    pendingRevisionChangeRef.current?.(null)
     setRecoveryMirror(null)
-  }, [mirrorPlanId, recoveryMirror])
+  }, [mirrorPlanId])
 
   const setVisibleWeek = useCallback((weekNumber: number) => {
     setCurWeekLabel(weekLabel(weekNumber))
@@ -1790,6 +1930,7 @@ export function PlanEditor(props: PlanEditorProps) {
     const onBeforeUnload = (e: BeforeUnloadEvent) => {
       if (!canPersist.current) return
       mirrorWriter.current.flush()
+      remoteWriter.current?.flush({ keepalive: true })
       const atRisk = savingRef.current || unsavedRef.current || countUnbound(latestWeeks.current) > 0
       if (!atRisk) return
       e.preventDefault()
@@ -1804,12 +1945,17 @@ export function PlanEditor(props: PlanEditorProps) {
     const unbound = countUnbound(latestWeeks.current)
     if (unbound > 0 && !window.confirm(S.editor.leaveUnboundConfirm(unbound))) return false
     // Published changes require an explicit confirmed update and are never flushed on leave.
-    if (publishedRef.current && unsavedRef.current
-      && !window.confirm(S.editor.leavePublishedDirtyConfirm)) return false
+    if (publishedRef.current && publishedDirtyRef.current) {
+      const message = remoteMirrorStateRef.current.status === 'saved'
+        ? S.editor.leavePublishedDirtyStashedConfirm
+        : S.editor.leavePublishedDirtyConfirm
+      if (!window.confirm(message)) return false
+    }
     return true
   }
   const confirmLeave = async () => {
     mirrorWriter.current.flush()
+    remoteWriter.current?.flush()
     if (!confirmLeaveUnbound()) return false
     if (!canPersist.current || publishedRef.current) return true
     if (!unsavedRef.current && !savingRef.current) return true
@@ -1898,6 +2044,14 @@ export function PlanEditor(props: PlanEditorProps) {
   const handleSave = async () => {
     if (!props.onSave || readOnly || saving || publishing.current) return
     if (published) {
+      if (!recoveryReady) {
+        window.alert(S.editor.checkingRemoteBeforeUpdate)
+        return
+      }
+      if (recoveryMirror) {
+        window.confirm(S.editor.resolveRecoveryBeforeUpdate)
+        return
+      }
       // 更新计划: reconciles in place, changing what the student sees right now — confirm first.
       // This is the ONLY way a published plan is persisted: an explicit, confirmed, one-shot write
       // that never enters the autosave queue, so nothing can later replay it (e.g. an unmount flush).
@@ -2134,6 +2288,13 @@ export function PlanEditor(props: PlanEditorProps) {
       fmt.exerciseName({ name: selectedRowForBar.name, name_en: selectedRowForBar.nameEn }).trim()
         || S.common.unnamedExercise)
     : ''
+  const visibleStatusText = published && publishedDirty
+    ? remoteMirrorState.status === 'saved'
+      ? S.editor.publishedDirtyStashed(studentName, savedClock(remoteMirrorState.savedAt))
+      : remoteMirrorState.status === 'stashing'
+        ? S.editor.publishedDirtyStashing(studentName)
+        : S.editor.publishedDirtyLocal(studentName)
+    : statusText
   const moveStateForDay = (wnum: number, dow: number): 'source' | 'target' | 'invalid' | undefined => {
     if (!dayMoveVisual) return undefined
     if (dayMoveVisual.fromWnum === wnum && dayMoveVisual.fromDow === dow) return 'source'
@@ -2150,7 +2311,8 @@ export function PlanEditor(props: PlanEditorProps) {
       fontFamily: 'var(--font-sans)', fontSize: 13, WebkitFontSmoothing: 'antialiased',
     }}>
       <TopBar
-        studentName={studentName} planName={planName} published={published} readOnly={readOnly} statusText={statusText} onPublish={handlePublish}
+        studentName={studentName} planName={planName} published={published} publishedDirty={publishedDirty}
+        readOnly={readOnly} statusText={visibleStatusText} onPublish={handlePublish}
         students={props.students} currentStudentId={props.currentStudentId} onSwitchStudent={guardLeaveId(props.onSwitchStudent)}
         plans={props.plans} currentPlanId={props.currentPlanId} onSwitchPlan={guardLeaveId(props.onSwitchPlan)}
         onNewPlan={guardLeave(props.onNewPlan)}
@@ -2184,7 +2346,8 @@ export function PlanEditor(props: PlanEditorProps) {
       />
       {recoveryMirror && (
         <DraftMirrorBanner
-          savedAt={recoveryMirror.savedAt}
+          savedAt={recoveryMirror.mirror.savedAt}
+          source={recoveryMirror.source}
           onRestore={restoreDraftMirror}
           onDiscard={discardDraftMirror}
         />
