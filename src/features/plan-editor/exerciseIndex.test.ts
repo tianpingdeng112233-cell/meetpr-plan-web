@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import type { ExerciseResponse } from '../../api/types'
 import { displayExerciseName, ExerciseIndex } from './exerciseIndex'
+import aliasesData from '../../data/exercise-aliases.json'
+import catalogSnapshot from './exercise-catalog-names.fixture.json'
 
 function exercise(id: string, name: string): ExerciseResponse {
   return {
@@ -48,7 +50,7 @@ describe('ExerciseIndex', () => {
   it('resolves coach shorthand aliases from import sheets', () => {
     const index = new ExerciseIndex([
       exercise('side-plank', '侧平板支撑'),
-      exercise('v-up', '静力两头起'),
+      exercise('v-up', 'V字上举'),
       exercise('spoto', 'spoto 暂停卧推'),
       exercise('ssb-tempo', '安全杠节奏深蹲'),
     ])
@@ -120,5 +122,43 @@ describe('ExerciseIndex', () => {
     index.bump('second')
     expect(index.search('测试推举').map((hit) => hit.id)).toEqual(['second', 'first'])
     expect(index.withAdded(exercise('third', '测试推举三')).search('测试推举')[0].id).toBe('second')
+  })
+
+  it('recalls the four duplicate-prevention target cases through shared search scoring', () => {
+    const index = new ExerciseIndex([
+      { ...exercise('band-pallof', '弹力带 pallof 推'), name_en: 'Band Pallof Press' },
+      { ...exercise('cable-pallof', '绳索帕洛夫推'), name_en: 'Cable Pallof Press' },
+      exercise('side-plank', '侧平板支撑'),
+      exercise('seated-press', '坐姿哑铃推举'),
+      exercise('hammer-curl', '绳索锤式弯举'),
+    ])
+
+    expect(index.search('帕洛夫推').map((hit) => hit.id)).toEqual(expect.arrayContaining(['band-pallof', 'cable-pallof']))
+    expect(index.search('平板侧支撑')[0]).toMatchObject({ id: 'side-plank' })
+    expect(index.search('坐姿哑铃推肩')[0]).toMatchObject({ id: 'seated-press' })
+    expect(index.search('绳索对握弯举')[0]).toMatchObject({ id: 'hammer-curl' })
+  })
+
+  it('returns nothing for blank queries and ranks substring hits above character-set hits', () => {
+    const index = new ExerciseIndex([
+      exercise('side-plank', '侧平板支撑'),
+      exercise('rack', '平板侧支撑架'),
+      exercise('scrambled-a', '撑支板平侧'),
+      exercise('scrambled-b', '支撑侧板平'),
+    ])
+
+    expect(index.search('')).toEqual([])
+    expect(index.search(' - · ')).toEqual([])
+    // substring (tier 1) before any-order character set (tier 2); equal fuzzy scores keep catalog order
+    expect(index.search('平板侧支撑').map((hit) => hit.id)).toEqual(['rack', 'side-plank', 'scrambled-a', 'scrambled-b'])
+  })
+
+  it('keeps every iOS-copy alias canonical attached to the catalog snapshot', () => {
+    // Every canonical must be a seed catalog name: a single coach's custom exercise
+    // cannot back a global alias (it would dangle for every other coach).
+    const catalogNames = new Set(catalogSnapshot.names)
+    const dangling = aliasesData.aliases.filter((entry) => !catalogNames.has(entry.canonical))
+
+    expect(dangling).toEqual([])
   })
 })
