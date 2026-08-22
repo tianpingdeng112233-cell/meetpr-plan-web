@@ -299,6 +299,32 @@ function parseMirror(raw: string, expectedPlanId?: string): ParsedMirror | null 
   }
 }
 
+/** Validate an untrusted local or remote mirror with the exact same schema/hash rules. */
+export function parseDraftMirror(value: unknown, expectedPlanId?: string): DraftMirror | null {
+  try {
+    const raw = typeof value === 'string' ? value : JSON.stringify(value)
+    return parseMirror(raw, expectedPlanId)?.mirror ?? null
+  } catch {
+    return null
+  }
+}
+
+/** Build the wire/storage shape without touching localStorage. */
+export function createDraftMirror(
+  planId: string,
+  content: DraftMirrorContent,
+  now: () => Date = () => new Date(),
+): DraftMirror {
+  const normalizedContent = normalizeContent(content)
+  return {
+    version: DRAFT_MIRROR_VERSION,
+    planId,
+    savedAt: now().toISOString(),
+    contentHash: draftContentHash(normalizedContent),
+    content: normalizedContent,
+  }
+}
+
 function parseAndRewriteMirror(
   raw: string,
   storage: Pick<Storage, 'setItem'>,
@@ -359,14 +385,7 @@ export function saveDraftMirror(
 ): DraftMirror | null {
   if (!planId || !storage) return null
   try {
-    const normalizedContent = normalizeContent(content)
-    const mirror: DraftMirror = {
-      version: DRAFT_MIRROR_VERSION,
-      planId,
-      savedAt: now().toISOString(),
-      contentHash: draftContentHash(normalizedContent),
-      content: normalizedContent,
-    }
+    const mirror = createDraftMirror(planId, content, now)
     const serialized = JSON.stringify(mirror)
     try {
       storage.setItem(draftMirrorStorageKey(planId), serialized)
