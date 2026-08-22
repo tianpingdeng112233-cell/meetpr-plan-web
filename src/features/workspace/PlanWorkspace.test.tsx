@@ -23,6 +23,9 @@ const api = vi.hoisted(() => ({
   getInviteCodes: vi.fn(),
   listExercises: vi.fn(),
   getExerciseUsageStats: vi.fn(),
+  createCustomExercise: vi.fn(),
+  updateCustomExercise: vi.fn(),
+  deleteCustomExercise: vi.fn(),
   listConversations: vi.fn(),
   getMessages: vi.fn(),
   markConversationRead: vi.fn(),
@@ -55,7 +58,9 @@ vi.mock('../../api/plans', () => ({
 vi.mock('../../api/exercises', () => ({
   listExercises: api.listExercises,
   getExerciseUsageStats: api.getExerciseUsageStats,
-  createCustomExercise: vi.fn(),
+  createCustomExercise: api.createCustomExercise,
+  updateCustomExercise: api.updateCustomExercise,
+  deleteCustomExercise: api.deleteCustomExercise,
 }))
 vi.mock('../../api/coach', () => ({
   getBindRequests: api.getBindRequests,

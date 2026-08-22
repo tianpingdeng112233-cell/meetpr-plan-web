@@ -426,6 +426,7 @@ export type MovementPattern =
 
 export interface CreateCustomExerciseBody {
   name: string
+  name_en?: string | null
   // Backend rejects non-accessory without a family, and accessory with one.
   exercise_type: 'accessory' | 'main_lift_variation'
   main_lift_family: LiftFamily | null

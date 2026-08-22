@@ -4,7 +4,7 @@ import {
   getCoachStudents, getStudentPlans, getPlan, publishPlan, createPlan, patchPlan, getStudentOnboarding,
   markImportedHistory, renameCoachStudent, deletePlan,
 } from '../../api/plans'
-import { listExercises, createCustomExercise, getExerciseUsageStats } from '../../api/exercises'
+import { createCustomExercise, deleteCustomExercise, getExerciseUsageStats, listExercises, updateCustomExercise } from '../../api/exercises'
 import type { CreateCustomExerciseInput } from '../../api/exercises'
 import { ApiException } from '../../api/client'
 import { deriveStudentPlanCursor, mapPlanToWeeks, type Catalog } from '../plan-editor/mapping'
@@ -694,6 +694,32 @@ export function PlanWorkspace({ onLogout, me }: Props) {
     return { id: exercise.id, name: exercise.name }
   }
 
+  const handleUpdateExercise = async (id: string, input: CreateCustomExerciseInput) => {
+    const original = exerciseList.find((item) => item.id === id)
+    if (!original) throw new Error(`exercise ${id} is not in the loaded catalog`)
+    const exercise = await updateCustomExercise(id, input, original)
+    const custom = exercise.created_by_coach_id != null
+    setExerciseList((prev) => prev.map((item) => item.id === exercise.id ? exercise : item))
+    setCatalog((prev) => {
+      const next = new Map(prev ?? [])
+      next.set(exercise.id, { name: displayExerciseName(exercise.name), nameEn: exercise.name_en, custom })
+      return next
+    })
+    setIndex((prev) => prev?.withUpdated(exercise) ?? new ExerciseIndex([exercise], {}, exerciseUsage.current))
+    return exercise
+  }
+
+  const handleDeleteExercise = async (id: string) => {
+    await deleteCustomExercise(id)
+    setExerciseList((prev) => prev.filter((item) => item.id !== id))
+    setCatalog((prev) => {
+      const next = new Map(prev ?? [])
+      next.delete(id)
+      return next
+    })
+    setIndex((prev) => prev?.without(id) ?? null)
+  }
+
   const setLeaveGuard = useCallback((guard: (() => Promise<boolean>) | null) => {
     leaveGuardRef.current = guard
   }, [])
@@ -1053,7 +1079,10 @@ export function PlanWorkspace({ onLogout, me }: Props) {
       exerciseList={exerciseList}
       catalog={catalog}
       index={index}
+      currentCoachId={me.id}
       onCreateExercise={handleCreateExercise}
+      onUpdateExercise={handleUpdateExercise}
+      onDeleteExercise={handleDeleteExercise}
       onUseExercise={() => { void changeView('editor') }}
       commandExerciseId={commandExerciseId}
       onCommandExerciseHandled={() => setCommandExerciseId(null)}

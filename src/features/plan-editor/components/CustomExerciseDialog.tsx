@@ -1,10 +1,11 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { CreateCustomExerciseInput } from '../../../api/exercises'
 import type { Equipment, LiftFamily, MovementPattern, MuscleGroup } from '../../../api/types'
 import { useGlobalKeyboardHandler } from '../../workspace/globalKeyboard'
-import { S } from '../../../i18n/strings'
+import { fmt, resolveLocale, S } from '../../../i18n/strings'
 import { EQUIPMENT_LABEL, LIFT_FAMILY_LABEL, MOVEMENT_PATTERN_LABEL, MUSCLE_LABEL } from '../../catalog/catalogModel'
 import { STABLE_ZH } from '../../../i18n/stable-zh'
+import type { ExerciseHit, ExerciseIndex } from '../exerciseIndex'
 
 interface Props {
   open: boolean
@@ -13,8 +14,10 @@ interface Props {
   initialTier?: 'main' | 'aux'
   saving: boolean
   error: string
+  index?: ExerciseIndex | null
   onClose: () => void
   onSubmit: (input: CreateCustomExerciseInput) => void | Promise<void>
+  onUseExisting?: (hit: ExerciseHit) => void
 }
 
 const muscleOptions: MuscleGroup[] = [
@@ -93,8 +96,9 @@ const input: React.CSSProperties = {
   outline: 'none',
 }
 
-export function CustomExerciseDialog({ open, initialName, initialTier, saving, error, onClose, onSubmit }: Props) {
+export function CustomExerciseDialog({ open, initialName, initialTier, saving, error, index, onClose, onSubmit, onUseExisting }: Props) {
   const [name, setName] = useState('')
+  const [nameEn, setNameEn] = useState('')
   const [exerciseType, setExerciseType] = useState<'accessory' | 'main_lift_variation'>('accessory')
   const [mainLiftFamily, setMainLiftFamily] = useState<LiftFamily>('squat')
   const [muscleGroup, setMuscleGroup] = useState<MuscleGroup>('core')
@@ -108,6 +112,7 @@ export function CustomExerciseDialog({ open, initialName, initialTier, saving, e
     const guessed = guessFields(trimmed)
     const family = guessLiftFamily(trimmed)
     setName(trimmed)
+    setNameEn('')
     setExerciseType(initialTier === 'main' ? 'main_lift_variation' : 'accessory')
     setMainLiftFamily(family ?? 'squat')
     setMuscleGroup(guessed.muscleGroup ?? 'core')
@@ -123,8 +128,12 @@ export function CustomExerciseDialog({ open, initialName, initialTier, saving, e
     return true
   }, 200)
 
-  if (!open) return null
   const trimmed = name.trim()
+  const candidates = useMemo(
+    () => open && trimmed && index ? index.search(trimmed, 5) : [],
+    [index, open, trimmed],
+  )
+  if (!open) return null
 
   return (
     <div
@@ -145,6 +154,7 @@ export function CustomExerciseDialog({ open, initialName, initialTier, saving, e
           if (!trimmed || saving) return
           void onSubmit({
             name: trimmed,
+            nameEn: nameEn.trim() || null,
             exerciseType,
             mainLiftFamily: exerciseType === 'main_lift_variation' ? mainLiftFamily : undefined,
             muscleGroup,
@@ -179,6 +189,29 @@ export function CustomExerciseDialog({ open, initialName, initialTier, saving, e
             style={input}
           />
         </label>
+
+        <label style={fieldWrap}>
+          <span style={label}>{S.catalog.englishName} · {S.catalog.optional}</span>
+          <input
+            value={nameEn}
+            maxLength={120}
+            onChange={(e) => setNameEn(e.target.value)}
+            style={input}
+          />
+        </label>
+
+        {candidates.length > 0 && onUseExisting && (
+          <div className="catalog-existing-candidates" style={fieldWrap}>
+            <span style={label}>{S.catalog.possibleExisting}</span>
+            <div>{candidates.map((candidate) => (
+              <button key={candidate.id} type="button" onClick={() => onUseExisting(candidate)}>
+                <b>{fmt.exerciseName(candidate)}</b>
+                {resolveLocale() === 'zh' && candidate.name_en && <small>{candidate.name_en}</small>}
+                <em>{S.catalog.useExisting}</em>
+              </button>
+            ))}</div>
+          </div>
+        )}
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
           <label style={fieldWrap}>
