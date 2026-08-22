@@ -135,6 +135,27 @@ describe('PlanEditor exercise picker keyboard binding', () => {
     expect(host.querySelector('[data-popover]')).toBeNull()
   })
 
+  it('binds a library candidate from the pre-create dialog without calling create', () => {
+    const index = new ExerciseIndex([exercise('side-plank', '侧平板支撑')])
+    const onCreateExercise = vi.fn()
+    act(() => root.render(
+      <PlanEditor initialWeeks={[week()]} weeksCount={1} studentName="学员" planName="计划"
+        exerciseIndex={index} onCreateExercise={onCreateExercise}/>,
+    ))
+    const rowInput = host.querySelector<HTMLInputElement>('[data-c="name"] input')!
+    act(() => { rowInput.focus(); setInput(rowInput, '平板侧支撑') })
+    const createOption = [...host.querySelectorAll<HTMLElement>('[data-popover] [role="option"]')].at(-1)!
+    act(() => createOption.dispatchEvent(new MouseEvent('mousedown', { bubbles: true })))
+
+    const candidate = host.querySelector<HTMLButtonElement>('.catalog-existing-candidates button')!
+    expect(candidate.textContent).toContain('侧平板支撑')
+    act(() => candidate.click())
+
+    expect(onCreateExercise).not.toHaveBeenCalled()
+    expect(rowInput.value).toBe('侧平板支撑')
+    expect(host.querySelector('[data-rowid="row"]')?.textContent).toContain('✓')
+  })
+
   it('cancels the pending blur auto-bind when the same row resumes editing', async () => {
     vi.useFakeTimers()
     const index = new ExerciseIndex([exercise('squat', '低杠位深蹲')])

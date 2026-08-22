@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { createCustomExercise, customExerciseBody, getExerciseUsageStats } from './exercises'
+import { createCustomExercise, customExerciseBody, customExercisePatchBody, deleteCustomExercise, getExerciseUsageStats, updateCustomExercise } from './exercises'
 
 function res(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), {
@@ -35,6 +35,15 @@ describe('createCustomExercise', () => {
       equipment: ['bodyweight'],
       movement_pattern: ['other'],
     })
+  })
+
+  it('trims an optional English name and sends blank English names as null', () => {
+    expect(customExerciseBody({ name: '帕洛夫推', nameEn: ' Cable Pallof Press ' })).toMatchObject({
+      name: '帕洛夫推',
+      name_en: 'Cable Pallof Press',
+    })
+    expect(customExerciseBody({ name: '帕洛夫推', nameEn: '  ' })).toMatchObject({ name_en: null })
+    expect(customExerciseBody({ name: '帕洛夫推' })).not.toHaveProperty('name_en')
   })
 
   it('builds a main-lift variation payload when the coach picks that 分类', () => {
@@ -120,5 +129,58 @@ describe('createCustomExercise', () => {
 
     await expect(getExerciseUsageStats()).resolves.toEqual([{ exercise_id: 'ex-1', plan_count: 7 }])
     expect(fetchMock).toHaveBeenCalledWith('/api/exercises/usage-stats', expect.objectContaining({ method: 'GET' }))
+  })
+
+  it('patches only the edited fields so untouched type/competition fields survive a rename', async () => {
+    const original = {
+      id: 'ex-1', name: '帕洛夫推', name_en: null, exercise_type: 'main_lift' as const,
+      main_lift_family: 'bench' as const, is_competition_lift: true, muscle_groups: ['core' as const], equipment: ['cable' as const],
+      movement_pattern: ['other' as const], competition_stance: null, created_by_coach_id: 'coach-1',
+      created_at: '2026-07-08T00:00:00.000Z',
+    }
+    const updated = { ...original, name: '绳索帕洛夫推', name_en: 'Cable Pallof Press' }
+    const fetchMock = vi.fn().mockResolvedValue(res(200, updated))
+    vi.stubGlobal('fetch', fetchMock)
+
+    // The catalog edit form cannot express `main_lift`, so it omits exerciseType; nothing else changed.
+    const input = { name: '绳索帕洛夫推', nameEn: 'Cable Pallof Press', muscleGroups: ['core' as const], equipmentList: ['cable' as const], movementPattern: 'other' as const }
+    expect(customExercisePatchBody(input, original)).toEqual({ name: '绳索帕洛夫推', name_en: 'Cable Pallof Press' })
+    await expect(updateCustomExercise('ex-1', input, original)).resolves.toEqual(updated)
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit]
+    expect(url).toBe('/api/exercises/ex-1')
+    expect(init.method).toBe('PATCH')
+    expect(JSON.parse(init.body as string)).toEqual({ name: '绳索帕洛夫推', name_en: 'Cable Pallof Press' })
+
+    // Clearing the English name sends an explicit null; switching type sends both type fields.
+    expect(customExercisePatchBody({ name: '帕洛夫推', nameEn: '', exerciseType: 'accessory' }, { ...original, name_en: 'Pallof' }))
+      .toEqual({ name_en: null, exercise_type: 'accessory', main_lift_family: null })
+  })
+
+  it('skips the request when the edit changes nothing', async () => {
+    const original = {
+      id: 'ex-1', name: '帕洛夫推', name_en: null, exercise_type: 'accessory' as const,
+      main_lift_family: null, is_competition_lift: false, muscle_groups: ['core' as const], equipment: ['cable' as const],
+      movement_pattern: ['other' as const], competition_stance: null, created_by_coach_id: 'coach-1',
+      created_at: '2026-07-08T00:00:00.000Z',
+    }
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+
+    await expect(updateCustomExercise('ex-1', { name: ' 帕洛夫推 ', nameEn: null, muscleGroup: 'core', equipment: 'cable' }, original)).resolves.toBe(original)
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('deletes an owned custom exercise and preserves 409 usage counts', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(null, { status: 204 }))
+      .mockResolvedValueOnce(res(409, { error: 'EXERCISE_IN_USE', plan_count: 3, log_count: 7 }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await expect(deleteCustomExercise('free')).resolves.toBeUndefined()
+    await expect(deleteCustomExercise('used')).rejects.toMatchObject({
+      status: 409,
+      code: 'EXERCISE_IN_USE',
+      details: { plan_count: 3, log_count: 7 },
+    })
   })
 })

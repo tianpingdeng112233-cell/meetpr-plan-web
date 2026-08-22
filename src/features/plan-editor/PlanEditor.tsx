@@ -1095,6 +1095,15 @@ export function PlanEditor(props: PlanEditorProps) {
     }
   }
 
+  const useExistingFromCreate = (hit: ExerciseHit) => {
+    props.exerciseIndex?.bump(hit.id)
+    if (createExercise.bindTarget) {
+      bindRowAt(createExercise.bindTarget, hit.id, hit.name, false, null, hit.name_en)
+    }
+    setCreateExercise({ open: false, initialName: '', bindTarget: null })
+    setCreateExerciseError('')
+  }
+
   const handleNameKeyDown = (
     wnum: number,
     dow: number,
@@ -2353,8 +2362,10 @@ export function PlanEditor(props: PlanEditorProps) {
         initialTier={tierOfTarget(createExercise.bindTarget)}
         saving={creatingExercise}
         error={createExerciseError}
+        index={props.exerciseIndex}
         onClose={closeCreateExercise}
         onSubmit={submitCreateExercise}
+        onUseExisting={useExistingFromCreate}
       />
     </div>
   )

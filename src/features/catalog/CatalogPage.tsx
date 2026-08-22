@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { CreateCustomExerciseInput } from '../../api/exercises'
-import type { Equipment, ExerciseResponse, MovementPattern, MuscleGroup } from '../../api/types'
-import type { ExerciseIndex } from '../plan-editor/exerciseIndex'
+import type { Equipment, ExerciseResponse, ExerciseType, LiftFamily, MovementPattern, MuscleGroup } from '../../api/types'
+import { ExerciseIndex } from '../plan-editor/exerciseIndex'
+import { ApiException } from '../../api/client'
 import type { Catalog } from '../plan-editor/mapping'
 import {
   EQUIPMENT_LABEL,
@@ -29,27 +30,25 @@ interface Props {
   exerciseList: ExerciseResponse[]
   catalog: Catalog | null
   index: ExerciseIndex | null
+  currentCoachId: string
   onCreateExercise: (input: CreateCustomExerciseInput) => Promise<{ id: string; name: string }>
+  onUpdateExercise: (id: string, input: CreateCustomExerciseInput) => Promise<ExerciseResponse>
+  onDeleteExercise: (id: string) => Promise<void>
   onUseExercise: (exercise: ExerciseResponse) => void
   commandExerciseId?: string | null
   onCommandExerciseHandled?: () => void
 }
 
-type DrawerMode = 'detail' | 'create' | null
-
-function directSearchIds(exercises: ExerciseResponse[], query: string): Set<string> {
-  const normalized = query.trim().toLowerCase()
-  return new Set(exercises.filter((exercise) => (
-    exercise.name.toLowerCase().includes(normalized)
-    || (exercise.name_en?.toLowerCase().includes(normalized) ?? false)
-  )).map((exercise) => exercise.id))
-}
+type DrawerMode = 'detail' | 'create' | 'edit' | null
 
 export function CatalogPage({
   exerciseList,
   catalog,
   index,
+  currentCoachId,
   onCreateExercise,
+  onUpdateExercise,
+  onDeleteExercise,
   onUseExercise,
   commandExerciseId,
   onCommandExerciseHandled,
@@ -66,9 +65,8 @@ export function CatalogPage({
   const [toast, setToast] = useState('')
   const [creating, setCreating] = useState(false)
 
-  const isCustom = (exercise: ExerciseResponse) => (
-    catalog?.get(exercise.id)?.custom ?? exercise.created_by_coach_id != null
-  )
+  const isCustom = (exercise: ExerciseResponse) => exercise.created_by_coach_id != null
+  const isOwnedCustom = (exercise: ExerciseResponse) => exercise.created_by_coach_id === currentCoachId
   const displayName = (exercise: ExerciseResponse) => {
     const entry = catalog?.get(exercise.id)
     return fmt.exerciseName({ name: entry?.name ?? exercise.name, name_en: entry?.nameEn ?? exercise.name_en })
@@ -76,8 +74,8 @@ export function CatalogPage({
   const trimmedQuery = query.trim()
   const searchIds = useMemo(() => {
     if (!trimmedQuery) return undefined
-    const hits = index?.search(trimmedQuery, exerciseList.length)
-    return hits ? new Set(hits.map((hit) => hit.id)) : directSearchIds(exerciseList, trimmedQuery)
+    const searchIndex = index ?? new ExerciseIndex(exerciseList)
+    return new Set(searchIndex.search(trimmedQuery, exerciseList.length).map((hit) => hit.id))
   }, [exerciseList, index, trimmedQuery])
 
   const rows = useMemo(() => filterExercises(exerciseList, {
@@ -86,7 +84,7 @@ export function CatalogPage({
     equipment,
     query: trimmedQuery,
     searchIds,
-    isCustom: (exercise) => catalog?.get(exercise.id)?.custom ?? exercise.created_by_coach_id != null,
+    isCustom: isOwnedCustom,
   }).sort((a, b) => (catalog?.get(a.id)?.name ?? a.name).localeCompare(catalog?.get(b.id)?.name ?? b.name, 'zh-CN') * sortDirection),
   // Catalog entries only change together with exerciseList in the workspace.
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -113,7 +111,7 @@ export function CatalogPage({
     refine: nextRefine,
     equipment,
     query: '',
-    isCustom,
+    isCustom: isOwnedCustom,
   }).length
 
   const chooseCategory = (next: CatalogCategory) => {
@@ -290,13 +288,42 @@ export function CatalogPage({
       exercise={selected}
       displayName={displayName(selected)}
       custom={isCustom(selected)}
+      owned={isOwnedCustom(selected)}
       onClose={closeDrawer}
       onUse={() => onUseExercise(selected)}
+      onEdit={() => setDrawer('edit')}
+      onDelete={async () => {
+        if (!window.confirm(S.catalog.deleteConfirm(displayName(selected)))) return
+        setCreating(true)
+        try {
+          await onDeleteExercise(selected.id)
+          setSelectedId(null)
+          setDrawer(null)
+          setToast(S.catalog.deletedToast(displayName(selected)))
+        } catch (caught) {
+          if (caught instanceof ApiException && caught.code === 'EXERCISE_IN_USE') {
+            const planCount = typeof caught.details.plan_count === 'number' ? caught.details.plan_count : 0
+            const logCount = typeof caught.details.log_count === 'number' ? caught.details.log_count : 0
+            window.alert(S.catalog.exerciseInUse(planCount, logCount))
+          } else {
+            window.alert(S.catalog.deleteFailed)
+          }
+        } finally {
+          setCreating(false)
+        }
+      }}
+      deleting={creating}
     />}
     {drawer === 'create' && <CreateExerciseDrawer
       key={createPrefill}
       initialName={createPrefill}
+      index={index}
+      exerciseList={exerciseList}
       onClose={closeDrawer}
+      onSelectExisting={(exercise) => {
+        setSelectedId(exercise.id)
+        setDrawer('detail')
+      }}
       onCreate={async (input) => {
         setCreating(true)
         try {
@@ -307,6 +334,29 @@ export function CatalogPage({
           setSelectedId(created.id)
           setDrawer('detail')
           setToast(S.catalog.createdToast(created.name))
+        } finally {
+          setCreating(false)
+        }
+      }}
+    />}
+    {drawer === 'edit' && selected && <CreateExerciseDrawer
+      key={`edit-${selected.id}`}
+      initialName={selected.name}
+      exercise={selected}
+      index={index}
+      exerciseList={exerciseList}
+      onClose={() => setDrawer('detail')}
+      onSelectExisting={(exercise) => {
+        setSelectedId(exercise.id)
+        setDrawer('detail')
+      }}
+      onCreate={async (input) => {
+        setCreating(true)
+        try {
+          const updated = await onUpdateExercise(selected.id, input)
+          setSelectedId(updated.id)
+          setDrawer('detail')
+          setToast(S.catalog.updatedToast(updated.name))
         } finally {
           setCreating(false)
         }
@@ -337,12 +387,16 @@ function MetaTags<T extends string>({ values, labels, primary = false }: { value
   return <>{values.map((value, index) => <span key={value} className={`catalog-meta-tag${primary && index === 0 ? ' primary' : ''}`}>{labels[value]}</span>)}</>
 }
 
-function ExerciseDetailDrawer({ exercise, displayName, custom, onClose, onUse }: {
+function ExerciseDetailDrawer({ exercise, displayName, custom, owned, deleting, onClose, onUse, onEdit, onDelete }: {
   exercise: ExerciseResponse
   displayName: string
   custom: boolean
+  owned: boolean
+  deleting: boolean
   onClose: () => void
   onUse: () => void
+  onEdit: () => void
+  onDelete: () => void
 }) {
   const aliases = aliasesForExercise(exercise)
   const primaryMuscle = exercise.muscle_groups[0]
@@ -355,7 +409,7 @@ function ExerciseDetailDrawer({ exercise, displayName, custom, onClose, onUse }:
         <span className={`catalog-tag ${exercise.exercise_type}`}>{EXERCISE_TYPE_LABEL[exercise.exercise_type]}</span>
         {exercise.main_lift_family && <span className="catalog-tag neutral">{LIFT_FAMILY_LABEL[exercise.main_lift_family]}{S.catalog.familySuffix}</span>}
         {exercise.is_competition_lift && <span className="catalog-tag main_lift">{S.catalog.competitionExercise}</span>}
-        {custom && <span className="catalog-tag mine">{S.catalog.myCustom}</span>}
+        {custom && <span className="catalog-tag mine">{S.catalog.customBadge}</span>}
       </div>
     </header>
     <div className="catalog-drawer-body">
@@ -368,39 +422,70 @@ function ExerciseDetailDrawer({ exercise, displayName, custom, onClose, onUse }:
         <div><dt>{S.catalog.synergistMuscles}</dt><dd><MetaTags values={synergists} labels={MUSCLE_LABEL} /></dd></div>
         <div><dt>{S.catalog.aliases}</dt><dd>{aliases.length ? aliases.map((alias) => <span key={alias} className="catalog-meta-tag">{alias}</span>) : <span className="catalog-muted">{S.common.nonePlain}</span>}</dd></div>
       </dl>
-      <div className="catalog-drawer-note">{custom
+      <div className="catalog-drawer-note">{owned
         ? <><b>{S.catalog.myCustomExercise}</b>{S.catalog.customAvailable}</>
-        : S.catalog.systemManaged}</div>
+        : custom ? S.catalog.otherCustomManaged : S.catalog.systemManaged}</div>
     </div>
-    <footer className="catalog-drawer-footer">{custom
-      ? <><button type="button" className="catalog-disabled-action" disabled>{S.catalog.deleteUnsupported}</button><button type="button" className="catalog-disabled-action" disabled>{S.catalog.editUnsupported}</button></>
+    <footer className="catalog-drawer-footer">{owned
+      ? <><button type="button" className="catalog-ghost-action" disabled={deleting} onClick={onDelete}>{S.catalog.deleteExercise}</button><button type="button" className="catalog-white-action" disabled={deleting} onClick={onEdit}>{S.catalog.editExercise}</button></>
       : <button type="button" className="catalog-white-action" onClick={onUse}>{S.catalog.useInPlan}</button>}</footer>
   </aside>
 }
 
 interface CreateDraft {
   name: string
+  nameEn: string
+  /** Kept verbatim from the original on edit; `main_lift` has no chip and is only sent if the coach changes it. */
+  exerciseType: ExerciseType
+  mainLiftFamily: LiftFamily
   primaryMuscle: MuscleGroup | null
   synergists: MuscleGroup[]
   equipment: Equipment[]
   movementPattern: MovementPattern
 }
 
-function initialCreateDraft(initialName: string): CreateDraft {
-  if (!initialName.trim()) return { name: '', primaryMuscle: null, synergists: [], equipment: [], movementPattern: 'other' }
+function initialCreateDraft(initialName: string, exercise?: ExerciseResponse): CreateDraft {
+  if (exercise) return {
+    name: exercise.name,
+    nameEn: exercise.name_en ?? '',
+    exerciseType: exercise.exercise_type,
+    mainLiftFamily: exercise.main_lift_family ?? 'squat',
+    primaryMuscle: exercise.muscle_groups[0] ?? null,
+    synergists: exercise.muscle_groups.slice(1),
+    equipment: exercise.equipment,
+    movementPattern: exercise.movement_pattern[0] ?? 'other',
+  }
+  if (!initialName.trim()) return {
+    name: '', nameEn: '', exerciseType: 'accessory', mainLiftFamily: 'squat',
+    primaryMuscle: null, synergists: [], equipment: [], movementPattern: 'other',
+  }
   const guessed = guessCatalogFields(initialName)
-  return { name: initialName, primaryMuscle: guessed.primaryMuscle, synergists: [], equipment: [guessed.equipment], movementPattern: guessed.movementPattern }
+  return {
+    name: initialName, nameEn: '', exerciseType: 'accessory', mainLiftFamily: 'squat',
+    primaryMuscle: guessed.primaryMuscle, synergists: [], equipment: [guessed.equipment], movementPattern: guessed.movementPattern,
+  }
 }
 
-function CreateExerciseDrawer({ initialName, onClose, onCreate }: {
+function CreateExerciseDrawer({ initialName, exercise, index, exerciseList, onClose, onCreate, onSelectExisting }: {
   initialName: string
+  exercise?: ExerciseResponse
+  index: ExerciseIndex | null
+  exerciseList: ExerciseResponse[]
   onClose: () => void
   onCreate: (input: CreateCustomExerciseInput) => Promise<void>
+  onSelectExisting: (exercise: ExerciseResponse) => void
 }) {
-  const [draft, setDraft] = useState<CreateDraft>(() => initialCreateDraft(initialName))
-  const [autoGuess, setAutoGuess] = useState(true)
+  const [draft, setDraft] = useState<CreateDraft>(() => initialCreateDraft(initialName, exercise))
+  const [autoGuess, setAutoGuess] = useState(!exercise)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  const candidates = useMemo(() => {
+    if (exercise || !draft.name.trim()) return []
+    const searchIndex = index ?? new ExerciseIndex(exerciseList)
+    return searchIndex.search(draft.name, 5)
+      .map((hit) => exerciseList.find((item) => item.id === hit.id))
+      .filter((item): item is ExerciseResponse => item != null)
+  }, [draft.name, exercise, exerciseList, index])
 
   const updateName = (name: string) => {
     if (!autoGuess || !name.trim()) {
@@ -445,9 +530,9 @@ function CreateExerciseDrawer({ initialName, onClose, onCreate }: {
   }
   const canSubmit = draft.name.trim().length > 0 && draft.primaryMuscle != null && !saving
 
-  return <aside className="writing-panel catalog-drawer" role="dialog" aria-label={S.catalog.newExercise}>
+  return <aside className="writing-panel catalog-drawer" role="dialog" aria-label={exercise ? S.catalog.editExercise : S.catalog.newExercise}>
     <header className="catalog-drawer-header">
-      <div><h2>{S.catalog.newExercise}</h2><small>{S.catalog.customSubtitle}</small></div>
+      <div><h2>{exercise ? S.catalog.editExercise : S.catalog.newExercise}</h2><small>{S.catalog.customSubtitle}</small></div>
       <button type="button" aria-label={S.catalog.closeCreate} disabled={saving} onClick={onClose}>✕</button>
     </header>
     <form
@@ -459,17 +544,35 @@ function CreateExerciseDrawer({ initialName, onClose, onCreate }: {
         setError('')
         void onCreate({
           name: draft.name.trim(),
+          nameEn: draft.nameEn.trim() || null,
+          exerciseType: draft.exerciseType === 'main_lift' ? undefined : draft.exerciseType,
+          mainLiftFamily: draft.exerciseType === 'main_lift_variation' ? draft.mainLiftFamily : undefined,
           muscleGroups: [draft.primaryMuscle, ...draft.synergists],
           equipmentList: draft.equipment,
           movementPattern: draft.movementPattern,
         }).catch(() => {
-          setError(S.catalog.createFailed)
+          setError(exercise ? S.catalog.updateFailed : S.catalog.createFailed)
           setSaving(false)
         })
       }}
     >
       <label className="catalog-form-field"><span>{S.catalog.exerciseName}</span><input autoFocus type="text" value={draft.name} onChange={(event) => updateName(event.target.value)} placeholder={S.catalog.exampleSmithLunge} /></label>
-      <div className="catalog-form-field"><span>{S.catalog.exerciseCategories}</span><div className="catalog-locked-field"><small>LOCKED</small>{S.catalog.accessoryManagedNote}</div></div>
+      <label className="catalog-form-field"><span>{S.catalog.englishName} <small>{S.catalog.optional}</small></span><input type="text" value={draft.nameEn} maxLength={120} onChange={(event) => setDraft((current) => ({ ...current, nameEn: event.target.value }))} /></label>
+      {candidates.length > 0 && <div className="catalog-form-field catalog-existing-candidates">
+        <span>{S.catalog.possibleExisting}</span>
+        <div>{candidates.map((candidate) => <button key={candidate.id} type="button" onClick={() => onSelectExisting(candidate)}>
+          <b>{fmt.exerciseName(candidate)}</b>
+          {resolveLocale() === 'zh' && candidate.name_en && <small>{candidate.name_en}</small>}
+          <em>{S.catalog.useExisting}</em>
+        </button>)}</div>
+      </div>}
+      <ChipField label={S.catalog.exerciseCategories} hint={S.catalog.singleSelect}>
+        <ChoiceChip active={draft.exerciseType === 'accessory'} onClick={() => setDraft((current) => ({ ...current, exerciseType: 'accessory' }))}>{S.common.accessoryItem}</ChoiceChip>
+        <ChoiceChip active={draft.exerciseType === 'main_lift_variation'} onClick={() => setDraft((current) => ({ ...current, exerciseType: 'main_lift_variation' }))}>{S.common.mainLiftVariation}</ChoiceChip>
+      </ChipField>
+      {draft.exerciseType === 'main_lift_variation' && <ChipField label={S.catalog.belongsToMainLift} hint={S.catalog.singleSelect}>
+        {FAMILY_CATEGORIES.map((family) => <ChoiceChip key={family} active={draft.mainLiftFamily === family} onClick={() => setDraft((current) => ({ ...current, mainLiftFamily: family }))}>{LIFT_FAMILY_LABEL[family]}</ChoiceChip>)}
+      </ChipField>}
       <ChipField label={S.catalog.primaryMuscle} hint={S.catalog.primaryMuscleHint}>
         {MUSCLE_OPTIONS.map((muscle) => <ChoiceChip key={muscle} active={draft.primaryMuscle === muscle} onClick={() => choosePrimary(muscle)}>{MUSCLE_LABEL[muscle]}</ChoiceChip>)}
       </ChipField>
@@ -488,7 +591,7 @@ function CreateExerciseDrawer({ initialName, onClose, onCreate }: {
       {error && <div className="catalog-form-error">{error}</div>}
       <footer className="catalog-drawer-footer catalog-create-footer">
         <button type="button" className="catalog-ghost-action" disabled={saving} onClick={onClose}>{S.common.cancel}</button>
-        <button type="submit" className="catalog-white-action" disabled={!canSubmit}>{saving ? S.catalog.creating : S.catalog.create}</button>
+        <button type="submit" className="catalog-white-action" disabled={!canSubmit}>{saving ? (exercise ? S.catalog.updating : S.catalog.creating) : (exercise ? S.catalog.update : S.catalog.create)}</button>
       </footer>
     </form>
   </aside>

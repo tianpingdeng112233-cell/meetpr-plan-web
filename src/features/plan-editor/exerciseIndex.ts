@@ -18,7 +18,7 @@ export function displayExerciseName(name: string): string {
   return name === STABLE_ZH.aliases.dumbbellBench ? STABLE_ZH.aliases.flatDumbbellBench : name
 }
 
-function normalizeLookupName(name: string): string {
+export function normalizeLookupName(name: string): string {
   return name
     .trim()
     .toLowerCase()
@@ -87,18 +87,37 @@ export class ExerciseIndex {
     return null
   }
 
-  /** Typeahead: alias matches first (show the canonical they map to), then catalog substring.
-   *  Usage reorders the complete result set stably, preserving that baseline order on ties. */
+  /** Typeahead: alias matches first, then substring, then any-order character-set matches. */
   search(query: string, limit = 8): ExerciseHit[] {
     const q = query.trim()
     if (!q) return []
-    const hits: ExerciseHit[] = []
+    const hits: Array<{
+      hit: ExerciseHit
+      tier: 0 | 1 | 2
+      coverage: number
+      lengthDifference: number
+      baseIndex: number
+    }> = []
     const seen = new Set<string>()
-    const push = (e: ExerciseResponse, via?: string) => {
+    const push = (
+      e: ExerciseResponse,
+      tier: 0 | 1 | 2,
+      via?: string,
+      coverage = 1,
+      lengthDifference = 0,
+    ) => {
       if (seen.has(e.id)) return
-      seen.add(e.id); hits.push({ id: e.id, name: e.name, name_en: e.name_en, via })
+      seen.add(e.id)
+      hits.push({
+        hit: { id: e.id, name: e.name, name_en: e.name_en, via },
+        tier,
+        coverage,
+        lengthDifference,
+        baseIndex: hits.length,
+      })
     }
     const normalized = normalizeLookupName(q)
+    if (!normalized) return []
     const aliases = [
       ...ALIASES,
       { alias: STABLE_ZH.aliases.dumbbellBench, canonical: STABLE_ZH.aliases.dumbbellBench },
@@ -107,9 +126,14 @@ export class ExerciseIndex {
       { alias: STABLE_ZH.aliases.pauseDeadlift, canonical: this.opts.deadliftStyle === 'sumo' ? STABLE_ZH.aliases.sumoPauseDeadlift : STABLE_ZH.aliases.conventionalPauseDeadlift },
     ]
     for (const a of aliases) {
-      if (a.alias.includes(q) || normalizeLookupName(a.alias).includes(normalized)) {
+      const normalizedAlias = normalizeLookupName(a.alias)
+      if (
+        a.alias.includes(q)
+        || normalizedAlias.includes(normalized)
+        || (normalizedAlias.length >= 4 && normalized.includes(normalizedAlias))
+      ) {
         const e = this.byName.get(a.canonical)
-        if (e) push(e, a.alias)
+        if (e) push(e, 0, a.alias)
       }
     }
     for (const e of this.catalog) {
@@ -119,12 +143,33 @@ export class ExerciseIndex {
         || displayName.includes(q)
         || normalizeLookupName(displayName).includes(normalized)
         || (e.name_en?.toLowerCase().includes(q.toLowerCase()) ?? false)
-      ) push({ ...e, name: displayName })
+      ) push({ ...e, name: displayName }, 1)
+    }
+    const queryCharacters = new Set(normalized)
+    for (const e of this.catalog) {
+      const displayName = displayExerciseName(e.name)
+      const candidate = normalizeLookupName(e.name)
+      const candidateCharacters = new Set(candidate)
+      if ([...queryCharacters].every((character) => candidateCharacters.has(character))) {
+        push(
+          { ...e, name: displayName },
+          2,
+          undefined,
+          candidate.length > 0 ? normalized.length / candidate.length : 0,
+          Math.abs(candidate.length - normalized.length),
+        )
+      }
     }
     return hits
-      .map((hit, baseIndex) => ({ hit, baseIndex }))
-      .sort((a, b) => (this.usage.get(b.hit.id) ?? 0) - (this.usage.get(a.hit.id) ?? 0)
-        || a.baseIndex - b.baseIndex)
+      .sort((a, b) => {
+        if (a.tier !== b.tier) return a.tier - b.tier
+        if (a.tier === 2) {
+          const fuzzyOrder = b.coverage - a.coverage || a.lengthDifference - b.lengthDifference
+          if (fuzzyOrder !== 0) return fuzzyOrder
+        }
+        return (this.usage.get(b.hit.id) ?? 0) - (this.usage.get(a.hit.id) ?? 0)
+          || a.baseIndex - b.baseIndex
+      })
       .slice(0, limit)
       .map(({ hit }) => hit)
   }
@@ -184,6 +229,22 @@ export class ExerciseIndex {
   withAdded(e: ExerciseResponse): ExerciseIndex {
     return new ExerciseIndex(
       this.catalog.some((item) => item.id === e.id) ? this.catalog : [...this.catalog, e],
+      this.opts,
+      this.usage,
+    )
+  }
+
+  withUpdated(e: ExerciseResponse): ExerciseIndex {
+    return new ExerciseIndex(
+      this.catalog.map((item) => item.id === e.id ? e : item),
+      this.opts,
+      this.usage,
+    )
+  }
+
+  without(id: string): ExerciseIndex {
+    return new ExerciseIndex(
+      this.catalog.filter((item) => item.id !== id),
       this.opts,
       this.usage,
     )

@@ -3,6 +3,8 @@ import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { CustomExerciseDialog, guessLiftFamily } from './CustomExerciseDialog'
 import type { CreateCustomExerciseInput } from '../../../api/exercises'
+import type { ExerciseResponse } from '../../../api/types'
+import { ExerciseIndex } from '../exerciseIndex'
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
@@ -12,6 +14,15 @@ function selectByLabel(host: HTMLElement, text: string): HTMLSelectElement {
   const select = wrap?.querySelector('select')
   if (!select) throw new Error(`select not found: ${text}`)
   return select
+}
+
+function exercise(id: string, name: string): ExerciseResponse {
+  return {
+    id, name, name_en: null, exercise_type: 'accessory', main_lift_family: null,
+    is_competition_lift: false, muscle_groups: ['core'], equipment: ['bodyweight'],
+    movement_pattern: ['other'], competition_stance: null, created_by_coach_id: null,
+    created_at: '2026-08-01T00:00:00Z',
+  }
 }
 
 describe('custom exercise dialog 分类', () => {
@@ -67,9 +78,27 @@ describe('custom exercise dialog 分类', () => {
     })
     expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({
       name: '高杆节奏蹲310',
+      nameEn: null,
       exerciseType: 'main_lift_variation',
       mainLiftFamily: 'squat',
     }))
+  })
+
+  it('shows any-order library candidates and selects one without submitting create', async () => {
+    const onSubmit = vi.fn()
+    const onUseExisting = vi.fn()
+    await render({
+      initialName: '平板侧支撑',
+      index: new ExerciseIndex([exercise('side-plank', '侧平板支撑')]),
+      onSubmit,
+      onUseExisting,
+    })
+
+    expect(host.querySelector('.catalog-existing-candidates')?.textContent).toContain('侧平板支撑')
+    const useButton = [...host.querySelectorAll<HTMLButtonElement>('.catalog-existing-candidates button')][0]
+    act(() => useButton.click())
+    expect(onUseExisting).toHaveBeenCalledWith(expect.objectContaining({ id: 'side-plank' }))
+    expect(onSubmit).not.toHaveBeenCalled()
   })
 
   it('guesses the lift family from the exercise name', () => {
