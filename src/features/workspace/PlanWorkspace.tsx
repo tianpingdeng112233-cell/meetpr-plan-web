@@ -852,7 +852,7 @@ export function PlanWorkspace({ onLogout, me }: Props) {
     id: p.id,
     label: p.name,
     sub: S.workspace.plan.startSummary(fmtStart(p.start_date), p.plan_weeks),
-    tag: statusTag(p.status),
+    tag: `${statusTag(p.status)}${p.pending_revision_saved_at ? ` · ${S.common.pendingChanges}` : ''}`,
   }))
   const historicalReadOnly = loaded?.plan.status === 'completed' || loaded?.plan.status === 'paused'
   const planContentEditable = loaded?.plan.status === 'draft' || loaded?.plan.status === 'published'
@@ -1026,6 +1026,14 @@ export function PlanWorkspace({ onLogout, me }: Props) {
           : undefined}
         onBackToBoard={() => { void changeView('board') }}
         onLeaveGuardChange={setLeaveGuard}
+        onPendingRevisionSavedAtChange={loaded ? (savedAt) => {
+          updateStudentPlans(loaded.plan.trainee_id, (prev) => prev.map((plan) => (
+            plan.id === loaded.plan.id ? { ...plan, pending_revision_saved_at: savedAt } : plan
+          )))
+          setLoaded((prev) => prev && prev.plan.id === loaded.plan.id
+            ? { ...prev, plan: { ...prev.plan, pending_revision_saved_at: savedAt } }
+            : prev)
+        } : undefined}
         suspended={viewSwitching}
       />
       {viewSwitching && (

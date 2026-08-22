@@ -112,4 +112,18 @@ describe('request 429 retry', () => {
     await assertion
     expect(fetchMock).toHaveBeenCalledTimes(7) // 1 initial + 6 retries
   })
+
+  it('does not expose an invalid Retry-After value as a directed retry delay', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      res(429, { error: 'rate_limited' }, { 'Retry-After': 'not-a-delay' }),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+
+    const error = await api.put('/plans/plan/pending-revision', {}, { retryRateLimit: false })
+      .catch((reason: unknown) => reason)
+
+    expect(error).toBeInstanceOf(ApiException)
+    expect(error).toMatchObject({ status: 429, retryAfterMs: undefined })
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
 })

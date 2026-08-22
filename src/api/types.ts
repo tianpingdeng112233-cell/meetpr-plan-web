@@ -313,6 +313,8 @@ export interface PlanResponse {
   updated_at: string
   total_shift_days: number
   latest_shift_created_at: string | null
+  /** Coach-only additive field from backend spec 044; absent on older servers. */
+  pending_revision_saved_at?: string | null
 }
 
 export interface PlanSetResponse {

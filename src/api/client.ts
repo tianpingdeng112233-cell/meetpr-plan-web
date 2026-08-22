@@ -37,11 +37,14 @@ export class ApiException extends Error {
   code: string
   /** Parsed error body beyond `error` — e.g. PLAN_PUBLISH_INCOMPLETE's counts. */
   details: Record<string, unknown>
-  constructor(status: number, code: string, details: Record<string, unknown> = {}) {
+  /** Server-directed retry delay, when a rate-limited response supplied Retry-After. */
+  retryAfterMs?: number
+  constructor(status: number, code: string, details: Record<string, unknown> = {}, retryAfter?: number) {
     super(code)
     this.status = status
     this.code = code
     this.details = details
+    this.retryAfterMs = retryAfter
   }
 }
 
@@ -50,6 +53,7 @@ interface ReqOpts {
   body?: unknown
   auth?: boolean // attach Bearer (default true)
   retryRateLimit?: boolean // default true; polling opts out so a 429 only skips one beat
+  keepalive?: boolean
 }
 
 async function raw(path: string, opts: ReqOpts): Promise<Response> {
@@ -63,6 +67,7 @@ async function raw(path: string, opts: ReqOpts): Promise<Response> {
     method: opts.method ?? 'GET',
     headers,
     body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
+    keepalive: opts.keepalive,
   })
 }
 
@@ -74,10 +79,19 @@ const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms))
 // safe. Back off on the server's Retry-After / RateLimit-Reset hint (capped) a bounded
 // number of times so a large import rides through the limit slowly instead of failing.
 const MAX_RATE_LIMIT_RETRIES = 6
+function directedRetryAfterMs(res: Response): number | undefined {
+  const raw = res.headers.get('Retry-After') ?? res.headers.get('RateLimit-Reset')
+  if (raw === null) return undefined
+  const secs = Number(raw)
+  const dateWait = !Number.isFinite(secs) ? Date.parse(raw) - Date.now() : NaN
+  const wait = Number.isFinite(secs) && secs > 0
+    ? secs * 1000
+    : Number.isFinite(dateWait) && dateWait > 0 ? dateWait : undefined
+  return wait === undefined ? undefined : Math.min(wait, 60_000)
+}
+
 function retryAfterMs(res: Response): number {
-  const secs = Number(res.headers.get('Retry-After') ?? res.headers.get('RateLimit-Reset'))
-  const wait = Number.isFinite(secs) && secs > 0 ? secs * 1000 : 2000
-  return Math.min(wait, 60_000)
+  return directedRetryAfterMs(res) ?? 2000
 }
 
 // raw() + bounded 429 backoff. Shared by request() AND refreshTokens() so a rate-limited
@@ -142,7 +156,10 @@ export async function request<T>(path: string, opts: ReqOpts = {}): Promise<T> {
       const j = (await res.json()) as Record<string, unknown>
       if (typeof j?.error === 'string') { const { error, ...rest } = j; code = error; details = rest }
     } catch { /* ignore */ }
-    throw new ApiException(res.status, code, details)
+    const directedRetry = res.status === 429 && res.headers.has('Retry-After')
+      ? directedRetryAfterMs(res)
+      : undefined
+    throw new ApiException(res.status, code, details, directedRetry)
   }
   if (res.status === 204) return undefined as T
   return (await res.json()) as T
@@ -152,6 +169,8 @@ export const api = {
   get: <T>(p: string, opts: Pick<ReqOpts, 'retryRateLimit'> = {}) => request<T>(p, opts),
   post: <T>(p: string, body?: unknown, opts: Pick<ReqOpts, 'retryRateLimit'> = {}) =>
     request<T>(p, { ...opts, method: 'POST', body }),
+  put: <T>(p: string, body?: unknown, opts: Pick<ReqOpts, 'retryRateLimit' | 'keepalive'> = {}) =>
+    request<T>(p, { ...opts, method: 'PUT', body }),
   patch: <T>(p: string, body?: unknown) => request<T>(p, { method: 'PATCH', body }),
   del: <T>(p: string) => request<T>(p, { method: 'DELETE' }),
 }

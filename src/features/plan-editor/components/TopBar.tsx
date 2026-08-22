@@ -12,6 +12,7 @@ interface Props {
   studentName: string
   planName: string
   published: boolean
+  publishedDirty?: boolean
   readOnly?: boolean
   statusText: string
   onPublish: () => void
@@ -298,7 +299,9 @@ export function TopBar(p: Props) {
       )}
       {p.onSave && (
         <button onClick={p.onSave} disabled={p.saving} style={{
-          background: 'transparent', color: 'var(--sec)', border: '1px solid var(--bd)',
+          background: p.publishedDirty ? 'var(--warn-soft)' : 'transparent',
+          color: p.publishedDirty ? 'var(--warn)' : 'var(--sec)',
+          border: `1px solid ${p.publishedDirty ? 'var(--warn)' : 'var(--bd)'}`,
           height: 28, borderRadius: 'var(--r-sm)', padding: '0 10px', fontFamily: 'var(--font-sans)', fontWeight: 600, fontSize: 12,
           cursor: p.saving ? 'default' : 'pointer', lineHeight: 1, opacity: p.saving ? 0.6 : 1,
         }}>
@@ -320,7 +323,21 @@ export function TopBar(p: Props) {
         {p.readOnly ? S.editor.historicalReadOnly : p.published ? S.editor.publishedIrrevocable : S.editor.publishToStudent}
       </button>
       {p.published && <span className="plan-published-badge">{S.common.published}</span>}
-      <span className="plan-autosave-status" role="status">
+      <span
+        className={`plan-autosave-status${p.publishedDirty ? ' published-dirty' : ''}`}
+        data-testid="plan-save-status"
+        role="status"
+        style={p.publishedDirty ? {
+          minHeight: 28,
+          padding: '4px 9px',
+          boxSizing: 'border-box',
+          border: '1px solid var(--warn)',
+          borderRadius: 'var(--r-sm)',
+          background: 'var(--warn-soft)',
+          color: 'var(--warn)',
+          fontWeight: 700,
+        } : undefined}
+      >
         <span className={p.published ? 'published' : ''} aria-hidden="true" />
         {p.statusText}
       </span>
