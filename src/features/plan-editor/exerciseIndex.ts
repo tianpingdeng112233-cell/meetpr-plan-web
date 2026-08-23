@@ -8,6 +8,7 @@ import type { ExerciseResponse } from '../../api/types'
 import type { ExerciseUsageStat } from '../../api/exercises'
 import type { CatalogClassification } from './weeklySummary'
 import { STABLE_ZH } from '../../i18n/stable-zh'
+import { PINYIN_MIN_QUERY, pinyinMatchScore } from './pinyin'
 
 interface AliasEntry { alias: string; canonical: string }
 const ALIASES: AliasEntry[] = (aliasesData as { aliases: AliasEntry[] }).aliases
@@ -87,24 +88,28 @@ export class ExerciseIndex {
     return null
   }
 
-  /** Typeahead: alias matches first, then substring, then any-order character-set matches. */
+  /** Typeahead: alias, substring, any-order character set, then pinyin. */
   search(query: string, limit = 8): ExerciseHit[] {
     const q = query.trim()
     if (!q) return []
     const hits: Array<{
       hit: ExerciseHit
-      tier: 0 | 1 | 2
+      tier: 0 | 1 | 2 | 3
       coverage: number
       lengthDifference: number
+      pinyinStart: number
+      nameLength: number
       baseIndex: number
     }> = []
     const seen = new Set<string>()
     const push = (
       e: ExerciseResponse,
-      tier: 0 | 1 | 2,
+      tier: 0 | 1 | 2 | 3,
       via?: string,
       coverage = 1,
       lengthDifference = 0,
+      pinyinStart = 0,
+      nameLength = 0,
     ) => {
       if (seen.has(e.id)) return
       seen.add(e.id)
@@ -113,6 +118,8 @@ export class ExerciseIndex {
         tier,
         coverage,
         lengthDifference,
+        pinyinStart,
+        nameLength,
         baseIndex: hits.length,
       })
     }
@@ -160,12 +167,34 @@ export class ExerciseIndex {
         )
       }
     }
+    if (normalized.length >= PINYIN_MIN_QUERY && /^[a-z0-9]+$/.test(normalized) && hits.length < limit) {
+      for (const e of this.catalog) {
+        const displayName = displayExerciseName(e.name)
+        const start = pinyinMatchScore(displayName, normalized)
+        if (start !== null) {
+          push(
+            { ...e, name: displayName },
+            3,
+            undefined,
+            1,
+            0,
+            start,
+            [...displayName].length,
+          )
+        }
+      }
+    }
     return hits
       .sort((a, b) => {
         if (a.tier !== b.tier) return a.tier - b.tier
         if (a.tier === 2) {
           const fuzzyOrder = b.coverage - a.coverage || a.lengthDifference - b.lengthDifference
           if (fuzzyOrder !== 0) return fuzzyOrder
+        }
+        if (a.tier === 3) {
+          const pinyinOrder = Number(a.pinyinStart > 0) - Number(b.pinyinStart > 0)
+            || a.nameLength - b.nameLength
+          if (pinyinOrder !== 0) return pinyinOrder
         }
         return (this.usage.get(b.hit.id) ?? 0) - (this.usage.get(a.hit.id) ?? 0)
           || a.baseIndex - b.baseIndex
