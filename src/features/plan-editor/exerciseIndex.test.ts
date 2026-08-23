@@ -153,6 +153,35 @@ describe('ExerciseIndex', () => {
     expect(index.search('平板侧支撑').map((hit) => hit.id)).toEqual(['rack', 'side-plank', 'scrambled-a', 'scrambled-b'])
   })
 
+  it('adds full, initial, and middle pinyin matches after the existing tiers', () => {
+    const index = new ExerciseIndex([
+      exercise('traditional', '传统硬拉'),
+      exercise('traditional-pause', '传统暂停硬拉'),
+      exercise('prefix', '英拉辅助动作测试'),
+    ])
+
+    expect(index.search('chuantong').map((hit) => hit.id)).toEqual(['traditional', 'traditional-pause'])
+    expect(index.search('ctyl').map((hit) => hit.id)).toEqual(['traditional'])
+    expect(index.search('yingla').map((hit) => hit.id)).toEqual(['prefix', 'traditional', 'traditional-pause'])
+  })
+
+  it('keeps name_en substring matches ahead of pinyin matches', () => {
+    const english = { ...exercise('english', '测试动作'), name_en: 'Deadlift / Yingla practice' }
+    const index = new ExerciseIndex([exercise('traditional', '传统硬拉'), english])
+
+    expect(index.search('yingla').map((hit) => hit.id)).toEqual(['english', 'traditional'])
+    expect(index.search('deadlift')[0]).toMatchObject({ id: 'english' })
+  })
+
+  it('does not invoke pinyin matching for non-ASCII queries', () => {
+    const index = new ExerciseIndex([
+      exercise('traditional', '传统硬拉'),
+      exercise('scrambled', '硬统拉传'),
+    ])
+
+    expect(index.search('传统硬拉').map((hit) => hit.id)).toEqual(['traditional', 'scrambled'])
+  })
+
   it('keeps every iOS-copy alias canonical attached to the catalog snapshot', () => {
     // Every canonical must be a seed catalog name: a single coach's custom exercise
     // cannot back a global alias (it would dangle for every other coach).
