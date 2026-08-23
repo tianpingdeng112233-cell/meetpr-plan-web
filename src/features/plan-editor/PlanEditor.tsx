@@ -77,6 +77,8 @@ interface DayMoveVisual {
 
 const COPY_LABEL = S.editor.copyLastWeek
 const DAY_MOVE_THRESHOLD = 5
+// One automatic retry for a failed「更新计划」before the modal error (David 2026-08-23).
+export const UPDATE_RETRY_DELAY = 1500
 
 interface Switcher { id: string; label: string; tag?: string }
 interface RecoveryMirror { mirror: DraftMirror; source: 'local' | 'remote' }
@@ -375,6 +377,13 @@ export function PlanEditor(props: PlanEditorProps) {
   const [remoteMirrorState, setRemoteMirrorState] = useState<RemoteMirrorState>({ status: 'idle' })
   const remoteMirrorStateRef = useRef(remoteMirrorState)
   remoteMirrorStateRef.current = remoteMirrorState
+  // Flipped on unmount so a delayed「更新计划」retry never fires against a plan the
+  // coach already left (PlanEditor is keyed per plan, so switching plans unmounts).
+  const aliveRef = useRef(true)
+  useEffect(() => {
+    aliveRef.current = true
+    return () => { aliveRef.current = false }
+  }, [])
   const remoteHasDirtyContent = useRef(false)
   const pendingRevisionChangeRef = useRef(props.onPendingRevisionSavedAtChange)
   pendingRevisionChangeRef.current = props.onPendingRevisionSavedAtChange
@@ -2071,33 +2080,59 @@ export function PlanEditor(props: PlanEditorProps) {
         : ''
       if (!window.confirm(S.editor.updatePublishedConfirm(planName, studentName, unboundLine))) return
       setSaving(true); setStatusText(S.editor.updating)
-      try {
-        const savedWeeks = latestWeeks.current
-        const res = await props.onSave(savedWeeks, null, false,
-          (done, total) => { if (total > 3) setStatusText(S.editor.progressDays(S.editor.updating, done, total)) })
-        // Edits typed during the round-trip aren't in what was pushed — keep the guards armed.
-        // A published update never writes calendar metadata, so the covered
-        // hash must use the server-persisted date/weeks, not local values.
-        if (res.skippedRows === 0) {
-          markMirrorCovered(mirrorContent(res.weeks, persistedPlanStart.current, props.weeksCount))
-        }
-        applySuccessfulSave(res, savedWeeks)
-        setStatusText(res.skippedRows > 0 ? S.editor.updatedStudentPlanSkipped(studentName, res.skippedRows) : S.editor.updatedStudentPlan(studentName))
+      // Transient failures (network, 5xx, exhausted 429 back-off) get ONE automatic
+      // retry; reconcile re-baselines against the server first, so replaying it is
+      // safe. Anything still failing is surfaced in a modal, not just the status
+      // line — a coach who misses the status line is exactly how W7 went missing.
+      const savedWeeks = latestWeeks.current
+      const onProgress = (done: number, total: number) => {
+        if (total > 3) setStatusText(S.editor.progressDays(S.editor.updating, done, total))
       }
-      catch (error) {
-        const scoped = applySaveFailure(error)
-        if (scoped) {
-          setStatusText(scoped)
-        } else if (error instanceof ReconciliationError) {
-          const explain: Record<ReconciliationError['code'], [string, string]> = {
-            PLAN_REQUIRES_NATIVE_EDITOR: [S.editor.nativeEditorUpdateTitle, S.editor.nativeEditorDetail],
-            PLAN_SET_SPEC_INCOMPLETE: [S.editor.incompleteSaveTitle, S.editor.incompleteUpdateDetail],
+      try {
+        for (let attempt = 1; ; attempt++) {
+          try {
+            const res = await props.onSave(savedWeeks, null, false, onProgress)
+            // Edits typed during the round-trip aren't in what was pushed — keep the guards armed.
+            // A published update never writes calendar metadata, so the covered
+            // hash must use the server-persisted date/weeks, not local values.
+            if (res.skippedRows === 0) {
+              markMirrorCovered(mirrorContent(res.weeks, persistedPlanStart.current, props.weeksCount))
+            }
+            applySuccessfulSave(res, savedWeeks)
+            setStatusText(res.skippedRows > 0 ? S.editor.updatedStudentPlanSkipped(studentName, res.skippedRows) : S.editor.updatedStudentPlan(studentName))
+            break
           }
-          const [status, detail] = explain[error.code]
-          setStatusText(status)
-          window.alert(detail)
-        } else {
-          setStatusText(S.editor.updateFailedRetry)
+          catch (error) {
+            const scoped = applySaveFailure(error)
+            if (scoped) {
+              setStatusText(scoped)
+              break
+            }
+            if (error instanceof ReconciliationError) {
+              const explain: Record<ReconciliationError['code'], [string, string]> = {
+                PLAN_REQUIRES_NATIVE_EDITOR: [S.editor.nativeEditorUpdateTitle, S.editor.nativeEditorDetail],
+                PLAN_SET_SPEC_INCOMPLETE: [S.editor.incompleteSaveTitle, S.editor.incompleteUpdateDetail],
+              }
+              const [status, detail] = explain[error.code]
+              setStatusText(status)
+              window.alert(detail)
+              break
+            }
+            if (attempt < 2) {
+              setStatusText(S.editor.updateRetrying)
+              await new Promise((resolve) => setTimeout(resolve, UPDATE_RETRY_DELAY))
+              if (!aliveRef.current) break // editor unmounted meanwhile: never replay a stale closure
+              continue
+            }
+            setStatusText(S.editor.updateFailedRetry)
+            const reason = error instanceof ApiException
+              ? `${error.status} ${error.code}`
+              : error instanceof Error ? error.message : String(error)
+            // Only promise cloud safety when the remote mirror actually confirmed a write.
+            const stashed = remoteMirrorStateRef.current.status === 'saved'
+            window.alert(S.editor.updateFailedAlert(studentName, reason, stashed))
+            break
+          }
         }
       }
       finally { setSaving(false) }
