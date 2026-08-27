@@ -3,7 +3,7 @@ import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { PlanEditor, UPDATE_RETRY_DELAY } from './PlanEditor'
 import type { ExerciseRow, Week } from './types'
-import { ReconciliationError } from './reconcile'
+import { LockedRowMutationError, ReconcileConflict, ReconciliationError } from './reconcile'
 
 const pendingApi = vi.hoisted(() => ({
   getPendingRevision: vi.fn(),
@@ -139,5 +139,39 @@ describe('published plan update: automatic retry + modal error', () => {
     expect(onSave).toHaveBeenCalledTimes(1)
     expect(alert).toHaveBeenCalledTimes(1)
     expect(String(alert.mock.calls[0][0])).not.toContain('更新计划失败')
+  })
+
+  it.each([
+    ['history conflict', () => new ReconcileConflict('DAY_HISTORY_IMMUTABLE', weeks('local'))],
+    ['locked row mutation', () => new LockedRowMutationError(['server-row'], weeks('local'))],
+  ])('shows a delivery-failure modal for a %s instead of only changing the status line', async (_label, error) => {
+    const alert = vi.spyOn(window, 'alert').mockImplementation(() => {})
+    const onSave = vi.fn().mockRejectedValue(error())
+    await mount(onSave)
+
+    await act(async () => { click(host, '更新计划'); await Promise.resolve(); await Promise.resolve() })
+
+    expect(onSave).toHaveBeenCalledTimes(1)
+    expect(alert).toHaveBeenCalledTimes(1)
+    expect(String(alert.mock.calls[0][0])).toContain('更新计划失败')
+    expect(String(alert.mock.calls[0][0])).toContain('学员还没有收到这次修改')
+    expect(statusText(host)).not.toContain('已更新 学员 的计划')
+  })
+
+  it('reports skipped unbound rows as a partial update in a blocking modal', async () => {
+    const alert = vi.spyOn(window, 'alert').mockImplementation(() => {})
+    const onSave = vi.fn().mockImplementation(async (saved: Week[]) => ({
+      changedDays: 0, skippedRows: 1, weeks: saved,
+    }))
+    await mount(onSave)
+
+    await act(async () => { click(host, '更新计划'); await Promise.resolve(); await Promise.resolve() })
+
+    expect(onSave).toHaveBeenCalledTimes(1)
+    expect(statusText(host)).toContain('仅部分更新')
+    expect(statusText(host)).not.toContain('已更新 学员 的计划')
+    expect(alert).toHaveBeenCalledTimes(1)
+    expect(String(alert.mock.calls[0][0])).toContain('计划没有完整更新')
+    expect(String(alert.mock.calls[0][0])).toContain('学员没有收到其中 1 行')
   })
 })
