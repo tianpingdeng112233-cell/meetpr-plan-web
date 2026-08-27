@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { CreateCustomExerciseInput } from '../../api/exercises'
 import type { Equipment, ExerciseResponse, ExerciseType, LiftFamily, MovementPattern, MuscleGroup } from '../../api/types'
 import { ExerciseIndex } from '../plan-editor/exerciseIndex'
@@ -25,6 +25,7 @@ import {
 import { usePersistentCollapse } from '../workspace/usePersistentCollapse'
 import { useGlobalKeyboardHandler } from '../workspace/globalKeyboard'
 import { fmt, resolveLocale, S } from '../../i18n/strings'
+import { registerReloadBlocker } from '../../reloadSafety'
 
 interface Props {
   exerciseList: ExerciseResponse[]
@@ -64,6 +65,10 @@ export function CatalogPage({
   const [createPrefill, setCreatePrefill] = useState('')
   const [toast, setToast] = useState('')
   const [creating, setCreating] = useState(false)
+  const mutationBlockedRef = useRef(false)
+  mutationBlockedRef.current = creating
+
+  useEffect(() => registerReloadBlocker(() => mutationBlockedRef.current), [])
 
   const isCustom = (exercise: ExerciseResponse) => exercise.created_by_coach_id != null
   const isOwnedCustom = (exercise: ExerciseResponse) => exercise.created_by_coach_id === currentCoachId
@@ -479,6 +484,7 @@ function CreateExerciseDrawer({ initialName, exercise, index, exerciseList, onCl
   const [autoGuess, setAutoGuess] = useState(!exercise)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  useEffect(() => registerReloadBlocker(() => true), [])
   const candidates = useMemo(() => {
     if (exercise || !draft.name.trim()) return []
     const searchIndex = index ?? new ExerciseIndex(exerciseList)

@@ -357,7 +357,7 @@ describe('exercise history lock UI', () => {
     })
 
     expect(host.textContent).toContain('相关动作已锁定并还原，其余修改仍保留')
-    expect(alert).toHaveBeenCalledWith(expect.stringContaining('学员还没有收到这次修改'))
+    expect(alert).toHaveBeenCalledWith(expect.stringContaining('学员可能只收到部分修改'))
     expect(host.querySelector('[data-locked="true"]')).not.toBeNull()
     const leave = new Event('beforeunload', { cancelable: true })
     window.dispatchEvent(leave)

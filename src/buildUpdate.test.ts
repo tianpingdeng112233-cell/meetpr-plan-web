@@ -24,7 +24,7 @@ describe('web build update monitor', () => {
     expect(init).toMatchObject({ cache: 'no-store', headers: { Accept: 'text/html' } })
   })
 
-  it('announces a newer build only after a second post-rollout confirmation', async () => {
+  it('announces a different build only after three stable rollout observations', async () => {
     vi.useFakeTimers()
     const onNewBuild = vi.fn()
     const fetchBuildId = vi.fn().mockResolvedValue(200)
@@ -37,13 +37,13 @@ describe('web build update monitor', () => {
 
     await Promise.resolve()
     expect(onNewBuild).not.toHaveBeenCalled()
-    await vi.advanceTimersByTimeAsync(50)
-    expect(fetchBuildId).toHaveBeenCalledTimes(2)
+    await vi.advanceTimersByTimeAsync(100)
+    expect(fetchBuildId).toHaveBeenCalledTimes(3)
     expect(onNewBuild).toHaveBeenCalledTimes(1)
     stop()
   })
 
-  it('never rolls a newer tab back to an older replica', async () => {
+  it('refreshes a newer tab after an older rollback build is stable', async () => {
     vi.useFakeTimers()
     const onNewBuild = vi.fn()
     const fetchBuildId = vi.fn().mockResolvedValue(100)
@@ -54,7 +54,26 @@ describe('web build update monitor', () => {
       confirmDelayMs: 10,
     })
 
-    await vi.advanceTimersByTimeAsync(500)
+    await vi.advanceTimersByTimeAsync(20)
+    expect(onNewBuild).toHaveBeenCalledTimes(1)
+    stop()
+  })
+
+  it('does not refresh while rollout samples alternate between builds', async () => {
+    vi.useFakeTimers()
+    const onNewBuild = vi.fn()
+    const fetchBuildId = vi.fn()
+      .mockResolvedValueOnce(200)
+      .mockResolvedValueOnce(100)
+      .mockResolvedValue(100)
+    const stop = monitorBuildUpdates(onNewBuild, {
+      currentId: 100,
+      fetchBuildId,
+      intervalMs: 60_000,
+      confirmDelayMs: 10,
+    })
+
+    await vi.advanceTimersByTimeAsync(50)
     expect(onNewBuild).not.toHaveBeenCalled()
     stop()
   })

@@ -111,7 +111,7 @@ describe('published plan update: automatic retry + modal error', () => {
 
     expect(onSave).toHaveBeenCalledTimes(2)
     expect(alert).toHaveBeenCalledTimes(1)
-    expect(String(alert.mock.calls[0][0])).toContain('更新计划失败')
+    expect(String(alert.mock.calls[0][0])).toContain('更新计划没有完整成功')
     expect(String(alert.mock.calls[0][0])).toContain('fetch failed')
     expect(statusText(host)).toContain('更新失败')
     expect(host.querySelector<HTMLInputElement>('[data-c="note"] input')?.value).toBe('server')
@@ -129,7 +129,7 @@ describe('published plan update: automatic retry + modal error', () => {
     root = createRoot(host) // afterEach unmounts whatever root is current
   })
 
-  it('does not retry a scoped/structural failure (ReconciliationError) and surfaces its own detail', async () => {
+  it('does not retry a structural refusal and wraps its detail in the incomplete-delivery alert', async () => {
     const alert = vi.spyOn(window, 'alert').mockImplementation(() => {})
     const onSave = vi.fn().mockRejectedValue(new ReconciliationError('PLAN_SET_SPEC_INCOMPLETE'))
     await mount(onSave)
@@ -138,7 +138,9 @@ describe('published plan update: automatic retry + modal error', () => {
     await act(async () => { await vi.advanceTimersByTimeAsync(UPDATE_RETRY_DELAY + 10) })
     expect(onSave).toHaveBeenCalledTimes(1)
     expect(alert).toHaveBeenCalledTimes(1)
-    expect(String(alert.mock.calls[0][0])).not.toContain('更新计划失败')
+    expect(String(alert.mock.calls[0][0])).toContain('更新计划没有完整成功')
+    expect(String(alert.mock.calls[0][0])).toContain('学员可能只收到部分修改')
+    expect(String(alert.mock.calls[0][0])).toContain('组次/强度没填全')
   })
 
   it.each([
@@ -153,8 +155,8 @@ describe('published plan update: automatic retry + modal error', () => {
 
     expect(onSave).toHaveBeenCalledTimes(1)
     expect(alert).toHaveBeenCalledTimes(1)
-    expect(String(alert.mock.calls[0][0])).toContain('更新计划失败')
-    expect(String(alert.mock.calls[0][0])).toContain('学员还没有收到这次修改')
+    expect(String(alert.mock.calls[0][0])).toContain('更新计划没有完整成功')
+    expect(String(alert.mock.calls[0][0])).toContain('学员可能只收到部分修改')
     expect(statusText(host)).not.toContain('已更新 学员 的计划')
   })
 

@@ -1,7 +1,8 @@
-import { useEffect, useState, type CSSProperties } from 'react'
+import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import { WeekdayDateSelector, calendarFieldLabel, calendarInputStyle, mmdd, planEndISO, todayISO, weekdayIndex } from '../plan-editor/components/PlanCalendarControls'
 import { DOW_LABELS } from '../plan-editor/mapping'
 import { S } from '../../i18n/strings'
+import { registerReloadBlocker } from '../../reloadSafety'
 
 const overlay: CSSProperties = {
   position: 'fixed',
@@ -65,6 +66,10 @@ export function NewPlanDialog({ open, studentName, onClose, onCreate }: {
   const [startDate, setStartDate] = useState(todayISO())
   const [creating, setCreating] = useState(false)
   const [error, setError] = useState('')
+  const reloadBlockedRef = useRef(false)
+  reloadBlockedRef.current = open || creating
+
+  useEffect(() => registerReloadBlocker(() => reloadBlockedRef.current), [])
 
   useEffect(() => {
     if (!open) return

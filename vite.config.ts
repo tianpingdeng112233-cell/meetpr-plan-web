@@ -36,9 +36,9 @@ function devApiTarget(mode: string): string {
 }
 
 export default defineConfig(({ mode }) => {
-  // Embedded in index.html so an open tab can recognize a newer web bundle.
-  // The id is monotonic, so a newer tab never reloads back to an old replica
-  // while the backend is rolling between two images.
+  // Embedded in index.html so an open tab can recognize a different web bundle.
+  // A rollback may intentionally restore an older id; the client therefore
+  // compares identity after several stable samples rather than ordering ids.
   const buildId = String(Date.now())
   return {
     plugins: [react(), buildIdPlugin(buildId)],

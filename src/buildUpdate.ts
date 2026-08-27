@@ -1,6 +1,7 @@
 const BUILD_META_NAME = 'meetpr-build-id'
 export const BUILD_UPDATE_CHECK_INTERVAL_MS = 2 * 60 * 1000
 export const BUILD_UPDATE_CONFIRM_DELAY_MS = 15 * 1000
+export const BUILD_UPDATE_CONFIRMATIONS = 3
 
 type FetchLike = (input: RequestInfo | URL, init?: RequestInit) => Promise<Pick<Response, 'ok' | 'text'>>
 
@@ -57,12 +58,17 @@ export function monitorBuildUpdates(
   let confirmTimer: number | null = null
   let notified = false
 
-  const confirmNewBuild = (candidate: number) => {
+  const confirmNewBuild = (candidate: number, observations = 1) => {
     if (confirmTimer !== null || notified || stopped) return
     confirmTimer = window.setTimeout(async () => {
       confirmTimer = null
       const confirmed = await fetchBuildId()
-      if (stopped || notified || confirmed === null || confirmed < candidate || confirmed <= loadedId) return
+      if (stopped || notified || confirmed !== candidate) return
+      const nextObservations = observations + 1
+      if (nextObservations < BUILD_UPDATE_CONFIRMATIONS) {
+        confirmNewBuild(candidate, nextObservations)
+        return
+      }
       notified = true
       onNewBuild()
     }, confirmDelayMs)
@@ -72,7 +78,7 @@ export function monitorBuildUpdates(
     checking = true
     try {
       const deployedId = await fetchBuildId()
-      if (deployedId !== null && deployedId > loadedId) confirmNewBuild(deployedId)
+      if (deployedId !== null && deployedId !== loadedId) confirmNewBuild(deployedId)
     } finally {
       checking = false
     }

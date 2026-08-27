@@ -5,6 +5,7 @@ import { CustomExerciseDialog, guessLiftFamily } from './CustomExerciseDialog'
 import type { CreateCustomExerciseInput } from '../../../api/exercises'
 import type { ExerciseResponse } from '../../../api/types'
 import { ExerciseIndex } from '../exerciseIndex'
+import { isReloadBlocked } from '../../../reloadSafety'
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
@@ -58,6 +59,7 @@ describe('custom exercise dialog 分类', () => {
 
   it('defaults to 主项变式 with the guessed family when opened from the main section', async () => {
     await render({ initialTier: 'main' })
+    expect(isReloadBlocked()).toBe(true)
     expect(selectByLabel(host, '分类').value).toBe('main_lift_variation')
     expect(selectByLabel(host, '所属主项').value).toBe('squat')
   })

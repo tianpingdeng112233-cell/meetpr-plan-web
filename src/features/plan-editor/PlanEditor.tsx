@@ -2134,7 +2134,8 @@ export function PlanEditor(props: PlanEditorProps) {
               }
               const [status, detail] = explain[error.code]
               setStatusText(status)
-              window.alert(detail)
+              const stashed = remoteMirrorStateRef.current.status === 'saved'
+              window.alert(S.editor.updateFailedAlert(studentName, `${status} — ${detail}`, stashed))
               break
             }
             if (attempt < 2) {
