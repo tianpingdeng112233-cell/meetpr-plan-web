@@ -25,6 +25,7 @@ import { usePersistentCollapse } from './usePersistentCollapse'
 import { useGlobalKeyboardHandler } from './globalKeyboard'
 import { frameStepTime, precisionScrubTime, PRECISION_SCRUB_THRESHOLD_PX, VIDEO_SPEEDS } from './videoPlayback'
 import { fmt, S } from '../../i18n/strings'
+import { registerReloadBlocker } from '../../reloadSafety'
 
 type VideoFilter = 'all' | 'pending' | 'reviewed'
 type MarkerAvailability = 'loading' | 'available' | 'error' | 'unavailable'
@@ -203,6 +204,17 @@ export function VideosPage({
   const activeVideoIdRef = useRef<string | null>(null)
   const handledTargetRequest = useRef<number | null>(null)
   const viewedRequests = useRef<Set<string>>(new Set())
+  const reloadBlockedRef = useRef(false)
+  reloadBlockedRef.current = annotationOpen
+    || annotationSending
+    || feedback.trim() !== ''
+    || feedbackState === 'sending'
+    || (markerOpen && markerNote.trim() !== '')
+    || markerSaving
+    || coachRpeSaving
+    || deletingMarkerIds.size > 0
+
+  useEffect(() => registerReloadBlocker(() => reloadBlockedRef.current), [])
 
   const writeFeedback = (value: string) => {
     draftRef.current = value

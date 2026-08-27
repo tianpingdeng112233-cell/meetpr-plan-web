@@ -6,6 +6,7 @@ import { fmt, resolveLocale, S } from '../../../i18n/strings'
 import { EQUIPMENT_LABEL, LIFT_FAMILY_LABEL, MOVEMENT_PATTERN_LABEL, MUSCLE_LABEL } from '../../catalog/catalogModel'
 import { STABLE_ZH } from '../../../i18n/stable-zh'
 import type { ExerciseHit, ExerciseIndex } from '../exerciseIndex'
+import { registerReloadBlocker } from '../../../reloadSafety'
 
 interface Props {
   open: boolean
@@ -105,6 +106,10 @@ export function CustomExerciseDialog({ open, initialName, initialTier, saving, e
   const [equipment, setEquipment] = useState<Equipment>('bodyweight')
   const [movementPattern, setMovementPattern] = useState<MovementPattern>('other')
   const nameRef = useRef<HTMLInputElement>(null)
+  const reloadBlockedRef = useRef(false)
+  reloadBlockedRef.current = open || saving
+
+  useEffect(() => registerReloadBlocker(() => reloadBlockedRef.current), [])
 
   useEffect(() => {
     if (!open) return

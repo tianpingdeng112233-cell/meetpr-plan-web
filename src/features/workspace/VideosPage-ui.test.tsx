@@ -42,6 +42,7 @@ vi.mock('../chat/chatOutbox', () => ({
 
 import { VideosPage, type VideoTarget } from './VideosPage'
 import { createKeyedRequestVersions } from './requestVersions'
+import { isReloadBlocked } from '../../reloadSafety'
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
@@ -724,6 +725,7 @@ describe('VideosPage master-detail interactions', () => {
     await renderHarness()
     const feedback = host.querySelector<HTMLTextAreaElement>('.video-feedback textarea')!
     setTextarea(feedback, '第一段')
+    expect(isReloadBlocked()).toBe(true)
     click(buttonWithText(host, '发送反馈'))
     setTextarea(feedback, '第二段')
     await act(async () => {

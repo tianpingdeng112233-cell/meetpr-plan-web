@@ -34,6 +34,7 @@ import { usePersistentCollapse } from '../workspace/usePersistentCollapse'
 import { useGlobalKeyboardHandler } from '../workspace/globalKeyboard'
 import type { VideoTarget } from '../workspace/VideosPage'
 import { resolveLocale, S } from '../../i18n/strings'
+import { registerReloadBlocker } from '../../reloadSafety'
 
 const INTERACTION_WINDOW_MS = 120_000
 const MAX_MESSAGE_CHARS = 4000
@@ -792,6 +793,7 @@ function ChatComposer({ conversationId, initialDraft, disabled, onDraftChange }:
   const quickReplies = S.chat.quickReplies
 
   useEffect(() => () => onDraftChange(draftRef.current), [conversationId])
+  useEffect(() => registerReloadBlocker(() => draftRef.current.trim() !== ''), [])
 
   const changeDraft = (text: string) => {
     draftRef.current = text

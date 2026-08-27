@@ -5,6 +5,7 @@ import { isSessionExpired } from '../../api/errors'
 import { changePassword, logout, setLoginNotice } from '../../api/auth'
 import { useGlobalKeyboardHandler } from './globalKeyboard'
 import { S } from '../../i18n/strings'
+import { registerReloadBlocker } from '../../reloadSafety'
 
 export const PASSWORD_CHANGED_NOTICE = S.workspace.password.changed
 
@@ -121,6 +122,10 @@ export function ChangePasswordDialog({ open, onClose, onSessionInvalidated, onBe
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const firstFieldRef = useRef<HTMLInputElement>(null)
+  const reloadBlockedRef = useRef(false)
+  reloadBlockedRef.current = open || saving
+
+  useEffect(() => registerReloadBlocker(() => reloadBlockedRef.current), [])
 
   const forgetPasswords = () => {
     setOldPassword('')

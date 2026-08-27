@@ -3,6 +3,7 @@ import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ChangePasswordDialog, PASSWORD_CHANGED_NOTICE } from './ChangePasswordDialog'
 import { ApiException } from '../../api/client'
+import { isReloadBlocked } from '../../reloadSafety'
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
@@ -74,6 +75,7 @@ describe('ChangePasswordDialog', () => {
 
   it('renders into document.body so the top bar cannot trap it in a stacking context', () => {
     render()
+    expect(isReloadBlocked()).toBe(true)
     const dialog = document.querySelector('[role=dialog]')
     expect(dialog?.parentElement).toBe(document.body)
     expect(host.contains(dialog)).toBe(false)

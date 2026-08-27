@@ -7,6 +7,7 @@ import { installLocalStorageMock } from '../../test/localStorageMock'
 import { ExerciseIndex } from '../plan-editor/exerciseIndex'
 import type { Catalog } from '../plan-editor/mapping'
 import { CatalogPage } from './CatalogPage'
+import { isReloadBlocked } from '../../reloadSafety'
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
@@ -170,6 +171,7 @@ describe('CatalogPage', () => {
     expect(host.textContent).not.toContain('暂不支持')
     act(() => host.querySelector<HTMLButtonElement>('[aria-label="关闭详情"]')?.click())
     clickButton(host, '新建动作')
+    expect(isReloadBlocked()).toBe(true)
     setInput(host.querySelector<HTMLInputElement>('.catalog-create-form input')!, '绳索划船')
     const englishInput = [...host.querySelectorAll<HTMLLabelElement>('.catalog-form-field')]
       .find((label) => label.textContent?.includes('英文名'))?.querySelector('input')

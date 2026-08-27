@@ -51,6 +51,7 @@ import {
 } from './selectionModel'
 import { useGlobalKeyboardHandler } from '../workspace/globalKeyboard'
 import { S, fmt, resolveLocale } from '../../i18n/strings'
+import { registerReloadBlocker } from '../../reloadSafety'
 import { MUSCLE_LABEL } from '../catalog/catalogModel'
 import {
   closestWeekToViewportCenter,
@@ -1944,6 +1945,13 @@ export function PlanEditor(props: PlanEditorProps) {
   canPersist.current = !!props.onSave && !readOnly
   const savingRef = useRef(saving)
   savingRef.current = saving
+  useEffect(() => registerReloadBlocker(() => {
+    if (!canPersist.current) return false
+    return savingRef.current
+      || unsavedRef.current
+      || publishedDirtyRef.current
+      || countUnbound(latestWeeks.current) > 0
+  }), [])
   useEffect(() => {
     const onBeforeUnload = (e: BeforeUnloadEvent) => {
       if (!canPersist.current) return
@@ -2099,13 +2107,24 @@ export function PlanEditor(props: PlanEditorProps) {
               markMirrorCovered(mirrorContent(res.weeks, persistedPlanStart.current, props.weeksCount))
             }
             applySuccessfulSave(res, savedWeeks)
-            setStatusText(res.skippedRows > 0 ? S.editor.updatedStudentPlanSkipped(studentName, res.skippedRows) : S.editor.updatedStudentPlan(studentName))
+            if (res.skippedRows > 0) {
+              setStatusText(S.editor.updatedStudentPlanSkipped(studentName, res.skippedRows))
+              window.alert(S.editor.updatePartialAlert(studentName, res.skippedRows))
+            } else {
+              setStatusText(S.editor.updatedStudentPlan(studentName))
+            }
             break
           }
           catch (error) {
             const scoped = applySaveFailure(error)
             if (scoped) {
               setStatusText(scoped)
+              // History/lock conflicts are just as terminal as transport errors for
+              // this click. A status-line-only failure lets the coach mistake the
+              // confirmation dialog for delivery, so every unsuccessful published
+              // update must end with an explicit "student has not received it" modal.
+              const stashed = remoteMirrorStateRef.current.status === 'saved'
+              window.alert(S.editor.updateFailedAlert(studentName, scoped, stashed))
               break
             }
             if (error instanceof ReconciliationError) {
@@ -2115,7 +2134,8 @@ export function PlanEditor(props: PlanEditorProps) {
               }
               const [status, detail] = explain[error.code]
               setStatusText(status)
-              window.alert(detail)
+              const stashed = remoteMirrorStateRef.current.status === 'saved'
+              window.alert(S.editor.updateFailedAlert(studentName, `${status} — ${detail}`, stashed))
               break
             }
             if (attempt < 2) {

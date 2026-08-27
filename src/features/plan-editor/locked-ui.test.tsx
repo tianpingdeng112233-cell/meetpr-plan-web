@@ -338,6 +338,7 @@ describe('exercise history lock UI', () => {
 
   it('keeps published changes unsaved after a scoped 409 instead of showing a false saved state', async () => {
     vi.spyOn(window, 'confirm').mockReturnValue(true)
+    const alert = vi.spyOn(window, 'alert').mockImplementation(() => {})
     const merged = [week(1, [row('editable', {
       serverRowId: 'pe', serverSortOrder: 0, hasLogs: true,
       conflictMessage: '学员刚打了卡,该行已锁定并还原',
@@ -356,6 +357,7 @@ describe('exercise history lock UI', () => {
     })
 
     expect(host.textContent).toContain('相关动作已锁定并还原，其余修改仍保留')
+    expect(alert).toHaveBeenCalledWith(expect.stringContaining('学员可能只收到部分修改'))
     expect(host.querySelector('[data-locked="true"]')).not.toBeNull()
     const leave = new Event('beforeunload', { cancelable: true })
     window.dispatchEvent(leave)

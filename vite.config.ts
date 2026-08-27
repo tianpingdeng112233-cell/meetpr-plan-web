@@ -3,6 +3,20 @@ import { defineConfig } from 'vitest/config'
 import { loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
 
+function buildIdPlugin(buildId: string) {
+  return {
+    name: 'meetpr-build-id',
+    transformIndexHtml: {
+      order: 'pre' as const,
+      handler: () => [{
+        tag: 'meta',
+        attrs: { name: 'meetpr-build-id', content: buildId },
+        injectTo: 'head' as const,
+      }],
+    },
+  }
+}
+
 // Dev: browser calls same-origin /api/*, Vite proxies to the MeetPR backend.
 // Sidesteps CORS + mixed-content. Defaults to a loopback server; an explicitly
 // configured remote HTTP target is allowed (production itself is still plain
@@ -21,22 +35,28 @@ function devApiTarget(mode: string): string {
   return target
 }
 
-export default defineConfig(({ mode }) => ({
-  plugins: [react()],
-  server: {
-    port: 5180,
-    proxy: {
-      '/api': {
-        target: devApiTarget(mode),
-        changeOrigin: true,
-        rewrite: (p) => p.replace(/^\/api/, ''),
+export default defineConfig(({ mode }) => {
+  // Embedded in index.html so an open tab can recognize a different web bundle.
+  // A rollback may intentionally restore an older id; the client therefore
+  // compares identity after several stable samples rather than ordering ids.
+  const buildId = String(Date.now())
+  return {
+    plugins: [react(), buildIdPlugin(buildId)],
+    server: {
+      port: 5180,
+      proxy: {
+        '/api': {
+          target: devApiTarget(mode),
+          changeOrigin: true,
+          rewrite: (p) => p.replace(/^\/api/, ''),
+        },
       },
     },
-  },
-  test: {
-    cache: false,
-    environment: 'jsdom',
-    globals: true,
-    setupFiles: ['src/test/i18n-setup.ts'],
-  },
-}))
+    test: {
+      cache: false,
+      environment: 'jsdom',
+      globals: true,
+      setupFiles: ['src/test/i18n-setup.ts'],
+    },
+  }
+})
