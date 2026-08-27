@@ -51,6 +51,7 @@ import {
 } from './selectionModel'
 import { useGlobalKeyboardHandler } from '../workspace/globalKeyboard'
 import { S, fmt, resolveLocale } from '../../i18n/strings'
+import { registerReloadBlocker } from '../../reloadSafety'
 import { MUSCLE_LABEL } from '../catalog/catalogModel'
 import {
   closestWeekToViewportCenter,
@@ -1944,6 +1945,13 @@ export function PlanEditor(props: PlanEditorProps) {
   canPersist.current = !!props.onSave && !readOnly
   const savingRef = useRef(saving)
   savingRef.current = saving
+  useEffect(() => registerReloadBlocker(() => {
+    if (!canPersist.current) return false
+    return savingRef.current
+      || unsavedRef.current
+      || publishedDirtyRef.current
+      || countUnbound(latestWeeks.current) > 0
+  }), [])
   useEffect(() => {
     const onBeforeUnload = (e: BeforeUnloadEvent) => {
       if (!canPersist.current) return

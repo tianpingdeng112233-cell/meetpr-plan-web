@@ -8,6 +8,7 @@ import { currentUser, logout } from './api/auth'
 import type { AuthUser } from './api/types'
 import { chatOutbox } from './features/chat/chatOutbox'
 import { S } from './i18n/strings'
+import { BuildUpdateGuard } from './BuildUpdateGuard'
 
 type View = 'login' | 'workspace' | 'sample'
 
@@ -29,8 +30,9 @@ export default function App() {
     setView('login')
   }, [user])
 
+  let content
   if (view === 'sample') {
-    return (
+    content = (
       <div style={{ position: 'relative', height: '100vh' }}>
         <PlanEditor
           initialWeeks={buildWeeks()}
@@ -46,19 +48,23 @@ export default function App() {
         </button>
       </div>
     )
-  }
-
-  if (view === 'workspace' && user) {
+  } else if (view === 'workspace' && user) {
     const onLogout = () => { chatOutbox.reset(); logout(); setUser(null); setView('login') }
-    if (user.role === 'admin') return <AdminWorkspace onLogout={onLogout} />
-    if (user.role === 'coach') return <PlanWorkspace onLogout={onLogout} me={user} />
-    return null
+    if (user.role === 'admin') content = <AdminWorkspace onLogout={onLogout} />
+    else if (user.role === 'coach') content = <PlanWorkspace onLogout={onLogout} me={user} />
+    else content = null
+  } else {
+    content = (
+      <LoginScreen
+        onLogin={(u) => { setUser(u); setView('workspace') }}
+        onSampleMode={() => setView('sample')}
+      />
+    )
   }
-
   return (
-    <LoginScreen
-      onLogin={(u) => { setUser(u); setView('workspace') }}
-      onSampleMode={() => setView('sample')}
-    />
+    <>
+      {content}
+      <BuildUpdateGuard />
+    </>
   )
 }
