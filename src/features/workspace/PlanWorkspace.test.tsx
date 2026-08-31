@@ -320,11 +320,13 @@ describe('PlanWorkspace editor remount', () => {
     api.deleteVideoMarker.mockResolvedValue(undefined)
     api.reconcilePlan.mockImplementation(async (_id: string, weeks: Week[]) => ({
       changedDays: 1,
+      degradedRows: 0,
       skippedRows: 0,
       weeks,
     }))
     api.reconcileImportedPlan.mockImplementation(async (_id: string, weeks: Week[]) => ({
       changedDays: 1,
+      degradedRows: 0,
       skippedRows: 0,
       weeks,
     }))

@@ -106,7 +106,7 @@ describe('PlanEditor local draft recovery', () => {
           planName="已发布计划"
           currentPlanId="plan"
           initialPublished
-          onSave={vi.fn(async (saved: Week[]) => ({ changedDays: 1, skippedRows: 0, weeks: saved }))}
+          onSave={vi.fn(async (saved: Week[]) => ({ changedDays: 1, degradedRows: 0, skippedRows: 0, weeks: saved }))}
         />,
       )
       await Promise.resolve()
@@ -158,7 +158,7 @@ describe('PlanEditor local draft recovery', () => {
   it('clears the mirror after an explicit save covers the same published edit', async () => {
     vi.useFakeTimers()
     vi.spyOn(window, 'confirm').mockReturnValue(true)
-    const onSave = vi.fn(async (saved: Week[]) => ({ changedDays: 1, skippedRows: 0, weeks: saved }))
+    const onSave = vi.fn(async (saved: Week[]) => ({ changedDays: 1, degradedRows: 0, skippedRows: 0, weeks: saved }))
     await act(async () => {
       root.render(
         <PlanEditor initialWeeks={weeks('server')} weeksCount={1} planStartDate="2026-01-01"
@@ -197,6 +197,83 @@ describe('PlanEditor local draft recovery', () => {
     expect(loadDraftMirror('plan')).toBeNull()
   })
 
+  it('autosaves degraded draft rows and schedules their full content to the remote snapshot', async () => {
+    vi.useFakeTimers()
+    const draftWeeks = weeks('server')
+    draftWeeks[0].days[0].rows[0].boxes = []
+    draftWeeks[0].days[0].rows.push({
+      ...row('second'),
+      id: 'row-second',
+      reps: '12',
+      boxes: Array.from({ length: 5 }, () => ({ val: '', empty: true })),
+    })
+    const onSave = vi.fn(async (saved: Week[]) => ({
+      changedDays: 1, degradedRows: 2, skippedRows: 0, weeks: saved,
+    }))
+    await act(async () => {
+      root.render(
+        <PlanEditor initialWeeks={draftWeeks} weeksCount={1} planStartDate="2026-01-01"
+          studentName="学员" planName="草稿计划" currentPlanId="plan" onSave={onSave} />,
+      )
+      await Promise.resolve()
+    })
+
+    act(() => setInput(host.querySelector<HTMLInputElement>('[data-c="note"] input')!, '半填内容'))
+    await act(async () => { await vi.advanceTimersByTimeAsync(3000) })
+
+    expect(onSave).toHaveBeenCalledTimes(1)
+    expect(pendingApi.putPendingRevision).toHaveBeenCalledTimes(1)
+    expect(pendingApi.putPendingRevision.mock.calls[0][1].content.weeks[0].days[0].rows)
+      .toHaveLength(2)
+    expect(pendingApi.deletePendingRevision).not.toHaveBeenCalled()
+    expect(host.querySelector<HTMLButtonElement>('button[title*="暂存为占位"]')).not.toBeNull()
+    expect(host.querySelector('[data-testid="plan-save-status"]')?.textContent)
+      .toContain('已自动保存 · 2 个动作待填全或需修正（内容已云端暂存）')
+  })
+
+  it('labels degraded draft content as locally stashed when the remote PUT is unavailable', async () => {
+    vi.useFakeTimers()
+    pendingApi.putPendingRevision.mockRejectedValue({ status: 404 })
+    const draftWeeks = weeks('server')
+    draftWeeks[0].days[0].rows[0].boxes = []
+    const onSave = vi.fn(async (saved: Week[]) => ({
+      changedDays: 1, degradedRows: 1, skippedRows: 0, weeks: saved,
+    }))
+    await act(async () => {
+      root.render(
+        <PlanEditor initialWeeks={draftWeeks} weeksCount={1} planStartDate="2026-01-01"
+          studentName="学员" planName="草稿计划" currentPlanId="plan" onSave={onSave} />,
+      )
+      await Promise.resolve()
+    })
+
+    act(() => setInput(host.querySelector<HTMLInputElement>('[data-c="note"] input')!, '本地半填内容'))
+    await act(async () => { await vi.advanceTimersByTimeAsync(3000) })
+
+    expect(host.querySelector('[data-testid="plan-save-status"]')?.textContent)
+      .toContain('已自动保存 · 1 个动作待填全或需修正（内容已本地暂存）')
+  })
+
+  it('marks a draft snapshot covered after a complete tree save', async () => {
+    vi.useFakeTimers()
+    const onSave = vi.fn(async (saved: Week[]) => ({
+      changedDays: 1, degradedRows: 0, skippedRows: 0, weeks: saved,
+    }))
+    await act(async () => {
+      root.render(
+        <PlanEditor initialWeeks={weeks('server')} weeksCount={1} planStartDate="2026-01-01"
+          studentName="学员" planName="草稿计划" currentPlanId="plan" onSave={onSave} />,
+      )
+      await Promise.resolve()
+    })
+
+    act(() => setInput(host.querySelector<HTMLInputElement>('[data-c="note"] input')!, '完整修改'))
+    await act(async () => { await vi.advanceTimersByTimeAsync(1500) })
+
+    expect(onSave).toHaveBeenCalledTimes(1)
+    expect(pendingApi.deletePendingRevision).toHaveBeenCalledWith('plan')
+  })
+
   it('leaves no stale mirror after restoring a metadata-mismatched published candidate and saving', async () => {
     vi.useFakeTimers()
     vi.spyOn(window, 'confirm').mockReturnValue(true)
@@ -206,7 +283,7 @@ describe('PlanEditor local draft recovery', () => {
       planStartDate: '2025-12-01',
       weeksCount: 1,
     }, localStorage, () => new Date('2026-07-18T09:30:00Z'))
-    const onSave = vi.fn(async (saved: Week[]) => ({ changedDays: 1, skippedRows: 0, weeks: saved }))
+    const onSave = vi.fn(async (saved: Week[]) => ({ changedDays: 1, degradedRows: 0, skippedRows: 0, weeks: saved }))
     await act(async () => {
       root.render(
         <PlanEditor initialWeeks={weeks('server')} weeksCount={1} planStartDate="2026-01-01"
@@ -231,8 +308,8 @@ describe('PlanEditor local draft recovery', () => {
     vi.useFakeTimers()
     vi.spyOn(window, 'confirm').mockReturnValue(true)
     let resolveSave!: () => void
-    const onSave = vi.fn((saved: Week[]) => new Promise<{ changedDays: number; skippedRows: number; weeks: Week[] }>((resolve) => {
-      resolveSave = () => resolve({ changedDays: 1, skippedRows: 0, weeks: saved })
+    const onSave = vi.fn((saved: Week[]) => new Promise<{ changedDays: number; degradedRows: number; skippedRows: number; weeks: Week[] }>((resolve) => {
+      resolveSave = () => resolve({ changedDays: 1, degradedRows: 0, skippedRows: 0, weeks: saved })
     }))
     await act(async () => {
       root.render(
@@ -282,6 +359,129 @@ describe('PlanEditor local draft recovery', () => {
     expect(host.querySelector('[data-testid="draft-mirror-banner"]')?.textContent).toContain('云端暂存')
     act(() => click(host, '恢复'))
     expect(host.querySelector<HTMLInputElement>('[data-c="note"] input')?.value).toBe('newer remote')
+    expect(pendingApi.deletePendingRevision).toHaveBeenCalledWith('plan')
+  })
+
+  it('silently applies a draft remote snapshot that is newer than the plan tree', async () => {
+    const remote = createDraftMirror('plan', {
+      weeks: weeks('远端半填内容'), planStartDate: '2026-01-01', weeksCount: 1,
+    }, () => new Date('2026-08-22T10:00:00Z'))
+    pendingApi.getPendingRevision.mockResolvedValue({
+      plan_id: remote.planId, version: remote.version, content_hash: remote.contentHash,
+      content: remote.content, saved_at: remote.savedAt,
+    })
+
+    await act(async () => {
+      root.render(
+        <PlanEditor initialWeeks={weeks('服务端计划树')} weeksCount={1} planStartDate="2026-01-01"
+          planUpdatedAt="2026-08-22T09:00:00Z" studentName="学员" planName="草稿"
+          currentPlanId="plan" onSave={vi.fn()} />,
+      )
+      await Promise.resolve()
+    })
+
+    expect(host.querySelector<HTMLInputElement>('[data-c="note"] input')?.value).toBe('远端半填内容')
+    expect(host.querySelector('[data-testid="draft-mirror-banner"]')).toBeNull()
+    expect(pendingApi.deletePendingRevision).not.toHaveBeenCalled()
+  })
+
+  it('keeps a newer draft plan tree and deletes its stale remote snapshot', async () => {
+    const remote = createDraftMirror('plan', {
+      weeks: weeks('过期远端内容'), planStartDate: '2026-01-01', weeksCount: 1,
+    }, () => new Date('2026-08-22T10:00:00Z'))
+    pendingApi.getPendingRevision.mockResolvedValue({
+      plan_id: remote.planId, version: remote.version, content_hash: remote.contentHash,
+      content: remote.content, saved_at: remote.savedAt,
+    })
+
+    await act(async () => {
+      root.render(
+        <PlanEditor initialWeeks={weeks('较新的计划树')} weeksCount={1} planStartDate="2026-01-01"
+          planUpdatedAt="2026-08-22T11:00:00Z" studentName="学员" planName="草稿"
+          currentPlanId="plan" onSave={vi.fn()} />,
+      )
+      await Promise.resolve()
+    })
+
+    expect(host.querySelector<HTMLInputElement>('[data-c="note"] input')?.value).toBe('较新的计划树')
+    expect(host.querySelector('[data-testid="draft-mirror-banner"]')).toBeNull()
+    expect(pendingApi.deletePendingRevision).toHaveBeenCalledWith('plan')
+  })
+
+  it('does not offer a local stash older than the plan tree when the snapshot GET fails', async () => {
+    pendingApi.getPendingRevision.mockRejectedValue(new Error('offline'))
+    saveDraftMirror('plan', {
+      weeks: weeks('过期本地稿'), planStartDate: '2026-01-01', weeksCount: 1,
+    }, localStorage, () => new Date('2026-08-22T08:00:00Z'))
+
+    await act(async () => {
+      root.render(
+        <PlanEditor initialWeeks={weeks('较新的计划树')} weeksCount={1} planStartDate="2026-01-01"
+          planUpdatedAt="2026-08-22T09:00:00Z" studentName="学员" planName="草稿"
+          currentPlanId="plan" onSave={vi.fn()} />,
+      )
+      await Promise.resolve()
+    })
+
+    expect(host.querySelector('[data-testid="draft-mirror-banner"]')).toBeNull()
+    expect(host.querySelector<HTMLInputElement>('[data-c="note"] input')?.value).toBe('较新的计划树')
+  })
+
+  it('keeps the remote snapshot on the latest editor content across an in-flight degraded save', async () => {
+    vi.useFakeTimers()
+    const draftWeeks = weeks('第一版')
+    draftWeeks[0].days[0].rows[0].boxes = []
+    const firstSave = deferred<void>()
+    const onSave = vi.fn((saved: Week[]) => {
+      const res = { changedDays: 1, degradedRows: 1, skippedRows: 0, weeks: saved }
+      // The follow-up save stays pending: the only refresh that can run is the
+      // one riding the FIRST save's return, so the assertion below proves that
+      // refresh carries the newer content, not the save's stale input.
+      return onSave.mock.calls.length === 1
+        ? firstSave.promise.then(() => res)
+        : new Promise<typeof res>(() => {})
+    })
+    await act(async () => {
+      root.render(
+        <PlanEditor initialWeeks={draftWeeks} weeksCount={1} planStartDate="2026-01-01"
+          studentName="学员" planName="草稿计划" currentPlanId="plan" onSave={onSave} />,
+      )
+      await Promise.resolve()
+    })
+
+    act(() => setInput(host.querySelector<HTMLInputElement>('[data-c="note"] input')!, '半填第一版'))
+    await act(async () => { await vi.advanceTimersByTimeAsync(1500) })
+    expect(onSave).toHaveBeenCalledTimes(1)
+    // The coach keeps typing while the save round-trip is in flight.
+    act(() => setInput(host.querySelector<HTMLInputElement>('[data-c="note"] input')!, '半填第二版'))
+    await act(async () => { firstSave.resolve(); await vi.advanceTimersByTimeAsync(6000) })
+
+    const putCalls = pendingApi.putPendingRevision.mock.calls
+    expect(putCalls.length).toBeGreaterThan(0)
+    const lastContent = putCalls[putCalls.length - 1][1].content
+    // The refresh riding the save's return must never re-upload the stale input.
+    expect(lastContent.weeks[0].days[0].rows[0].note).toBe('半填第二版')
+  })
+
+  it('deletes a draft remote snapshot whose content already matches the plan tree', async () => {
+    const remote = createDraftMirror('plan', {
+      weeks: weeks('相同内容'), planStartDate: '2026-01-01', weeksCount: 1,
+    }, () => new Date('2026-08-22T12:00:00Z'))
+    pendingApi.getPendingRevision.mockResolvedValue({
+      plan_id: remote.planId, version: remote.version, content_hash: remote.contentHash,
+      content: remote.content, saved_at: remote.savedAt,
+    })
+
+    await act(async () => {
+      root.render(
+        <PlanEditor initialWeeks={weeks('相同内容')} weeksCount={1} planStartDate="2026-01-01"
+          planUpdatedAt="2026-08-22T11:00:00Z" studentName="学员" planName="草稿"
+          currentPlanId="plan" onSave={vi.fn()} />,
+      )
+      await Promise.resolve()
+    })
+
+    expect(host.querySelector('[data-testid="draft-mirror-banner"]')).toBeNull()
     expect(pendingApi.deletePendingRevision).toHaveBeenCalledWith('plan')
   })
 
@@ -354,7 +554,7 @@ describe('PlanEditor local draft recovery', () => {
   it('shows the warn stashed state and clears remote state after a successful update', async () => {
     vi.useFakeTimers()
     vi.spyOn(window, 'confirm').mockReturnValue(true)
-    const onSave = vi.fn(async (saved: Week[]) => ({ changedDays: 1, skippedRows: 0, weeks: saved }))
+    const onSave = vi.fn(async (saved: Week[]) => ({ changedDays: 1, degradedRows: 0, skippedRows: 0, weeks: saved }))
     await act(async () => {
       root.render(
         <PlanEditor initialWeeks={weeks('server')} weeksCount={1} planStartDate="2026-01-01"
@@ -535,7 +735,7 @@ describe('PlanEditor local draft recovery', () => {
       plan_id: string; version: number; content_hash: string; saved_at: string
     }>()
     pendingApi.putPendingRevision.mockImplementationOnce(() => putRequest.promise)
-    const onSave = vi.fn(async (saved: Week[]) => ({ changedDays: 1, skippedRows: 0, weeks: saved }))
+    const onSave = vi.fn(async (saved: Week[]) => ({ changedDays: 1, degradedRows: 0, skippedRows: 0, weeks: saved }))
     await act(async () => {
       root.render(
         <PlanEditor initialWeeks={weeks('server')} weeksCount={1} planStartDate="2026-01-01"

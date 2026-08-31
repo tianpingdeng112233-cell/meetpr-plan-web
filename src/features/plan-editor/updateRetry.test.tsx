@@ -86,7 +86,7 @@ describe('published plan update: automatic retry + modal error', () => {
     const alert = vi.spyOn(window, 'alert').mockImplementation(() => {})
     const onSave = vi.fn()
       .mockRejectedValueOnce(new Error('offline'))
-      .mockImplementation(async (saved: Week[]) => ({ changedDays: 1, skippedRows: 0, weeks: saved }))
+      .mockImplementation(async (saved: Week[]) => ({ changedDays: 1, degradedRows: 0, skippedRows: 0, weeks: saved }))
     await mount(onSave)
 
     await act(async () => { click(host, '更新计划'); await Promise.resolve(); await Promise.resolve() })
@@ -163,7 +163,7 @@ describe('published plan update: automatic retry + modal error', () => {
   it('reports skipped unbound rows as a partial update in a blocking modal', async () => {
     const alert = vi.spyOn(window, 'alert').mockImplementation(() => {})
     const onSave = vi.fn().mockImplementation(async (saved: Week[]) => ({
-      changedDays: 0, skippedRows: 1, weeks: saved,
+      changedDays: 0, degradedRows: 0, skippedRows: 1, weeks: saved,
     }))
     await mount(onSave)
 

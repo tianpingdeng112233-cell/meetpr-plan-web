@@ -250,7 +250,7 @@ describe('whole-day column dragging', () => {
 
   it('persists the moved weeks through the existing draft autosave callback', async () => {
     vi.useFakeTimers()
-    const onSave = vi.fn(async (weeks: Week[]) => ({ changedDays: 2, skippedRows: 0, weeks }))
+    const onSave = vi.fn(async (weeks: Week[]) => ({ changedDays: 2, degradedRows: 0, skippedRows: 0, weeks }))
     act(() => root?.render(
       <PlanEditor initialWeeks={[week(1, { 0: [row('bench')] })]} weeksCount={1}
         studentName="学员" planName="计划" onSave={onSave} />,
@@ -273,7 +273,7 @@ describe('whole-day column dragging', () => {
 
   it('renders completed plans as read-only and never autosaves or flushes them', async () => {
     vi.useFakeTimers()
-    const onSave = vi.fn(async (weeks: Week[]) => ({ changedDays: 0, skippedRows: 0, weeks }))
+    const onSave = vi.fn(async (weeks: Week[]) => ({ changedDays: 0, degradedRows: 0, skippedRows: 0, weeks }))
     act(() => root?.render(
       <PlanEditor initialWeeks={[week(1, { 0: [row('squat')] })]} weeksCount={1}
         studentName="学员" planName="历史计划" planStatus="completed" onSave={onSave} />,

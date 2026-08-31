@@ -34,6 +34,7 @@ interface DesiredEntry {
 export interface SaveResult {
   changedDays: number
   skippedRows: number
+  degradedRows: number
   /** Id/lock/order metadata after the live-baseline reconciliation. */
   weeks: Week[]
   /** Present when reconciliation also changed the plan calendar metadata. */
@@ -298,15 +299,25 @@ function dayAt(weeks: Week[], weekNumber: number, dow: number): DayCol | undefin
   return weeks.find((week) => week.num === weekNumber)?.days.find((day) => day.dow === dow)
 }
 
-function desiredEntries(day: DayCol | undefined, countSkipped: () => void): DesiredEntry[] {
+function desiredEntries(
+  day: DayCol | undefined, countSkipped: () => void, countDegraded: () => void,
+  degradeIncomplete: boolean,
+): DesiredEntry[] {
   if (!day || isRestDay(day)) return []
   const entries: DesiredEntry[] = []
   for (const row of day.rows) {
-    if (!row.hasLogs && row.exerciseId && isBoundNoSets(row)) {
-      throw new ReconciliationError('PLAN_SET_SPEC_INCOMPLETE')
-    }
     const desired = rowToDesired(row)
-    if (desired) entries.push({ row, desired })
+    if (desired) {
+      if (isBoundNoSets(row)) {
+        // Drafts degrade to a zero-set placeholder (spec 039); a published
+        // update keeps the structural refusal — never rewrite the student's
+        // live tree with a lossy projection.
+        if (!degradeIncomplete) throw new ReconciliationError('PLAN_SET_SPEC_INCOMPLETE')
+        desired.sets = []
+        countDegraded()
+      }
+      entries.push({ row, desired })
+    }
     else if (!row.hasLogs && isContentfulUnbound(row)) countSkipped()
   }
   return entries
@@ -479,7 +490,7 @@ function merge409(
       row.serverSortOrder = direct.sort_order
       row.hasLogs = direct.has_logs ?? false
     }
-    const entries = desiredEntries(day, () => {})
+    const entries = desiredEntries(day, () => {}, () => {}, !options.published && fresh.status === 'draft')
     const claims = claimBaseline(entries, serverDay.exercises)
     for (const entry of entries) {
       const claim = claims.get(entry.row.id)
@@ -725,6 +736,7 @@ async function reconcileFromBaseline(
   for (const day of server.days) origByKey.set(`${day.week_number}:${day.day_of_week}`, day)
 
   let skippedRows = 0
+  let degradedRows = 0
   const unlockedWorks: DayWork[] = []
   const mixedWorks: DayWork[] = []
   const lockedMutationRows: string[] = []
@@ -732,7 +744,13 @@ async function reconcileFromBaseline(
   for (const week of resultWeeks) {
     for (let dow = 0; dow < 7; dow++) {
       const day = week.days.find((candidate) => candidate.dow === dow)
-      const entries = desiredEntries(day, () => { skippedRows++ })
+      // Degrade needs BOTH signals to say draft: the caller's flag can be stale
+      // (another device may have published since this page loaded), and the
+      // fresh server status is the authority — never degrade into a live tree.
+      const entries = desiredEntries(
+        day, () => { skippedRows++ }, () => { degradedRows++ },
+        !options.published && server.status === 'draft',
+      )
       const original = origByKey.get(`${week.num}:${dow + 1}`)
       const mixed = !!original?.exercises.some((exercise) => exercise.has_logs ?? false)
 
@@ -877,5 +895,5 @@ async function reconcileFromBaseline(
 
   for (const week of resultWeeks) for (const day of week.days) day.releasedSortOrders = []
 
-  return { changedDays: unlockedWorks.length + mixedWriteCount, skippedRows, weeks: resultWeeks }
+  return { changedDays: unlockedWorks.length + mixedWriteCount, skippedRows, degradedRows, weeks: resultWeeks }
 }

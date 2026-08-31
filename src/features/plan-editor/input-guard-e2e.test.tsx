@@ -89,7 +89,7 @@ describe('plan editor intensity-or-weight save and publish chain', () => {
   ] as const)('%s：可保存可发布且零告警', async (_label, trainingRow) => {
     const alert = vi.spyOn(window, 'alert').mockImplementation(() => {})
     const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
-    const onSave = vi.fn(async (weeks: Week[]) => ({ changedDays: 1, skippedRows: 0, weeks }))
+    const onSave = vi.fn(async (weeks: Week[]) => ({ changedDays: 1, degradedRows: 0, skippedRows: 0, weeks }))
     const onPublish = vi.fn(async () => {})
 
     act(() => root.render(

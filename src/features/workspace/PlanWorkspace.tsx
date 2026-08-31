@@ -911,6 +911,7 @@ export function PlanWorkspace({ onLogout, me }: Props) {
         exerciseStatsOverview={isFailedRosterDatum(rosterDataByStudent[studentId]?.overview) ? null : rosterDataByStudent[studentId]?.overview}
         planName={loaded?.plan.name ?? S.workspace.plan.noPlanParenthesized}
         planStartDate={loaded?.plan.start_date}
+        planUpdatedAt={loaded?.plan.updated_at}
         planStatus={loaded?.plan.status}
         totalShiftDays={loaded?.plan.total_shift_days}
         studentPlanCursor={studentPlanCursor}
