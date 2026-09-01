@@ -162,7 +162,7 @@ describe('reconcilePlan — week-local row order', () => {
 describe('reconcilePlan — skippedRows counts only contentful unbound rows', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    vi.mocked(plans.getPlan).mockResolvedValue({ id: 'p', plan_weeks: 1, start_date: '2026-01-01', days: [] } as never)
+    vi.mocked(plans.getPlan).mockResolvedValue({ id: 'p', plan_weeks: 1, start_date: '2026-01-01', status: 'draft', days: [] } as never)
     mockBatchEcho()
     vi.mocked(plans.deleteExercise).mockResolvedValue(undefined as never)
     vi.mocked(plans.createExercise).mockImplementation(async (_dayId, body) => ({
@@ -196,6 +196,57 @@ describe('reconcilePlan — skippedRows counts only contentful unbound rows', ()
     ]
     const res = await reconcilePlan('p', [weekWithMondayRows(rows)])
     expect(res.skippedRows).toBe(0)
+  })
+
+  it('degrades incomplete bound rows to zero-set placeholders without mixing them into skipped rows', async () => {
+    const rows = [
+      row({
+        id: 'no-sets', exerciseId: 'ex-no-sets', name: '深蹲', isMain: true,
+        boxes: [], note: '保留备注',
+      }),
+      row({
+        id: 'half-filled', exerciseId: 'ex-half-filled', name: '卧推', reps: '12',
+        boxes: Array.from({ length: 5 }, () => ({ val: '', empty: true })),
+      }),
+      row({ id: 'complete', exerciseId: 'ex-complete', name: '硬拉', boxes: [{ val: '100', empty: false }] }),
+      row({ id: 'unbound', exerciseId: null, name: '待绑定动作' }),
+    ]
+
+    const result = await reconcilePlan('p', [weekWithMondayRows(rows)])
+
+    expect(result).toMatchObject({ changedDays: 1, degradedRows: 2, skippedRows: 1 })
+    expect(vi.mocked(plans.batchDays).mock.calls[0][1].upsert_days[0].exercises).toEqual([
+      expect.objectContaining({
+        exercise_id: 'ex-no-sets', is_main_lift: true, notes: '保留备注', sets: [],
+      }),
+      expect.objectContaining({ exercise_id: 'ex-half-filled', sets: [] }),
+      expect.objectContaining({ exercise_id: 'ex-complete', sets: [expect.any(Object)] }),
+    ])
+  })
+
+  it('keeps the structural refusal for published plans — degrade is draft-only (spec 039 §1.2)', async () => {
+    const incomplete = row({
+      id: 'no-sets', exerciseId: 'ex-no-sets', name: '深蹲', isMain: true, boxes: [],
+    })
+
+    await expect(
+      reconcilePlan('p', [weekWithMondayRows([incomplete])], undefined, { published: true }),
+    ).rejects.toMatchObject({ code: 'PLAN_SET_SPEC_INCOMPLETE' })
+    expect(plans.batchDays).not.toHaveBeenCalled()
+  })
+
+  it('refuses to degrade when the fresh server tree is already published, even if the caller still says draft', async () => {
+    // Cross-device race: this page loaded the plan as a draft, another device
+    // published it since. The fresh getPlan status is the authority.
+    vi.mocked(plans.getPlan).mockResolvedValue(serverPlan([], 'published'))
+    const incomplete = row({
+      id: 'no-sets', exerciseId: 'ex-no-sets', name: '深蹲', isMain: true, boxes: [],
+    })
+
+    await expect(
+      reconcilePlan('p', [weekWithMondayRows([incomplete])]),
+    ).rejects.toMatchObject({ code: 'PLAN_SET_SPEC_INCOMPLETE' })
+    expect(plans.batchDays).not.toHaveBeenCalled()
   })
 
   it.each([
@@ -265,6 +316,24 @@ describe('reconcilePlan — skippedRows counts only contentful unbound rows', ()
     expect(plans.batchDays).not.toHaveBeenCalled()
     expect(plans.deleteExercise).not.toHaveBeenCalled()
     expect(plans.createExercise).not.toHaveBeenCalled()
+  })
+
+  it('round-trips a server zero-set placeholder without creating a dirty write loop', async () => {
+    const placeholder = { ...serverExercise('placeholder', 'placeholder-ex', 0), sets: [] }
+    const baseline = serverPlan([serverDay([placeholder])], 'draft')
+    vi.mocked(plans.getPlan).mockResolvedValue(baseline)
+    const weeks = mapPlanToWeeks(baseline, new Map([
+      ['placeholder-ex', { name: '待填全动作', custom: false }],
+    ]))
+
+    expect(weeks[0].days[0].rows[0]).toMatchObject({ exerciseId: 'placeholder-ex', boxes: [] })
+    await expect(reconcilePlan('p', weeks)).resolves.toMatchObject({
+      changedDays: 0, degradedRows: 0, skippedRows: 0,
+    })
+    expect(plans.batchDays).not.toHaveBeenCalled()
+    expect(plans.deleteExercise).not.toHaveBeenCalled()
+    expect(plans.createExercise).not.toHaveBeenCalled()
+    expect(plans.createSet).not.toHaveBeenCalled()
   })
 
   it('treats a legacy pct row without pct_anchor as the default and performs no writes', async () => {
@@ -430,11 +499,12 @@ describe('reconcilePlan — skippedRows counts only contentful unbound rows', ()
     expect(plans.batchDays).toHaveBeenCalledTimes(1)
   })
 
-  it('rejects incomplete bound prescriptions before replacing any server day', async () => {
+  it('saves an incomplete bound prescription as a zero-set placeholder', async () => {
     vi.mocked(plans.getPlan).mockResolvedValue({
       id: 'p',
       plan_weeks: 1,
       start_date: '2026-01-01',
+      status: 'draft',
       days: [{ id: 'old-day', week_number: 1, day_of_week: 1, exercises: [] }],
     } as never)
     const incomplete = row({
@@ -444,28 +514,29 @@ describe('reconcilePlan — skippedRows counts only contentful unbound rows', ()
       boxes: [{ val: '', empty: true }],
     })
 
-    await expect(reconcilePlan('p', [weekWithMondayRows([incomplete])])).rejects.toMatchObject({
-      code: 'PLAN_SET_SPEC_INCOMPLETE',
+    await expect(reconcilePlan('p', [weekWithMondayRows([incomplete])])).resolves.toMatchObject({
+      changedDays: 1, degradedRows: 1, skippedRows: 0,
     })
-    expect(plans.batchDays).not.toHaveBeenCalled()
+    expect(vi.mocked(plans.batchDays).mock.calls[0][1].upsert_days[0].exercises[0].sets).toEqual([])
   })
 
   it.each([
     ['out-of-range KG', { boxes: [{ val: '1000', empty: false }] }],
     ['off-step RPE', { mode: 'rpe' as const, boxes: [{ val: '7.3', empty: false }] }],
     ['out-of-range reps', { reps: '99', boxes: [{ val: '100', empty: false }] }],
-  ])('rejects %s through the shared guard before replacing any server day', async (_label, partial) => {
+  ])('degrades %s through the shared guard without sending invalid set values', async (_label, partial) => {
     vi.mocked(plans.getPlan).mockResolvedValue({
       id: 'p',
       plan_weeks: 1,
       start_date: '2026-01-01',
+      status: 'draft',
       days: [{ id: 'old-day', week_number: 1, day_of_week: 1, exercises: [] }],
     } as never)
 
     await expect(reconcilePlan('p', [weekWithMondayRows([
       row({ exerciseId: 'ex1', name: '深蹲', ...partial }),
-    ])])).rejects.toMatchObject({ code: 'PLAN_SET_SPEC_INCOMPLETE' })
-    expect(plans.batchDays).not.toHaveBeenCalled()
+    ])])).resolves.toMatchObject({ changedDays: 1, degradedRows: 1, skippedRows: 0 })
+    expect(vi.mocked(plans.batchDays).mock.calls[0][1].upsert_days[0].exercises[0].sets).toEqual([])
   })
 
   it('refuses backend plans with richer per-set fields rather than flattening them', async () => {

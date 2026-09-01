@@ -139,6 +139,8 @@ export interface PlanEditorProps {
   suspended?: boolean
   /** Current plan start date; enables xlsx import date remapping. */
   planStartDate?: string
+  /** Server plan-tree timestamp used to arbitrate draft pending revisions on load. */
+  planUpdatedAt?: string
   onChangeStartDate?: (startDate: string) => Promise<void>
   onChangePlanWeeks?: (planWeeks: number) => Promise<void>
 }
@@ -366,7 +368,7 @@ export function PlanEditor(props: PlanEditorProps) {
   ))
   const serverMirrorHash = useRef(draftContentHash(initialServerMirrorContent.current))
   const mountedMirror = useRef<DraftMirror | null>(readOnly ? null : loadDraftMirror(mirrorPlanId))
-  const waitsForRemoteRecovery = !!mirrorPlanId && initialPublished && !readOnly
+  const waitsForRemoteRecovery = !!mirrorPlanId && !readOnly && (initialPublished || !!props.planUpdatedAt)
   const mountedLocalCandidate = mountedMirror.current?.contentHash !== serverMirrorHash.current
     ? mountedMirror.current
     : null
@@ -433,6 +435,42 @@ export function PlanEditor(props: PlanEditorProps) {
         }
         const localCandidate = local && local.contentHash !== serverMirrorHash.current ? local : null
         if (local && !localCandidate) clearDraftMirror(mirrorPlanId)
+        if (!initialPublished) {
+          const treeSavedAt = Date.parse(props.planUpdatedAt ?? '')
+          const remoteSavedAt = remote ? Date.parse(remote.savedAt) : Number.NEGATIVE_INFINITY
+          const localSavedAt = localCandidate ? Date.parse(localCandidate.savedAt) : Number.NEGATIVE_INFINITY
+          const validTreeSavedAt = Number.isFinite(treeSavedAt) ? treeSavedAt : Number.NEGATIVE_INFINITY
+          const localIsNewest = !!localCandidate
+            && localSavedAt > validTreeSavedAt
+            && localSavedAt > remoteSavedAt
+
+          if (localIsNewest) {
+            setRecoveryMirror({ mirror: localCandidate, source: 'local' })
+            setRecoveryReady(true)
+            return
+          }
+          if (localCandidate) clearDraftMirror(mirrorPlanId)
+          if (remote && remoteSavedAt > validTreeSavedAt) {
+            const { content } = remote
+            setWeeks(content.weeks)
+            const metadataChanged = content.planStartDate !== persistedPlanStart.current
+              || content.weeksCount !== initialServerMirrorContent.current.weeksCount
+            currentPlanStart.current = content.planStartDate
+            setPlanStartDate(content.planStartDate)
+            pendingPlanStart.current = metadataChanged ? content.planStartDate : null
+            saveDraftMirror(mirrorPlanId, content)
+            setRecoveryMirror(null)
+            setRecoveryReady(true)
+            return
+          }
+          if (remote) {
+            remoteWriter.current?.clear()
+            pendingRevisionChangeRef.current?.(null)
+          }
+          setRecoveryMirror(null)
+          setRecoveryReady(true)
+          return
+        }
         const candidates: RecoveryMirror[] = [
           ...(localCandidate ? [{ mirror: localCandidate, source: 'local' as const }] : []),
           ...(remote ? [{ mirror: remote, source: 'remote' as const }] : []),
@@ -443,12 +481,22 @@ export function PlanEditor(props: PlanEditorProps) {
       })
       .catch(() => {
         if (cancelled) return
-        const localCandidate = local && local.contentHash !== serverMirrorHash.current ? local : null
+        let localCandidate = local && local.contentHash !== serverMirrorHash.current ? local : null
+        // Draft arbitration is timestamp-based (spec 039 §2.3). When the remote
+        // GET fails we can't see the snapshot, but the tree timestamp is still
+        // known: never offer a local stash older than the tree — restoring it
+        // would let autosave overwrite newer server content.
+        if (localCandidate && !initialPublished) {
+          const treeSavedAt = Date.parse(props.planUpdatedAt ?? '')
+          if (Number.isFinite(treeSavedAt) && Date.parse(localCandidate.savedAt) <= treeSavedAt) {
+            localCandidate = null
+          }
+        }
         setRecoveryMirror(localCandidate ? { mirror: localCandidate, source: 'local' } : null)
         setRecoveryReady(true)
       })
     return () => { cancelled = true }
-  }, [mirrorPlanId, waitsForRemoteRecovery])
+  }, [initialPublished, mirrorPlanId, props.planUpdatedAt, waitsForRemoteRecovery])
   const suspendedRef = useRef(false)
   suspendedRef.current = !!props.suspended
   // Keep the displayed start date separate from the metadata change waiting to
@@ -500,6 +548,7 @@ export function PlanEditor(props: PlanEditorProps) {
   const [statusText, setStatusText] = useState(readOnly
     ? S.editor.readOnlyStatus(props.planStatus === 'completed' ? S.common.completed : S.common.paused)
     : initialPublished ? S.editor.publishedTo(studentName) : S.editor.draftSavedInitial)
+  const [degradedSaveStatus, setDegradedSaveStatus] = useState<{ base: string; count: number } | null>(null)
   // W1 calendar/delete controls are draft-only. Keep this separate from main's
   // `published` flag, which drives explicit in-place updates for spec 004.
   const statusCalendarLocked = props.planStatus != null ? props.planStatus !== 'draft' : published
@@ -580,9 +629,9 @@ export function PlanEditor(props: PlanEditorProps) {
     serverMirrorHash.current = hash
     mirrorWriter.current.dropPendingIfHash(hash)
     clearDraftMirrorIfHash(mirrorPlanId, hash)
+    remoteWriter.current?.markCovered(hash)
+    pendingRevisionChangeRef.current?.(null)
     if (published) {
-      remoteWriter.current?.markCovered(hash)
-      pendingRevisionChangeRef.current?.(null)
       const current = mirrorContent(
         latestWeeks.current,
         currentPlanStart.current,
@@ -605,7 +654,7 @@ export function PlanEditor(props: PlanEditorProps) {
       weeks.length || props.weeksCount,
     )
     const hash = draftContentHash(content)
-    if (published && !recoveryReady) {
+    if (waitsForRemoteRecovery && !recoveryReady) {
       // Do not overwrite/delete an unread remote candidate. Fresh edits still
       // reach the fast local mirror while the GET is in flight.
       if (hash !== serverMirrorHash.current) {
@@ -624,7 +673,7 @@ export function PlanEditor(props: PlanEditorProps) {
       mirrorWriter.current.cancel()
       if (!recoveryMirror) {
         clearDraftMirror(mirrorPlanId)
-        if (published && remoteHasDirtyContent.current) {
+        if (remoteHasDirtyContent.current) {
           remoteWriter.current?.clear()
           remoteHasDirtyContent.current = false
           pendingRevisionChangeRef.current?.(null)
@@ -632,15 +681,12 @@ export function PlanEditor(props: PlanEditorProps) {
       }
       return
     }
-    if (published) {
-      setPublishedDirty(true)
-      if (!mirrorPlanId) return
-      remoteHasDirtyContent.current = true
-      remoteWriter.current?.schedule(content)
-    }
+    if (published) setPublishedDirty(true)
     if (!mirrorPlanId) return
+    remoteHasDirtyContent.current = true
+    remoteWriter.current?.schedule(content)
     mirrorWriter.current.schedule(content)
-  }, [mirrorPlanId, props.weeksCount, published, readOnly, recoveryMirror, recoveryReady, weeks])
+  }, [mirrorPlanId, props.weeksCount, published, readOnly, recoveryMirror, recoveryReady, waitsForRemoteRecovery, weeks])
 
   useEffect(() => {
     const writer = mirrorWriter.current
@@ -1750,7 +1796,8 @@ export function PlanEditor(props: PlanEditorProps) {
       pendingPlanStart.current = null
       // The metadata PATCH does not persist row edits. Only advance the mirror's
       // server baseline when the calendar change is the sole outstanding change.
-      if (!hadUnsavedContent && !contentChangedDuringRequest) {
+      if (!hadUnsavedContent && !contentChangedDuringRequest
+        && findDetailedIssueRows(nextWeeks).length === 0) {
         markMirrorCovered(mirrorContent(nextWeeks, nextStart, nextWeeks.length || props.weeksCount))
       }
       setStatusText(S.editor.startDateUpdated(published ? S.common.published : S.common.draft, nextStart))
@@ -1795,7 +1842,9 @@ export function PlanEditor(props: PlanEditorProps) {
       setRowSelection((current) => current.anchor && current.anchor.wnum > nextCount
         ? singleRowSelection(null)
         : current)
-      markMirrorCovered(mirrorContent(nextWeeks, startDate, nextCount))
+      if (findDetailedIssueRows(nextWeeks).length === 0) {
+        markMirrorCovered(mirrorContent(nextWeeks, startDate, nextCount))
+      }
       setStatusText(S.editor.cycleUpdated(nextCount))
     } catch (error) {
       setStatusText(S.editor.cycleUpdateFailed)
@@ -1853,7 +1902,7 @@ export function PlanEditor(props: PlanEditorProps) {
     const importStart = pendingPlanStart.current
     const markPastAsAssumedComplete = importedPastHistory.current
     const verb = auto ? S.editor.autosaving : S.editor.saving
-    setSaving(true); setStatusText(verb)
+    setSaving(true); setStatusText(verb); setDegradedSaveStatus(null)
     try {
       // Big saves (imports) crawl through the backend rate limit for minutes — show real
       // per-day movement so the coach can tell progress from a hang. Tiny saves stay quiet.
@@ -1873,18 +1922,34 @@ export function PlanEditor(props: PlanEditorProps) {
       }
       // Same generation rule for the unsaved flag: edits typed while this save was in flight
       // are NOT in what we just persisted, so they must keep the leave guards armed.
-      if (res.skippedRows === 0) {
-        markMirrorCovered(mirrorContent(
-          res.weeks,
-          res.planStartDate ?? savedPlanStart,
-          res.planWeeks ?? savedWeeks.length,
-        ))
-      }
+      const savedContent = mirrorContent(
+        res.weeks,
+        res.planStartDate ?? savedPlanStart,
+        res.planWeeks ?? savedWeeks.length,
+      )
+      if (res.skippedRows === 0 && res.degradedRows === 0) markMirrorCovered(savedContent)
       applySuccessfulSave(res, savedWeeks)
+      if (res.skippedRows > 0 || res.degradedRows > 0) {
+        // The tree write just advanced updated_at without covering half-filled or
+        // unbound editor content. Refresh the snapshot after that write so load-time
+        // timestamp arbitration cannot mistake the lossy tree for the newer copy.
+        // Snapshot the CURRENT editor state (after applySuccessfulSave), never the
+        // save's input: edits typed during the round-trip must not be clobbered by
+        // a stale copy riding this refresh.
+        remoteHasDirtyContent.current = true
+        remoteWriter.current?.schedule(mirrorContent(
+          latestWeeks.current,
+          currentPlanStart.current,
+          latestWeeks.current.length || props.weeksCount,
+        ))
+        remoteWriter.current?.flush()
+      }
       const base = importStart && markPastAsAssumedComplete
         ? S.editor.historyBackfilledLocked
         : (auto ? S.editor.draftAutosaved : S.editor.draftSaved)
-      setStatusText(res.skippedRows > 0 ? S.editor.skippedUnboundRows(base, res.skippedRows) : base)
+      const coveredBase = res.skippedRows > 0 ? S.editor.skippedUnboundRows(base, res.skippedRows) : base
+      setStatusText(coveredBase)
+      setDegradedSaveStatus(res.degradedRows > 0 ? { base: coveredBase, count: res.degradedRows } : null)
       return true
     }
     catch (error) {
@@ -2015,7 +2080,7 @@ export function PlanEditor(props: PlanEditorProps) {
     const reasons = [...new Set(inputIssues.flatMap((i) => i.inputIssue?.reasons ?? []))]
     const parts = []
     if (unbound) parts.push(S.editor.unboundIssue(unbound))
-    if (incomplete) parts.push(S.editor.incompleteIssue(incomplete))
+    if (incomplete) parts.push(S.editor.incompleteIssue(incomplete, published))
     if (invalid) parts.push(S.editor.invalidIssue(invalid, reasons.join(' / ')))
     return S.editor.issueHint(parts.join('；'))
   })()
@@ -2103,6 +2168,8 @@ export function PlanEditor(props: PlanEditorProps) {
             // Edits typed during the round-trip aren't in what was pushed — keep the guards armed.
             // A published update never writes calendar metadata, so the covered
             // hash must use the server-persisted date/weeks, not local values.
+            // A published update reconciles with degrade disabled (spec 039 §1.2), so
+            // degradedRows is structurally 0 here — the pre-039 covered-mark rule stands.
             if (res.skippedRows === 0) {
               markMirrorCovered(mirrorContent(res.weeks, persistedPlanStart.current, props.weeksCount))
             }
@@ -2358,7 +2425,15 @@ export function PlanEditor(props: PlanEditorProps) {
       : remoteMirrorState.status === 'stashing'
         ? S.editor.publishedDirtyStashing(studentName)
         : S.editor.publishedDirtyLocal(studentName)
-    : statusText
+    : !published && degradedSaveStatus
+      // "已云端暂存" is a completion claim — only the writer's `saved` state may
+      // make it; in-flight/idle shows progress, local-only degrades honestly.
+      ? remoteMirrorState.status === 'saved'
+        ? S.editor.degradedSaved(degradedSaveStatus.base, degradedSaveStatus.count)
+        : remoteMirrorState.status === 'local-only'
+          ? S.editor.degradedSavedLocal(degradedSaveStatus.base, degradedSaveStatus.count)
+          : S.editor.degradedSavedStashing(degradedSaveStatus.base, degradedSaveStatus.count)
+      : statusText
   const moveStateForDay = (wnum: number, dow: number): 'source' | 'target' | 'invalid' | undefined => {
     if (!dayMoveVisual) return undefined
     if (dayMoveVisual.fromWnum === wnum && dayMoveVisual.fromDow === dow) return 'source'

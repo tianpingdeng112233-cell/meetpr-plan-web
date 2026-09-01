@@ -473,7 +473,7 @@ describe('spec 037 week-band UI', () => {
     let savedRows: string[][] = []
     const onSave = vi.fn(async (savedWeeks: Week[]) => {
       savedRows = savedWeeks.map((item) => item.days[0].rows.map((entry) => entry.exerciseId!))
-      return { changedDays: 1, skippedRows: 0, weeks: savedWeeks }
+      return { changedDays: 1, degradedRows: 0, skippedRows: 0, weeks: savedWeeks }
     })
     await act(async () => root.render(
       <PlanEditor initialWeeks={visualOrderWeeks()} weeksCount={2} studentName="学员" planName="计划" onSave={onSave} />,

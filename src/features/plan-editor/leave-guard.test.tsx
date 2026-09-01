@@ -48,7 +48,7 @@ describe('PlanEditor external leave guard', () => {
 
   it('flushes draft edits through the existing save controller before allowing rail navigation', async () => {
     let leaveGuard: (() => Promise<boolean>) | null = null
-    const onSave = vi.fn(async (weeks: Week[]) => ({ changedDays: 1, skippedRows: 0, weeks }))
+    const onSave = vi.fn(async (weeks: Week[]) => ({ changedDays: 1, degradedRows: 0, skippedRows: 0, weeks }))
     act(() => root.render(
       <PlanEditor
         initialWeeks={[weekWith(row())]}
@@ -72,7 +72,7 @@ describe('PlanEditor external leave guard', () => {
   it('refuses rail navigation when the unbound-row warning is cancelled', async () => {
     let leaveGuard: (() => Promise<boolean>) | null = null
     const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
-    const onSave = vi.fn(async (weeks: Week[]) => ({ changedDays: 0, skippedRows: 1, weeks }))
+    const onSave = vi.fn(async (weeks: Week[]) => ({ changedDays: 0, degradedRows: 0, skippedRows: 1, weeks }))
     act(() => root.render(
       <PlanEditor
         initialWeeks={[weekWith(row({ exerciseId: null, ku: false, name: '手写动作' }))]}
@@ -92,7 +92,7 @@ describe('PlanEditor external leave guard', () => {
   it('refuses rail navigation when published edits have not been explicitly updated', async () => {
     let leaveGuard: (() => Promise<boolean>) | null = null
     const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
-    const onSave = vi.fn(async (weeks: Week[]) => ({ changedDays: 1, skippedRows: 0, weeks }))
+    const onSave = vi.fn(async (weeks: Week[]) => ({ changedDays: 1, degradedRows: 0, skippedRows: 0, weeks }))
     act(() => root.render(
       <PlanEditor
         initialWeeks={[weekWith(row())]}

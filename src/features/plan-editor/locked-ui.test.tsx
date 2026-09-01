@@ -282,7 +282,7 @@ describe('exercise history lock UI', () => {
   it('published edits never autosave, require update confirmation, and arm the leave guard', async () => {
     vi.useFakeTimers()
     const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
-    const onSave = vi.fn(async (weeks: Week[]) => ({ changedDays: 1, skippedRows: 0, weeks }))
+    const onSave = vi.fn(async (weeks: Week[]) => ({ changedDays: 1, degradedRows: 0, skippedRows: 0, weeks }))
     act(() => root?.render(
       <PlanEditor initialWeeks={[week(1, [row('editable')])]} weeksCount={1}
         studentName="学员" planName="已发布计划" initialPublished onSave={onSave} />,
@@ -308,7 +308,7 @@ describe('exercise history lock UI', () => {
 
   it('published update confirm folds in the unbound-row skip warning', async () => {
     const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false) // cancel: only the message matters
-    const onSave = vi.fn(async (weeks: Week[]) => ({ changedDays: 0, skippedRows: 0, weeks }))
+    const onSave = vi.fn(async (weeks: Week[]) => ({ changedDays: 0, degradedRows: 0, skippedRows: 0, weeks }))
     act(() => root?.render(
       <PlanEditor initialWeeks={[week(1, [
         row('bound'),
