@@ -45,6 +45,21 @@ function serverExercise(
   }
 }
 
+function richerPerSetExercise(): PlanExerciseResponse {
+  return {
+    ...serverExercise('pe1', 'ex1', 0),
+    sets: [5, 4, 3].map((reps, index) => ({
+      ...serverExercise('pe1', 'ex1', 0).sets[0],
+      id: `set${index + 1}`,
+      set_number: index + 1,
+      target_reps: reps,
+      set_type: index === 0 ? 'warmup' : 'working',
+      coach_note: `第 ${index + 1} 组`,
+      rest_seconds: 180,
+    })),
+  }
+}
+
 function legacyRpeExercise(id: string, exerciseId: string, values: string[], hasLogs = false): PlanExerciseResponse {
   return {
     ...serverExercise(id, exerciseId, 0, values[0], hasLogs),
@@ -539,40 +554,100 @@ describe('reconcilePlan — skippedRows counts only contentful unbound rows', ()
     expect(vi.mocked(plans.batchDays).mock.calls[0][1].upsert_days[0].exercises[0].sets).toEqual([])
   })
 
-  it('refuses backend plans with richer per-set fields rather than flattening them', async () => {
-    vi.mocked(plans.getPlan).mockResolvedValue({
-      id: 'p',
-      plan_weeks: 1,
-      start_date: '2026-01-01',
-      days: [{
-        id: 'old-day',
-        week_number: 1,
-        day_of_week: 1,
-        exercises: [{
-          id: 'pe1',
-          exercise_id: 'ex1',
-          is_main_lift: false,
-          sort_order: 0,
-          notes: null,
-          sets: [{
-            id: 'set1',
-            set_number: 1,
-            target_reps: 5,
-            target_reps_max: null,
-            intensity_mode: 'weight',
-            target_value: '100',
-            set_type: 'working',
-            coach_note: null,
-            rest_seconds: 120,
-          }],
-        }],
-      }],
-    } as never)
+  it('passes through richer per-set fields when another row changes the day', async () => {
+    const richer = richerPerSetExercise()
+    const baseline = serverPlan([serverDay([richer])], 'draft')
+    vi.mocked(plans.getPlan).mockResolvedValue(baseline)
+    const weeks = mapPlanToWeeks(baseline, new Map([
+      ['ex1', { name: '深蹲', custom: false }],
+    ]))
+    weeks[0].days[0].rows.push(boundRow('new-row', null, 'new-ex', '60'))
 
-    await expect(reconcilePlan('p', [weekWithMondayRows([])])).rejects.toMatchObject({
-      code: 'PLAN_REQUIRES_NATIVE_EDITOR',
-    })
+    await expect(reconcilePlan('p', weeks)).resolves.toMatchObject({ changedDays: 1 })
+
+    expect(vi.mocked(plans.batchDays).mock.calls[0][1].upsert_days[0].exercises[0].sets)
+      .toEqual([
+        expect.objectContaining({ target_reps: 5, set_type: 'warmup', coach_note: '第 1 组', rest_seconds: 180 }),
+        expect.objectContaining({ target_reps: 4, set_type: 'working', coach_note: '第 2 组', rest_seconds: 180 }),
+        expect.objectContaining({ target_reps: 3, set_type: 'working', coach_note: '第 3 组', rest_seconds: 180 }),
+      ])
+  })
+
+  it('keeps opaque rest and notes by set index when edited reps are unified, then stays idempotent', async () => {
+    const richer = richerPerSetExercise()
+    const baseline = serverPlan([serverDay([richer])], 'draft')
+    vi.mocked(plans.getPlan).mockResolvedValue(baseline)
+    const weeks = mapPlanToWeeks(baseline, new Map([
+      ['ex1', { name: '深蹲', custom: false }],
+    ]))
+    weeks[0].days[0].rows[0].reps = '6'
+    weeks[0].days[0].rows[0].boxes.push({ val: '100', empty: false })
+
+    const first = await reconcilePlan('p', weeks)
+
+    const writtenSets = vi.mocked(plans.batchDays).mock.calls[0][1].upsert_days[0].exercises[0].sets
+    expect(writtenSets.map((set) => ({
+      reps: set.target_reps,
+      rest: set.rest_seconds,
+      note: set.coach_note,
+    }))).toEqual([
+      { reps: 6, rest: 180, note: '第 1 组' },
+      { reps: 6, rest: 180, note: '第 2 组' },
+      { reps: 6, rest: 180, note: '第 3 组' },
+      { reps: 6, rest: null, note: null },
+    ])
+
+    const saved = await vi.mocked(plans.batchDays).mock.results[0].value
+    vi.mocked(plans.getPlan).mockResolvedValue(saved)
+    vi.mocked(plans.batchDays).mockClear()
+
+    await expect(reconcilePlan('p', first.weeks)).resolves.toMatchObject({ changedDays: 0 })
     expect(plans.batchDays).not.toHaveBeenCalled()
+  })
+
+  it('drops the old bodyweight marker when an edited row switches to kg', async () => {
+    const bodyweight: PlanExerciseResponse = {
+      ...serverExercise('pe1', 'ex1', 0),
+      sets: [1, 2].map((n) => ({
+        ...serverExercise('pe1', 'ex1', 0).sets[0],
+        id: `set${n}`, set_number: n, intensity_mode: 'rpe', target_value: '10',
+        coach_note: '自重', rest_seconds: 90,
+      })),
+    }
+    const baseline = serverPlan([serverDay([bodyweight])], 'draft')
+    vi.mocked(plans.getPlan).mockResolvedValue(baseline)
+    const weeks = mapPlanToWeeks(baseline, new Map([['ex1', { name: '双杠臂屈伸', custom: false }]]))
+    const mapped = weeks[0].days[0].rows[0]
+    expect(mapped.mode).toBe('bodyweight')
+    weeks[0].days[0].rows[0] = boundRow(mapped.id, 'pe1', 'ex1', '100', {
+      serverSortOrder: 0, opaqueSets: mapped.opaqueSets, opaqueSetBaseline: mapped.opaqueSetBaseline,
+    })
+
+    await reconcilePlan('p', weeks)
+
+    const written = vi.mocked(plans.batchDays).mock.calls[0][1].upsert_days[0].exercises[0].sets
+    expect(written.map((set) => ({ note: set.coach_note, rest: set.rest_seconds, w: set.target_weight })))
+      .toEqual([{ note: null, rest: 90, w: '100' }])
+  })
+
+  it('keeps the bodyweight marker over old app notes when an edited row switches to bodyweight', async () => {
+    const richer = richerPerSetExercise()
+    const baseline = serverPlan([serverDay([richer])], 'draft')
+    vi.mocked(plans.getPlan).mockResolvedValue(baseline)
+    const weeks = mapPlanToWeeks(baseline, new Map([['ex1', { name: '深蹲', custom: false }]]))
+    const target = weeks[0].days[0].rows[0]
+    target.mode = 'bodyweight'
+    target.boxes = Array.from({ length: 3 }, () => ({ val: '', empty: true }))
+
+    await reconcilePlan('p', weeks)
+
+    const written = vi.mocked(plans.batchDays).mock.calls[0][1].upsert_days[0].exercises[0].sets
+    expect(written.map((set) => ({ note: set.coach_note, rest: set.rest_seconds })))
+      .toEqual([
+        { note: '自重', rest: 180 },
+        { note: '自重', rest: 180 },
+        { note: '自重', rest: 180 },
+      ])
   })
 })
 

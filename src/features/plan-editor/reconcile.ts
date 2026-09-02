@@ -4,8 +4,8 @@
 // even one logged exercise is reconciled exercise-by-exercise so the immutable rows
 // and their set/history links are never touched.
 
-import type { Week, DayCol, ExerciseRow, IntensityValueMode, RowIntensity, SetBox, WeightMode } from './types'
-import { isBoundNoSets, isContentfulUnbound, isRestDay } from './types'
+import type { Week, DayCol, ExerciseRow, IntensityValueMode, OpaqueSetSpec, RowIntensity, SetBox, WeightMode } from './types'
+import { isBoundNoSets, isContentfulUnbound, isRestDay, rowSetGridSignature, snapshotOpaqueSets } from './types'
 import type {
   PlanWithChildren, PlanDayResponse, PlanExerciseResponse, CreatePlanSetBody,
   BatchPlanDayBody, BatchPlanDaysBody, SetType,
@@ -77,44 +77,9 @@ export class ReconcileConflict extends Error {
   }
 }
 
-/** The grid only models uniform working-set prescriptions. Refuse lossy
- * flattening, but deliberately do not gate on plan status: published
- * mutability is server-authoritative (backend spec 016). */
 export class ReconciliationError extends Error {
-  constructor(public readonly code: 'PLAN_REQUIRES_NATIVE_EDITOR' | 'PLAN_SET_SPEC_INCOMPLETE') {
+  constructor(public readonly code: 'PLAN_SET_SPEC_INCOMPLETE') {
     super(code)
-  }
-}
-
-function assertSupportedServerTree(server: PlanWithChildren): void {
-  for (const day of server.days) for (const exercise of day.exercises) {
-    const sets = [...exercise.sets].sort((a, b) => a.set_number - b.set_number)
-    if (sets.length === 0) continue
-    const first = sets[0]
-    const bodyweight = sets.every((set) => STABLE_ZH.patterns.bodyweight.test(set.coach_note ?? ''))
-    const newIntensity = (set: typeof first) => JSON.stringify([
-      set.load_mode ?? null,
-      numNullable(set.target_pct), numNullable(set.target_rpe), numNullable(set.rir_target),
-      numNullable(set.rpe_low), numNullable(set.rpe_high),
-      numNullable(set.weight_low), numNullable(set.weight_high),
-      set.load_mode === 'pct' ? canonicalPctAnchor(set.pct_anchor) : null,
-    ])
-    const firstIntensity = newIntensity(first)
-    const singleValueMode = first.load_mode === 'pct' || first.load_mode === 'rpe' || first.load_mode === 'rir'
-    const supported = sets.every((set, index) => (
-      set.set_number === index + 1
-      && set.target_reps === first.target_reps
-      && set.target_reps_max === first.target_reps_max
-      && (first.load_mode != null
-        ? set.load_mode === first.load_mode && (singleValueMode || newIntensity(set) === firstIntensity)
-        : set.load_mode == null && set.intensity_mode === first.intensity_mode)
-      && (first.load_mode !== 'pct'
-        || canonicalPctAnchor(set.pct_anchor) === canonicalPctAnchor(first.pct_anchor))
-      && set.rest_seconds == null
-      && (bodyweight || set.coach_note == null)
-      && (set.set_type === 'working' || (index === sets.length - 1 && set.set_type === 'amrap'))
-    ))
-    if (!supported) throw new ReconciliationError('PLAN_REQUIRES_NATIVE_EDITOR')
   }
 }
 
@@ -153,12 +118,55 @@ function parseReps(reps: string): { reps: number; repsMax: number | null; amrap:
   return { reps: Number.isFinite(n) ? Math.min(Math.max(n, 1), 50) : 1, repsMax: null, amrap }
 }
 
+function opaqueSetToDesired(set: OpaqueSetSpec): CreatePlanSetBody {
+  return {
+    set_number: set.set_number,
+    target_reps: set.target_reps,
+    target_reps_max: set.target_reps_max,
+    ...(set.intensity_mode !== undefined ? { intensity_mode: set.intensity_mode } : {}),
+    ...(set.target_value !== undefined ? { target_value: set.target_value } : {}),
+    load_mode: set.load_mode,
+    target_pct: set.target_pct,
+    ...(set.load_mode === 'pct' ? { pct_anchor: canonicalPctAnchor(set.pct_anchor) } : {}),
+    target_rpe: set.target_rpe,
+    rir_target: numNullable(set.rir_target),
+    rpe_low: set.rpe_low,
+    rpe_high: set.rpe_high,
+    weight_low: set.weight_low,
+    weight_high: set.weight_high,
+    target_weight: set.target_weight,
+    set_type: set.set_type,
+    rest_seconds: set.rest_seconds,
+    coach_note: set.coach_note,
+  }
+}
+
+function rememberServerSets(row: ExerciseRow, exercise: PlanExerciseResponse): void {
+  row.opaqueSets = snapshotOpaqueSets(exercise.sets)
+  row.opaqueSetBaseline = rowSetGridSignature(row)
+}
+
+function rememberDesiredSets(row: ExerciseRow, sets: CreatePlanSetBody[]): void {
+  row.opaqueSets = sets.map((set) => ({
+    ...set,
+    target_reps_max: set.target_reps_max ?? null,
+    rest_seconds: set.rest_seconds ?? null,
+    coach_note: set.coach_note ?? null,
+  }))
+  row.opaqueSetBaseline = rowSetGridSignature(row)
+}
+
 /** A bound row -> desired backend exercise. Unbound rows (no exerciseId) -> null. */
 function rowToDesired(row: ExerciseRow): DesiredExercise | null {
   if (!row.exerciseId) return null
   const { reps, repsMax, amrap } = parseReps(row.reps)
   let sets: CreatePlanSetBody[]
-  if (row.mode === 'bodyweight') {
+  const sourceSets = row.opaqueSets
+  const opaqueUnchanged = sourceSets !== undefined
+    && row.opaqueSetBaseline === rowSetGridSignature(row)
+  if (opaqueUnchanged) {
+    sets = sourceSets.map(opaqueSetToDesired)
+  } else if (row.mode === 'bodyweight') {
     sets = row.boxes.map((_, i) => ({
       set_number: i + 1,
       target_reps: reps,
@@ -209,6 +217,25 @@ function rowToDesired(row: ExerciseRow): DesiredExercise | null {
       }
     })
   }
+  if (!opaqueUnchanged && sourceSets) {
+    // Edited row: the grid owns sets/reps/intensity/weight; rest and app notes
+    // ride along by set index. The bodyweight marker lives in coach_note and is
+    // a grid-owned weight-mode protocol (mapping.ts), so it must follow the
+    // row's current mode — never resurrect an old marker on a kg row, never let
+    // an old app note overwrite the marker on a bodyweight row.
+    sets = sets.map((set, index) => {
+      const oldNote = sourceSets[index]?.coach_note ?? null
+      const oldIsBodyweightMarker = oldNote != null && STABLE_ZH.patterns.bodyweight.test(oldNote)
+      const coachNote = row.mode === 'bodyweight'
+        ? set.coach_note ?? null
+        : oldIsBodyweightMarker ? null : oldNote
+      return {
+        ...set,
+        rest_seconds: sourceSets[index]?.rest_seconds ?? null,
+        coach_note: coachNote,
+      }
+    })
+  }
   return {
     exercise_id: row.exerciseId,
     is_main_lift: row.isMain,
@@ -239,12 +266,13 @@ function canonicalSet(set: CreatePlanSetBody | PlanExerciseResponse['sets'][numb
       numNullable(set.weight_low), numNullable(set.weight_high),
       set.load_mode === 'pct' ? canonicalPctAnchor(set.pct_anchor) : null,
       numNullable(set.target_weight) ?? legacyWeight,
-      set.set_type, null,
+      set.set_type, set.rest_seconds ?? null, canonCoachNote(set.coach_note),
     ]
   }
   return [
     set.set_number, set.target_reps, set.target_reps_max ?? null,
-    set.intensity_mode, numNullable(set.target_value), set.set_type, canonCoachNote(set.coach_note),
+    set.intensity_mode, numNullable(set.target_value), set.set_type,
+    set.rest_seconds ?? null, canonCoachNote(set.coach_note),
   ]
 }
 
@@ -290,6 +318,7 @@ function cloneWeeks(weeks: Week[]): Week[] {
         intensity: row.intensity ? { ...row.intensity } : row.intensity,
         intensityBoxes: row.intensityBoxes?.map((box) => ({ ...box })),
         boxes: row.boxes.map((box) => ({ ...box })),
+        opaqueSets: row.opaqueSets?.map((set) => ({ ...set })),
       })),
     })),
   }))
@@ -419,7 +448,7 @@ function serverToRow(exercise: PlanExerciseResponse, local: ExerciseRow | undefi
   const baseReps = sets[0]?.target_reps
   const repsMax = sets[0]?.target_reps_max
   const amrap = sets.some((set) => set.set_type === 'amrap')
-  return {
+  const row: ExerciseRow = {
     id: local?.id ?? exercise.id,
     serverRowId: exercise.id,
     serverSortOrder: exercise.sort_order,
@@ -442,8 +471,11 @@ function serverToRow(exercise: PlanExerciseResponse, local: ExerciseRow | undefi
     ...(legacyRpeSource ? {} : { intensity: uniformLoadMode ? intensity : null }),
     weightMode,
     boxes,
+    opaqueSets: snapshotOpaqueSets(sets),
     note: exercise.notes ?? '',
   }
+  row.opaqueSetBaseline = rowSetGridSignature(row)
+  return row
 }
 
 function errorDetails(error: ApiException): Record<string, unknown> {
@@ -578,7 +610,6 @@ export async function reconcileImportedPlan(
 ): Promise<SaveResult> {
   const server: PlanWithChildren = await getPlan(planId)
   if (options.published || server.status === 'published') throw new ApiException(409, 'PUBLISHED_IMPORT_FORBIDDEN')
-  assertSupportedServerTree(server)
   const endDate = fmtISO(addDays(startDate, weeks.length * 7 - 1))
   // Frozen days must never enter a batch (the whole transaction would 409);
   // out-of-range days carrying logs go through the per-day endpoint instead,
@@ -706,7 +737,7 @@ function workToBatchDay(work: DayWork): BatchPlanDayBody {
           target_weight: set.target_weight ?? null,
         } : {}),
         set_type: set.set_type,
-        rest_seconds: null,
+        rest_seconds: set.rest_seconds ?? null,
         coach_note: set.coach_note ?? null,
       })),
     })),
@@ -730,7 +761,6 @@ async function reconcileFromBaseline(
   planId: string, weeks: Week[], server: PlanWithChildren, onProgress: SaveProgress | undefined,
   options: ReconcileOptions, prelude: BatchPrelude = {},
 ): Promise<SaveResult> {
-  assertSupportedServerTree(server)
   const resultWeeks = cloneWeeks(weeks)
   const origByKey = new Map<string, PlanDayResponse>()
   for (const day of server.days) origByKey.set(`${day.week_number}:${day.day_of_week}`, day)
@@ -762,7 +792,10 @@ async function reconcileFromBaseline(
             const claims = claimBaseline(entries, original.exercises)
             for (const entry of entries) {
               const claim = claims.get(entry.row.id)
-              if (claim) bindClaim(entry.row, claim)
+              if (claim) {
+                bindClaim(entry.row, claim)
+                rememberServerSets(entry.row, claim)
+              }
             }
           }
           continue
@@ -834,7 +867,10 @@ async function reconcileFromBaseline(
         const claims = claimBaseline(work.entries, saved.exercises)
         for (const entry of work.entries) {
           const claim = claims.get(entry.row.id)
-          if (claim) bindClaim(entry.row, claim)
+          if (claim) {
+            bindClaim(entry.row, claim)
+            rememberServerSets(entry.row, claim)
+          }
           entry.row.conflictMessage = null
         }
       }
@@ -870,10 +906,14 @@ async function reconcileFromBaseline(
         entry.row.serverSortOrder = sortOrder
         entry.row.hasLogs = false
         entry.row.conflictMessage = null
+        rememberDesiredSets(entry.row, entry.desired.sets)
       }
       for (const entry of work.entries) {
         const claim = claims.get(entry.row.id)
-        if (claim && !changed.includes(entry)) bindClaim(entry.row, claim)
+        if (claim && !changed.includes(entry)) {
+          bindClaim(entry.row, claim)
+          rememberServerSets(entry.row, claim)
+        }
       }
       if (work.day) {
         const assignedRows = new Map(work.entries.map((entry) => [entry.row.id, assigned.get(entry.row.id)!]))

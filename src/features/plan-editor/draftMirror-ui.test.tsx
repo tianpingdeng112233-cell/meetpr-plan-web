@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { PlanEditor } from './PlanEditor'
 import { createDraftMirror, loadDraftMirror, saveDraftMirror } from './draftMirror'
 import type { ExerciseRow, Week } from './types'
+import { ReconciliationError } from './reconcile'
 
 const pendingApi = vi.hoisted(() => ({
   getPendingRevision: vi.fn(),
@@ -48,6 +49,16 @@ function deferred<T>() {
   let resolve!: (value: T) => void
   const promise = new Promise<T>((res) => { resolve = res })
   return { promise, resolve }
+}
+
+function offerRemoteCandidate(note = 'remote candidate'): void {
+  const candidate = createDraftMirror('plan', {
+    weeks: weeks(note), planStartDate: '2026-01-01', weeksCount: 1,
+  })
+  pendingApi.getPendingRevision.mockResolvedValue({
+    plan_id: candidate.planId, version: candidate.version, content_hash: candidate.contentHash,
+    content: candidate.content, saved_at: candidate.savedAt,
+  })
 }
 
 describe('PlanEditor local draft recovery', () => {
@@ -604,16 +615,12 @@ describe('PlanEditor local draft recovery', () => {
       .toBe('strict edit')
   })
 
-  it('blocks update until the open recovery candidate is restored or discarded', async () => {
-    const candidate = createDraftMirror('plan', {
-      weeks: weeks('remote candidate'), planStartDate: '2026-01-01', weeksCount: 1,
-    })
-    pendingApi.getPendingRevision.mockResolvedValue({
-      plan_id: candidate.planId, version: candidate.version, content_hash: candidate.contentHash,
-      content: candidate.content, saved_at: candidate.savedAt,
-    })
+  it('updates from the current page and clears an open recovery candidate', async () => {
+    offerRemoteCandidate()
     const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
-    const onSave = vi.fn()
+    const onSave = vi.fn(async (saved: Week[]) => ({
+      changedDays: 1, degradedRows: 0, skippedRows: 0, weeks: saved,
+    }))
 
     await act(async () => {
       root.render(
@@ -624,12 +631,46 @@ describe('PlanEditor local draft recovery', () => {
     })
     pendingApi.deletePendingRevision.mockClear()
 
-    act(() => click(host, '更新计划'))
+    await act(async () => {
+      click(host, '更新计划')
+      await Promise.resolve()
+      await Promise.resolve()
+    })
 
-    expect(confirm).toHaveBeenCalledWith(expect.stringContaining('请先在提示条选择「恢复」或「丢弃」'))
-    expect(onSave).not.toHaveBeenCalled()
+    expect(confirm).toHaveBeenCalledWith(expect.stringContaining('页面内容将覆盖云端暂存的候选'))
+    expect(onSave).toHaveBeenCalledTimes(1)
+    expect(onSave.mock.calls[0][0][0].days[0].rows[0].note).toBe('server')
+    expect(pendingApi.deletePendingRevision).toHaveBeenCalledWith('plan')
+    expect(host.querySelector('[data-testid="draft-mirror-banner"]')).toBeNull()
+    expect(host.querySelector('[data-testid="plan-save-status"]')?.textContent).toContain('已更新 学员 的计划')
+  })
+
+  it('keeps the recovery candidate when updating the current page fails', async () => {
+    offerRemoteCandidate()
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    vi.spyOn(window, 'alert').mockImplementation(() => {})
+    const onSave = vi.fn().mockRejectedValue(new ReconciliationError('PLAN_SET_SPEC_INCOMPLETE'))
+
+    await act(async () => {
+      root.render(
+        <PlanEditor initialWeeks={weeks('server')} weeksCount={1} planStartDate="2026-01-01"
+          studentName="学员" planName="计划" currentPlanId="plan" initialPublished onSave={onSave} />,
+      )
+      await Promise.resolve()
+    })
+    pendingApi.deletePendingRevision.mockClear()
+
+    await act(async () => {
+      click(host, '更新计划')
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(onSave).toHaveBeenCalledTimes(1)
     expect(pendingApi.deletePendingRevision).not.toHaveBeenCalled()
     expect(host.querySelector('[data-testid="draft-mirror-banner"]')).not.toBeNull()
+    expect(host.querySelector('[data-testid="plan-save-status"]')?.textContent)
+      .not.toContain('已更新 学员 的计划')
   })
 
   it('blocks update while the remote recovery GET is still pending', () => {

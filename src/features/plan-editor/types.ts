@@ -1,4 +1,4 @@
-import type { LoadModeWire, PctAnchorWire } from '../../api/types'
+import type { IntensityModeWire, LoadModeWire, PctAnchorWire, SetType } from '../../api/types'
 
 export type IntensityMode = 'kg' | 'rpe' | 'bodyweight'
 
@@ -20,6 +20,52 @@ export interface RowIntensity {
 export interface SetBox {
   val: string
   empty: boolean
+}
+
+/** Lossless server-set provenance for fields the row grid cannot display. */
+export interface OpaqueSetSpec {
+  set_number: number
+  target_reps: number
+  target_reps_max: number | null
+  intensity_mode?: IntensityModeWire
+  target_value?: string
+  load_mode?: LoadModeWire | null
+  target_pct?: string | null
+  pct_anchor?: PctAnchorWire | null
+  target_rpe?: string | null
+  rir_target?: string | number | null
+  rpe_low?: string | null
+  rpe_high?: string | null
+  weight_low?: string | null
+  weight_high?: string | null
+  target_weight?: string | null
+  set_type: SetType
+  rest_seconds: number | null
+  coach_note: string | null
+}
+
+/** Strip response identity fields while retaining every writable set field. */
+export function snapshotOpaqueSets(sets: readonly OpaqueSetSpec[]): OpaqueSetSpec[] {
+  return [...sets].sort((a, b) => a.set_number - b.set_number).map((set) => ({
+    set_number: set.set_number,
+    target_reps: set.target_reps,
+    target_reps_max: set.target_reps_max,
+    intensity_mode: set.intensity_mode,
+    target_value: set.target_value,
+    load_mode: set.load_mode,
+    target_pct: set.target_pct,
+    pct_anchor: set.pct_anchor,
+    target_rpe: set.target_rpe,
+    rir_target: set.rir_target,
+    rpe_low: set.rpe_low,
+    rpe_high: set.rpe_high,
+    weight_low: set.weight_low,
+    weight_high: set.weight_high,
+    target_weight: set.target_weight,
+    set_type: set.set_type,
+    rest_seconds: set.rest_seconds,
+    coach_note: set.coach_note,
+  }))
 }
 
 /** One exercise line inside a day. */
@@ -65,7 +111,45 @@ export interface ExerciseRow {
   weightMode?: WeightMode
   /** One slot per set. In the new model these are concrete target weights. */
   boxes: SetBox[]
+  /** Original per-set wire data, retained so unsupported fields round-trip losslessly. */
+  opaqueSets?: OpaqueSetSpec[]
+  /** Grid-owned set fields at the time `opaqueSets` were captured. */
+  opaqueSetBaseline?: string
   note: string
+}
+
+/** Stable comparison of the set fields the grid can actually edit. */
+export function rowSetGridSignature(row: Pick<
+  ExerciseRow,
+  'reps' | 'mode' | 'legacyWeightSource' | 'intensity' | 'pctAnchor'
+  | 'intensityMode' | 'intensityBoxes' | 'weightMode' | 'boxes'
+>): string {
+  return JSON.stringify({
+    reps: row.reps,
+    mode: row.mode,
+    legacyWeightSource: row.legacyWeightSource ?? false,
+    intensity: row.intensity ?? null,
+    pctAnchor: row.pctAnchor ?? null,
+    intensityMode: row.intensityMode ?? null,
+    intensityBoxes: row.intensityBoxes ?? null,
+    weightMode: row.weightMode ?? null,
+    boxes: row.boxes,
+  })
+}
+
+/** Whether the retained server provenance contains settings hidden by the grid. */
+export function hasOpaqueSetSettings(row: ExerciseRow): boolean {
+  const sets = row.opaqueSets
+  if (!sets?.length) return false
+  const first = sets[0]
+  const lastIndex = sets.length - 1
+  return sets.some((set, index) => (
+    set.target_reps !== first.target_reps
+    || set.target_reps_max !== first.target_reps_max
+    || set.rest_seconds != null
+    || (row.mode !== 'bodyweight' && set.coach_note != null)
+    || set.set_type !== (row.reps.includes('+') && index === lastIndex ? 'amrap' : 'working')
+  ))
 }
 
 export interface DayCol {

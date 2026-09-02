@@ -1,5 +1,6 @@
 import type { PlanWithChildren, PlanExerciseResponse, PlanDayResponse } from '../../api/types'
 import type { Week, DayCol, ExerciseRow, IntensityValueMode, RowIntensity, SetBox, WeightMode } from './types'
+import { rowSetGridSignature, snapshotOpaqueSets } from './types'
 import { fmt, localizedArray, S } from '../../i18n/strings'
 import { zhCommon } from '../../i18n/strings-common'
 import { STABLE_ZH } from '../../i18n/stable-zh'
@@ -54,6 +55,14 @@ function weightModeForBoxes(boxes: SetBox[]): WeightMode {
 function intensityModeForBoxes(boxes: SetBox[]): IntensityValueMode {
   const values = boxes.map((box) => box.empty || box.val === '' ? '<empty>' : box.val)
   return new Set(values).size > 1 ? 'per_set' : 'uniform'
+}
+
+function withOpaqueSets(row: ExerciseRow, sets: PlanExerciseResponse['sets']): ExerciseRow {
+  return {
+    ...row,
+    opaqueSets: snapshotOpaqueSets(sets),
+    opaqueSetBaseline: rowSetGridSignature(row),
+  }
 }
 
 export function addDays(iso: string, days: number): Date {
@@ -246,7 +255,7 @@ function mapExercise(ex: PlanExerciseResponse, catalog: Catalog): ExerciseRow {
   const reps = repsMax != null && repsMax > baseReps
     ? `${baseReps}-${repsMax}`
     : hasAmrap ? `${baseReps}+` : String(baseReps)
-  return {
+  return withOpaqueSets({
     id: ex.id, serverRowId: ex.id, serverSortOrder: ex.sort_order,
     hasLogs: ex.has_logs ?? false, conflictMessage: null,
     exerciseId: ex.exercise_id, name, ...(entry?.nameEn ? { nameEn: entry.nameEn } : {}), ku: !custom, custom, isMain: ex.is_main_lift,
@@ -267,7 +276,7 @@ function mapExercise(ex: PlanExerciseResponse, catalog: Catalog): ExerciseRow {
     weightMode: weightModeForBoxes(boxes),
     boxes,
     note: ex.notes ?? '',
-  }
+  }, sets)
 }
 
 export function mapPlanToWeeks(plan: PlanWithChildren, catalog: Catalog): Week[] {
