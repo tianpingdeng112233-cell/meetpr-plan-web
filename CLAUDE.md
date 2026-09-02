@@ -58,6 +58,7 @@
 - **后端全局限流 100 req/min。** 一次 xlsx 导入会 reconcile 成几百个 per-set 写请求，单次导入就能打爆窗口。`src/api/client.ts` 里有 `rawRetrying`：撞 429 时按服务器 `Retry-After` / `RateLimit-Reset` 退避、有上限重试（429 是在 handler 前就被拒的，请求没生效，重试安全）。**这套退避只在 main 血脉里有，feat/002 tip 缺**（见 ①）。
 - **reconcile 按天 delete + recreate，非事务。** 发布/更新时 [`src/features/plan-editor/reconcile.ts`](src/features/plan-editor/reconcile.ts) 对每一天先删后建。中途失败（比如正好撞限流且退避耗尽）可能留下**半更新**状态——某些天已删未重建。改这块逻辑时保住这个隐患意识：没有原子回滚。
 - **发布门禁 422 `PLAN_PUBLISH_INCOMPLETE`。** 后端拒绝发布「不完整」的计划：含零组动作、或空训练日等。前端目前对这个 422 的 UX 处理不完善（见 ⑤）。
+- **「≠」行 = 含 App 设定的逐组设置（休息/逐组次数/组备注）。** 网格表达不了这些字段，保存/更新时按行原样透传（`reconcile.ts` opaque 快照）：没改的行逐组原样回写；改过的行以网格为准、休息/备注按组序号保留、逐组不同的次数会被统一。别再引入「整份拒写」（PLAN_REQUIRES_NATIVE_EDITOR 已于 2026-09-02 删除，#99）。
 - **未绑定行静默跳过。** 填了动作名/重量但名字后没 ✓（没绑定到 catalog）的行，保存/发布时被跳过、不写入。前端会 `confirm` 提示行数并在状态栏报「N 行未绑定被跳过」，但很容易被忽略——排查「学员看不到某个动作」时先查这个。
 
 ---
