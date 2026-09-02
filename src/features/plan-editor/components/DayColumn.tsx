@@ -1,6 +1,6 @@
 import { useLayoutEffect, useRef, useState } from 'react'
 import type { DayCol, ColWidths, ColKey, ExerciseRow } from '../types'
-import { COLS, isRestDay } from '../types'
+import { COLS, hasOpaqueSetSettings, isRestDay } from '../types'
 import {
   filterRepsInput,
   filterStrengthInput,
@@ -913,6 +913,9 @@ export function DayColumn({
                   />
                   {row.ku && <span className="row-mark bound">✓</span>}
                   {row.custom && <span className="row-mark custom">{S.editor.customMark}</span>}
+                  {hasOpaqueSetSettings(row) && (
+                    <span className="row-mark opaque-set" title={S.editor.opaqueSetSettingsHint}>≠</span>
+                  )}
                   {row.hasLogs && (
                     <span className="row-mark locked" title={row.conflictMessage ?? S.editor.rowLocked}>{S.editor.lockedMark}</span>
                   )}

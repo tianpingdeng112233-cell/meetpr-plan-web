@@ -474,6 +474,7 @@ export interface CreatePlanSetBody {
   weight_high?: string | null
   target_weight?: string | null
   set_type: SetType
+  rest_seconds?: number | null
   coach_note?: string | null
 }
 

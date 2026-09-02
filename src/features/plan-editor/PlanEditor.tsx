@@ -1960,7 +1960,6 @@ export function PlanEditor(props: PlanEditorProps) {
         // Client-side refusals are permanent for this plan state — a generic
         // "重试" both misleads and hides the way out.
         const explain: Record<ReconciliationError['code'], [string, string]> = {
-          PLAN_REQUIRES_NATIVE_EDITOR: [S.editor.nativeEditorSaveTitle, S.editor.nativeEditorDetail],
           PLAN_SET_SPEC_INCOMPLETE: [S.editor.incompleteSaveTitle, S.editor.incompleteSaveDetail],
         }
         const [status, detail] = explain[error.code]
@@ -2139,10 +2138,6 @@ export function PlanEditor(props: PlanEditorProps) {
         window.alert(S.editor.checkingRemoteBeforeUpdate)
         return
       }
-      if (recoveryMirror) {
-        window.confirm(S.editor.resolveRecoveryBeforeUpdate)
-        return
-      }
       // 更新计划: reconciles in place, changing what the student sees right now — confirm first.
       // This is the ONLY way a published plan is persisted: an explicit, confirmed, one-shot write
       // that never enters the autosave queue, so nothing can later replay it (e.g. an unmount flush).
@@ -2151,7 +2146,8 @@ export function PlanEditor(props: PlanEditorProps) {
       const unboundLine = unboundRows > 0
         ? S.editor.updateUnboundNote(unboundRows)
         : ''
-      if (!window.confirm(S.editor.updatePublishedConfirm(planName, studentName, unboundLine))) return
+      const recoveryLine = recoveryMirror ? `\n${S.editor.updateRecoveryOverwriteNote}` : ''
+      if (!window.confirm(S.editor.updatePublishedConfirm(planName, studentName, `${unboundLine}${recoveryLine}`))) return
       setSaving(true); setStatusText(S.editor.updating)
       // Transient failures (network, 5xx, exhausted 429 back-off) get ONE automatic
       // retry; reconcile re-baselines against the server first, so replaying it is
@@ -2172,6 +2168,7 @@ export function PlanEditor(props: PlanEditorProps) {
             // degradedRows is structurally 0 here — the pre-039 covered-mark rule stands.
             if (res.skippedRows === 0) {
               markMirrorCovered(mirrorContent(res.weeks, persistedPlanStart.current, props.weeksCount))
+              setRecoveryMirror(null)
             }
             applySuccessfulSave(res, savedWeeks)
             if (res.skippedRows > 0) {
@@ -2196,7 +2193,6 @@ export function PlanEditor(props: PlanEditorProps) {
             }
             if (error instanceof ReconciliationError) {
               const explain: Record<ReconciliationError['code'], [string, string]> = {
-                PLAN_REQUIRES_NATIVE_EDITOR: [S.editor.nativeEditorUpdateTitle, S.editor.nativeEditorDetail],
                 PLAN_SET_SPEC_INCOMPLETE: [S.editor.incompleteSaveTitle, S.editor.incompleteUpdateDetail],
               }
               const [status, detail] = explain[error.code]

@@ -2727,6 +2727,7 @@ textarea {
 .row-mark.custom { padding: 0 3px; border: 1px solid var(--tint-bd); border-radius: var(--r-sm); color: var(--ink); background: var(--tint); }
 .row-mark.locked { padding: 0 3px; border: 1px solid var(--line); border-radius: var(--r-sm); color: var(--faint); cursor: help; }
 .row-mark.conflict { color: var(--warn); cursor: help; }
+.row-mark.opaque-set { padding: 0 3px; border: 1px solid var(--line); border-radius: var(--r-sm); color: var(--mut); cursor: help; }
 .tierhead {
   min-width: 0;
   padding: 4px 8px;
