@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import type { PlanStatus } from '../../../api/types'
-import { shiftISODate, type StudentPlanCursor } from '../mapping'
+import type { PlanShiftSummary, PlanStatus } from '../../../api/types'
+import { planShiftNoticeText, shiftISODate, type StudentPlanCursor } from '../mapping'
 import { mmdd, WeekdayDateSelector } from './PlanCalendarControls'
 import { S } from '../../../i18n/strings'
 import { StudentPlanCursorBadges } from './StudentPlanCursorBadges'
@@ -47,6 +47,8 @@ interface Props {
   issueHint?: string
   onJumpIssue?: () => void
   totalShiftDays?: number
+  latestShift?: PlanShiftSummary | null
+  onUndoShift?: () => void | Promise<void>
   studentPlanCursor?: StudentPlanCursor | null
 }
 
@@ -184,6 +186,7 @@ export function TopBar(p: Props) {
   const planAnchorRef = useRef<HTMLSpanElement>(null)
   const connected = !!p.students
   const close = () => setMenu(null)
+  const shiftNotice = planShiftNoticeText(p.totalShiftDays ?? 0, p.latestShift ?? null)
 
   return (
     <div
@@ -244,13 +247,29 @@ export function TopBar(p: Props) {
         )}
       </span>
 
-      {(p.totalShiftDays ?? 0) > 0 && (
+      {shiftNotice && (
         <span data-plan-shift-notice="" style={{
           display: 'inline-flex', alignItems: 'center', padding: '5px 10px',
           background: 'var(--warn-soft)', color: 'var(--warn)', border: '1px solid var(--warn)',
           borderRadius: 'var(--r-sm)', fontSize: 11, fontWeight: 600, lineHeight: 1, whiteSpace: 'nowrap',
         }}>
-          {S.editor.studentShifted(p.totalShiftDays ?? 0)}
+          {shiftNotice}
+          {p.latestShift && p.onUndoShift && (
+            <>
+              <span aria-hidden="true"> · </span>
+              <button
+                type="button"
+                data-plan-shift-undo=""
+                onClick={() => { void p.onUndoShift?.() }}
+                style={{
+                  padding: 0, border: 0, color: 'inherit', background: 'transparent',
+                  font: 'inherit', textDecoration: 'underline', cursor: 'pointer',
+                }}
+              >
+                {S.editor.undoShift}
+              </button>
+            </>
+          )}
         </span>
       )}
       <span className="plan-context-spacer" />

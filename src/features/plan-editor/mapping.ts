@@ -1,4 +1,10 @@
-import type { PlanWithChildren, PlanExerciseResponse, PlanDayResponse } from '../../api/types'
+import type {
+  PlanWithChildren,
+  PlanExerciseResponse,
+  PlanDayResponse,
+  PlanShiftSummary,
+  ShiftPlanResponse,
+} from '../../api/types'
 import type { Week, DayCol, ExerciseRow, IntensityValueMode, RowIntensity, SetBox, WeightMode } from './types'
 import { rowSetGridSignature, snapshotOpaqueSets } from './types'
 import { fmt, localizedArray, S } from '../../i18n/strings'
@@ -97,6 +103,97 @@ export function planDayDowLabel(startDate: string, weekNumber: number, dow: numb
 
 export function planWeekRangeLabel(startDate: string, weekNumber: number): string {
   return `${planDayDateLabel(startDate, weekNumber, 0)} – ${planDayDateLabel(startDate, weekNumber, 6)}`
+}
+
+export function planShiftNoticeText(
+  totalShiftDays: number,
+  latestShift: PlanShiftSummary | null,
+): string | null {
+  if (totalShiftDays === 0) return null
+  if (latestShift?.actor_role === 'coach') {
+    return S.editor.coachShiftNotice(latestShift.offset_days, mdLabel(addDays(latestShift.anchor_date, 0)))
+  }
+  return S.editor.studentShiftNotice(latestShift?.offset_days ?? totalShiftDays)
+}
+
+export function recommendedDateForDay(startDate: string, weekNumber: number, day: DayCol): string {
+  return day.shiftedToDate ?? isoDate(planDayDate(startDate, weekNumber, day.dow))
+}
+
+function relabelDaySchedule(
+  day: DayCol,
+  startDate: string,
+  weekNumber: number,
+  shiftedToDate: string | null,
+): DayCol {
+  const originalDate = isoDate(planDayDate(startDate, weekNumber, day.dow))
+  const effectiveShift = shiftedToDate && shiftedToDate !== originalDate ? shiftedToDate : null
+  const displayDate = addDays(effectiveShift ?? originalDate, 0)
+  return {
+    ...day,
+    dowLabel: dowLabel(displayDate),
+    dateLabel: mdLabel(displayDate),
+    shiftedToDate: effectiveShift,
+    shiftBadge: effectiveShift ? {
+      originalDate,
+      days: dateOnlyDiff(originalDate, effectiveShift),
+    } : null,
+  }
+}
+
+function withEffectiveWeekRange(week: Week, startDate: string): Week {
+  const projectedDates = week.days.map((day) => recommendedDateForDay(startDate, week.num, day))
+  const fallbackStart = isoDate(planDayDate(startDate, week.num, 0))
+  const fallbackEnd = isoDate(planDayDate(startDate, week.num, 6))
+  const rangeStart = projectedDates.reduce(
+    (earliest, effective) => effective < earliest ? effective : earliest,
+    projectedDates[0] ?? fallbackStart,
+  )
+  const rangeEnd = projectedDates.reduce(
+    (latest, effective) => effective > latest ? effective : latest,
+    projectedDates[0] ?? fallbackEnd,
+  )
+  return { ...week, range: `${mdLabel(addDays(rangeStart, 0))} – ${mdLabel(addDays(rangeEnd, 0))}` }
+}
+
+/** Apply a successful shift response without touching rows, history, or draft mirrors. */
+export function applyShiftedDaysToWeeks(
+  weeks: Week[],
+  startDate: string,
+  shiftedDays: ShiftPlanResponse['shifted_days'],
+): Week[] {
+  const shiftedById = new Map(shiftedDays.map((day) => [day.day_id, day.shifted_to_date]))
+  return weeks.map((week) => withEffectiveWeekRange({
+    ...week,
+    days: week.days.map((day) => {
+      const shifted = day.serverDayId ? shiftedById.get(day.serverDayId) : undefined
+      return shifted === undefined
+        ? day
+        : relabelDaySchedule(day, startDate, week.num, shifted)
+    }),
+  }, startDate))
+}
+
+/** Reconcile only backend-owned schedule metadata after GET /plans/:id. */
+export function syncPlanScheduleToWeeks(weeks: Week[], plan: PlanWithChildren): Week[] {
+  const bySlot = new Map(plan.days.map((day) => [`${day.week_number}:${day.day_of_week - 1}`, day]))
+  return weeks.map((week) => withEffectiveWeekRange({
+    ...week,
+    days: week.days.map((day) => {
+      const serverDay = bySlot.get(`${week.num}:${day.dow}`)
+      const relabelled = relabelDaySchedule(
+        day,
+        plan.start_date,
+        week.num,
+        serverDay?.shifted_to_date ?? null,
+      )
+      return {
+        ...relabelled,
+        serverDayId: serverDay?.id ?? null,
+        completedAt: serverDay?.completed_at ?? null,
+      }
+    }),
+  }, plan.start_date))
 }
 
 export function currentPlanWeek(startDate: string): number {
@@ -298,36 +395,32 @@ export function mapPlanToWeeks(plan: PlanWithChildren, catalog: Catalog): Week[]
     const dayMap = byWeek.get(w)
     const days: DayCol[] = []
     for (let dow = 0; dow < 7; dow++) {
-      const originalDate = isoDate(planDayDate(plan.start_date, w, dow))
       const serverDay = dayMap?.get(dow + 1)
-      const shiftedToDate = serverDay?.shifted_to_date != null
-        && serverDay.shifted_to_date !== originalDate
-        ? serverDay.shifted_to_date
-        : null
-      const displayDate = shiftedToDate ? addDays(shiftedToDate, 0) : planDayDate(plan.start_date, w, dow)
-      const dateLabel = mdLabel(displayDate)
-      const displayDowLabel = dowLabel(displayDate)
-      const shiftBadge = shiftedToDate
-        ? { originalDate, days: dateOnlyDiff(originalDate, shiftedToDate) }
-        : null
       const exs = serverDay?.exercises
-      if (!exs || exs.length === 0) {
-        days.push({ dow, dowLabel: displayDowLabel, dateLabel, shiftedToDate, shiftBadge, rest: true, rows: [] })
-      } else {
-        days.push({
-          dow, dowLabel: displayDowLabel, dateLabel, shiftedToDate, shiftBadge,
-          rest: false, rows: exs.map((e) => mapExercise(e, catalog)),
-        })
+      const day: DayCol = {
+        dow,
+        dowLabel: '',
+        dateLabel: '',
+        serverDayId: serverDay?.id ?? null,
+        completedAt: serverDay?.completed_at ?? null,
+        rest: !exs || exs.length === 0,
+        rows: exs?.map((exercise) => mapExercise(exercise, catalog)) ?? [],
       }
+      days.push(relabelDaySchedule(
+        day,
+        plan.start_date,
+        w,
+        serverDay?.shifted_to_date ?? null,
+      ))
     }
-    weeks.push({
+    weeks.push(withEffectiveWeekRange({
       num: w,
       num2: String(w).padStart(2, '0'),
-      range: planWeekRangeLabel(plan.start_date, w),
+      range: '',
       isCurrent: w === curWeek,
       vol: '',
       days,
-    })
+    }, plan.start_date))
   }
   return weeks
 }

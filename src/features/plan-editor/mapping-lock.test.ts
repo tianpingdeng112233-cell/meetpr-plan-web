@@ -7,7 +7,7 @@ function plan(hasLogs?: boolean): PlanWithChildren {
     id: 'p', coach_id: 'c', trainee_id: 't', name: 'p', start_date: '2026-01-01',
     end_date: '2026-01-07', plan_weeks: 1, source: 'coach', source_template_id: null,
     status: 'draft', kind: 'regular', created_at: '', updated_at: '',
-    total_shift_days: 0, latest_shift_created_at: null,
+    total_shift_days: 0, latest_shift_created_at: null, latest_shift: null,
     days: [{
       id: 'd', plan_id: 'p', day_of_week: 1, week_number: 1, sort_order: 0,
       shifted_to_date: null,

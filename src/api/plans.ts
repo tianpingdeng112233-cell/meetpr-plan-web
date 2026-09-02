@@ -3,6 +3,7 @@ import type {
   CoachStudent, StudentOnboardingProfile, PlanResponse, PlanWithChildren, PlanStatus,
   CreatePlanBody, CreatePlanExerciseBody, CreatePlanSetBody,
   BatchPlanDaysBody, PlanExerciseResponse, PlanSetResponse,
+  ShiftPlanResponse,
 } from './types'
 
 export const getCoachStudents = () =>
@@ -35,6 +36,9 @@ export const patchPlan = (
 ) => api.patch<PlanResponse>(`/plans/${planId}`, body)
 export const deletePlan = (planId: string) => api.del<void>(`/plans/${planId}`)
 export const publishPlan = (planId: string) => api.post<PlanResponse>(`/plans/${planId}/publish`)
+export const shiftPlan = (planId: string, body: { anchor_date: string; offset_days: number }) =>
+  api.post<ShiftPlanResponse>(`/plans/${planId}/shift`, body)
+export const undoPlanShift = (planId: string) => api.del<void>(`/plans/${planId}/shift`)
 /**
  * Persist an imported plan's past sessions as *assumed* completions. Assumed
  * records stay distinguishable from live logs (`assumed`/「导」tag) and DO count

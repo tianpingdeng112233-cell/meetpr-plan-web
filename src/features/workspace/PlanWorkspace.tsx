@@ -914,6 +914,12 @@ export function PlanWorkspace({ onLogout, me }: Props) {
         planUpdatedAt={loaded?.plan.updated_at}
         planStatus={loaded?.plan.status}
         totalShiftDays={loaded?.plan.total_shift_days}
+        latestShift={loaded?.plan.latest_shift}
+        onPlanRefreshed={catalog ? (plan) => {
+          setLoaded((current) => current?.plan.id === plan.id
+            ? { plan, weeks: mapPlanToWeeks(plan, catalog), weeksCount: plan.plan_weeks }
+            : current)
+        } : undefined}
         studentPlanCursor={studentPlanCursor}
         readOnly={historicalReadOnly}
         initialPublished={loaded?.plan.status === 'published'}

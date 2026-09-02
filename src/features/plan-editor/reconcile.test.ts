@@ -84,7 +84,7 @@ function serverPlan(days: PlanDayResponse[], status: 'draft' | 'published' = 'pu
     id: 'p', coach_id: 'c', trainee_id: 't', name: '计划', start_date: '2026-01-01',
     end_date: '2026-01-07', plan_weeks: 1, source: 'coach', source_template_id: null,
     status, kind: 'regular', created_at: '', updated_at: '',
-    total_shift_days: 0, latest_shift_created_at: null, days,
+    total_shift_days: 0, latest_shift_created_at: null, latest_shift: null, days,
   }
 }
 

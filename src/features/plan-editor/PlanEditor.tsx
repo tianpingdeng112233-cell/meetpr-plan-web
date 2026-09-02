@@ -4,6 +4,7 @@ import { COL_DEFAULTS, COL_MIN, isContentfulUnbound, isRestDay } from './types'
 import { getBoundRowInputIssue, type BoundRowInputIssue } from './inputGuard'
 import { groupActualsByExercise, type ActualSet } from './actuals'
 import { getStudentSetLogs } from '../../api/coach'
+import { getPlan, shiftPlan, undoPlanShift } from '../../api/plans'
 import {
   isSingleValueIntensity,
   materializeIntensityRow,
@@ -21,14 +22,31 @@ import { ExercisePopover } from './components/ExercisePopover'
 import { CustomExerciseDialog } from './components/CustomExerciseDialog'
 import type { ExerciseIndex, ExerciseHit } from './exerciseIndex'
 import type { CreateCustomExerciseInput } from '../../api/exercises'
-import type { ExerciseResponse, ExerciseStatsOverview, PlanStatus, StudentOnboardingProfile } from '../../api/types'
+import type {
+  ExerciseResponse,
+  ExerciseStatsOverview,
+  PlanShiftSummary,
+  PlanStatus,
+  PlanWithChildren,
+  StudentOnboardingProfile,
+} from '../../api/types'
 import type { ParsedWeek } from './import'
 import {
   LockedRowMutationError, ReconcileConflict, ReconciliationError, type SaveResult,
 } from './reconcile'
 import { createSaveController } from './autosave'
 import { parseClipboardRows, serializeDayForClipboard, serializeRowsForClipboard } from './clipboard'
-import { isoDate, relabelWeeksForStartDate, resizeWeeksForCount, type StudentPlanCursor } from './mapping'
+import {
+  addDays,
+  applyShiftedDaysToWeeks,
+  isoDate,
+  mdLabel,
+  recommendedDateForDay,
+  relabelWeeksForStartDate,
+  resizeWeeksForCount,
+  syncPlanScheduleToWeeks,
+  type StudentPlanCursor,
+} from './mapping'
 import { dayMoveDisabledReason, moveDayInWeek } from './dayMove'
 import { compareWeekMetric, summarizeWeek } from './weeklySummary'
 import { WeekCapacitySummary } from './components/WeekCapacitySummary'
@@ -96,6 +114,9 @@ export interface PlanEditorProps {
   initialPublished?: boolean
   planStatus?: PlanStatus
   totalShiftDays?: number
+  latestShift?: PlanShiftSummary | null
+  /** Keeps the parent-owned server snapshot current after shift/undo refreshes. */
+  onPlanRefreshed?: (plan: PlanWithChildren) => void
   /** Read-only athlete progress cursor derived from the active published plan. */
   studentPlanCursor?: StudentPlanCursor | null
   /** Completed/paused historical plans render as a true non-persisting viewer. */
@@ -548,6 +569,8 @@ export function PlanEditor(props: PlanEditorProps) {
   const [statusText, setStatusText] = useState(readOnly
     ? S.editor.readOnlyStatus(props.planStatus === 'completed' ? S.common.completed : S.common.paused)
     : initialPublished ? S.editor.publishedTo(studentName) : S.editor.draftSavedInitial)
+  const [totalShiftDays, setTotalShiftDays] = useState(props.totalShiftDays ?? 0)
+  const [latestShift, setLatestShift] = useState<PlanShiftSummary | null>(props.latestShift ?? null)
   const [degradedSaveStatus, setDegradedSaveStatus] = useState<{ base: string; count: number } | null>(null)
   // W1 calendar/delete controls are draft-only. Keep this separate from main's
   // `published` flag, which drives explicit in-place updates for spec 004.
@@ -570,6 +593,9 @@ export function PlanEditor(props: PlanEditorProps) {
   const initialVisibleWeekIndex = Math.max(0, initialWeeks.findIndex((week) => week.isCurrent))
   const [visibleWeekIndex, setVisibleWeekIndex] = useState(initialVisibleWeekIndex)
 
+  useEffect(() => { setTotalShiftDays(props.totalShiftDays ?? 0) }, [props.totalShiftDays])
+  useEffect(() => { setLatestShift(props.latestShift ?? null) }, [props.latestShift])
+
   const rootRef = useRef<HTMLDivElement>(null)
   const scrollerRef = useRef<HTMLDivElement>(null)
   const weeksRef = useRef<HTMLDivElement>(null)
@@ -587,6 +613,7 @@ export function PlanEditor(props: PlanEditorProps) {
   const suppressDayClickRef = useRef(false)
   const dayMoveCleanupRef = useRef<((updateVisual?: boolean) => void) | null>(null)
   const visibleWeekRef = useRef<number | null>(null)
+  const skipNextScheduleAutosave = useRef(false)
   useEffect(() => () => dayMoveCleanupRef.current?.(false), [])
 
   useEffect(() => {
@@ -609,6 +636,68 @@ export function PlanEditor(props: PlanEditorProps) {
       setPlanStartDate(props.planStartDate ?? null)
     }
   }, [props.planStartDate])
+
+  const applyRefreshedShiftPlan = useCallback((plan: PlanWithChildren) => {
+    skipNextScheduleAutosave.current = true
+    setWeeks((current) => syncPlanScheduleToWeeks(current, plan))
+    setTotalShiftDays(plan.total_shift_days)
+    setLatestShift(plan.latest_shift)
+    props.onPlanRefreshed?.(plan)
+  }, [props.onPlanRefreshed])
+
+  const refreshShiftPlan = useCallback(async () => {
+    if (!props.currentPlanId) return null
+    const plan = await getPlan(props.currentPlanId)
+    applyRefreshedShiftPlan(plan)
+    return plan
+  }, [applyRefreshedShiftPlan, props.currentPlanId])
+
+  const handlePlanShift = useCallback(async (anchorDate: string, offsetDays: number) => {
+    const id = props.currentPlanId
+    const startDate = currentPlanStart.current
+    if (!id || !startDate) throw new Error('PLAN_SHIFT_CONTEXT_MISSING')
+    let response
+    try {
+      response = await shiftPlan(id, { anchor_date: anchorDate, offset_days: offsetDays })
+    } catch (caught) {
+      if (caught instanceof ApiException && caught.status === 409 && caught.code === 'SHIFT_NO_TARGET_DAYS') {
+        await refreshShiftPlan().catch(() => null)
+      }
+      throw caught
+    }
+    skipNextScheduleAutosave.current = true
+    setWeeks((current) => applyShiftedDaysToWeeks(current, startDate, response.shifted_days))
+    setTotalShiftDays(response.total_shift_days)
+    setLatestShift({
+      batch_id: response.batch_id,
+      actor_role: 'coach',
+      anchor_date: response.anchor_date,
+      offset_days: response.offset_days,
+      created_at: new Date().toISOString(),
+    })
+    await refreshShiftPlan().catch(() => null)
+    setStatusText(S.editor.shiftSucceeded(offsetDays))
+  }, [props.currentPlanId, refreshShiftPlan])
+
+  const handleUndoPlanShift = useCallback(async () => {
+    const id = props.currentPlanId
+    const batch = latestShift
+    if (!id || !batch) return
+    if (!window.confirm(S.editor.undoShiftConfirm(
+      mdLabel(addDays(batch.anchor_date, 0)),
+      batch.offset_days,
+    ))) return
+    try {
+      await undoPlanShift(id)
+      await refreshShiftPlan()
+    } catch (caught) {
+      if (caught instanceof ApiException && caught.status === 409 && caught.code === 'NO_ACTIVE_SHIFT') {
+        await refreshShiftPlan().catch(() => null)
+        return
+      }
+      setStatusText(S.editor.undoShiftFailed)
+    }
+  }, [latestShift, props.currentPlanId, refreshShiftPlan])
 
   const setWeeksWithHistory = useCallback((update: WeeksUpdate) => {
     if (readOnly) return
@@ -1984,6 +2073,7 @@ export function PlanEditor(props: PlanEditorProps) {
     prevWeeksRef.current = weeks
     if (skipFirstAutosave.current) { skipFirstAutosave.current = false; return } // ignore the initial load
     if (applyingSavedWeeks.current) { applyingSavedWeeks.current = false; return }
+    if (skipNextScheduleAutosave.current) { skipNextScheduleAutosave.current = false; return }
     if (skipNextAutosave.current) { skipNextAutosave.current = false; return }
     // Only a real edit marks content unsaved — this effect also fires when `published`
     // flips (same weeks identity), which must not re-arm the guard.
@@ -2438,6 +2528,50 @@ export function PlanEditor(props: PlanEditorProps) {
     }
     return undefined
   }
+  const shiftControlForDay = (week: Week, day: DayCol) => {
+    if (
+      props.planStatus !== 'published'
+      || sel?.wnum !== week.num
+      || sel.dow !== day.dow
+      || !day.serverDayId
+      || !planStartDate
+    ) return undefined
+    const dayOrdinal = trainingDayOrdinal(week, day.dow)
+    if (dayOrdinal == null) return undefined
+    const anchorDate = recommendedDateForDay(planStartDate, week.num, day)
+    const trainingDays = weeks.flatMap((candidateWeek) => candidateWeek.days
+      .filter((candidateDay) => !!candidateDay.serverDayId)
+      .map((candidateDay) => ({
+        day: candidateDay,
+        date: recommendedDateForDay(planStartDate, candidateWeek.num, candidateDay),
+      })))
+    const affectedDays = trainingDays.filter(({ day: candidateDay, date }) => (
+      candidateDay.completedAt == null && date >= anchorDate
+    )).length
+    const completedDays = trainingDays.filter(({ day: candidateDay, date }) => (
+      candidateDay.completedAt != null && date >= anchorDate
+    )).length
+    const periodEndDate = trainingDays.reduce(
+      (latest, candidate) => candidate.date > latest ? candidate.date : latest,
+      anchorDate,
+    )
+    const periodEndDateAfterShift = (offsetDays: number) => trainingDays.reduce((latest, candidate) => {
+      const date = candidate.day.completedAt == null && candidate.date >= anchorDate
+        ? isoDate(addDays(candidate.date, offsetDays))
+        : candidate.date
+      return date > latest ? date : latest
+    }, anchorDate)
+    return {
+      anchorDate,
+      weekNumber: week.num,
+      dayOrdinal,
+      affectedDays,
+      completedDays,
+      periodEndDate,
+      periodEndDateAfterShift,
+      onShift: (offsetDays: number) => handlePlanShift(anchorDate, offsetDays),
+    }
+  }
 
   return (
     <div ref={rootRef} className="plan-editor" style={{
@@ -2476,7 +2610,9 @@ export function PlanEditor(props: PlanEditorProps) {
         onChangeStartDate={planStartDate ? (props.onChangeStartDate ? handleChangeStartDate : async () => {}) : undefined}
         onNewExercise={!readOnly && props.onCreateExercise ? () => openCreateExercise() : undefined}
         issueCount={readOnly ? 0 : issues.length} issueHint={issueHint} onJumpIssue={jumpToNextIssue}
-        totalShiftDays={props.totalShiftDays}
+        totalShiftDays={totalShiftDays}
+        latestShift={latestShift}
+        onUndoShift={latestShift ? handleUndoPlanShift : undefined}
         studentPlanCursor={props.studentPlanCursor}
       />
       {recoveryMirror && (
@@ -2628,6 +2764,7 @@ export function PlanEditor(props: PlanEditorProps) {
                         }}
                         actualsForRow={actualsForRow}
                         e1rmForRow={e1rmForRow}
+                        shiftControl={shiftControlForDay(wk, day)}
                       />
                     ))}
                   </div>
