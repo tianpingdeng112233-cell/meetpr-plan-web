@@ -1,6 +1,6 @@
 # SPEC 045 — 教练后移计划（从选中日起整体延后 N 天）
 
-- **Status: Approved**（David 2026-09-02 grill 拍板：1A 2不做 3A 4赞同 5同意 6进；入口稿拍板 **A 日头入口**）
+- **Status: InReview**（2026-09-14 实装及定向返修完成，本地 790 测试与构建通过；Standards/Spec 均 CLEAN；backend 部署门禁见 [验证记录](../verification-045-2026-09-14.md)。原批准：David 2026-09-02 grill 拍板：1A 2不做 3A 4赞同 5同意 6进；入口稿拍板 **A 日头入口**）
 - **级别**: T2（跨仓：backend spec 045 出契约与迁移，本仓出入口；iOS 080 消费）
 - **优先级**: P1（随 backend 045 部署 staging 后走 web swap）
 - **前置**: backend 045 合 staging 并部署（真 gate：网页入口不得先于后端上线）；`feat/update-visible` 合 main 后再切分支。
