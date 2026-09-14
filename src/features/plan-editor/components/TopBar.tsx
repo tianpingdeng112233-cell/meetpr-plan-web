@@ -48,6 +48,8 @@ interface Props {
   onJumpIssue?: () => void
   totalShiftDays?: number
   latestShift?: PlanShiftSummary | null
+  undoingShift?: boolean
+  undoNeedsRefresh?: boolean
   onUndoShift?: () => void | Promise<void>
   studentPlanCursor?: StudentPlanCursor | null
 }
@@ -260,13 +262,15 @@ export function TopBar(p: Props) {
               <button
                 type="button"
                 data-plan-shift-undo=""
+                disabled={p.undoingShift}
                 onClick={() => { void p.onUndoShift?.() }}
                 style={{
                   padding: 0, border: 0, color: 'inherit', background: 'transparent',
-                  font: 'inherit', textDecoration: 'underline', cursor: 'pointer',
+                  font: 'inherit', textDecoration: 'underline', cursor: p.undoingShift ? 'wait' : 'pointer',
+                  opacity: p.undoingShift ? 0.5 : 1,
                 }}
               >
-                {S.editor.undoShift}
+                {p.undoNeedsRefresh ? S.editor.retryShiftRefresh : S.editor.undoShift}
               </button>
             </>
           )}

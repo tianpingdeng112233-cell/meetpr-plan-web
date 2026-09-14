@@ -196,6 +196,33 @@ export function syncPlanScheduleToWeeks(weeks: Week[], plan: PlanWithChildren): 
   }, plan.start_date))
 }
 
+/** Carry a reconciled live schedule into prescription history without replacing its content. */
+export function projectWeekSchedule(
+  weeks: Week[], authoritativeWeeks: Week[], preserveDraftCalendar = false,
+): Week[] {
+  return weeks.map((week) => {
+    const authoritative = authoritativeWeeks.find((candidate) => candidate.num === week.num)
+    if (!authoritative) return week
+    return {
+      ...week,
+      range: preserveDraftCalendar ? week.range : authoritative.range,
+      days: week.days.map((day) => {
+        const schedule = authoritative.days.find((candidate) => candidate.dow === day.dow)
+        if (!schedule) return day
+        const identified = { ...day, serverDayId: schedule.serverDayId, completedAt: schedule.completedAt }
+        if (preserveDraftCalendar) return identified
+        return {
+          ...identified,
+          shiftedToDate: schedule.shiftedToDate,
+          shiftBadge: schedule.shiftBadge,
+          dowLabel: schedule.dowLabel,
+          dateLabel: schedule.dateLabel,
+        }
+      }),
+    }
+  })
+}
+
 export function currentPlanWeek(startDate: string): number {
   const start = addDays(startDate, 0)
   const today = new Date()

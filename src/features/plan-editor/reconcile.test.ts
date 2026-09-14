@@ -128,6 +128,75 @@ function boundRow(id: string, serverId: string | null, exerciseId: string, value
   })
 }
 
+describe('reconcilePlan — authoritative day schedule after save', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockBatchEcho()
+  })
+
+  it('binds a newly saved training day to the returned backend identity', async () => {
+    vi.mocked(plans.getPlan).mockResolvedValue(serverPlan([], 'draft'))
+    const result = await reconcilePlan('p', [weekWithMondayRows([boundRow('new', null, 'ex1')])])
+
+    expect(result.weeks[0].days[0]).toMatchObject({
+      serverDayId: 'batch-day-1-1', completedAt: null, shiftedToDate: null, dateLabel: '1/1',
+    })
+    expect(result.weeks[0].days[0].rows[0].serverRowId).toBe('batch-ex-1-1-0')
+  })
+
+  it.each(['locked', '409'] as const)('returns the live schedule with a %s save failure', async (failure) => {
+    const exercise = serverExercise('pe1', 'ex1', 0, '100', failure === 'locked')
+    const liveDay = {
+      ...serverDay([exercise], 'live-day'), shifted_to_date: '2026-01-05',
+      completed_at: '2026-01-05T08:00:00Z',
+    }
+    const fresh = serverPlan([liveDay])
+    const local = [weekWithMondayRows([boundRow('r1', 'pe1', 'ex1', '110', {
+      serverSortOrder: 0, hasLogs: failure === 'locked',
+    })])]
+    if (failure === 'locked') vi.mocked(plans.getPlan).mockResolvedValue(fresh)
+    else {
+      vi.mocked(plans.getPlan).mockResolvedValueOnce(serverPlan([serverDay([exercise])])).mockResolvedValueOnce(fresh)
+      vi.mocked(plans.batchDays).mockRejectedValueOnce(new ApiException(409, 'PLAN_HISTORY_IMMUTABLE'))
+    }
+
+    const result = await reconcilePlan('p', local).catch(error => error)
+
+    expect(result).toBeInstanceOf(failure === 'locked' ? LockedRowMutationError : ReconcileConflict)
+    expect(result.weeks[0].days[0]).toMatchObject({
+      serverDayId: 'live-day', completedAt: liveDay.completed_at, shiftedToDate: '2026-01-05',
+      dateLabel: '1/5', shiftBadge: { originalDate: '2026-01-01', days: 4 },
+    })
+    expect(result.weeks[0].days[0].rows[0].boxes[0].val).toBe('110')
+  })
+
+  it('replaces obsolete day identity and schedule after delete and recreate', async () => {
+    const original = {
+      ...serverDay([serverExercise('pe1', 'ex1', 0)], 'old-day'),
+      shifted_to_date: '2026-01-04', completed_at: '2026-01-04T08:00:00Z',
+    }
+    vi.mocked(plans.getPlan).mockResolvedValue(serverPlan([original]))
+    const edited = weekWithMondayRows([boundRow('r1', 'pe1', 'ex1', '110')])
+    edited.days[0] = {
+      ...edited.days[0], serverDayId: 'old-day', completedAt: original.completed_at,
+      shiftedToDate: original.shifted_to_date, dateLabel: '1/4',
+      shiftBadge: { originalDate: '2026-01-01', days: 3 },
+    }
+    vi.mocked(plans.batchDays).mockImplementation(async (_id, body) => serverPlan(
+      serverDaysFromBatch(body.upsert_days).map(day => ({ ...day, shifted_to_date: '2026-01-05' })),
+    ))
+
+    const result = await reconcilePlan('p', [edited])
+
+    expect(vi.mocked(plans.batchDays).mock.calls[0][1].delete_day_ids).toEqual(['old-day'])
+    expect(result.weeks[0].days[0]).toMatchObject({
+      serverDayId: 'batch-day-1-1', completedAt: null, shiftedToDate: '2026-01-05',
+      dateLabel: '1/5', shiftBadge: { originalDate: '2026-01-01', days: 4 },
+    })
+    expect(result.weeks[0].days[0].rows[0].boxes[0].val).toBe('110')
+  })
+})
+
 describe('reconcilePlan — week-local row order', () => {
   beforeEach(() => {
     vi.clearAllMocks()

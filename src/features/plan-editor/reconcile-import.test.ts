@@ -21,7 +21,9 @@ describe('reconcileImportedPlan — align backend plan to the import', () => {
     vi.clearAllMocks()
     vi.mocked(plans.patchPlan).mockResolvedValue({} as never)
     vi.mocked(plans.deleteDay).mockResolvedValue(undefined as never)
-    vi.mocked(plans.batchDays).mockResolvedValue({ id: 'p', status: 'draft', days: [] } as never)
+    vi.mocked(plans.batchDays).mockImplementation(async (_id, body) => ({
+      id: 'p', status: 'draft', days: [], start_date: '2026-01-01', ...body.plan_patch,
+    } as never))
   })
 
   it('batches out-of-range deletes with plan_weeks and source dates', async () => {
@@ -51,6 +53,7 @@ describe('reconcileImportedPlan — align backend plan to the import', () => {
       planEndDate: '2026-03-22',
       planWeeks: 12,
     })
+    expect(result.weeks[0].days[0].dateLabel).toBe('12/29')
   })
 
   it('routes frozen out-of-range days through the per-day endpoint, never the batch', async () => {

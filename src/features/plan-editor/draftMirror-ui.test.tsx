@@ -1,10 +1,11 @@
-import { StrictMode, act } from 'react'
+import { StrictMode, act, useState } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { PlanEditor } from './PlanEditor'
 import { createDraftMirror, loadDraftMirror, saveDraftMirror } from './draftMirror'
 import type { ExerciseRow, Week } from './types'
 import { ReconciliationError } from './reconcile'
+import { relabelWeeksForStartDate } from './mapping'
 
 const pendingApi = vi.hoisted(() => ({
   getPendingRevision: vi.fn(),
@@ -133,6 +134,111 @@ describe('PlanEditor local draft recovery', () => {
 
     act(() => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', ctrlKey: true, bubbles: true })))
     expect(host.querySelector<HTMLInputElement>('[data-c="note"] input')?.value).toBe('服务端备注')
+  })
+
+  it('restores published prescription content without restoring an obsolete shift schedule', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    const oldWeeks = weeks('recovered prescription')
+    oldWeeks[0].range = '1/1 – 1/7'
+    oldWeeks[0].days[0] = {
+      ...oldWeeks[0].days[0], dateLabel: '1/1', dowLabel: '周四',
+      serverDayId: 'old-day', completedAt: null, shiftedToDate: null, shiftBadge: null,
+      releasedSortOrders: [2],
+    }
+    saveDraftMirror('plan', {
+      weeks: oldWeeks, planStartDate: '2026-01-01', weeksCount: 1,
+    }, localStorage)
+    const currentWeeks = weeks('current prescription')
+    currentWeeks[0].range = '1/4 – 1/7'
+    currentWeeks[0].days[0] = {
+      ...currentWeeks[0].days[0], dateLabel: '1/4', dowLabel: '周日',
+      serverDayId: 'current-day', completedAt: '2026-01-04T08:00:00Z',
+      shiftedToDate: '2026-01-04', shiftBadge: { originalDate: '2026-01-01', days: 3 },
+    }
+    const onSave = vi.fn(async (saved: Week[]) => ({ changedDays: 1, degradedRows: 0, skippedRows: 0, weeks: saved }))
+    await act(async () => {
+      root.render(
+        <PlanEditor initialWeeks={currentWeeks} weeksCount={1} planStartDate="2026-01-01"
+          studentName="学员" planName="计划" currentPlanId="plan" planStatus="published"
+          initialPublished totalShiftDays={3} onSave={onSave} />,
+      )
+      await Promise.resolve()
+    })
+
+    act(() => click(host, '恢复'))
+    expect(host.querySelector<HTMLInputElement>('[data-c="note"] input')?.value).toBe('recovered prescription')
+    expect(host.querySelector('.day[data-dow="0"] [data-day-calendar-label]')?.textContent).toContain('1/4')
+    expect(host.querySelector('.day[data-dow="0"] [data-shift-badge]')?.getAttribute('title'))
+      .toBe('原定 1/1 · 已后移 3 天')
+    await act(async () => { click(host, '更新计划'); await Promise.resolve() })
+    expect(onSave).toHaveBeenCalledOnce()
+    const saved = onSave.mock.calls[0][0]
+    expect(saved[0].range).toBe('1/4 – 1/7')
+    expect(saved[0].days[0]).toMatchObject({
+      serverDayId: 'current-day', completedAt: '2026-01-04T08:00:00Z',
+      shiftedToDate: '2026-01-04', shiftBadge: { originalDate: '2026-01-01', days: 3 },
+      releasedSortOrders: [2],
+    })
+  })
+
+  it.each([1, 2])('freezes the published calendar across undo and redo of a restored %s-week draft', async (publishedWeeks) => {
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    const original = relabelWeeksForStartDate(weeks('server prescription'), '2026-01-01')
+    const recovered = relabelWeeksForStartDate(Array.from({ length: publishedWeeks }, (_, index) => ({
+      ...weeks(index === 0 ? 'recovered prescription' : 'second week')[0], num: index + 1, num2: `0${index + 1}`,
+    })), '2026-02-02')
+    saveDraftMirror('plan', { weeks: recovered, planStartDate: '2026-02-02', weeksCount: publishedWeeks }, localStorage)
+    const onSave = vi.fn(async (saved: Week[], start?: string | null) => ({
+      changedDays: 1, degradedRows: 0, skippedRows: 0, planStartDate: start ?? '2026-02-02',
+      weeks: relabelWeeksForStartDate(saved, start ?? '2026-02-02').map(week => ({
+        ...week, days: week.days.map(day => ({ ...day, serverDayId: day.dow === 0 ? 'published-day' : null })),
+      })),
+    }))
+    function EditorSession() {
+      const [status, setStatus] = useState<'draft' | 'published'>('draft')
+      return <PlanEditor initialWeeks={original} weeksCount={status === 'published' ? publishedWeeks : 1} planStartDate="2026-01-01"
+        studentName="学员" planName="计划" currentPlanId="plan" planStatus={status}
+        onSave={onSave} onPublish={async () => setStatus('published')} />
+    }
+    await act(async () => root.render(<EditorSession />))
+    const undo = () => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', metaKey: true, bubbles: true }))
+    const redo = () => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', metaKey: true, shiftKey: true, bubbles: true }))
+    const calendar = () => host.querySelector('.day[data-dow="0"] [data-day-calendar-label]')?.textContent
+    const note = () => host.querySelector<HTMLInputElement>('[data-c="note"] input')!
+    act(() => click(host, '恢复'))
+    act(undo)
+    expect(calendar()).toContain('1/1')
+    expect(note().value).toBe('server prescription')
+    act(redo)
+    expect(calendar()).toContain('2/2')
+    act(() => setInput(note(), 'first edit'))
+    act(() => setInput(note(), 'second edit'))
+    act(undo)
+    await act(async () => click(host, '发布给学员'))
+    expect(onSave.mock.calls[0][1]).toBe('2026-02-02')
+
+    act(undo)
+    expect(note().value).toBe('recovered prescription')
+    expect(calendar()).toContain('2/2')
+    act(undo)
+    expect(note().value).toBe('server prescription')
+    expect(calendar()).toContain('2/2')
+    expect(host.querySelectorAll('[data-week-slot]')).toHaveLength(publishedWeeks)
+    const monday = host.querySelector<HTMLElement>('.day[data-dow="0"]')!
+    act(() => monday.dispatchEvent(new MouseEvent('click', { bubbles: true })))
+    act(() => click(monday, '后移…'))
+    expect(document.querySelector('[data-plan-shift-panel]')?.textContent).toContain('从 2/2（W1D1）起后移')
+    act(redo)
+    expect(note().value).toBe('recovered prescription')
+    expect(calendar()).toContain('2/2')
+    act(redo)
+    expect(note().value).toBe('first edit')
+    act(redo)
+    expect(note().value).toBe('second edit')
+    expect(calendar()).toContain('2/2')
+    await act(async () => click(host, '更新计划'))
+    expect(onSave.mock.calls[1][1]).toBeNull()
+    expect(onSave.mock.calls[1][0][0].days[0].serverDayId).toBe('published-day')
   })
 
   it('discards the mirror without replacing the server snapshot', () => {
