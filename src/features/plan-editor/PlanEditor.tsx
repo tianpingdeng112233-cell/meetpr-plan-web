@@ -4,6 +4,7 @@ import { COL_DEFAULTS, COL_MIN, isContentfulUnbound, isRestDay } from './types'
 import { getBoundRowInputIssue, type BoundRowInputIssue } from './inputGuard'
 import { groupActualsByExercise, type ActualSet } from './actuals'
 import { getStudentSetLogs } from '../../api/coach'
+import { getPlan, shiftPlan, undoPlanShift } from '../../api/plans'
 import {
   isSingleValueIntensity,
   materializeIntensityRow,
@@ -21,14 +22,32 @@ import { ExercisePopover } from './components/ExercisePopover'
 import { CustomExerciseDialog } from './components/CustomExerciseDialog'
 import type { ExerciseIndex, ExerciseHit } from './exerciseIndex'
 import type { CreateCustomExerciseInput } from '../../api/exercises'
-import type { ExerciseResponse, ExerciseStatsOverview, PlanStatus, StudentOnboardingProfile } from '../../api/types'
+import type {
+  ExerciseResponse,
+  ExerciseStatsOverview,
+  PlanShiftSummary,
+  PlanStatus,
+  PlanWithChildren,
+  StudentOnboardingProfile,
+} from '../../api/types'
 import type { ParsedWeek } from './import'
 import {
   LockedRowMutationError, ReconcileConflict, ReconciliationError, type SaveResult,
 } from './reconcile'
 import { createSaveController } from './autosave'
 import { parseClipboardRows, serializeDayForClipboard, serializeRowsForClipboard } from './clipboard'
-import { isoDate, relabelWeeksForStartDate, resizeWeeksForCount, type StudentPlanCursor } from './mapping'
+import {
+  addDays,
+  applyShiftedDaysToWeeks,
+  isoDate,
+  mdLabel,
+  recommendedDateForDay,
+  projectWeekSchedule,
+  relabelWeeksForStartDate,
+  resizeWeeksForCount,
+  syncPlanScheduleToWeeks,
+  type StudentPlanCursor,
+} from './mapping'
 import { dayMoveDisabledReason, moveDayInWeek } from './dayMove'
 import { compareWeekMetric, summarizeWeek } from './weeklySummary'
 import { WeekCapacitySummary } from './components/WeekCapacitySummary'
@@ -96,6 +115,9 @@ export interface PlanEditorProps {
   initialPublished?: boolean
   planStatus?: PlanStatus
   totalShiftDays?: number
+  latestShift?: PlanShiftSummary | null
+  /** Keeps the parent-owned server snapshot current after shift/undo refreshes. */
+  onPlanRefreshed?: (plan: PlanWithChildren) => void
   /** Read-only athlete progress cursor derived from the active published plan. */
   studentPlanCursor?: StudentPlanCursor | null
   /** Completed/paused historical plans render as a true non-persisting viewer. */
@@ -366,6 +388,7 @@ export function PlanEditor(props: PlanEditorProps) {
     props.planStartDate ?? null,
     initialWeeks.length || weeksCount,
   ))
+  const lastSavedDraftContent = useRef(initialServerMirrorContent.current)
   const serverMirrorHash = useRef(draftContentHash(initialServerMirrorContent.current))
   const mountedMirror = useRef<DraftMirror | null>(readOnly ? null : loadDraftMirror(mirrorPlanId))
   const waitsForRemoteRecovery = !!mirrorPlanId && !readOnly && (initialPublished || !!props.planUpdatedAt)
@@ -548,6 +571,11 @@ export function PlanEditor(props: PlanEditorProps) {
   const [statusText, setStatusText] = useState(readOnly
     ? S.editor.readOnlyStatus(props.planStatus === 'completed' ? S.common.completed : S.common.paused)
     : initialPublished ? S.editor.publishedTo(studentName) : S.editor.draftSavedInitial)
+  const undoShiftInFlight = useRef(false)
+  const [undoingShift, setUndoingShift] = useState(false)
+  const [undoNeedsRefresh, setUndoNeedsRefresh] = useState(false)
+  const [totalShiftDays, setTotalShiftDays] = useState(props.totalShiftDays ?? 0)
+  const [latestShift, setLatestShift] = useState<PlanShiftSummary | null>(props.latestShift ?? null)
   const [degradedSaveStatus, setDegradedSaveStatus] = useState<{ base: string; count: number } | null>(null)
   // W1 calendar/delete controls are draft-only. Keep this separate from main's
   // `published` flag, which drives explicit in-place updates for spec 004.
@@ -570,6 +598,9 @@ export function PlanEditor(props: PlanEditorProps) {
   const initialVisibleWeekIndex = Math.max(0, initialWeeks.findIndex((week) => week.isCurrent))
   const [visibleWeekIndex, setVisibleWeekIndex] = useState(initialVisibleWeekIndex)
 
+  useEffect(() => { setTotalShiftDays(props.totalShiftDays ?? 0) }, [props.totalShiftDays])
+  useEffect(() => { setLatestShift(props.latestShift ?? null) }, [props.latestShift])
+
   const rootRef = useRef<HTMLDivElement>(null)
   const scrollerRef = useRef<HTMLDivElement>(null)
   const weeksRef = useRef<HTMLDivElement>(null)
@@ -587,6 +618,7 @@ export function PlanEditor(props: PlanEditorProps) {
   const suppressDayClickRef = useRef(false)
   const dayMoveCleanupRef = useRef<((updateVisual?: boolean) => void) | null>(null)
   const visibleWeekRef = useRef<number | null>(null)
+  const skipNextScheduleAutosave = useRef(false)
   useEffect(() => () => dayMoveCleanupRef.current?.(false), [])
 
   useEffect(() => {
@@ -609,6 +641,97 @@ export function PlanEditor(props: PlanEditorProps) {
       setPlanStartDate(props.planStartDate ?? null)
     }
   }, [props.planStartDate])
+
+  const updateScheduleHistory = useCallback((update: (snapshot: Week[]) => Week[]) => {
+    historyRef.current = historyRef.current.map(update)
+    redoRef.current = redoRef.current.map(update)
+  }, [])
+
+  const applyScheduleUpdate = useCallback((
+    update: (snapshot: Week[]) => Week[],
+    options?: { currentWeeks: Week[] },
+  ) => {
+    if (!options) skipNextScheduleAutosave.current = true
+    setWeeks((current) => {
+      // Prescription history must not roll back the backend-owned schedule.
+      updateScheduleHistory(update)
+      return options?.currentWeeks ?? update(current)
+    })
+  }, [updateScheduleHistory])
+
+  const applyRefreshedShiftPlan = useCallback((plan: PlanWithChildren) => {
+    applyScheduleUpdate((snapshot) => syncPlanScheduleToWeeks(snapshot, plan))
+    setTotalShiftDays(plan.total_shift_days)
+    setLatestShift(plan.latest_shift)
+    setUndoNeedsRefresh(false)
+    props.onPlanRefreshed?.(plan)
+  }, [applyScheduleUpdate, props.onPlanRefreshed])
+
+  const refreshShiftPlan = useCallback(async () => {
+    if (!props.currentPlanId) return null
+    const plan = await getPlan(props.currentPlanId)
+    applyRefreshedShiftPlan(plan)
+    return plan
+  }, [applyRefreshedShiftPlan, props.currentPlanId])
+
+  const handlePlanShift = useCallback(async (anchorDate: string, offsetDays: number) => {
+    const id = props.currentPlanId
+    const startDate = currentPlanStart.current
+    if (!id || !startDate) throw new Error('PLAN_SHIFT_CONTEXT_MISSING')
+    let response
+    try {
+      response = await shiftPlan(id, { anchor_date: anchorDate, offset_days: offsetDays })
+    } catch (caught) {
+      if (caught instanceof ApiException && caught.status === 409 && caught.code === 'SHIFT_NO_TARGET_DAYS') {
+        await refreshShiftPlan().catch(() => null)
+      }
+      throw caught
+    }
+    applyScheduleUpdate((snapshot) => applyShiftedDaysToWeeks(snapshot, startDate, response.shifted_days))
+    setTotalShiftDays(response.total_shift_days)
+    setLatestShift({
+      batch_id: response.batch_id,
+      actor_role: 'coach',
+      anchor_date: response.anchor_date,
+      offset_days: response.offset_days,
+      created_at: new Date().toISOString(),
+    })
+    await refreshShiftPlan().catch(() => null)
+    setStatusText(S.editor.shiftSucceeded(offsetDays))
+  }, [applyScheduleUpdate, props.currentPlanId, refreshShiftPlan])
+
+  const handleUndoPlanShift = useCallback(async () => {
+    const id = props.currentPlanId
+    const batch = latestShift
+    if (!id || !batch || readOnly || props.planStatus !== 'published' || undoShiftInFlight.current) return
+    if (!undoNeedsRefresh && !window.confirm(S.editor.undoShiftConfirm(
+      mdLabel(addDays(batch.anchor_date, 0)),
+      batch.offset_days,
+    ))) return
+    undoShiftInFlight.current = true
+    setUndoingShift(true)
+    let undone = undoNeedsRefresh
+    try {
+      if (!undone) {
+        try {
+          await undoPlanShift(id)
+        } catch (caught) {
+          if (!(caught instanceof ApiException && caught.status === 409 && caught.code === 'NO_ACTIVE_SHIFT')) throw caught
+        }
+        // DELETE has already consumed the latest batch. A failed GET must never
+        // turn a refresh retry into another DELETE against the previous batch.
+        undone = true
+        setUndoNeedsRefresh(true)
+      }
+      await refreshShiftPlan()
+      setStatusText(S.editor.undoShiftSucceeded)
+    } catch {
+      setStatusText(undone ? S.editor.undoShiftRefreshFailed : S.editor.undoShiftFailed)
+    } finally {
+      undoShiftInFlight.current = false
+      setUndoingShift(false)
+    }
+  }, [latestShift, props.currentPlanId, props.planStatus, readOnly, refreshShiftPlan, undoNeedsRefresh])
 
   const setWeeksWithHistory = useCallback((update: WeeksUpdate) => {
     if (readOnly) return
@@ -712,9 +835,23 @@ export function PlanEditor(props: PlanEditorProps) {
       // could later be mistaken for covered. Merge row content week-by-week
       // instead: the week list keeps the server's exact shape, so a shorter
       // draft-era mirror can never turn into server-week deletions on save.
-      const merged = latestWeeks.current.map((wk) => (
-        content.weeks.find((mirrored) => mirrored.num === wk.num) ?? wk
-      ))
+      const merged = latestWeeks.current.map((wk) => {
+        const mirroredWeek = content.weeks.find((mirrored) => mirrored.num === wk.num)
+        if (!mirroredWeek) return wk
+        return {
+          ...wk,
+          days: wk.days.map((day) => {
+            const mirroredDay = mirroredWeek.days.find((candidate) => candidate.dow === day.dow)
+            if (!mirroredDay) return day
+            return {
+              ...day,
+              rows: mirroredDay.rows,
+              releasedSortOrders: mirroredDay.releasedSortOrders,
+              rest: isRestDay(mirroredDay),
+            }
+          }),
+        }
+      })
       setWeeksWithHistory(merged)
       saveDraftMirror(mirrorPlanId, mirrorContent(
         merged, currentPlanStart.current, merged.length || props.weeksCount,
@@ -1874,23 +2011,39 @@ export function PlanEditor(props: PlanEditorProps) {
   // can ever rewrite a plan the student is watching.
   const persistRef = useRef<() => Promise<boolean>>(async () => true)
   const applyingSavedWeeks = useRef(false)
+  const applyReconciledWeeks = (reconciled: Week[], replaceContent = true) => {
+    if (published) {
+      applyScheduleUpdate(
+        (snapshot) => projectWeekSchedule(snapshot, reconciled),
+        replaceContent ? { currentWeeks: reconciled } : undefined,
+      )
+    } else {
+      // Draft calendar edits stay undoable; saved identities must still survive
+      // those histories when the same editor session is later published.
+      updateScheduleHistory((snapshot) => projectWeekSchedule(snapshot, reconciled, true))
+      if (replaceContent) setWeeks(reconciled)
+    }
+  }
   const applySuccessfulSave = (res: SaveResult, savedWeeks: Week[]) => {
-    if (res.weeks && latestWeeks.current === savedWeeks) {
+    const sameContent = latestWeeks.current === savedWeeks
+    if (sameContent) {
       applyingSavedWeeks.current = true
-      setWeeks(res.weeks)
       unsavedRef.current = false
     }
+    // Even when an edit arrived during the request, the returned day identities
+    // and schedule are authoritative. Only prescription replacement is conditional.
+    applyReconciledWeeks(res.weeks, sameContent)
   }
   const applySaveFailure = (error: unknown): string | null => {
     if (error instanceof ReconcileConflict) {
-      setWeeks(error.weeks)
+      applyReconciledWeeks(error.weeks)
       unsavedRef.current = true
       return error.topMessage ?? (error.code === 'DAY_HISTORY_IMMUTABLE'
         ? S.editor.athleteCompletedDuringSave
         : S.editor.athleteLoggedDuringSave)
     }
     if (error instanceof LockedRowMutationError) {
-      setWeeks(error.weeks)
+      applyReconciledWeeks(error.weeks)
       unsavedRef.current = true
       return S.editor.lockedRowRetry
     }
@@ -1927,6 +2080,7 @@ export function PlanEditor(props: PlanEditorProps) {
         res.planStartDate ?? savedPlanStart,
         res.planWeeks ?? savedWeeks.length,
       )
+      lastSavedDraftContent.current = savedContent
       if (res.skippedRows === 0 && res.degradedRows === 0) markMirrorCovered(savedContent)
       applySuccessfulSave(res, savedWeeks)
       if (res.skippedRows > 0 || res.degradedRows > 0) {
@@ -1984,6 +2138,7 @@ export function PlanEditor(props: PlanEditorProps) {
     prevWeeksRef.current = weeks
     if (skipFirstAutosave.current) { skipFirstAutosave.current = false; return } // ignore the initial load
     if (applyingSavedWeeks.current) { applyingSavedWeeks.current = false; return }
+    if (skipNextScheduleAutosave.current) { skipNextScheduleAutosave.current = false; return }
     if (skipNextAutosave.current) { skipNextAutosave.current = false; return }
     // Only a real edit marks content unsaved — this effect also fires when `published`
     // flips (same weeks identity), which must not re-arm the guard.
@@ -2353,8 +2508,29 @@ export function PlanEditor(props: PlanEditorProps) {
         saver.current.scheduleAutosave() // dirty is still set — re-arm so the save retries itself
         return
       }
+      const publishedBaseline = props.onSave
+        ? lastSavedDraftContent.current
+        : mirrorContent(latestWeeks.current, currentPlanStart.current)
       setStatusText(S.editor.publishing)
       if (onPublish) await onPublish()
+      // Draft calendar history stops at publication. Keep prescription undo/redo,
+      // but anchor every snapshot to the exact calendar that was just published.
+      applyScheduleUpdate((snapshot) => projectWeekSchedule(
+        publishedBaseline.weeks.map((week) => {
+          const historical = snapshot.find((candidate) => candidate.num === week.num)
+          return historical ? {
+            ...historical,
+            days: week.days.map((day) => historical.days.find((candidate) => candidate.dow === day.dow) ?? day),
+          } : week
+        }),
+        publishedBaseline.weeks,
+      ))
+      historyStartRef.current = historyStartRef.current.map(() => publishedBaseline.planStartDate)
+      redoStartRef.current = redoStartRef.current.map(() => publishedBaseline.planStartDate)
+      currentPlanStart.current = publishedBaseline.planStartDate
+      persistedPlanStart.current = publishedBaseline.planStartDate
+      pendingPlanStart.current = null
+      setPlanStartDate(publishedBaseline.planStartDate)
       setPublished(true); becamePublished = true
       // Edits typed during the round-trip aren't in the published plan — surface them, never drop silently.
       setStatusText(latestWeeks.current !== snapshot
@@ -2438,6 +2614,51 @@ export function PlanEditor(props: PlanEditorProps) {
     }
     return undefined
   }
+  const shiftControlForDay = (week: Week, day: DayCol) => {
+    if (
+      readOnly
+      || props.planStatus !== 'published'
+      || sel?.wnum !== week.num
+      || sel.dow !== day.dow
+      || !day.serverDayId
+      || !planStartDate
+    ) return undefined
+    const dayOrdinal = trainingDayOrdinal(week, day.dow)
+    if (dayOrdinal == null) return undefined
+    const anchorDate = recommendedDateForDay(planStartDate, week.num, day)
+    const trainingDays = weeks.flatMap((candidateWeek) => candidateWeek.days
+      .filter((candidateDay) => !!candidateDay.serverDayId)
+      .map((candidateDay) => ({
+        day: candidateDay,
+        date: recommendedDateForDay(planStartDate, candidateWeek.num, candidateDay),
+      })))
+    const affectedDays = trainingDays.filter(({ day: candidateDay, date }) => (
+      candidateDay.completedAt == null && date >= anchorDate
+    )).length
+    const completedDays = trainingDays.filter(({ day: candidateDay, date }) => (
+      candidateDay.completedAt != null && date >= anchorDate
+    )).length
+    const periodEndDate = trainingDays.reduce(
+      (latest, candidate) => candidate.date > latest ? candidate.date : latest,
+      anchorDate,
+    )
+    const periodEndDateAfterShift = (offsetDays: number) => trainingDays.reduce((latest, candidate) => {
+      const date = candidate.day.completedAt == null && candidate.date >= anchorDate
+        ? isoDate(addDays(candidate.date, offsetDays))
+        : candidate.date
+      return date > latest ? date : latest
+    }, anchorDate)
+    return {
+      anchorDate,
+      weekNumber: week.num,
+      dayOrdinal,
+      affectedDays,
+      completedDays,
+      periodEndDate,
+      periodEndDateAfterShift,
+      onShift: (offsetDays: number) => handlePlanShift(anchorDate, offsetDays),
+    }
+  }
 
   return (
     <div ref={rootRef} className="plan-editor" style={{
@@ -2476,7 +2697,11 @@ export function PlanEditor(props: PlanEditorProps) {
         onChangeStartDate={planStartDate ? (props.onChangeStartDate ? handleChangeStartDate : async () => {}) : undefined}
         onNewExercise={!readOnly && props.onCreateExercise ? () => openCreateExercise() : undefined}
         issueCount={readOnly ? 0 : issues.length} issueHint={issueHint} onJumpIssue={jumpToNextIssue}
-        totalShiftDays={props.totalShiftDays}
+        totalShiftDays={totalShiftDays}
+        latestShift={latestShift}
+        undoingShift={undoingShift}
+        undoNeedsRefresh={undoNeedsRefresh}
+        onUndoShift={!readOnly && props.planStatus === 'published' && latestShift ? handleUndoPlanShift : undefined}
         studentPlanCursor={props.studentPlanCursor}
       />
       {recoveryMirror && (
@@ -2628,6 +2853,7 @@ export function PlanEditor(props: PlanEditorProps) {
                         }}
                         actualsForRow={actualsForRow}
                         e1rmForRow={e1rmForRow}
+                        shiftControl={shiftControlForDay(wk, day)}
                       />
                     ))}
                   </div>

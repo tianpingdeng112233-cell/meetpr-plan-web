@@ -81,6 +81,7 @@ function publishedPlan(): PlanWithChildren {
     updated_at: '2026-01-02T00:00:00Z',
     total_shift_days: 0,
     latest_shift_created_at: null,
+    latest_shift: null,
     days: [{
       id: 'day',
       plan_id: 'plan-capacity',

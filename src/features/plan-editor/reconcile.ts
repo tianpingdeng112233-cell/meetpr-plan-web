@@ -14,7 +14,7 @@ import {
   getPlan, batchDays, deleteDay, createExercise, deleteExercise, createSet, patchPlan,
 } from '../../api/plans'
 import { ApiException } from '../../api/client'
-import { addDays, type Catalog } from './mapping'
+import { addDays, syncPlanScheduleToWeeks, type Catalog } from './mapping'
 import { isLegacyRpeRow, rowIntensity, rowIntensityBoxes, rowWeightBoxes } from './intensityModel'
 import { S } from '../../i18n/strings'
 import { STABLE_ZH } from '../../i18n/stable-zh'
@@ -35,7 +35,7 @@ export interface SaveResult {
   changedDays: number
   skippedRows: number
   degradedRows: number
-  /** Id/lock/order metadata after the live-baseline reconciliation. */
+  /** Row identity/lock/order and day schedule metadata from the live baseline. */
   weeks: Week[]
   /** Present when reconciliation also changed the plan calendar metadata. */
   planStartDate?: string
@@ -582,7 +582,7 @@ function merge409(
   const topMessage = error.code === 'PLAN_HISTORY_IMMUTABLE'
     ? S.editor.calendarHasLogs
     : null
-  return new ReconcileConflict(error.code, merged, topMessage)
+  return new ReconcileConflict(error.code, syncPlanScheduleToWeeks(merged, fresh), topMessage)
 }
 
 /** Per-day save progress. */
@@ -811,7 +811,7 @@ async function reconcileFromBaseline(
   }
 
   if (lockedMutationRows.length > 0) {
-    throw new LockedRowMutationError([...new Set(lockedMutationRows)], resultWeeks)
+    throw new LockedRowMutationError([...new Set(lockedMutationRows)], syncPlanScheduleToWeeks(resultWeeks, server))
   }
 
   // Decide mixed-day CRUD and slots before writing so progress is stable.
@@ -885,7 +885,7 @@ async function reconcileFromBaseline(
         validateMixedWork(work, refreshedLockedRows)
       }
       if (refreshedLockedRows.length > 0) {
-        throw new LockedRowMutationError([...new Set(refreshedLockedRows)], resultWeeks)
+        throw new LockedRowMutationError([...new Set(refreshedLockedRows)], syncPlanScheduleToWeeks(resultWeeks, liveBaseline))
       }
       mixedPlans = mixedWorks.map(planMixedWork)
       mixedWriteCount = mixedPlans.filter((plan) => plan.hasWrites).length
@@ -935,5 +935,8 @@ async function reconcileFromBaseline(
 
   for (const week of resultWeeks) for (const day of week.days) day.releasedSortOrders = []
 
-  return { changedDays: unlockedWorks.length + mixedWriteCount, skippedRows, degradedRows, weeks: resultWeeks }
+  return {
+    changedDays: unlockedWorks.length + mixedWriteCount, skippedRows, degradedRows,
+    weeks: syncPlanScheduleToWeeks(resultWeeks, liveBaseline),
+  }
 }

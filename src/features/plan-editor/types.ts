@@ -156,10 +156,17 @@ export interface DayCol {
   dow: number          // 0=Mon … 6=Sun
   dowLabel: string
   dateLabel: string
+  /** Persisted plan-day identity. Null/absent calendar columns are not training days. */
+  serverDayId?: string | null
+  /** Backend-authoritative completion marker used by plan-shift eligibility. */
+  completedAt?: string | null
   /** Server shift snapshot, present only when it differs from the ordinal plan date. */
   shiftedToDate?: string | null
   /** Tooltip details for a genuinely shifted day. */
-  shiftBadge?: { originalDate: string; days: number } | null
+  shiftBadge?: {
+    originalDate: string
+    days: number
+  } | null
   /** Legacy compatibility marker. Never use as the source of truth; derive rest from rows. */
   rest: boolean
   rows: ExerciseRow[]

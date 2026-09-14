@@ -20,6 +20,7 @@ function plan(overrides: Partial<PlanResponse> = {}): PlanResponse {
     total_shift_days: 0,
     latest_shift_created_at: null,
     ...overrides,
+    latest_shift: overrides.latest_shift ?? null,
   }
 }
 

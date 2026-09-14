@@ -69,7 +69,7 @@ describe('plan editor context bar', () => {
     expect(bar.textContent).not.toContain('MeetPR')
     expect(bar.textContent).not.toContain('COACH / 计划编排')
 
-    const labels = ['← 总览', '王学员', '进行至 W2D3', '滞后 4 天', '力量计划', '学员已整体顺延 3 天', '＋ 动作', '导入 .xlsx', '起始 07-27', '2 处待核对', '保存草稿', '发布给学员', '已自动保存']
+    const labels = ['← 总览', '王学员', '进行至 W2D3', '滞后 4 天', '力量计划', '学员曾顺延 3 天', '＋ 动作', '导入 .xlsx', '起始 07-27', '2 处待核对', '保存草稿', '发布给学员', '已自动保存']
     let previous = -1
     for (const label of labels) {
       const position = bar.textContent!.indexOf(label)
