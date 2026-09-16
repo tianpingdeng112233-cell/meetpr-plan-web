@@ -88,7 +88,7 @@ describe('English locale smoke', () => {
       start_date: '2026-08-18', end_date: '2026-08-24', plan_weeks: 1, source: 'coach',
       source_template_id: null, status: 'published', kind: 'regular',
       created_at: '2026-08-17T12:00:00Z', updated_at: '2026-08-18T12:00:00Z',
-      total_shift_days: 0, latest_shift_created_at: null,
+      total_shift_days: 0, latest_shift_created_at: null, latest_shift: null,
       days: [{
         id: 'day-1', plan_id: 'plan-1', day_of_week: 1, week_number: 1, sort_order: 0,
         shifted_to_date: null,

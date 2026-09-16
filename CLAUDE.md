@@ -2,13 +2,15 @@
 
 给在本仓库干活的 agent（Claude / Codex）看。产品定位、栈、Quick start 见 [`README.md`](README.md)，这里只记**容易踩雷、光看代码看不出来**的东西。
 
+Codex 接手时按 `~/.codex/AGENTS.md` 与 `~/CodexConfig/docs/engineering-workflow.md` 执行；主代理承接旧 Claude 编排责任，代码收货保留独立 Standards/Spec 审查。分支、数据与部署边界按本仓规则和已批准 spec。
+
 **身份卡（速查 · 坐标；细节见下方分节）**
 
 | 字段 | 值 |
 |---|---|
 | 路径 / 栈 | `~/Projects/apps/meetpr-plan-web`；React 18 + Vite 5 + TS + Tailwind；`npm run dev` @ 5180 |
 | trunk | 默认分支 = `main`（2026-07-04 已归一切换，`origin/HEAD → main`）。`feat/002-xlsx-import` = 死血脉退休中（删除归 **去重波收尾**，别在此删、别动 PR #3） |
-| 部署 | 后端**同源** serve，教练访问 `http://121.40.160.241:3000/`（Vercel 方案已弃用）；`npm run dev` 也直连同后端 |
+| 部署 | 后端**同源** serve，教练访问 `http://121.40.160.241:3000/`（Vercel 方案已弃用）；dev 默认本地后端，见 README |
 | 测试账号 | 教练 `+8613900000001` / 学员 吕子豪（详见 ③）；**密码在 Bitwarden，永不入库**；⚠️ 部分早期测试号直写过 prod RDS |
 | 主 worktree | 与 dedup / autosave 等波共享 → 动仓前 `git worktree list`，被占则另开独立树 |
 
@@ -49,14 +51,15 @@
 - 教练端：手机号 **+8613900000001**
 - 学员端：**吕子豪**
 - **密码在 Bitwarden，不入库。** 别把密码写进代码、测试、文档或 commit。
-- 本地 `npm run dev` 也直连真后端（dev server 代理到 `121.40.160.241:3000`），所以用这套账号能在本地跑通登录→写计划→发布全流程。
+- 本地 `npm run dev` 默认代理到 `http://127.0.0.1:3000`。需要远端联调时显式设置 `MEETPR_DEV_BACKEND_TARGET`，并核对目标环境与测试账号；写请求会落到所选后端。
 
 ---
 
 ## ④ 已知坑
 
-- **后端全局限流 100 req/min。** 一次 xlsx 导入会 reconcile 成几百个 per-set 写请求，单次导入就能打爆窗口。`src/api/client.ts` 里有 `rawRetrying`：撞 429 时按服务器 `Retry-After` / `RateLimit-Reset` 退避、有上限重试（429 是在 handler 前就被拒的，请求没生效，重试安全）。**这套退避只在 main 血脉里有，feat/002 tip 缺**（见 ①）。
-- **reconcile 按天 delete + recreate，非事务。** 发布/更新时 [`src/features/plan-editor/reconcile.ts`](src/features/plan-editor/reconcile.ts) 对每一天先删后建。中途失败（比如正好撞限流且退避耗尽）可能留下**半更新**状态——某些天已删未重建。改这块逻辑时保住这个隐患意识：没有原子回滚。
+- **保存有批量路径，仍需处理限流。** [`reconcile.ts`](src/features/plan-editor/reconcile.ts) 对无锁训练日使用 `POST /plans/:id/days/batch`，按有界批次顺序保存；不再把每次导入都拆成几百个 per-set 请求。`src/api/client.ts` 的 `rawRetrying` 仍按 `Retry-After` / `RateLimit-Reset` 对 429 做有上限退避，实际限额以所选后端配置为准。
+- **事务边界是一批请求。** 每个 batch 在后端原子执行；跨多个 batch，以及含已打卡动作的混合日逐动作 CRUD，不共享整份计划事务。后续请求失败时前面成功的批次可能已经生效，恢复路径必须以服务端重新读取的树为准。
+- **日程以服务端为准。** 已发布计划恢复快照或撤销内容历史，只恢复内容，不回滚 day ID、推荐日期和完成态；保存回包也要刷新这些字段。后移/撤销写成功但随后 GET 失败时，“重试”仅重拉计划，不重复 POST/DELETE。实现与回归入口见 `mapping.ts`、`draftMirror-ui.test.tsx`、`reconcile.test.ts` 和 `plan-shift-ui.test.tsx`；045 上线前置见 [`docs/specs/045-coach-plan-shift.md`](docs/specs/045-coach-plan-shift.md)。
 - **发布门禁 422 `PLAN_PUBLISH_INCOMPLETE`。** 后端拒绝发布「不完整」的计划：含零组动作、或空训练日等。前端目前对这个 422 的 UX 处理不完善（见 ⑤）。
 - **「≠」行 = 含 App 设定的逐组设置（休息/逐组次数/组备注）。** 网格表达不了这些字段，保存/更新时按行原样透传（`reconcile.ts` opaque 快照）：没改的行逐组原样回写；改过的行以网格为准、休息/备注按组序号保留、逐组不同的次数会被统一。别再引入「整份拒写」（PLAN_REQUIRES_NATIVE_EDITOR 已于 2026-09-02 删除，#99）。
 - **未绑定行静默跳过。** 填了动作名/重量但名字后没 ✓（没绑定到 catalog）的行，保存/发布时被跳过、不写入。前端会 `confirm` 提示行数并在状态栏报「N 行未绑定被跳过」，但很容易被忽略——排查「学员看不到某个动作」时先查这个。
@@ -66,5 +69,5 @@
 ## ⑤ 待做区
 
 - **发布 422 UX 缺口**：`PLAN_PUBLISH_INCOMPLETE` 目前对教练不够友好——没有精确指出是哪天/哪个动作导致不完整。需要把 422 详情映射到具体格子并高亮。
-- **批量写端点**：治本方案是后端提供批量写接口，一把提交整份计划，替掉现在几百个 per-set 请求 + 429 退避的权宜。对应 **spec 009（已 Draft，在 backend 仓）**，落地后 web 侧 reconcile 可大幅简化、限流坑基本消除。
+- **045 发布状态（2026-09-16）**：后端 #276 已合并部署，0070 已应用；coach gate 运行值核验后才合并本仓 #102（包含 #101/#53）并换装。同源产物和线上验收以 [后端部署记录](https://github.com/tianpingdeng112233-cell/MeetPR-backend/blob/staging/docs/deployment-045-web101-53-2026-09-16.md) 为准；本仓 [集成验收](docs/verification-101-53-2026-09-16.md) 记录测试与界面证据。
 - ~~**trunk 归一**~~：✅ 已完成（2026-07-04，归一到 `main`，`origin/HEAD → main`）。残留仅 `feat/002-xlsx-import` 分支退休（删除归去重波收尾）。

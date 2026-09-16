@@ -2,7 +2,7 @@
 
 MeetPR 教练计划网页编写端。教练在电脑浏览器里给学员写训练计划，写完一键发布，学员在 MeetPR iOS App 里立刻看到并逐组打卡。
 
-设计上承接教练原本用 Excel 写计划的习惯（一周横排 7 天的长表、逐组重量/RPE、支持从 `.xlsx` 导入存量计划），但连的是与 iOS App **同一个真后端**——不是独立数据源。这是目前教练把计划送进 MeetPR 的**唯一导入口**。
+编辑器用周带组织训练日，支持逐组强度/重量和从 `.xlsx` 导入存量计划。部署后的网页与 iOS App 连接同一个后端；结构化计划树是学员可见内容的来源。
 
 面向对象：给一两个教练用的内部工具，不是公开产品。终端用户使用说明见 [`docs/教练使用指南.md`](docs/教练使用指南.md)。
 
@@ -19,7 +19,7 @@ MeetPR 教练计划网页编写端。教练在电脑浏览器里给学员写训�
 | 测试 | Vitest 2 + jsdom |
 | xlsx 解析 | SheetJS (`xlsx` from CDN tarball) |
 
-UI 走**暗色 MeetPR DesignKit**：颜色/圆角/字体全部通过 CSS 变量在 [`src/index.css`](src/index.css) 定义，Tailwind 只做映射（见 [`tailwind.config.js`](tailwind.config.js)）。品牌红 `--brand-red: #E5221E`，Tailwind 里用 `text-brand` / `bg-brand` 引用。改配色改 CSS 变量，别在组件里硬编码色值。
+UI 使用当前浅色主题及暗色变体：颜色/圆角/字体通过 CSS 变量在 [`src/index.css`](src/index.css) 定义，Tailwind 做映射（见 [`tailwind.config.js`](tailwind.config.js)）。组件使用语义 token，配色以对应主题的变量值为准。
 
 ---
 
@@ -30,7 +30,7 @@ npm install
 npm run dev        # 起 Vite dev server，端口 5180
 ```
 
-打开 http://localhost:5180 。dev server 会把浏览器的 `/api/*` 请求代理到 MeetPR 后端（见下方「部署」），绕开 CORS 和 mixed-content——所以本地开发也直连真后端，登录用真账号（测试账号见 `CLAUDE.md`）。要指向本地后端，改 [`vite.config.ts`](vite.config.ts) 里的 `API_TARGET`。
+打开 http://localhost:5180 。dev server 将 `/api/*` 代理到 `http://127.0.0.1:3000`，默认需要本地后端。通过 `.env.local` 中的 `MEETPR_DEV_BACKEND_TARGET` 选择其他获准环境；配置读取见 [`vite.config.ts`](vite.config.ts)。远端环境的登录、写计划和发布会影响该环境的真实数据，测试账号指针见 `CLAUDE.md`。
 
 ```bash
 npm test           # vitest run，跑一遍全部单测
@@ -45,7 +45,7 @@ npm run build      # tsc --noEmit && vite build，产物进 dist/
 
 **后端同源 serve**（2026-07-04 起）：站点由 MeetPR 后端直接 serve（`express.static('web')` + 内容协商 SPA fallback），教练**免 VPN** 访问 **http://121.40.160.241:3000/**。
 
-- 构建产物 `VITE_API_BASE='' npm run build` 放进后端镜像的 `web/`（同源，无需 `/api` 代理）；随后端 `staging` 分支 build-push CI 出镜像，David 在阿里云 SAE（华东1·杭州）手动部署。
+- 从已验证的 `main` 构建 `VITE_API_BASE='' npm run build`，将产物换入后端 `web/`（同源，无需 `/api` 代理）；后端 PR 合入 `staging` 后，等待该 SHA 的 build-push 完成。按 backend `deploy-staging.yml` 和迁移账本执行部署，再核对线上页面入口哈希与 API；SAE 控制台是 fallback。
 - ⚠️ **Vercel 方案（`meetpr-plan-web.vercel.app`）已弃用**：其 `/api/*` 代理明文 HTTP 后端已坏（502）。2026-07-09 起该域名已改为纯 307 跳转到正式入口（redirect-only 部署，不在本仓）；仓内 `api/proxy.js`、`vercel.json`、`deploy` 脚本已删，**别再对本仓跑 `vercel --prod`**（会把跳转覆盖回死代理）。
 - 本地开发：`npm run dev` @ 5180。dev 代理默认指向 `http://127.0.0.1:3000`（本地后端）；要直连线上后端，设 `MEETPR_DEV_BACKEND_TARGET=http://121.40.160.241:3000`（`.env.local` 或环境变量，明文 HTTP 会有警告）。
 
@@ -62,6 +62,9 @@ npm run build      # tsc --noEmit && vite build，产物进 dist/
 | 001 | [`specs/001-plan-editor-web/`](specs/001-plan-editor-web/) | 计划网页编写端主规格（长表编辑器、动作绑定、保存/发布）+ `DESIGN-BRIEF.md` |
 | 002 | [`specs/002-coach-plan-xlsx-import/`](specs/002-coach-plan-xlsx-import/) | 从教练 `.xlsx` 导入存量计划 |
 | 003 | [`specs/003-draft-autosave/`](specs/003-draft-autosave/) | 草稿自动保存（1.5s 自动存草稿） |
+| 045 | [`docs/specs/045-coach-plan-shift.md`](docs/specs/045-coach-plan-shift.md) | 教练后移推荐日期、撤销最近批次；上线依赖 backend 0070 与 gate |
+
+后移与多日编辑的验证见 [#101/#53 集成验收](docs/verification-101-53-2026-09-16.md)，实际迁移、gate、网页产物与部署状态见 [后端上线记录](https://github.com/tianpingdeng112233-cell/MeetPR-backend/blob/staging/docs/deployment-045-web101-53-2026-09-16.md)。合并与构建通过不等于线上已换装。
 
 ---
 

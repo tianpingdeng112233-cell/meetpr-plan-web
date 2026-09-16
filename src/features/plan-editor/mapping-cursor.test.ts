@@ -27,7 +27,7 @@ function plan(days: PlanDayResponse[], status: PlanWithChildren['status'] = 'pub
     id: 'plan', coach_id: 'coach', trainee_id: 'student', name: '计划',
     start_date: '2026-08-03', end_date: '2026-08-30', plan_weeks: 4,
     source: 'coach', source_template_id: null, status, kind: 'regular',
-    created_at: '', updated_at: '', total_shift_days: 0, latest_shift_created_at: null,
+    created_at: '', updated_at: '', total_shift_days: 0, latest_shift_created_at: null, latest_shift: null,
     days,
   }
 }

@@ -184,7 +184,7 @@ function plan(note: string, status: PlanWithChildren['status'] = 'draft'): PlanW
     start_date: '2026-01-05', end_date: '2026-01-11', plan_weeks: 1,
     source: 'coach', source_template_id: null, status, kind: 'regular',
     created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z',
-    total_shift_days: 0, latest_shift_created_at: null,
+    total_shift_days: 0, latest_shift_created_at: null, latest_shift: null,
     days: [{
       id: 'day', plan_id: 'plan', day_of_week: 1, week_number: 1, sort_order: 0,
       shifted_to_date: null,

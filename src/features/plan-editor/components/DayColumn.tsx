@@ -1,4 +1,5 @@
 import { useLayoutEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import type { DayCol, ColWidths, ColKey, ExerciseRow } from '../types'
 import { COLS, hasOpaqueSetSettings, isRestDay } from '../types'
 import {
@@ -32,6 +33,7 @@ import {
 } from '../selectionModel'
 import { fmt, S } from '../../../i18n/strings'
 import { STABLE_ZH } from '../../../i18n/stable-zh'
+import { addDays, dowLabel, mdLabel } from '../mapping'
 
 export interface WeekBandBadge {
   label: string
@@ -56,7 +58,7 @@ interface Props {
   cellSelection?: PlanCellSelection | null
   /** v1.3 experiment: selected-day context rendered in the dark day header. */
   headerContext?: React.ReactNode
-  onSelect: () => void
+  onSelect: (event: React.MouseEvent) => void
   onSelectRow?: (rowId: string, modifiers?: { toggle: boolean; range: boolean }) => void
   onSelectCell?: (rowId: string, field: PlanCellField, setIndex?: number) => void
   onSetsDraftChange?: (rowId: string, draft: string | null) => void
@@ -83,6 +85,16 @@ interface Props {
   actualsForRow?: (row: ExerciseRow) => ActualSet[] | null
   /** pct 目标换算实际 % 用的主项 e1RM;不可得返回 null。 */
   e1rmForRow?: (row: ExerciseRow) => number | null
+  shiftControl?: {
+    anchorDate: string
+    weekNumber: number
+    dayOrdinal: number
+    affectedDays: number
+    completedDays: number
+    periodEndDate: string
+    periodEndDateAfterShift: (offsetDays: number) => string
+    onShift: (offsetDays: number) => Promise<void>
+  }
 }
 
 const head: React.CSSProperties = {
@@ -96,7 +108,10 @@ function ShiftBadge({ day }: { day: DayCol }) {
   return (
     <span
       data-shift-badge=""
-      title={S.editor.shiftBadgeTitle(day.shiftBadge.originalDate, day.shiftBadge.days)}
+      title={S.editor.shiftBadgeTitle(
+        mdLabel(addDays(day.shiftBadge.originalDate, 0)),
+        day.shiftBadge.days,
+      )}
       style={{
         display: 'inline-flex', alignItems: 'center', flex: 'none', padding: '1px 4px',
         border: '1px solid var(--warn)', borderRadius: 'var(--r-sm)', color: 'var(--warn)',
@@ -117,6 +132,143 @@ function WeekBandCalendarLabel({ weekdayLabel, dateLabel }: {
       {weekdayLabel && <span className="dayhead-weekday">{weekdayLabel}</span>}
       <span className="dayhead-date">{dateLabel}</span>
     </span>
+  )
+}
+
+function ShiftArrow() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 12 12" width="12" height="12" fill="none">
+      <path d="M2 6h7M6.5 2.5 10 6 6.5 9.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
+function PlanShiftControl({ control, dayName }: {
+  control: NonNullable<Props['shiftControl']>
+  dayName: string
+}) {
+  const [open, setOpen] = useState(false)
+  const [draft, setDraft] = useState('1')
+  const [applying, setApplying] = useState(false)
+  const [error, setError] = useState('')
+  const [panelPosition, setPanelPosition] = useState<{ top: number; left: number } | null>(null)
+  const buttonRef = useRef<HTMLButtonElement>(null)
+  const offsetDays = Math.max(1, Math.min(30, Number.parseInt(draft, 10) || 1))
+  const target = addDays(control.anchorDate, offsetDays)
+  const periodEnd = addDays(control.periodEndDateAfterShift(offsetDays), 0)
+  const clampDraft = () => setDraft(String(offsetDays))
+  const changeBy = (delta: number) => setDraft(String(Math.max(1, Math.min(30, offsetDays + delta))))
+
+  useLayoutEffect(() => {
+    if (!open) return
+    const updatePosition = () => {
+      const rect = buttonRef.current?.closest('.dayhead')?.getBoundingClientRect()
+      if (!rect) return
+      setPanelPosition({
+        top: rect.bottom + 6,
+        left: Math.max(8, Math.min(rect.left, window.innerWidth - 348)),
+      })
+    }
+    updatePosition()
+    window.addEventListener('resize', updatePosition)
+    window.addEventListener('scroll', updatePosition, true)
+    return () => {
+      window.removeEventListener('resize', updatePosition)
+      window.removeEventListener('scroll', updatePosition, true)
+    }
+  }, [open])
+
+  return (
+    <>
+      <button
+        ref={buttonRef}
+        type="button"
+        className="day-shift-action"
+        onMouseDown={(event) => { event.preventDefault(); event.stopPropagation() }}
+        onClick={(event) => {
+          event.stopPropagation()
+          setDraft('1')
+          setError('')
+          setOpen((value) => !value)
+        }}
+      >
+        <ShiftArrow />{S.editor.shiftAction}
+      </button>
+      {open && panelPosition && createPortal((
+        <>
+          <span className="day-shift-dismiss" onClick={(event) => { event.stopPropagation(); setOpen(false) }} />
+          <span
+            className="day-shift-panel"
+            data-plan-shift-panel=""
+            style={panelPosition}
+            onMouseDown={(event) => event.stopPropagation()}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <span className="day-shift-title">
+              {S.editor.shiftPanelTitle(mdLabel(addDays(control.anchorDate, 0)), control.weekNumber, control.dayOrdinal)}
+            </span>
+            <span className="day-shift-subtitle">{S.editor.shiftPanelSubtitle}</span>
+            <span className="day-shift-stepper-row">
+              <span className="day-shift-stepper">
+                <button type="button" aria-label={S.editor.decreaseShiftDays} disabled={offsetDays <= 1 || applying} onClick={() => changeBy(-1)}>−</button>
+                <input
+                  aria-label={S.editor.shiftDaysUnit}
+                  inputMode="numeric"
+                  value={draft}
+                  disabled={applying}
+                  onChange={(event) => {
+                    const digits = event.currentTarget.value.replace(/\D/g, '').slice(0, 2)
+                    setDraft(digits === '' ? '' : String(Math.max(1, Math.min(30, Number(digits)))))
+                  }}
+                  onBlur={clampDraft}
+                />
+                <button type="button" aria-label={S.editor.increaseShiftDays} disabled={offsetDays >= 30 || applying} onClick={() => changeBy(1)}>+</button>
+                <span>{S.editor.shiftDaysUnit}</span>
+              </span>
+              <span className="day-shift-range">{S.editor.shiftDaysRange}</span>
+            </span>
+            <span className="day-shift-preview">
+              <span>{S.editor.shiftPreviewDay(
+                control.weekNumber,
+                control.dayOrdinal,
+                dayName,
+                mdLabel(target),
+                dowLabel(target),
+              )}</span>
+              <span>{S.editor.shiftAffectedDays(control.affectedDays, control.completedDays)}</span>
+              <span>{S.editor.shiftPeriodEnd(mdLabel(addDays(control.periodEndDate, 0)), mdLabel(periodEnd))}</span>
+            </span>
+            {control.affectedDays === 0
+              ? <span className="day-shift-error">{S.editor.shiftNoTargetDays}</span>
+              : <span className="day-shift-note">{S.editor.shiftStudentNotice}</span>}
+            {error && <span className="day-shift-error" role="alert">{error}</span>}
+            <span className="day-shift-actions">
+              <button type="button" disabled={applying} onClick={() => setOpen(false)}>{S.common.cancel}</button>
+              <button
+                type="button"
+                className="apply"
+                disabled={applying || control.affectedDays === 0}
+                onClick={() => {
+                  setApplying(true)
+                  setError('')
+                  void control.onShift(offsetDays)
+                    .then(() => setOpen(false))
+                    .catch((caught: unknown) => {
+                      const code = typeof caught === 'object' && caught !== null && 'code' in caught
+                        ? String(Reflect.get(caught, 'code'))
+                        : ''
+                      setError(code === 'SHIFT_NO_TARGET_DAYS' ? S.editor.shiftNoTargetDays : S.editor.shiftFailed)
+                    })
+                    .finally(() => setApplying(false))
+                }}
+              >
+                {S.editor.shiftSubmit(offsetDays)}
+              </button>
+            </span>
+          </span>
+        </>
+      ), document.body)}
+    </>
   )
 }
 
@@ -672,6 +824,7 @@ export function DayColumn({
   weekBand,
   actualsForRow,
   e1rmForRow,
+  shiftControl,
 }: Props) {
   const [dragRowId, setDragRowId] = useState<string | null>(null)
   const [dropTarget, setDropTarget] = useState<{ rowId: string; position: 'before' | 'after' } | null>(null)
@@ -696,6 +849,7 @@ export function DayColumn({
         ? S.editor.deadliftDay
         : S.editor.trainingDay
   const dayMeta = S.editor.dayMeta(mainDaySummary.sets, auxDaySummary.sets, compactTonnage(dayTonnage))
+  const shiftAction = shiftControl ? <PlanShiftControl control={shiftControl} dayName={dayTheme} /> : null
   const isCellSelected = (rowId: string, field: PlanCellField, setIndex?: number) => samePlanCell(
     cellSelection ?? null,
     { weekNumber, dow: day.dow, rowId, field, setIndex },
@@ -781,6 +935,7 @@ export function DayColumn({
           <span className="dayhead-primary">{!dayMoveDisabledHint && <span className="day-move-grip" aria-hidden="true">⋮ </span>}{day.dowLabel}</span>
           <span className="dayhead-date">{day.dateLabel}</span>
           <ShiftBadge day={day} />
+          {shiftAction}
         </div>
         <div className="restday-body">
           <span>{S.editor.rest}</span>
@@ -802,6 +957,7 @@ export function DayColumn({
             {!dayMoveDisabledHint && <span className="day-move-grip" aria-hidden="true">⋮</span>}
             <WeekBandCalendarLabel weekdayLabel={weekBand.weekdayLabel} dateLabel={day.dateLabel} />
             <ShiftBadge day={day} />
+            {shiftAction}
             {columnLetter && <kbd className="day-column-key">{columnLetter}</kbd>}
           </span>
           <span className="week-band-rest-label">{S.editor.rest}</span>
@@ -832,6 +988,7 @@ export function DayColumn({
           {weekBand && <WeekBandCalendarLabel weekdayLabel={weekBand.weekdayLabel} dateLabel={day.dateLabel} />}
           {!weekBand && <span className="dayhead-date">{day.dateLabel}</span>}
           <ShiftBadge day={day} />
+          {shiftAction}
           {columnLetter && <kbd className="day-column-key">{columnLetter}</kbd>}
         </span>
         <span className="dayhead-theme">{dayTheme}</span>

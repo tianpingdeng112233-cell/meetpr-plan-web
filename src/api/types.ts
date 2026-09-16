@@ -313,8 +313,26 @@ export interface PlanResponse {
   updated_at: string
   total_shift_days: number
   latest_shift_created_at: string | null
+  latest_shift: PlanShiftSummary | null
   /** Coach-only additive field from backend spec 044; absent on older servers. */
   pending_revision_saved_at?: string | null
+}
+
+export interface PlanShiftSummary {
+  batch_id: string
+  actor_role: 'coach' | 'coached_student'
+  anchor_date: string
+  offset_days: number
+  created_at: string
+}
+
+export interface ShiftPlanResponse {
+  batch_id: string
+  anchor_date: string
+  offset_days: number
+  shifted_days: { day_id: string; shifted_to_date: string }[]
+  skipped_completed_day_ids: string[]
+  total_shift_days: number
 }
 
 export interface PlanSetResponse {

@@ -121,11 +121,10 @@ describe('whole-day column dragging', () => {
     ))
 
     const badge = dayAt(host, 1, 0).querySelector<HTMLElement>('[data-shift-badge]')!
-    expect(badge.textContent).toBe('顺延')
-    expect(badge.title).toContain('原定日期：2026-07-20')
-    expect(badge.title).toContain('顺延天数：2 天')
+    expect(badge.textContent).toBe('已后移')
+    expect(badge.title).toBe('原定 7/20 · 已后移 2 天')
     expect(host.querySelector<HTMLElement>('[data-plan-shift-notice]')?.textContent)
-      .toContain('学员已整体顺延 2 天')
+      .toContain('学员曾顺延 2 天')
   })
 
   it('asks before moving a shifted day and leaves it in place when cancelled', () => {
@@ -150,7 +149,7 @@ describe('whole-day column dragging', () => {
     act(() => window.dispatchEvent(new MouseEvent('mouseup', { clientX: 8, clientY: 0 })))
 
     expect(confirm).toHaveBeenCalledOnce()
-    expect(confirm.mock.calls[0][0]).toContain('保存后该天的顺延日期会丢失')
+    expect(confirm.mock.calls[0][0]).toContain('保存后该天的后移日期会丢失')
     expect(dayAt(host, 1, 0).querySelector('[data-rowid="squat"]')).not.toBeNull()
     expect(dayAt(host, 1, 2).className).toContain('restday')
   })

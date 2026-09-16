@@ -2,7 +2,11 @@ import { describe, expect, it } from 'vitest'
 import type { ExerciseResponse } from '../../api/types'
 import type { ExerciseRow } from './types'
 import { ExerciseIndex } from './exerciseIndex'
-import { parseClipboardRows, serializeRowsForClipboard } from './clipboard'
+import {
+  formatTranslatedDaysPasteStatus,
+  parseClipboardRows,
+  serializeRowsForClipboard,
+} from './clipboard'
 
 function exercise(id: string, name: string): ExerciseResponse {
   return {
@@ -175,5 +179,24 @@ describe('plan editor clipboard rows', () => {
       boxes: [{ val: '100', empty: false }, { val: '102.5', empty: false }],
       note: '旧剪贴板',
     })
+  })
+
+  it('ignores multi-day comments and every repeated header row', () => {
+    const text = [
+      '# W03 周一 8/3',
+      '动作\t组\t次\t强度类型\t强度\t备注',
+      '卧推\t2\t5\tKG\t100/102.5\t暂停',
+      '# W03 周三 8/5',
+      '动作\t组\t次\t强度类型\t强度\t备注',
+      '深蹲\t1\t3\tRPE\t8\t',
+    ].join('\r\n')
+
+    const parsed = parseClipboardRows(text)
+
+    expect(parsed?.map((row) => row.name)).toEqual(['卧推', '深蹲'])
+  })
+
+  it('reports an all-out-of-range translated paste as entirely skipped', () => {
+    expect(formatTranslatedDaysPasteStatus(0, 2)).toBe('2 天全部超出计划范围已跳过')
   })
 })
