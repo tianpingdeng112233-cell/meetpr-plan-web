@@ -69,5 +69,5 @@ Codex 接手时按 `~/.codex/AGENTS.md` 与 `~/CodexConfig/docs/engineering-work
 ## ⑤ 待做区
 
 - **发布 422 UX 缺口**：`PLAN_PUBLISH_INCOMPLETE` 目前对教练不够友好——没有精确指出是哪天/哪个动作导致不完整。需要把 422 详情映射到具体格子并高亮。
-- **045 发布状态（2026-09-16）**：后端 #276 已合并部署，0070 已应用；coach gate 运行值核验后才合并本仓 #102（包含 #101/#53）并换装。同源产物和线上验收以 [后端部署记录](https://github.com/tianpingdeng112233-cell/MeetPR-backend/blob/staging/docs/deployment-045-web101-53-2026-09-16.md) 为准；本仓 [集成验收](docs/verification-101-53-2026-09-16.md) 记录测试与界面证据。
+- **045 发布状态（2026-09-16）**：后端 #276 已部署，0070 与 coach gate=true 已验证；本仓 #102（含 #101/#53）已合并，经 backend #278 部署并核对线上产物和界面。同源产物和线上验收以 [后端部署记录](https://github.com/tianpingdeng112233-cell/MeetPR-backend/blob/staging/docs/deployment-045-web101-53-2026-09-16.md) 为准；本仓 [集成验收](docs/verification-101-53-2026-09-16.md) 记录测试与界面证据。
 - ~~**trunk 归一**~~：✅ 已完成（2026-07-04，归一到 `main`，`origin/HEAD → main`）。残留仅 `feat/002-xlsx-import` 分支退休（删除归去重波收尾）。
