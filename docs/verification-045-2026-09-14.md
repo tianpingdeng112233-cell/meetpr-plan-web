@@ -1,5 +1,7 @@
 # PR #101 / spec 045 验证 — 2026-09-14
 
+> 本文保留 2026-09-14 验收快照；后续集成见 [#101/#53 验收](verification-101-53-2026-09-16.md)，实际上线见 [后端部署记录](https://github.com/tianpingdeng112233-cell/MeetPR-backend/blob/staging/docs/deployment-045-web101-53-2026-09-16.md)。
+
 ## 范围和状态
 
 已批准的教练后移入口与撤销流程；对照 backend #276 的 POST/DELETE/GET 契约。基础提交 `317c723` 已包含 main `04ae976`。本次返修提交 `f452933`，完成定向返修和本地验证，尚未合并或部署；上线依赖 backend 0070、新镜像全量 rollout 和 `COACH_PLAN_SHIFT_ENABLED=true`。

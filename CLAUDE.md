@@ -69,5 +69,5 @@ Codex 接手时按 `~/.codex/AGENTS.md` 与 `~/CodexConfig/docs/engineering-work
 ## ⑤ 待做区
 
 - **发布 422 UX 缺口**：`PLAN_PUBLISH_INCOMPLETE` 目前对教练不够友好——没有精确指出是哪天/哪个动作导致不完整。需要把 422 详情映射到具体格子并高亮。
-- **045 上线依赖（2026-09-14）**：web #101、backend #276、iOS #340 尚未合并；0070 隔离 PostgreSQL 17 验证已通过，线上迁移、新镜像全量、gate 启用和 web 换装尚未执行。GitHub 托管 CI billing lock 与本地测试结果分别记录，完成状态以最终 PR 和 backend 迁移/部署账本为准。
+- **045 发布状态（2026-09-16）**：后端 #276 已合并部署，0070 已应用；coach gate 运行值核验后才合并本仓 #102（包含 #101/#53）并换装。同源产物和线上验收以 [后端部署记录](https://github.com/tianpingdeng112233-cell/MeetPR-backend/blob/staging/docs/deployment-045-web101-53-2026-09-16.md) 为准；本仓 [集成验收](docs/verification-101-53-2026-09-16.md) 记录测试与界面证据。
 - ~~**trunk 归一**~~：✅ 已完成（2026-07-04，归一到 `main`，`origin/HEAD → main`）。残留仅 `feat/002-xlsx-import` 分支退休（删除归去重波收尾）。

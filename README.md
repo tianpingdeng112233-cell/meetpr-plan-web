@@ -64,7 +64,7 @@ npm run build      # tsc --noEmit && vite build，产物进 dist/
 | 003 | [`specs/003-draft-autosave/`](specs/003-draft-autosave/) | 草稿自动保存（1.5s 自动存草稿） |
 | 045 | [`docs/specs/045-coach-plan-shift.md`](docs/specs/045-coach-plan-shift.md) | 教练后移推荐日期、撤销最近批次；上线依赖 backend 0070 与 gate |
 
-2026-09-14 收尾状态：web #99 配套修复已部署；web #101、backend #276、iOS #340/#341/#342 尚未合并。本轮 web 本地测试与构建已通过，后移入口的线上迁移、gate 和换装尚未执行。具体验证与最终提交以 PR 记录为准。
+后移与多日编辑的验证见 [#101/#53 集成验收](docs/verification-101-53-2026-09-16.md)，实际迁移、gate、网页产物与部署状态见 [后端上线记录](https://github.com/tianpingdeng112233-cell/MeetPR-backend/blob/staging/docs/deployment-045-web101-53-2026-09-16.md)。合并与构建通过不等于线上已换装。
 
 ---
 
