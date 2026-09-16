@@ -10,6 +10,7 @@ import {
   rowPctAnchor,
   rowWeightBoxes,
 } from './intensityModel'
+import { S } from '../../i18n/strings'
 import { STABLE_ZH } from '../../i18n/stable-zh'
 
 type ExerciseResolver = Pick<ExerciseIndex, 'resolve'>
@@ -57,20 +58,26 @@ export function serializeDayForClipboard(day: DayCol): string {
   return serializeRowsForClipboard(day.rows)
 }
 
+export function formatTranslatedDaysPasteStatus(pasted: number, skipped: number): string {
+  if (pasted === 0) return S.editor.skippedAllDays(skipped)
+  return skipped > 0
+    ? `${S.editor.pastedDays(pasted)},${S.editor.skippedDays(skipped)}`
+    : S.editor.pastedDays(pasted)
+}
+
 export function parseClipboardRows(text: string, exerciseIndex?: ExerciseResolver | null): ExerciseRow[] | null {
   const lines = text.replace(/\r/g, '').split('\n').map((line) => line.trimEnd()).filter((line) => line.trim() !== '')
   if (lines.length === 0) return null
-  const headerCells = lines[0].split('\t')
-  const first = headerCells[0]?.trim()
+  const headerCells = (lines.find((line) => !line.trimStart().startsWith('#')) ?? '').split('\t')
   const modernFormat = headerCells.includes(STABLE_ZH.clipboard.weightMode) && headerCells.includes(STABLE_ZH.clipboard.weight)
   const pctAnchorIndex = headerCells.indexOf(STABLE_ZH.clipboard.pctAnchor)
-  if (first === STABLE_ZH.clipboard.exercise || first?.toLowerCase() === 'exercise') lines.shift()
 
   const rows: ExerciseRow[] = []
   for (const [lineIndex, line] of lines.entries()) {
+    if (line.trimStart().startsWith('#')) continue
     const cells = line.split('\t')
     const name = (cells[0] ?? '').trim()
-    if (!name) continue
+    if (!name || name === STABLE_ZH.clipboard.exercise || name.toLowerCase() === 'exercise') continue
     const modern = modernFormat
     const legacyPerSetRpe = modern && (cells[3] ?? '').replace(/\s/g, '').toLowerCase() === STABLE_ZH.clipboard.legacyPerSetRpe
     const legacyMode = clipboardMode(cells[3] ?? '')

@@ -35,7 +35,7 @@ import {
   LockedRowMutationError, ReconcileConflict, ReconciliationError, type SaveResult,
 } from './reconcile'
 import { createSaveController } from './autosave'
-import { parseClipboardRows, serializeDayForClipboard, serializeRowsForClipboard } from './clipboard'
+import { formatTranslatedDaysPasteStatus, parseClipboardRows, serializeDayForClipboard, serializeRowsForClipboard } from './clipboard'
 import {
   addDays,
   applyShiftedDaysToWeeks,
@@ -60,11 +60,17 @@ import { getPendingRevision, type PendingRevisionResponse } from '../../api/pend
 import { DraftMirrorBanner } from './components/DraftMirrorBanner'
 import { FormulaBar } from './components/FormulaBar'
 import {
+  absoluteDayIndex,
+  applyPlanDayPlacements,
   movePlanCell,
   orderRowsForDisplay,
+  planDayKey,
+  planDaysInRange,
+  placePlanDayOffsets,
   planCellKey,
   resolvePlanCell,
   samePlanCell,
+  type PlanDayTarget,
   type PlanCellField,
   type PlanCellSelection,
 } from './selectionModel'
@@ -79,14 +85,15 @@ import {
 } from './weekBandModel'
 import type { WeekBandBadge } from './components/DayColumn'
 
-interface Sel { wnum: number; dow: number }
+type Sel = PlanDayTarget
 interface PopState { visible: boolean; x: number; y: number; wnum: number; dow: number; rowId: string; query: string }
 interface RowTarget { wnum: number; dow: number; rowId: string }
 interface RowSelection { anchor: RowTarget | null; rowIds: Set<string> }
+interface DaySelection { anchor: Sel | null; days: Set<string> }
 interface RowSelectionModifiers { toggle: boolean; range: boolean }
 interface FormulaCellDraft { selection: PlanCellSelection; rawValue: string }
 interface CreateExerciseState { open: boolean; initialName: string; bindTarget: RowTarget | null }
-type ClipboardKind = 'day' | 'row'
+type ClipboardKind = 'day' | 'days' | 'row'
 interface DayMoveVisual {
   fromWnum: number
   fromDow: number
@@ -273,6 +280,8 @@ function isPastISODate(iso: string): boolean {
 
 type WeeksUpdate = Week[] | ((prev: Week[]) => Week[])
 interface DayClipboard { rows: ExerciseRow[] }
+interface DaysClipboardDay extends DayClipboard { offset: number }
+interface DaysClipboard { days: DaysClipboardDay[] }
 
 function cloneRow(row: ExerciseRow, prefix: string, index: number): ExerciseRow {
   const source = materializeIntensityRow(row)
@@ -304,6 +313,27 @@ function dayDisplay(week: Week, day: DayCol): string {
 
 function singleRowSelection(anchor: RowTarget | null): RowSelection {
   return { anchor, rowIds: new Set(anchor ? [anchor.rowId] : []) }
+}
+
+function singleDaySelection(anchor: Sel | null): DaySelection {
+  return { anchor, days: new Set(anchor ? [planDayKey(anchor)] : []) }
+}
+
+function convergeDaySelection(selection: DaySelection, weeks: Week[]): DaySelection {
+  const { anchor } = selection
+  if (!anchor) return selection.days.size === 0 ? selection : singleDaySelection(null)
+  const validKeys = new Set(weeks.flatMap((week) => (
+    week.days.map((day) => planDayKey({ wnum: week.num, dow: day.dow }))
+  )))
+  if (!validKeys.has(planDayKey(anchor))) return singleDaySelection(null)
+  // A visible-week change can hide a single selected day while retaining its
+  // Shift anchor. Week relabels/resizes must not make that hidden day reappear.
+  if (selection.days.size === 0) return selection
+  const days = new Set([...selection.days].filter((key) => validKeys.has(key)))
+  days.add(planDayKey(anchor))
+  const unchanged = days.size === selection.days.size
+    && [...days].every((key) => selection.days.has(key))
+  return unchanged ? selection : { anchor, days }
 }
 
 function convergeRowSelection(
@@ -558,6 +588,9 @@ export function PlanEditor(props: PlanEditorProps) {
     const parsed = value == null ? NaN : Number(value)
     return Number.isFinite(parsed) && parsed > 0 ? parsed : null
   }, [props.exerciseIndex, props.exerciseStatsOverview])
+  const [daySelection, setDaySelection] = useState<DaySelection>(() => singleDaySelection(null))
+  const daySelectionRef = useRef(daySelection)
+  daySelectionRef.current = daySelection
   const [rowSelection, setRowSelection] = useState<RowSelection>(() => singleRowSelection(null))
   const selectedRow = rowSelection.anchor
   const selectedRowIds = rowSelection.rowIds
@@ -611,6 +644,7 @@ export function PlanEditor(props: PlanEditorProps) {
   const historyStartRef = useRef<(string | null)[]>([])
   const redoStartRef = useRef<(string | null)[]>([])
   const dayClipboardRef = useRef<DayClipboard | null>(null)
+  const daysClipboardRef = useRef<DaysClipboard | null>(null)
   const rowClipboardRef = useRef<ExerciseRow[] | null>(null)
   const clipboardKindRef = useRef<ClipboardKind | null>(null)
   const clipboardTextRef = useRef('')
@@ -628,9 +662,13 @@ export function PlanEditor(props: PlanEditorProps) {
   }, [cellSelection])
 
   useEffect(() => {
+    setDaySelection((current) => convergeDaySelection(current, weeks))
+    setSel((current) => current && !weeks.some((week) => (
+      week.num === current.wnum && week.days.some((day) => day.dow === current.dow)
+    )) ? null : current)
     setRowSelection((current) => convergeRowSelection(current, displayWeeks, rowTier))
     setCellSelection((current) => current && !resolvePlanCell(displayWeeks, current) ? null : current)
-  }, [displayWeeks, rowTier])
+  }, [displayWeeks, rowTier, weeks])
 
   useEffect(() => {
     // Parent metadata is authoritative after loading/saving. Do not overwrite a
@@ -889,7 +927,13 @@ export function PlanEditor(props: PlanEditorProps) {
     // Once the horizontal week anchor changes, selections from another
     // week are cleared so day/row/cell context and the formula bar cannot keep
     // describing a week that the toolbar no longer identifies as visible.
-    setSel((current) => current?.wnum === weekNumber ? current : null)
+    setSel((current) => daySelectionRef.current.days.size > 1 || current?.wnum === weekNumber ? current : null)
+    setDaySelection((current) => {
+      if (current.anchor?.wnum === weekNumber || current.days.size > 1) return current
+      // Keep a hidden range anchor so scrolling to another week can be followed
+      // by Shift-click, while retaining the old single-day visible cleanup.
+      return current.anchor ? { anchor: current.anchor, days: new Set() } : current
+    })
     setRowSelection((current) => current.anchor?.wnum === weekNumber ? current : singleRowSelection(null))
     setCellSelection((current) => current?.weekNumber === weekNumber ? current : null)
     setPop((current) => (
@@ -925,7 +969,11 @@ export function PlanEditor(props: PlanEditorProps) {
       const scroller = scrollerRef.current
       if (scroller) scrollElementLeft(scroller, slot?.offsetLeft ?? 0)
       const firstTrain = current.days.find((day) => !isRestDay(day))
-      if (firstTrain) setSel({ wnum: current.num, dow: firstTrain.dow })
+      if (firstTrain) {
+        const target = { wnum: current.num, dow: firstTrain.dow }
+        setSel(target)
+        setDaySelection(singleDaySelection(target))
+      }
     })
     return () => window.cancelAnimationFrame(id)
     // mount-only initial positioning
@@ -1009,14 +1057,53 @@ export function PlanEditor(props: PlanEditorProps) {
   }
 
   const handleSelect = (wnum: number, dow: number) => {
-    setSel({ wnum, dow })
+    const target = { wnum, dow }
+    setSel(target)
+    setDaySelection(singleDaySelection(target))
     setRowSelection(singleRowSelection(null))
     setCellSelection(null)
     setPop((p) => ({ ...p, visible: false }))
   }
-  const handleDayClick = (wnum: number, dow: number) => {
+  const handleDayClick = (wnum: number, dow: number, event: React.MouseEvent) => {
     if (suppressDayClickRef.current) return
-    handleSelect(wnum, dow)
+    const target = { wnum, dow }
+    const toggle = event.metaKey || event.ctrlKey
+    if (!toggle && !event.shiftKey) {
+      handleSelect(wnum, dow)
+      return
+    }
+
+    let next = daySelection
+    if (event.shiftKey && daySelection.anchor) {
+      next = {
+        anchor: daySelection.anchor,
+        days: new Set(planDaysInRange(latestWeeks.current, daySelection.anchor, target).map(planDayKey)),
+      }
+    } else if (
+      toggle
+      && daySelection.anchor
+      && daySelection.days.has(planDayKey(daySelection.anchor))
+    ) {
+      const days = new Set(daySelection.days)
+      const key = planDayKey(target)
+      if (days.has(key)) days.delete(key)
+      else days.add(key)
+      if (days.size === 0) next = singleDaySelection(null)
+      else if (key !== planDayKey(daySelection.anchor) || days.has(key)) next = { anchor: daySelection.anchor, days }
+      else {
+        const anchor = weeks.flatMap((week) => week.days.map((day) => ({ wnum: week.num, dow: day.dow })))
+          .filter((day) => days.has(planDayKey(day)))
+          .sort((left, right) => absoluteDayIndex(left) - absoluteDayIndex(right))[0] ?? null
+        next = anchor ? { anchor, days } : singleDaySelection(null)
+      }
+    } else {
+      next = singleDaySelection(target)
+    }
+    setDaySelection(next)
+    setSel(next.anchor)
+    if (next.days.size !== 1) setRowSelection(singleRowSelection(null))
+    setCellSelection(null)
+    setPop((current) => ({ ...current, visible: false }))
   }
   const handleDayMoveStart = (wnum: number, day: DayCol, e: React.MouseEvent) => {
     if (e.button !== 0 || dayMoveDisabledReason(day, dayMoveLocked)) return
@@ -1144,6 +1231,7 @@ export function PlanEditor(props: PlanEditorProps) {
     modifiers: RowSelectionModifiers = { toggle: false, range: false },
   ) => {
     setSel({ wnum, dow })
+    setDaySelection(singleDaySelection({ wnum, dow }))
     const target = { wnum, dow, rowId }
     setRowSelection((current) => {
       const anchor = current.anchor
@@ -1189,6 +1277,7 @@ export function PlanEditor(props: PlanEditorProps) {
   ) => {
     const selection = { weekNumber: wnum, dow, rowId, field, setIndex }
     setSel({ wnum, dow })
+    setDaySelection(singleDaySelection({ wnum, dow }))
     setRowSelection((current) => (
       current.anchor?.wnum === wnum
       && current.anchor.dow === dow
@@ -1370,6 +1459,7 @@ export function PlanEditor(props: PlanEditorProps) {
       reorderRowsInWeek(prev, rowTier, wnum, dow, dragRowId, targetRowId, position) ?? prev
     ))
     setSel({ wnum, dow })
+    setDaySelection(singleDaySelection({ wnum, dow }))
     setRowSelection(singleRowSelection({ wnum, dow, rowId: dragRowId }))
     setPop((p) => ({ ...p, visible: false }))
   }
@@ -1526,6 +1616,37 @@ export function PlanEditor(props: PlanEditorProps) {
       : []
   }, [displayWeeks, rowTier, selectedRow, selectedRowIds])
 
+  const selectedDaysValue = useCallback(() => weeks.flatMap((week) => (
+    week.days
+      .filter((day) => daySelection.days.has(planDayKey({ wnum: week.num, dow: day.dow })))
+      .map((day) => ({ wnum: week.num, weekNum2: week.num2, day }))
+  )).sort((left, right) => (
+    absoluteDayIndex({ wnum: left.wnum, dow: left.day.dow })
+      - absoluteDayIndex({ wnum: right.wnum, dow: right.day.dow })
+  )), [daySelection.days, weeks])
+
+  const copySelectedDays = useCallback(async () => {
+    const selected = selectedDaysValue()
+    if (selected.length < 2) return
+    const firstAbs = absoluteDayIndex({ wnum: selected[0].wnum, dow: selected[0].day.dow })
+    const text = selected.map(({ weekNum2, day }) => (
+      `# W${weekNum2} ${day.dowLabel} ${day.dateLabel}\n${serializeRowsForClipboard(day.rows)}`
+    )).join('\n')
+    daysClipboardRef.current = {
+      days: selected.map(({ wnum, day }) => ({
+        offset: absoluteDayIndex({ wnum, dow: day.dow }) - firstAbs,
+        ...cloneDayClipboard(day),
+      })),
+    }
+    dayClipboardRef.current = null
+    rowClipboardRef.current = null
+    clipboardKindRef.current = 'days'
+    clipboardTextRef.current = text
+    setHasRowClipboard(false)
+    try { await navigator.clipboard?.writeText(text) } catch { /* internal clipboard still works */ }
+    setStatusText(S.editor.copiedDays(selected.length))
+  }, [selectedDaysValue])
+
   const copySelectedDay = useCallback(async () => {
     const day = selectedDay()
     const week = sel ? weeks.find((candidate) => candidate.num === sel.wnum) : null
@@ -1568,6 +1689,7 @@ export function PlanEditor(props: PlanEditorProps) {
         return { ...day, rest: false, rows: [...day.rows, ...inserted] }
       }),
     }))
+    setDaySelection(singleDaySelection(sel))
     setRowSelection(singleRowSelection({ wnum: sel.wnum, dow: sel.dow, rowId: inserted[0].id }))
     const target = weeks.find((week) => week.num === sel.wnum)?.days.find((day) => day.dow === sel.dow)
     const targetWeek = weeks.find((week) => week.num === sel.wnum)
@@ -1601,11 +1723,40 @@ export function PlanEditor(props: PlanEditorProps) {
     let externalRows: ExerciseRow[] | null = null
     try {
       const text = await navigator.clipboard?.readText()
-      if (text && text !== clipboardTextRef.current) externalRows = parseClipboardRows(text, props.exerciseIndex)
+      if (
+        text
+        && text.replace(/\r/g, '') !== clipboardTextRef.current.replace(/\r/g, '')
+      ) externalRows = parseClipboardRows(text, props.exerciseIndex)
     } catch { /* use internal clipboard below */ }
 
     if (externalRows) {
       pasteRowsIntoSelection(externalRows)
+      return
+    }
+
+    if (clipboardKindRef.current === 'days' && daysClipboardRef.current) {
+      const { inRange, skipped } = placePlanDayOffsets(daysClipboardRef.current.days, sel, weeks)
+      if (inRange.length === 0) {
+        setWeeksWithHistory((prev) => applyPlanDayPlacements(prev, inRange, (day) => day))
+        setStatusText(formatTranslatedDaysPasteStatus(0, skipped))
+        return
+      }
+      const occupied = inRange.filter(({ target }) => {
+        const day = weeks.find((week) => week.num === target.wnum)?.days.find((item) => item.dow === target.dow)
+        return !!day && !isRestDay(day)
+      }).length
+      if (
+        occupied > 0
+        && !window.confirm(S.editor.overwriteDaysConfirm(occupied))
+      ) return
+      setWeeksWithHistory((prev) => applyPlanDayPlacements(
+        prev,
+        inRange,
+        (day, source) => replaceUnlockedRows(day, source.rows),
+      ))
+      setRowSelection(singleRowSelection(null))
+      setCellSelection(null)
+      setStatusText(formatTranslatedDaysPasteStatus(inRange.length, skipped))
       return
     }
 
@@ -1683,6 +1834,7 @@ export function PlanEditor(props: PlanEditorProps) {
       })
     }
     setSel({ wnum: next.weekNumber, dow: next.dow })
+    setDaySelection(singleDaySelection({ wnum: next.weekNumber, dow: next.dow }))
     setRowSelection(singleRowSelection({ wnum: next.weekNumber, dow: next.dow, rowId: next.rowId }))
     setCellSelection(next)
     setPop((current) => ({ ...current, visible: false }))
@@ -1758,6 +1910,9 @@ export function PlanEditor(props: PlanEditorProps) {
     // read-only historical plans and while a selected grid input has focus.
     if (e.key === 'Escape' && (!editable || gridInput)) {
       setCellSelection(null)
+      setDaySelection((current) => current.anchor && current.days.size > 1
+        ? singleDaySelection(current.anchor)
+        : current)
       setRowSelection((current) => current.anchor && current.rowIds.size > 1
         ? singleRowSelection(current.anchor)
         : current)
@@ -1824,11 +1979,13 @@ export function PlanEditor(props: PlanEditorProps) {
     if (key === 'c') {
       e.preventDefault()
       if (selectedRow) void copySelectedRow()
+      else if (daySelection.days.size > 1) void copySelectedDays()
       else void copySelectedDay()
       return true
     } else if (key === 'v') {
       e.preventDefault()
-      if (selectedRow || clipboardKindRef.current === 'row') void pasteSelectedRows()
+      if (clipboardKindRef.current === 'days') void pasteSelectedDay()
+      else if (selectedRow || clipboardKindRef.current === 'row') void pasteSelectedRows()
       else void pasteSelectedDay()
       return true
     } else if (key === 'z' && e.shiftKey) {
@@ -1872,11 +2029,43 @@ export function PlanEditor(props: PlanEditorProps) {
       }),
     }))
     setSel({ wnum, dow })
+    setDaySelection(singleDaySelection({ wnum, dow }))
     setRowSelection(singleRowSelection({ wnum, dow, rowId: row.id }))
     setCellSelection({ weekNumber: wnum, dow, rowId: row.id, field: 'name' })
   }
 
   const handleClearDay = () => {
+    if (daySelection.days.size > 1) {
+      const targets = new Set(daySelection.days)
+      if (!window.confirm(S.editor.clearDaysConfirm(targets.size))) return
+      const selected = selectedDaysValue()
+      const changed = selected.filter(({ day }) => day.rows.some((row) => !row.hasLogs)).length
+      const retainedLogs = selected.filter(({ day }) => day.rows.some((row) => row.hasLogs)).length
+      setWeeksWithHistory((prev) => {
+        if (changed === 0) return prev
+        return prev.map((week) => ({
+          ...week,
+          days: week.days.map((day) => {
+            if (!targets.has(planDayKey({ wnum: week.num, dow: day.dow }))) return day
+            const released = new Set(day.releasedSortOrders ?? [])
+            for (const row of day.rows) {
+              if (!row.hasLogs && row.serverSortOrder != null) released.add(row.serverSortOrder)
+            }
+            return {
+              ...day,
+              rows: day.rows.filter((row) => row.hasLogs),
+              releasedSortOrders: [...released].sort((a, b) => a - b),
+            }
+          }),
+        }))
+      })
+      setRowSelection(singleRowSelection(null))
+      setCellSelection(null)
+      setStatusText(retainedLogs > 0
+        ? S.editor.clearedDaysWithLogs(changed, retainedLogs)
+        : S.editor.clearedDays(changed))
+      return
+    }
     patchSelDay((d) => {
     const released = new Set(d.releasedSortOrders ?? [])
     for (const row of d.rows) if (!row.hasLogs && row.serverSortOrder != null) released.add(row.serverSortOrder)
@@ -1976,6 +2165,9 @@ export function PlanEditor(props: PlanEditorProps) {
         })
       }
       setSel((current) => current && current.wnum > nextCount ? null : current)
+      setDaySelection((current) => current.anchor && current.anchor.wnum > nextCount
+        ? singleDaySelection(null)
+        : convergeDaySelection(current, nextWeeks))
       setRowSelection((current) => current.anchor && current.anchor.wnum > nextCount
         ? singleRowSelection(null)
         : current)
@@ -2441,7 +2633,9 @@ export function PlanEditor(props: PlanEditorProps) {
       importedPastHistory.current = markPastAsAssumedComplete
       const targetWeek = nextWeeks.find((week) => week.isCurrent) ?? nextWeeks[0]
       const firstTrain = targetWeek?.days.find((day) => !isRestDay(day))
-      setSel(targetWeek && firstTrain ? { wnum: targetWeek.num, dow: firstTrain.dow } : null)
+      const target = targetWeek && firstTrain ? { wnum: targetWeek.num, dow: firstTrain.dow } : null
+      setSel(target)
+      setDaySelection(singleDaySelection(target))
       if (targetWeek) {
         setCurWeekLabel(weekLabel(targetWeek.num))
         window.setTimeout(() => jumpToWeek(targetWeek.num), 80)
@@ -2760,6 +2954,7 @@ export function PlanEditor(props: PlanEditorProps) {
       <ContextBar
         visible={!!sel && !readOnly}
         dayLabel={selDayLabel}
+        selectedDayCount={daySelection.days.size}
         canCopyPrev={!!sel && sel.wnum > 1 && !copyTargetHasLockedRows}
         copyDisabledHint={copyTargetHasLockedRows ? S.editor.copyTargetLogged : undefined}
         copyLabel={copyDone ? S.editor.copiedLastWeek : COPY_LABEL}
@@ -2771,6 +2966,7 @@ export function PlanEditor(props: PlanEditorProps) {
         onClearDay={handleClearDay}
         onClose={() => {
           setSel(null)
+          setDaySelection(singleDaySelection(null))
           setRowSelection(singleRowSelection(null))
           setCellSelection(null)
           setPop((p) => ({ ...p, visible: false }))
@@ -2814,7 +3010,7 @@ export function PlanEditor(props: PlanEditorProps) {
                         columnLetter={String.fromCharCode(65 + dayIndex)}
                         day={day}
                         colW={colW[day.dow]}
-                        selected={sel?.wnum === wk.num && sel?.dow === day.dow}
+                        selected={daySelection.days.has(planDayKey({ wnum: wk.num, dow: day.dow }))}
                         selectedRowId={selectedRow?.wnum === wk.num && selectedRow.dow === day.dow ? selectedRow.rowId : null}
                         selectedRowIds={selectedRow?.wnum === wk.num && selectedRow.dow === day.dow ? selectedRowIds : undefined}
                         cellSelection={cellSelection}
@@ -2828,7 +3024,7 @@ export function PlanEditor(props: PlanEditorProps) {
                         ) : undefined}
                         readOnly={readOnly}
                         rowTier={rowTier}
-                        onSelect={() => handleDayClick(wk.num, day.dow)}
+                        onSelect={(event) => handleDayClick(wk.num, day.dow, event)}
                         onSelectRow={(rowId, modifiers) => handleSelectRow(wk.num, day.dow, rowId, modifiers)}
                         onSelectCell={(rowId, field, setIndex) => handleSelectCell(wk.num, day.dow, rowId, field, setIndex)}
                         onSetsDraftChange={(rowId, draft) => handleSetsDraftChange(wk.num, day.dow, rowId, draft)}

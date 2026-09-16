@@ -2,6 +2,16 @@ import type { Translations } from './types'
 import { countUnit } from './plural'
 
 export const zhEditor = {
+  selectedDays: (count: number, label: string) => `已选 ${count} 天 · ${label}`,
+  clearDays: (count: number) => `清空 ${count} 天`,
+  copiedDays: (count: number) => `已复制 ${count} 天`,
+  pastedDays: (count: number) => `已粘贴 ${count} 天`,
+  skippedDays: (count: number) => `${count} 天超出计划范围已跳过`,
+  skippedAllDays: (count: number) => `${count} 天全部超出计划范围已跳过`,
+  overwriteDaysConfirm: (count: number) => `有 ${count} 个落点日已有训练内容，粘贴会覆盖这些天的可编辑内容。是否继续？`,
+  clearDaysConfirm: (count: number) => `确定清空已选的 ${count} 天训练内容吗？`,
+  clearedDays: (count: number) => `已清空 ${count} 天`,
+  clearedDaysWithLogs: (count: number, retained: number) => `已清空 ${count} 天，${retained} 天保留了已打卡动作`,
   pasteExercise: '粘贴动作',
   clearDay: '清空本日',
   cancelSelection: '✕ 取消选择',
@@ -278,6 +288,16 @@ export const zhEditor = {
 } as const
 
 export const enEditor = {
+  selectedDays: (count, label) => `${countUnit(count, 'day', 'days')} selected · ${label}`,
+  clearDays: (count) => `Clear ${countUnit(count, 'day', 'days')}`,
+  copiedDays: (count) => `Copied ${countUnit(count, 'day', 'days')}`,
+  pastedDays: (count) => `Pasted ${countUnit(count, 'day', 'days')}`,
+  skippedDays: (count) => `${countUnit(count, 'day', 'days')} outside the plan skipped`,
+  skippedAllDays: (count) => `All ${countUnit(count, 'day', 'days')} outside the plan skipped`,
+  overwriteDaysConfirm: (count) => `${countUnit(count, 'target day already contains', 'target days already contain')} training content. Replace editable content on these days?`,
+  clearDaysConfirm: (count) => `Clear training content from the ${countUnit(count, 'selected day', 'selected days')}?`,
+  clearedDays: (count) => `Cleared ${countUnit(count, 'day', 'days')}`,
+  clearedDaysWithLogs: (count, retained) => `Cleared ${countUnit(count, 'day', 'days')}; logged exercises kept on ${countUnit(retained, 'day', 'days')}`,
   pasteExercise: 'Paste exercise', clearDay: 'Clear day', cancelSelection: '✕ Cancel selection',
   formulaBar: 'Cell formula bar', noCellSelected: 'No cell selected', cancelSelectionHint: 'Esc to cancel selection',
   localDraft: 'Local draft', unsavedLocalDraft: (time) => `Unsaved local draft detected from ${time}`,

@@ -58,7 +58,7 @@ interface Props {
   cellSelection?: PlanCellSelection | null
   /** v1.3 experiment: selected-day context rendered in the dark day header. */
   headerContext?: React.ReactNode
-  onSelect: () => void
+  onSelect: (event: React.MouseEvent) => void
   onSelectRow?: (rowId: string, modifiers?: { toggle: boolean; range: boolean }) => void
   onSelectCell?: (rowId: string, field: PlanCellField, setIndex?: number) => void
   onSetsDraftChange?: (rowId: string, draft: string | null) => void
