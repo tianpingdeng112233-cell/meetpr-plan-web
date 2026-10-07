@@ -971,8 +971,8 @@ export function PlanEditor(props: PlanEditorProps) {
       const firstTrain = current.days.find((day) => !isRestDay(day))
       if (firstTrain) {
         const target = { wnum: current.num, dow: firstTrain.dow }
-        setSel(target)
-        setDaySelection(singleDaySelection(target))
+        setSel((existing) => existing ?? target)
+        setDaySelection((existingSelection) => existingSelection.anchor ? existingSelection : singleDaySelection(target))
       }
     })
     return () => window.cancelAnimationFrame(id)

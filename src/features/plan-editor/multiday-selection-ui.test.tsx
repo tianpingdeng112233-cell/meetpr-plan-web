@@ -127,6 +127,20 @@ describe('plan editor multi-day selection UI', () => {
     vi.restoreAllMocks()
   })
 
+  it('does not overwrite an existing selection in the mount frame callback', async () => {
+    act(() => root.render(
+      <PlanEditor initialWeeks={[week(1, { 0: [row('source', '来源动作')] })]}
+        weeksCount={1} studentName="学员" planName="计划" />,
+    ))
+    act(() => click(day(host, 1, 1)))
+
+    await act(async () => {
+      await new Promise((resolve) => requestAnimationFrame(() => resolve(null)))
+    })
+
+    expect(selectedDayKeys(host)).toEqual(['1:1'])
+  })
+
   it('adds and removes days with Command-click while keeping a valid anchor', () => {
     act(() => root.render(
       <PlanEditor initialWeeks={[week(1)]} weeksCount={1} studentName="学员" planName="计划" />,
