@@ -1564,34 +1564,35 @@ export function PlanEditor(props: PlanEditorProps) {
     }))
   }
 
-  const handleCopyPrev = (targetSelection: Sel | null = sel) => {
-    if (!targetSelection || targetSelection.wnum <= 1) return
-    const targetWeek = weeks.find((week) => week.num === targetSelection.wnum)
-    if (targetWeek?.days.some((day) => day.rows.some((row) => row.hasLogs))) return
-    const occupiedDays = targetWeek?.days.filter((day) => !isRestDay(day)).length ?? 0
+  const handleCopyPrev = () => {
+    setCopyDone(false)
+    if (readOnly || !sel || sel.wnum <= 1) return
+    const targetWeek = weeks.find((week) => week.num === sel.wnum)
+    const srcWeek = weeks.find((week) => week.num === sel.wnum - 1)
+    if (!targetWeek || !srcWeek) return
+    if (targetWeek.days.some((day) => day.rows.some((row) => row.hasLogs))) return
+    const sourceDays = new Map(srcWeek.days.map((day) => [day.dow, day]))
+    if (!targetWeek.days.some((day) => sourceDays.has(day.dow))) return
+    const occupiedDays = targetWeek.days.filter((day) => !isRestDay(day)).length
     if (
       occupiedDays > 0
       && !window.confirm(S.editor.overwriteWeekConfirm(occupiedDays))
     ) return
 
-    setWeeksWithHistory((prev) => {
-      const srcWeek = prev.find((w) => w.num === targetSelection.wnum - 1)
-      if (!srcWeek) return prev
-      const sourceDays = new Map(srcWeek.days.map((day) => [day.dow, day]))
-      return prev.map((wk) => wk.num !== targetSelection.wnum ? wk : {
-        ...wk,
-        days: wk.days.map((day) => {
-          const source = sourceDays.get(day.dow)
-          if (!source) return day
-          return {
-            ...day,
-            rest: isRestDay(source),
-            rows: cloneRows(source.rows, 'copy-week'),
-            releasedSortOrders: [],
-          }
-        }),
-      })
+    const nextWeeks = weeks.map((wk) => wk.num !== sel.wnum ? wk : {
+      ...wk,
+      days: wk.days.map((day) => {
+        const source = sourceDays.get(day.dow)
+        if (!source) return day
+        return {
+          ...day,
+          rest: isRestDay(source),
+          rows: cloneRows(source.rows, 'copy-week'),
+          releasedSortOrders: [],
+        }
+      }),
     })
+    setWeeksWithHistory(nextWeeks)
     setRowSelection(singleRowSelection(null))
     setCopyDone(true)
     window.setTimeout(() => setCopyDone(false), 1300)
