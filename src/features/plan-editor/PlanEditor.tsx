@@ -35,6 +35,7 @@ import {
   LockedRowMutationError, ReconcileConflict, ReconciliationError, type SaveResult,
 } from './reconcile'
 import { createSaveController } from './autosave'
+import { classifySaveFailure } from './saveFailure'
 import { formatTranslatedDaysPasteStatus, parseClipboardRows, serializeDayForClipboard, serializeRowsForClipboard } from './clipboard'
 import {
   addDays,
@@ -2203,6 +2204,7 @@ export function PlanEditor(props: PlanEditorProps) {
   // A published plan is refused here so no queued, latched, or flushed write
   // can ever rewrite a plan the student is watching.
   const persistRef = useRef<() => Promise<boolean>>(async () => true)
+  const lastSaveFailureAlert = useRef<string | null>(null)
   const applyingSavedWeeks = useRef(false)
   const applyReconciledWeeks = (reconciled: Week[], replaceContent = true) => {
     if (published) {
@@ -2244,7 +2246,7 @@ export function PlanEditor(props: PlanEditorProps) {
   }
   persistRef.current = async () => {
     if (!props.onSave || published || readOnly) return true
-    const auto = saveMode.current === 'auto'
+    const auto = saveMode.current === 'auto' && !publishing.current
     const importStart = pendingPlanStart.current
     const markPastAsAssumedComplete = importedPastHistory.current
     const verb = auto ? S.editor.autosaving : S.editor.saving
@@ -2258,6 +2260,7 @@ export function PlanEditor(props: PlanEditorProps) {
       const savedWeeks = latestWeeks.current
       const savedPlanStart = importStart ?? currentPlanStart.current
       const res = await props.onSave(savedWeeks, importStart, markPastAsAssumedComplete, onProgress)
+      lastSaveFailureAlert.current = null
       // Clear only the token this save consumed: an import landing mid-flight writes a fresh
       // token, and the drain loop's next pass must still deliver it via reconcileImportedPlan —
       // clearing unconditionally would strand the imported start_date/plan_weeks client-side.
@@ -2302,6 +2305,7 @@ export function PlanEditor(props: PlanEditorProps) {
     catch (error) {
       const scoped = applySaveFailure(error)
       if (scoped) {
+        lastSaveFailureAlert.current = S.editor.publishScopedSaveFailure(scoped)
         setStatusText(scoped)
       } else if (error instanceof ReconciliationError) {
         // Client-side refusals are permanent for this plan state — a generic
@@ -2311,9 +2315,16 @@ export function PlanEditor(props: PlanEditorProps) {
         }
         const [status, detail] = explain[error.code]
         setStatusText(status)
+        lastSaveFailureAlert.current = auto ? S.editor.publishScopedSaveFailure(status) : null
         if (!auto) window.alert(detail)
       } else {
-        setStatusText(auto ? S.editor.autosaveFailed : S.editor.saveFailedRetry)
+        const failure = classifySaveFailure(error)
+        const reason = S.editor.saveFailureReasons[failure.kind]
+          + (error instanceof ApiException && (failure.kind === 'rejected' || failure.kind === 'serverError')
+            ? ` ${error.status}` : '')
+        setStatusText(auto ? S.editor.autosaveFailedReason(reason) : S.editor.saveFailedReason(reason))
+        lastSaveFailureAlert.current = S.editor.publishSaveFailure[failure.kind]
+          + (failure.kind === 'network' ? '' : `\n${S.editor.saveFailureTech(failure.tech)}`)
       }
       return false
     }
@@ -2698,8 +2709,7 @@ export function PlanEditor(props: PlanEditorProps) {
       // saveNow persists the latest draft AND awaits any in-flight autosave reconcile, so no
       // background draft write is still running when the plan flips to published (so-所见即所发).
       if (!(await saver.current.saveNow())) {
-        window.alert(S.editor.publishIncompleteAlert)
-        setStatusText(S.editor.publishPlanNotSaved)
+        if (lastSaveFailureAlert.current) window.alert(lastSaveFailureAlert.current)
         saver.current.scheduleAutosave() // dirty is still set — re-arm so the save retries itself
         return
       }
