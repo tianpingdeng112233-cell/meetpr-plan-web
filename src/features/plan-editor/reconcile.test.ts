@@ -128,6 +128,149 @@ function boundRow(id: string, serverId: string | null, exerciseId: string, value
   })
 }
 
+describe('reconcilePlan — opaque legacy set passthrough', () => {
+  const catalog = new Map([
+    ['saved-ex', { name: 'Saved exercise', custom: false }],
+    ['edited-ex', { name: 'Edited exercise', custom: false }],
+  ])
+  const nullIntensity = {
+    load_mode: null, pct_anchor: null, target_pct: null, target_rpe: null,
+    rir_target: null, rpe_low: null, rpe_high: null,
+    weight_low: null, weight_high: null, target_weight: null,
+  }
+
+  function legacySets(bodyweight: boolean) {
+    return [
+      {
+        set_number: 1, target_reps: 5, target_reps_max: 7,
+        intensity_mode: 'rpe' as const, target_value: bodyweight ? '10.00' : '7.50',
+        set_type: 'working' as const, rest_seconds: 90, coach_note: bodyweight ? '自重' : null,
+      },
+      {
+        set_number: 2, target_reps: 4, target_reps_max: null,
+        intensity_mode: 'rpe' as const, target_value: bodyweight ? '10.00' : '7.50',
+        set_type: 'amrap' as const, rest_seconds: 120, coach_note: bodyweight ? '自重' : null,
+      },
+    ]
+  }
+
+  function savedLegacyExercise(bodyweight: boolean): PlanExerciseResponse {
+    const exercise = serverExercise('saved', 'saved-ex', 0)
+    exercise.sets = legacySets(bodyweight).map((set) => ({
+      ...exercise.sets[0], ...nullIntensity, ...set, id: `saved-set-${set.set_number}`,
+    }))
+    return exercise
+  }
+
+  function expectOldShape(sets: Parameters<typeof plans.batchDays>[1]['upsert_days'][number]['exercises'][number]['sets'], bodyweight: boolean) {
+    for (const set of sets) {
+      for (const key of Object.keys(nullIntensity)) {
+        expect(Object.prototype.hasOwnProperty.call(set, key), key).toBe(false)
+      }
+    }
+    expect(sets).toStrictEqual(legacySets(bodyweight))
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockBatchEcho()
+  })
+
+  it.each([
+    ['bodyweight', true], ['legacy RPE', false],
+  ] as const)('preserves saved %s sets as pure old shape when another row changes', async (_label, bodyweight) => {
+    const fixed = serverExercise('edited', 'edited-ex', 1)
+    fixed.sets[0] = { ...fixed.sets[0], ...nullIntensity, target_weight: '100.00' }
+    const baseline = serverPlan([serverDay([savedLegacyExercise(bodyweight), fixed])], 'draft')
+    vi.mocked(plans.getPlan).mockResolvedValue(baseline)
+    const weeks = mapPlanToWeeks(baseline, catalog)
+    weeks[0].days[0].rows[1].boxes[0].val = '110'
+
+    await expect(reconcilePlan('p', weeks)).resolves.toMatchObject({ changedDays: 1 })
+
+    expect(plans.batchDays).toHaveBeenCalledTimes(1)
+    const exercises = vi.mocked(plans.batchDays).mock.calls[0][1].upsert_days[0].exercises
+    expect(exercises[1].sets[0].target_weight).toBe('110')
+    expectOldShape(exercises[0].sets, bodyweight)
+  })
+
+  it('preserves copied bodyweight sets as pure old shape in week 2', async () => {
+    const baseline = {
+      ...serverPlan([serverDay([savedLegacyExercise(true)])], 'draft'),
+      plan_weeks: 2, end_date: '2026-01-14',
+    }
+    vi.mocked(plans.getPlan).mockResolvedValue(baseline)
+    const weeks = mapPlanToWeeks(baseline, catalog)
+    // Match PlanEditor.cloneRow: materialize, clear identity, retain opaque provenance.
+    weeks[1].days[0] = {
+      ...weeks[1].days[0], rest: false,
+      rows: weeks[0].days[0].rows.map((row, index) => {
+        const source = materializeIntensityRow(row)
+        return {
+          ...source, id: `copy-week-${index}`, serverRowId: null, serverSortOrder: null,
+          hasLogs: false, conflictMessage: null,
+          intensity: source.intensity ? { ...source.intensity } : source.intensity,
+          intensityBoxes: source.intensityBoxes?.map((box) => ({ ...box })),
+          boxes: source.boxes.map((box) => ({ ...box })),
+        }
+      }),
+    }
+
+    await expect(reconcilePlan('p', weeks)).resolves.toMatchObject({ changedDays: 1 })
+
+    expect(plans.batchDays).toHaveBeenCalledTimes(1)
+    const body = vi.mocked(plans.batchDays).mock.calls[0][1]
+    expect(body.delete_day_ids).toEqual([])
+    expect(body.upsert_days.map((day) => day.week_number)).toEqual([2])
+    expectOldShape(body.upsert_days[0].exercises[0].sets, true)
+  })
+
+  it.each([
+    ['bodyweight', true], ['legacy RPE', false],
+  ] as const)('opens saved %s sets without any writes', async (_label, bodyweight) => {
+    const baseline = serverPlan([serverDay([savedLegacyExercise(bodyweight)])], 'draft')
+    vi.mocked(plans.getPlan).mockResolvedValue(baseline)
+
+    await expect(reconcilePlan('p', mapPlanToWeeks(baseline, catalog)))
+      .resolves.toMatchObject({ changedDays: 0 })
+
+    for (const write of [plans.batchDays, plans.patchPlan, plans.deleteDay,
+      plans.createExercise, plans.deleteExercise, plans.createSet]) {
+      expect(write).not.toHaveBeenCalled()
+    }
+  })
+
+  it.each([
+    ['legacy weight', { intensity_mode: 'weight', target_value: '100.00', target_weight: '100.00' }],
+    ['new fixed weight', { intensity_mode: 'weight', target_value: '120.00', target_weight: '120.00' }],
+    ['new RPE', { load_mode: 'rpe', intensity_mode: 'rpe', target_value: '7.00', target_rpe: '7.0' }],
+    ['new pct', { load_mode: 'pct', intensity_mode: 'rpe', target_value: '7.00', target_pct: '75.00', pct_anchor: 'e1rm' }],
+    ['new RIR', { load_mode: 'rir', intensity_mode: 'rpe', target_value: '8.00', rir_target: 2 }],
+    ['new RPE range', { load_mode: 'rpe_range', intensity_mode: 'rpe', target_value: '7.00', rpe_low: '7.00', rpe_high: '8.00' }],
+    ['new weight range', { load_mode: 'weight_range', intensity_mode: 'weight', target_value: '100.00', weight_low: '100.00', weight_high: '110.00' }],
+  ] as const)('keeps %s passthrough fields unchanged', async (_label, intensity) => {
+    const stored = serverExercise('saved', 'saved-ex', 0)
+    stored.sets[0] = { ...stored.sets[0], ...nullIntensity, ...intensity }
+    const baseline = serverPlan([serverDay([stored, serverExercise('edited', 'edited-ex', 1)])], 'draft')
+    vi.mocked(plans.getPlan).mockResolvedValue(baseline)
+    const weeks = mapPlanToWeeks(baseline, catalog)
+    weeks[0].days[0].rows[1].boxes[0].val = '110'
+
+    await reconcilePlan('p', weeks)
+
+    const expected = {
+      set_number: 1, target_reps: 5, target_reps_max: null,
+      load_mode: null, target_pct: null, target_rpe: null, rir_target: null,
+      rpe_low: null, rpe_high: null, weight_low: null, weight_high: null, target_weight: null,
+      ...intensity,
+      ...('rir_target' in intensity ? { rir_target: '2' } : {}),
+      set_type: 'working', rest_seconds: null, coach_note: null,
+    }
+    expect(vi.mocked(plans.batchDays).mock.calls[0][1].upsert_days[0].exercises[0].sets)
+      .toStrictEqual([expected])
+  })
+})
+
 describe('reconcilePlan — authoritative day schedule after save', () => {
   beforeEach(() => {
     vi.clearAllMocks()
