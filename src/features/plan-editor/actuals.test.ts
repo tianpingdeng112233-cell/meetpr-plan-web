@@ -7,6 +7,8 @@ import {
   actualWeightTone,
   formatActualWeight,
   groupActualsByExercise,
+  splitActualSets,
+  groupStudentAddedByDay,
   type ActualSet,
 } from './actuals'
 
@@ -132,4 +134,34 @@ describe('formatActualWeight', () => {
     expect(formatActualWeight(set({ weight_kg: '92.50', reps: 5 }))).toBe('92.5×5')
     expect(formatActualWeight(set({ weight_kg: '100.00', reps: 3 }))).toBe('100×3')
   })
+})
+
+
+describe('student-added actuals (010)', () => {
+  it('splits by server prescription count and set_index, not log position', () => {
+    const prescribed = set({ set_index: 3 })
+    const extra = set({ set_index: 4 })
+    expect(splitActualSets([extra, prescribed], 4)).toEqual({ prescribed: [prescribed], extra: [extra] })
+    expect(splitActualSets([extra], 0)).toEqual({ prescribed: [], extra: [extra] })
+  })
+})
+
+
+it('groups only linked adhoc logs by day and exercise, sorting sets and taking the latest re-log', () => {
+  const added = (overrides: Partial<StudentSetLog>) => log({ adhoc: true, plan_exercise_id: null, plan_day_id: 'day-1', ...overrides })
+  const grouped = groupStudentAddedByDay([
+    added({ set_index: 1 }),
+    added({ set_index: 0, weight_kg: '95', logged_at: '2026-08-10T12:00:00Z' }),
+    added({ set_index: 0, weight_kg: '80' }),
+    added({ exercise_id: 'curl', set_index: 0 }),
+    added({ plan_day_id: 'day-2', weight_kg: '40' }),
+    added({ plan_day_id: undefined }), added({ plan_day_id: null }),
+    added({ plan_day_id: '' }), added({ adhoc: false }),
+  ])
+  expect([...grouped.keys()]).toEqual(['day-1', 'day-2'])
+  expect(grouped.get('day-1')?.map((exercise) => exercise.exerciseId)).toEqual(['squat', 'curl'])
+  expect(grouped.get('day-1')?.[0].sets.map((s) => [s.set_index, s.weight_kg])).toEqual([[0, '95'], [1, '90.00']])
+  expect(grouped.get('day-2')?.[0].sets.map((s) => s.weight_kg)).toEqual(['40'])
+  expect(groupStudentAddedByDay([log({}), added({ plan_day_id: undefined })]).size).toBe(0)
+  expect(groupActualsByExercise([added({})]).size).toBe(0)
 })

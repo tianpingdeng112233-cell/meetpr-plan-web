@@ -130,3 +130,34 @@ export function actualIntensityChip(
   }
   return { text: rpeText, tone: 'na' }
 }
+
+/** Server prescription boundary; sparse logs must not shift the boundary. */
+export function splitActualSets(actuals: ActualSet[], prescribedCount: number) {
+  return {
+    prescribed: actuals.filter((set) => set.set_index < prescribedCount).sort((a, b) => a.set_index - b.set_index),
+    extra: actuals.filter((set) => set.set_index >= prescribedCount).sort((a, b) => a.set_index - b.set_index),
+  }
+}
+
+export interface StudentAddedExercise {
+  exerciseId: string
+  sets: ActualSet[]
+}
+
+/** Render-only actuals, deliberately separate from the editor's plan rows. */
+export function groupStudentAddedByDay(logs: StudentSetLog[]): Map<string, StudentAddedExercise[]> {
+  const days = new Map<string, Map<string, Map<number, StudentSetLog>>>()
+  for (const log of logs) {
+    if (!log.adhoc || !log.plan_day_id) continue
+    const exercises = days.get(log.plan_day_id) ?? new Map<string, Map<number, StudentSetLog>>()
+    const sets = exercises.get(log.exercise_id) ?? new Map<number, StudentSetLog>()
+    const existing = sets.get(log.set_index)
+    if (!existing || log.logged_at >= existing.logged_at) sets.set(log.set_index, log)
+    exercises.set(log.exercise_id, sets)
+    days.set(log.plan_day_id, exercises)
+  }
+  return new Map([...days].map(([dayId, exercises]) => [dayId, [...exercises].map(([exerciseId, sets]) => ({
+    exerciseId,
+    sets: [...sets.values()].sort((a, b) => a.set_index - b.set_index),
+  }))]))
+}

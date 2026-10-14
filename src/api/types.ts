@@ -110,6 +110,7 @@ export interface StudentSetLog {
   id: string
   student_id: string
   plan_exercise_id: string | null
+  plan_day_id?: string | null
   exercise_id: string
   set_index: number
   weight_kg: string
