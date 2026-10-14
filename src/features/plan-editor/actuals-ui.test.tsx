@@ -3,6 +3,7 @@ import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { StudentSetLog } from '../../api/types'
 import { PlanEditor } from './PlanEditor'
+import { ExerciseIndex } from './exerciseIndex'
 import type { DayCol, ExerciseRow, Week } from './types'
 
 const api = vi.hoisted(() => ({
@@ -136,6 +137,82 @@ describe('plan editor actual-set chips (SPEC-038)', () => {
       await Promise.resolve()
     })
 
-    expect(api.getStudentSetLogs).toHaveBeenCalledWith('student-1', '2026-08-22', '2026-08-22')
+    expect(api.getStudentSetLogs).toHaveBeenCalledWith('student-1', '2026-08-22', '2026-08-23')
   })
+
+  it('loads student-added-only days, isolates same-date days by id, and keeps save/publish plan rows unchanged', async () => {
+    const source = week()
+    source.days[0] = { ...source.days[0], serverDayId: 'day-1', rows: [{ ...row(), hasLogs: false }] }
+    source.days.push({ ...source.days[0], dow: 1, serverDayId: 'day-2', rows: [{ ...row(), id: 'row-2', serverRowId: 'pe-2', hasLogs: false }] })
+    api.getStudentSetLogs.mockResolvedValue([
+      log({ adhoc: true, plan_exercise_id: null, plan_day_id: 'day-1', exercise_id: 'curl', set_index: 0 }),
+      log({ adhoc: true, plan_exercise_id: null, plan_day_id: 'day-1', exercise_id: 'curl', set_index: 1 }),
+      log({ adhoc: true, plan_exercise_id: null, plan_day_id: 'day-2', exercise_id: 'press' }),
+      log({ adhoc: true, plan_exercise_id: null, exercise_id: 'unlinked' }),
+    ])
+    const onSave = vi.fn(async (weeks: Week[]) => ({ weeks, skippedRows: 0, degradedRows: 0, changedDays: 0 }))
+    const onPublish = vi.fn(async () => {})
+    await act(async () => root.render(<PlanEditor initialWeeks={[source]} weeksCount={1} studentId="student-1" studentName="学员"
+      planName="计划" planStartDate="2026-07-27" onSave={onSave} onPublish={onPublish} />))
+    expect(api.getStudentSetLogs).toHaveBeenCalledTimes(1)
+    expect(host.querySelector('[data-dow="0"] [data-student-added="curl"]')).not.toBeNull()
+    expect(host.querySelector('[data-dow="1"] [data-student-added="press"]')).not.toBeNull()
+    expect(host.querySelector('[data-dow="1"] [data-student-added="curl"]')).toBeNull()
+    expect(host.querySelector('[data-student-added="unlinked"]')).toBeNull()
+    const publish = [...host.querySelectorAll('button')].find((button) => button.textContent === '发布给学员')!
+    await act(async () => publish.click())
+    expect(onSave).toHaveBeenCalledTimes(1)
+    expect(onPublish).toHaveBeenCalledTimes(1)
+    const savedWeeks = onSave.mock.calls[0][0]
+    expect(savedWeeks.flatMap((w) => w.days.flatMap((d) => d.rows.map((r) => r.exerciseId)))).toEqual(['squat', 'squat'])
+    expect(JSON.stringify(savedWeeks)).not.toContain('curl')
+    expect(JSON.stringify(savedWeeks)).not.toContain('press')
+  })
+
+
+  it('keeps old-backend rendering unchanged and shows catalog names in completed read-only plans', async () => {
+    const source = week()
+    source.days[0].serverDayId = 'day-1'
+    const index = new ExerciseIndex([{
+      id: 'curl', name: '哑铃弯举', name_en: 'Dumbbell curl', exercise_type: 'accessory', main_lift_family: null,
+      is_competition_lift: false, muscle_groups: ['biceps'], equipment: ['dumbbell'], movement_pattern: ['other'],
+      competition_stance: null, created_by_coach_id: null, created_at: '',
+    }])
+    const render = () => root.render(<PlanEditor initialWeeks={[source]} weeksCount={1} studentId="student-1" studentName="学员"
+      planName="历史" planStartDate="2026-07-27" planStatus="completed" exerciseIndex={index} />)
+    api.getStudentSetLogs.mockResolvedValue([log({}), log({ adhoc: true, plan_exercise_id: null, exercise_id: 'curl' })])
+    await act(async () => render())
+    expect(host.querySelector('[data-student-added]')).toBeNull()
+    expect(host.textContent).not.toContain('学员自加')
+    expect(host.querySelectorAll('[data-actuals="weight"] .actual-chip')).toHaveLength(1)
+    await act(async () => root.unmount())
+    root = createRoot(host)
+    api.getStudentSetLogs.mockResolvedValue([log({ adhoc: true, plan_exercise_id: null, plan_day_id: 'day-1', exercise_id: 'curl' })])
+    await act(async () => render())
+    expect(host.querySelector('[data-student-added="curl"] [data-c="name"]')?.textContent).toBe('哑铃弯举学员自加')
+    expect(host.querySelector('[data-student-added="curl"] input')).toBeNull()
+  })
+
+
+  it("includes today's logs by requesting tomorrow as the exclusive upper bound", async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date(2026, 7, 22, 12))
+    const source = week()
+    source.days[0].serverDayId = 'day-1'
+    const todaysLogs = [
+      log({ logged_date: '2026-08-22' }),
+      log({ set_index: 3, logged_date: '2026-08-22' }),
+      log({ adhoc: true, plan_exercise_id: null, plan_day_id: 'day-1', exercise_id: 'curl', logged_date: '2026-08-22' }),
+    ]
+    api.getStudentSetLogs.mockImplementation(async (_studentId: string, from: string, to: string) => (
+      todaysLogs.filter((entry) => entry.logged_date >= from && entry.logged_date < to)
+    ))
+    await act(async () => root.render(<PlanEditor initialWeeks={[source]} weeksCount={1} studentId="student-1" studentName="学员"
+      planName="计划" planStartDate="2026-07-27" />))
+    expect(api.getStudentSetLogs).toHaveBeenCalledWith('student-1', '2026-07-27', '2026-08-23')
+    expect(host.querySelectorAll('[data-rowid="squat-row"] [data-actuals="weight"] .actual-chip')).toHaveLength(2)
+    expect(host.querySelector('[data-rowid="squat-row"] .actual-added-first')).not.toBeNull()
+    expect(host.querySelector('[data-student-added="curl"]')).not.toBeNull()
+  })
+
 })

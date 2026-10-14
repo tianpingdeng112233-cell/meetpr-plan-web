@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ColKey, ColWidths, Week, DayCol, ExerciseRow } from './types'
 import { COL_DEFAULTS, COL_MIN, isContentfulUnbound, isRestDay } from './types'
 import { getBoundRowInputIssue, type BoundRowInputIssue } from './inputGuard'
-import { groupActualsByExercise, type ActualSet } from './actuals'
+import { groupActualsByExercise, groupStudentAddedByDay, type ActualSet, type StudentAddedExercise } from './actuals'
 import { getStudentSetLogs } from '../../api/coach'
 import { getPlan, shiftPlan, undoPlanShift } from '../../api/plans'
 import {
@@ -567,18 +567,24 @@ export function PlanEditor(props: PlanEditorProps) {
   const [sel, setSel] = useState<Sel | null>(null)
   // SPEC-038:学员实际完成组,serverRowId → sets。失败静默(编排主流程不受影响)。
   const [actualsByExercise, setActualsByExercise] = useState<Map<string, ActualSet[]>>(() => new Map())
+  const [studentAddedByDay, setStudentAddedByDay] = useState<Map<string, StudentAddedExercise[]>>(() => new Map())
+  const hasServerDay = weeks.some((week) => week.days.some((day) => !!day.serverDayId))
   const anyRowHasLogs = weeks.some((week) => week.days.some((day) => day.rows.some((row) => row.hasLogs)))
   useEffect(() => {
     const studentId = props.studentId
     const from = planStartDate
     const today = isoDate(new Date())
-    if (!studentId || !from || !anyRowHasLogs || from > today) return
+    if (!studentId || !from || (!anyRowHasLogs && !hasServerDay) || from > today) return
     let cancelled = false
-    void getStudentSetLogs(studentId, from, today)
-      .then((logs) => { if (!cancelled) setActualsByExercise(groupActualsByExercise(logs)) })
+    void getStudentSetLogs(studentId, from, isoDate(addDays(today, 1)))
+      .then((logs) => {
+        if (cancelled) return
+        setActualsByExercise(groupActualsByExercise(logs))
+        setStudentAddedByDay(groupStudentAddedByDay(logs))
+      })
       .catch(() => {})
     return () => { cancelled = true }
-  }, [props.studentId, planStartDate, anyRowHasLogs])
+  }, [props.studentId, planStartDate, anyRowHasLogs, hasServerDay])
   const actualsForRow = useCallback((row: ExerciseRow): ActualSet[] | null => (
     row.serverRowId ? actualsByExercise.get(row.serverRowId) ?? null : null
   ), [actualsByExercise])
@@ -3057,6 +3063,11 @@ export function PlanEditor(props: PlanEditorProps) {
                           badgeFor: weekBandBadge,
                           trainingDayOrdinal: trainingDayOrdinal(wk, day.dow),
                           weekdayLabel: day.dowLabel,
+                        }}
+                        studentAdded={day.serverDayId ? studentAddedByDay.get(day.serverDayId) : undefined}
+                        exerciseName={(id) => {
+                          const names = props.exerciseIndex?.namesById(id)
+                          return names ? fmt.exerciseName(names) : id
                         }}
                         actualsForRow={actualsForRow}
                         e1rmForRow={e1rmForRow}

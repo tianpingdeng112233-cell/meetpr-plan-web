@@ -167,3 +167,126 @@ Test Files  89 passed (89)
 - 文件范围：卡列出的五个代码／测试文件加要求的 JOURNAL，无范围外持久文件。额外删除 `publishPlanNotSaved` 是清理此次失去引用的死文案。
 - 浏览器目检未完成：启动本地 Vite 被沙箱拒绝，原始错误为 `Error: listen EPERM: operation not permitted 127.0.0.1:5187`；改用同目录离线预览后，浏览器工具初始化及状态查询各超时一次，均返回 `js execution timed out; kernel reset, rerun your request`。未取得截图，不声称已完成目检；临时预览文件已删除。真实 PlanEditor 的 jsdom UI 回归通过。
 - `docs/agents/issue-tracker.md` 不存在；按 code-review 技能建议，后续可运行 `/setup-matt-pocock-skills` 补齐。本次 spec 已由用户任务卡提供，只读双轴审查不依赖 tracker，未因此中断或私建配置。
+
+## 2026-10-14 — Spec 010：计划编辑器显示学员自加记录
+
+来源：`specs/010-student-added-actuals/SPEC.md`、`CARD.md`、`docs/SPEC-038.md`。本节为开发自测与自审证据，待 Opus 收货，不代表视觉验收或部署。
+
+### 开工与范围
+
+- 指定工作树 `/Users/david/Projects/apps/meetpr-plan-web-wt-010`，分支 `feat/010-student-added-actuals`，基线 `504e759`；开工 status 干净。第一个命令在当前目录用 `mktemp ./codex-write-check.XXXXXX` 创建并删除文件，exit 0，没有换工作树。
+- 已按序读 CONTEXT、CLAUDE、010 SPEC/CARD、038，核对 worktree、最近 15 条提交和本日志。仓内无另行 AGENTS/FOLLOWUPS；沿用会话给定规约。
+- 未安装依赖、未手工读取 `.env`、未向线上后端发请求；请求测试全部 mock。执行用户要求的 Vite 命令会运行仓内既有配置加载流程，未输出环境文件内容。未 commit/push/开 PR；SPEC、CONTEXT、计划行模型与计划写入模块未修改。
+- 使用 tdd 与 code-review。测试入口沿用批准的 actuals 纯函数、DayColumn/PlanEditor 组件及 API 请求；`coach.test.ts` 复用仓内 fetch mock 模式。仓内无 `docs/agents/issue-tracker.md`，已提示后续可用 `/setup-matt-pocock-skills` 补齐；本卡以明确的 spec 为据，不依赖 tracker。
+
+### 改动文件
+
+- `src/api/coach.ts`、`src/api/types.ts`：`scope=all`；`StudentSetLog.plan_day_id?: string | null`。
+- `src/features/plan-editor/actuals.ts`：按处方边界划分额外组；新增按日/动作归集自加动作，组序排序、最新记录覆盖。原 `groupActualsByExercise` 未改。
+- `src/features/plan-editor/PlanEditor.tsx`：独立 Map 保存自加记录，只作为 DayColumn 的附加渲染数据；按服务器 day ID 定位、动作库解析名称，未知动作兜底 ID。有服务器训练日即能加载实际值，覆盖“仅自加动作有记录、所有处方行 hasLogs=false”的情况；无服务器日且无记录的草稿仍不请求。
+- `src/features/plan-editor/components/DayColumn.tsx`：共用 ActualLine，处方标签之后加分隔字与中性标签；自加动作只读行位于计划动作之后，无编辑/选中/拖动/键盘单元格入口。组数边界取服务器 `opaqueSets.length`；旧无 provenance 行用已锁定的原有组数。mapping/reconcile 对服务器处方保留 opaqueSets，未引入本地可编辑组数的新来源。
+- `src/i18n/strings-editor.ts`、`src/index.css`：zh/en 文案，沿用 CSS tokens 的中性灰标签、浅灰行、冻结名称格和列宽对齐。
+- `src/api/coach.test.ts`（新）、`src/features/plan-editor/student-added-ui.test.tsx`（新）、`src/features/plan-editor/actuals.test.ts`、`src/features/plan-editor/actuals-ui.test.tsx`：新增回归。既有测试断言未删改。
+- 本日志仅在末尾追加本节。
+
+### 先红后绿
+
+按行为纵向实施，每次先运行新增测试，再修改实现：
+
+1. `splits by server prescription count and set_index, not log position`：`1 failed | 11 passed`，缺少 `splitActualSets`（运行时 not a function）；实现后 `12 passed`。
+2. `groups only linked adhoc logs by day and exercise, sorting sets and taking the latest re-log`：`1 failed | 12 passed`，缺少归集函数；实现后 `13 passed`。包含相同日期不同日、不同动作、逆序、重复组序最新优先、undefined/null/空日 ID 及非 adhoc 排除。
+3. `requests scope=all and accepts the legacy response without plan_day_id`：`1 failed`，实际 URL 为 `scope=plan`；改为 all 后 `1 passed`。
+4. `keeps four prescribed chips unchanged and separates the fifth as neutral in both actual lines`：`1 failed`，第五个强度标签仍为 `tone-na` 且无分隔；实现后与旧 actuals-ui 一起 `4 passed`。
+5. `appends a read-only student-added exercise after plan rows without changing prescription totals or selection`：红阶段未找到自加行；加入渲染后通过。测试编写中另修正了本次新测试的 DOM selector（实际属性为 `data-rowid`）与服务器组数测试 fixture（本地网格扩为 6 组，服务器仍 4 组）；这些测试搭建问题不作为业务红证据，未修改任何基线断言。
+6. `loads student-added-only days, isolates same-date days by id, and keeps save/publish plan rows unchanged`：红阶段预期请求 1 次、实际 0 次；拓宽有服务器日的读取入口、按日接入附加数据后通过。
+
+### 验收清单逐项映射
+
+| SPEC 验收项 | 测试名与证据 |
+| --- | --- |
+| 1 无自加时保持原渲染 | 原 `renders per-set actuals under the target cells with 红/黄 tones and thresholds`、`renders no actual lines for a draft plan without logs` 保持断言并通过；新增 `renders no new elements for absent or empty student-added data`。另临时提取 HEAD 的 DayColumn，以 `matches the baseline DayColumn DOM byte for byte without student-added records` 比较 8 组 readOnly × 有无实际值 × 主/辅行的 HTML 字节，`1 passed`，比较源与测试已删除，输出 `/tmp/meetpr-010-baseline.log`。 |
+| 2 处方 4 组、实际 5 组 | `keeps four prescribed chips unchanged and separates the fifth as neutral in both actual lines`：两行前 4 标签仍 tone-ok，第 5 标签 tone-added，分隔位置与值明确断言；纯函数 `splits by server prescription count and set_index, not log position` 覆盖稀疏组序与零处方。 |
+| 3 额外组失败/未完成 | `preserves failure and missed styles for extra sets and uses server prescription despite a changed grid count`：强度/重量都保留 tone-off、tone-missed，服务器 4 组与本地 6 组情况下仍在 index=4 分界。 |
+| 4 自加只读、不影响处方/写入 | `appends a read-only student-added exercise after plan rows without changing prescription totals or selection`：名称、下方标注、组次 –、两组强度与重量灰标签、位置、无输入/按钮/tabindex/draggable/编辑单元格、点击不触发选择与编辑、日与分区处方统计不变；`loads student-added-only days, isolates same-date days by id, and keeps save/publish plan rows unchanged`：点击发布，onSave/随后 onPublish 均执行，交给保存边界的 weeks 仅原处方，未混入自加动作。未向真实后端发送保存/发布。 |
+| 5 按 day ID 隔离 | 上述 `loads student-added-only days…` 同日期的 day-1/day-2 各显示自己的动作；纯函数归集测试也覆盖同日期两个日 ID。 |
+| 6 旧后端兼容 | `keeps old-backend rendering unchanged and shows catalog names in completed read-only plans`：无 plan_day_id 不出现标注或附加行，原实际标签存在；归集与 API 请求测试同时覆盖旧响应。不把无所属日的 adhoc 显示到任一天。 |
+| 7 中英文 | `renders Added by athlete in both extra-set lines and the read-only exercise name in English`；中文由第 2–4 项断言覆盖。上项兼容测试还覆盖真实 ExerciseIndex 名称解析、completed 只读态；组件测试覆盖未知动作 ID 兜底。 |
+| 8 三项自检 | 见下方最终检查。 |
+
+### 逐条核对：上下文、组序与跳练
+
+1. **ContextRail.tsx / DayHeaderContext**：`getExerciseStats(studentId, exerciseId)` 读取动作库 ID 的历史；`recent_sessions` 按日期归集，类型只有日期与各组，没有 plan_exercise_id、plan_day_id 或对应历史处方。`last.sets.map` 只显示实际记录和序号，不按计划动作处方列组；不能拿当前行组数推断历史额外组。SPEC §4 的条件性分隔要求在此不触发，未改。`by_set_count` 用当前组数查询历史 bucket，是既有历史对照口径，不索引实际组到处方。
+2. **ContextRail.tsx / Sessions**：set_index 仅作 key 和显示，重量/次数/RPE 直接取同条实际记录；不索引处方，不会因额外组越界或串组。未改。
+3. **StatsViews.tsx / SessionDetail**：set_index 仅作 key/显示，数据来自 recent_sessions；未用其访问处方数组。统计口径未改。
+4. **VideosPage.tsx**：videoAssociation、标题、列表中的 set_index 只经 setLabel 显示；定位优先精确 set_log_id，旧记录才按日期+动作名+set_index 匹配。没有处方数组解引用，额外组没有上限截断或邻组回退。未改。
+5. **跳练 / 游标与落后**：`mapping.ts: deriveStudentPlanCursor` 排序后找第一个 `completed_at == null`，不是最后完成日的后一天；因此先结算后日不会让前日被视为完成。lagDays 针对该未完成日的推荐日期计算。全部完成需要找不到任一未完成日；旧响应缺 completed_at 时隐藏游标。未改。
+6. **跳练 / 锁定**：DayColumn 按本行 hasLogs 禁编辑，日拖动按本日行记录锁；dayMove、reconcile 同样逐日/逐行检查，未由后日状态推定前日完成。用户明确自加动作不进入这些计划编辑路径，本卡保持该边界。未改。
+7. **跳练 / 后移**：PlanEditor 的影响列表、已完成日计数及尾日投影分别检查每个 day.completedAt；mapping 从该服务器日读取完成/推荐日期。无“前日已完成”的假设，未改。
+8. **保存/快照/发布/复制周/后移/计数**：自加数据仅在独立 React state → DayColumn props 中流动，未写 weeks、ExerciseRow、tree、mirror。所有上述路径继续只读计划 weeks；组件已验证汇总不变和保存/发布回调内容，原 mirror、copy-week、shift、cursor、reconcile 回归由全量测试覆盖。
+
+### 最终检查与限制
+
+- 首轮 `npm test` 与 tsc/build 并行，`90 passed / 1 failed`、`884 passed / 1 failed`；唯一失败是未改动的 `pinyin.test.ts > matchesPinyin > stays bounded on adversarial state-accumulating input`，实际 1061.191917ms 超过 1000ms。未改该测试或代码；资源竞争是可能原因，未声称已确诊。
+- 随后单独执行原命令 `npm test`：exit 0，`Test Files 91 passed (91)`、`Tests 885 passed (885)`、末行 `Duration 13.24s`。原始输出 `/tmp/meetpr-010-test-repeat.log`。
+- `npx tsc --noEmit`：exit 0，无诊断（运行包装器最后输出 `tsc exit 0`）。
+- `npm run build`：exit 0；Vite 仍有大于 500 kB 的 chunk 提示，不是构建失败。最终构建最后结果行见本节末的补充。
+- `git diff --check`：exit 0。
+- code-review 独立只读审查：Standards 0 项；Spec 0 项。审查基于 `git diff 504e759` 加新增测试文件，不把未提交变更遗漏在 three-dot diff 外。
+- **浏览器目检未完成**：`npm run dev -- --host 127.0.0.1 --port 5187` 返回 `Error: listen EPERM: operation not permitted 127.0.0.1:5187`；浏览器工具 `cua.getState()` 20 秒后返回 `js execution timed out; kernel reset, rerun your request`。没有截图，不能声称已完成真实浏览器目检；已取得组件 DOM/交互与基线字节一致证据。
+- 待产品裁决事项：无。SPEC/CARD 无冲突；没有修改现有断言的需要。剩余交接限制为上述浏览器目检，由后续具备浏览器环境的收货执行。
+
+最终 CSS 列宽/中性灰调整后的 `npm run build` 最后结果行：`✓ built in 1.44s`（exit 0，含 tsc）。
+
+### 返修第 1 轮（2026-10-14）
+
+来源：Opus 收货意见 R1/R2。David 转述上一轮在 Opus 本机 885 条测试、tsc/build 与浏览器目检通过；该目检是上一轮实现的收货证据，不是本轮新截图。
+
+**状态：两项均遇到“现有测试断言一条不许改”的硬约束冲突，停止实现，待明确允许更新下列具体断言。** 本轮仅追加本日志；代码、测试及上一轮 DOM 都未改，无新的 red/green 结果，不将现有测试全绿表述成返修完成。
+
+- **R1 / 既有结构断言冲突**：`student-added-ui.test.tsx` 的 `keeps four prescribed chips unchanged and separates the fifth as neutral in both actual lines` 第 43–44 行要求 `line.children[5].textContent === '学员自加'`，且 `line.children[6]` 直接是首个额外组标签。另 `preserves failure and missed styles for extra sets and uses server prescription despite a changed grid count` 第 57 行要求 `line.children[2].textContent === '学员自加'`。把小字与首个标签包进同一个不可拆容器后，该直接子元素的 textContent 将包含小字和标签，三条既有断言都会失效。它们验证的是旧 DOM 层级，不是必须保留的处方配色；需要允许将这三条改为容器内语义定位，保留值/顺序/配色断言，再追加 `keeps the added label and first extra chip in one non-wrapping container in both actual lines` 回归。未通过隐藏副本或改 DOM 访问行为绕过断言。本轮未新增该测试、未修改 ActualLine/CSS；上一轮 8 组无额外记录 DOM 字节比较的源实现未改变，本轮未重跑临时比较。
+- **R2 / 确实撞到 to=今天断言**：`actuals-ui.test.tsx` 的 `uses the browser-local calendar date as the actuals upper bound` 第 140 行明确断言 `getStudentSetLogs('student-1', '2026-08-22', '2026-08-22')`。fake clock 是浏览器本地 2026-08-22 00:30；正确的排他上界应为 2026-08-23。根据本轮明确指示“R2 若确实撞到……停下写进 JOURNAL……不要自行改”，在新增测试与修改实现前停止。拟新增的红测试名为 `includes today's logs by requesting tomorrow as the exclusive upper bound`，尚未写入/执行。
+- **R2 原因与最小改法**：这是对既有行为的修正，不是扩大区间口径。按收货说明，后端条件为 `logged_date < to`，所以传 today 会排除当天普通组、额外组和自加动作。获准更新上述断言后，应只把 PlanEditor 这一处调用的上界改为 `isoDate(addDays(today, 1))`；两个函数已经从 `mapping.ts` 导入，使用本地日历日期加一天，保留 `from > today` 等其余条件。没有另写日期算法，也没有修改调用。
+- **其他相同写法的调用方清单**：无。检索 `src` 内 `getStudentSetLogs` 与 `/students/.../sets`，生产业务调用仅 `PlanEditor.tsx:579`；`api/coach.ts:6–7` 是透传 from/to 的请求封装；`api/coach.test.ts` 使用固定日期验证透传，不计算 today，不属于同类调用。
+- **边界**：未改/删除/纳入交付 `mock-student-added.html` 和 `src/mock/studentAddedCheck.tsx`；未操作 5197 dev server。未 commit/push/开 PR，未改 SPEC/CONTEXT，未装依赖、未手工读取 `.env`、未请求线上后端。三项自检按要求执行原命令，使用仓内既有配置；不查看或输出环境文件内容。
+
+本轮自检（实现仍为返修前版本）：
+
+- `npm test`：exit 0；`Test Files 91 passed (91)`、`Tests 885 passed (885)`；最后结果行 `Duration 6.48s`。输出 `/tmp/meetpr-010-r1-test.log`。
+- `npx tsc --noEmit`：exit 0，无输出/诊断。
+- `npm run build`：exit 0；最后结果行 `✓ built in 1.35s`。保留既有大于 500 kB chunk 提示。输出 `/tmp/meetpr-010-r1-build.log`。
+- `git diff --check`：exit 0。
+
+待放行的具体范围：R1 三条直接子元素断言调整为新容器内的等价内容断言，R2 一条日期断言由 2026-08-22 改为 2026-08-23；其余既有断言保持原样。未获得该放行前，不继续两项实现。
+
+**放行后续做结果（2026-10-14）：R1/R2 已实现，自检通过；上面的暂停状态已解除。** Opus 经 David 明确放行下列四条断言，并说明本卡新增测试可因返修直接调整、在日志记录；此后不再为本卡新增测试重复请求放行。
+
+本次续做改动文件（相对于上次暂停时的工作区）：
+
+- `src/features/plan-editor/components/DayColumn.tsx`：仅调整 ActualLine 的额外组部分。将「学员自加」与第一个额外组标签放在 `.actual-added-first` 中，内联 `display: inline-flex; flex: none; flex-wrap: nowrap; white-space: nowrap`，沿用 3px 间距和居中对齐；强度与重量共用。后续额外组仍是外层可折行项目。无额外组不产生该容器，自加动作本身的标签排列保持原样；没有修改处方组渲染或新增 CSS 文件改动。
+- `src/features/plan-editor/PlanEditor.tsx`：仅将该处请求上界从 `today` 改为 `isoDate(addDays(today, 1))`，复用已有导入，`from > today` 等条件不变。修复既有的排他上界排除今日记录问题。其他同样写法的业务调用方仍为无。
+- `src/features/plan-editor/student-added-ui.test.tsx`：按授权改三条结构断言，追加不可拆容器回归。
+- `src/features/plan-editor/actuals-ui.test.tsx`：按授权改一条日期断言，追加今日记录回归。
+- `docs/CODEX-JOURNAL.md`：本小节续写。
+
+四条获准断言的具体修改：
+
+1. `keeps four prescribed chips unchanged and separates the fifth as neutral in both actual lines` 原第 43 行：从 `line.children[5]` 改为新容器内 `.actual-tag`，仍断言小字为「学员自加」。
+2. 同测试原第 44 行：从 `line.children[6]` 改为新容器内 `.actual-chip`，仍断言重量 `180×3` / 强度 `@5`；新增首标签 tone-added 断言。原五个标签的顺序/配色数组完整保留。
+3. `preserves failure and missed styles for extra sets and uses server prescription despite a changed grid count` 原第 57 行：从 `line.children[2]` 改为新容器内 `.actual-tag`；新增首额外标签 tone-off 断言，原 prescribed/off/missed 配色数组保持原样。
+4. `uses the browser-local calendar date as the actuals upper bound` 原第 140 行：仅把最后一个期望日期 `2026-08-22` 改为 `2026-08-23`。原假时钟与 `toISOString` 模拟逐字保留，继续区分本地日历与 UTC。除获准此行外，改动前已存在的断言均未改。
+
+先红后绿与对应测试：
+
+- **R1**：新增 `keeps the added label and first extra chip in one non-wrapping container in both actual lines`，先确认容器不存在导致失败；更新后的两个旧结构测试也因容器缺失失败，结果 `3 failed | 3 passed (6)`。实现后 `6 passed (6)`。新测试验证强度/重量两行均为同容器、正好小字+首标签两个子元素、首标签文字/tone、计算样式 inline-flex/nowrap/white-space/flex-shrink=0，以及下个额外标签仍是容器外的相邻项目。红阶段输出 `/tmp/meetpr-010-r1-red.log`。
+- **R2**：先新增 `includes today's logs by requesting tomorrow as the exclusive upper bound` 并更新获准日期期望，执行得到 `2 failed | 4 passed (6)`：收到的上界仍为 `2026-08-22`，期望为 `2026-08-23`。随后才修改调用上界。新测试的 API mock 按 `from <= logged_date < to` 真实过滤，验证当天普通组、额外组和所属日的自加动作均在 DOM 出现。与 R1 合跑后 `2 passed` 文件、`12 passed` 测试。红阶段输出 `/tmp/meetpr-010-r2-red.log`。
+- **无额外组字节兼容**：重跑上一轮 `matches the baseline DayColumn DOM byte for byte without student-added records`，将 HEAD 原始 DayColumn 与当前实现对比，8 组 readOnly × 有无实际值 × 主/辅行 HTML 字节全部一致（`1 passed`）。临时比较源码与测试已删除；没有接触 Opus 的两个临时文件。输出 `/tmp/meetpr-010-r1-baseline.log`。SSR 的 useLayoutEffect 提示不影响该字节比较；不将此测试称为浏览器目检。
+
+最终自检：
+
+- `npm test`：exit 0；`Test Files 91 passed (91)`、`Tests 887 passed (887)`；最后结果行 `Duration 8.06s`。输出 `/tmp/meetpr-010-approved-final-test.log`。
+- `npx tsc --noEmit`：exit 0，无输出/诊断。
+- `npm run build`：exit 0；最后结果行 `✓ built in 1.26s`，仍有既有大于 500 kB chunk 提示。输出 `/tmp/meetpr-010-approved-final-build.log`。
+- `git diff --check`：exit 0。
+- 独立增量复审：Standards 0 项、Spec 0 项，比较本轮启动时保存的四个代码/测试文件与当前文件。
+- Opus 两个临时文件校验值在续做前后完全一致，未改、未删、未列入本轮交付；5197 服务未操作。未 commit/push/开 PR，未动 SPEC/CONTEXT、未装依赖、未手工读取 `.env`、未请求线上后端。
+- 本轮未重新浏览器目检；交付证据为 DOM/计算样式、交互/请求回归与全量自检。无剩余待裁决事项，交回 Opus 收货。

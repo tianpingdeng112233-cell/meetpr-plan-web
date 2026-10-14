@@ -21,7 +21,7 @@ import {
   rowPctAnchor,
   rowWeightBoxes,
 } from '../intensityModel'
-import { actualIntensityChip, actualWeightTone, formatActualWeight, type ActualSet } from '../actuals'
+import { actualIntensityChip, actualRpe, actualWeightTone, formatActualWeight, splitActualSets, type ActualSet, type StudentAddedExercise } from '../actuals'
 import type { LoadMode, RowIntensity } from '../types'
 import { compactTonnage, summarizeDaySection, type DaySectionSummary } from '../weeklySummary'
 import {
@@ -85,6 +85,8 @@ interface Props {
   actualsForRow?: (row: ExerciseRow) => ActualSet[] | null
   /** pct 目标换算实际 % 用的主项 e1RM;不可得返回 null。 */
   e1rmForRow?: (row: ExerciseRow) => number | null
+  studentAdded?: StudentAddedExercise[]
+  exerciseName?: (exerciseId: string) => string
   shiftControl?: {
     anchorDate: string
     weekNumber: number
@@ -422,40 +424,40 @@ function intensityPlaceholder(intensity: RowIntensity): string {
 
 /** SPEC-038 §3.2: 学员实际完成 chips,渲染在目标格正下方。
  * tone-off = 超阈红,tone-ok = 阈内黄,力竭强制红,未完成灰。 */
-function ActualIntensityLine({ row, actuals, e1rm }: {
-  row: ExerciseRow
+function ActualLine({ row, actuals, kind, e1rm = null }: {
+  row?: ExerciseRow
   actuals: ActualSet[]
-  e1rm: number | null
+  kind: 'intensity' | 'weight'
+  e1rm?: number | null
 }) {
+  // opaqueSets is the original server prescription, not the editable grid count.
+  // Legacy rows without provenance are locked once logged and retain that count.
+  const { prescribed, extra } = splitActualSets(actuals, row ? row.opaqueSets?.length ?? row.boxes.length : 0)
+  const renderChip = (set: ActualSet, added: boolean, position: number) => {
+    const rpe = actualRpe(set)
+    const chip = kind === 'weight'
+      ? { text: formatActualWeight(set), tone: row && !added ? actualWeightTone(row, position, set) : 'added' }
+      : row && !added ? actualIntensityChip(row, position, set, e1rm)
+        : { text: rpe == null ? '–' : `@${rpe}`, tone: 'added' }
+    const tone = set.failed ? 'off' : !set.completed ? 'missed' : chip.tone
+    return (
+      <span key={set.set_index} className={`actual-chip tone-${tone}`}
+        title={kind === 'weight' ? set.failed ? S.common.failure : set.completed ? undefined : S.common.notCompleted : undefined}>
+        {chip.text}{kind === 'weight' && set.failed ? ` ${S.common.failure}` : ''}
+      </span>
+    )
+  }
   return (
-    <span className="actual-line" data-actuals="intensity" title={S.editor.actualRpe}>
+    <span className="actual-line" data-actuals={kind} title={kind === 'intensity' ? S.editor.actualRpe : S.editor.actualWeightReps}>
       <span className="actual-tag">{S.editor.actual}</span>
-      {actuals.map((set, position) => {
-        const chip = actualIntensityChip(row, position, set, e1rm)
-        const tone = set.failed ? 'off' : !set.completed ? 'missed' : chip.tone
-        return (
-          <span key={set.set_index} className={`actual-chip tone-${tone}`}>
-            {chip.text}
-          </span>
-        )
-      })}
-    </span>
-  )
-}
-
-function ActualWeightLine({ row, actuals }: { row: ExerciseRow; actuals: ActualSet[] }) {
-  return (
-    <span className="actual-line" data-actuals="weight" title={S.editor.actualWeightReps}>
-      <span className="actual-tag">{S.editor.actual}</span>
-      {actuals.map((set, position) => {
-        const tone = set.failed ? 'off' : !set.completed ? 'missed' : actualWeightTone(row, position, set)
-        return (
-          <span key={set.set_index} className={`actual-chip tone-${tone}`}
-            title={set.failed ? S.common.failure : set.completed ? undefined : S.common.notCompleted}>
-            {formatActualWeight(set)}{set.failed ? ` ${S.common.failure}` : ''}
-          </span>
-        )
-      })}
+      {prescribed.map((set, position) => renderChip(set, false, position))}
+      {extra.map((set, position) => row && position === 0 ? (
+        <span key={set.set_index} className="actual-added-first"
+          style={{ display: 'inline-flex', flex: 'none', flexWrap: 'nowrap', whiteSpace: 'nowrap', alignItems: 'center', gap: 3 }}>
+          <span className="actual-tag">{S.editor.addedByAthlete}</span>
+          {renderChip(set, true, position)}
+        </span>
+      ) : renderChip(set, true, position))}
     </span>
   )
 }
@@ -472,7 +474,7 @@ function EditableIntensity({ row, width, edit, selectedCell, selectCell, cellKey
   e1rm?: number | null
 }) {
   const actualLine = actuals && actuals.length > 0
-    ? <ActualIntensityLine row={row} actuals={actuals} e1rm={e1rm ?? null} />
+    ? <ActualLine kind="intensity" row={row} actuals={actuals} e1rm={e1rm ?? null} />
     : null
   if (row.aux) {
     return (
@@ -665,7 +667,7 @@ function EditableWeight({ row, width, edit, selectedCell, selectCell, cellKey, r
   actuals?: ActualSet[] | null
 }) {
   const actualLine = actuals && actuals.length > 0
-    ? <ActualWeightLine row={row} actuals={actuals} />
+    ? <ActualLine kind="weight" row={row} actuals={actuals} />
     : null
   if (row.aux) {
     return (
@@ -823,6 +825,8 @@ export function DayColumn({
   onDeleteRow,
   weekBand,
   actualsForRow,
+  studentAdded,
+  exerciseName,
   e1rmForRow,
   shiftControl,
 }: Props) {
@@ -1217,6 +1221,22 @@ export function DayColumn({
           </>
         )
         })()}
+
+        {studentAdded?.map(({ exerciseId, sets }) => (
+          <div key={exerciseId} className="student-added-row" data-student-added={exerciseId}
+            onMouseDown={stop} onClick={stop}>
+            {weekBand && <div className="gcell week-band-frozen week-band-index" data-c="index" style={{ width: 28 }} />}
+            <div className={`gcell student-added-name${weekBand ? ' week-band-frozen' : ''}`} data-c="name" style={{ width: colW.name }}>
+              <span>{exerciseName?.(exerciseId) ?? exerciseId}</span>
+              <small className="actual-tag">{S.editor.addedByAthlete}</small>
+            </div>
+            <div className="gcell numeric-cell" data-c="sets" style={{ width: colW.sets }}>–</div>
+            <div className="gcell numeric-cell" data-c="reps" style={{ width: colW.reps }}>–</div>
+            <div className="gcell" data-c="int" style={{ width: colW.int }}><ActualLine kind="intensity" actuals={sets} /></div>
+            <div className="gcell" data-c="weight" style={{ width: colW.weight }}><ActualLine kind="weight" actuals={sets} /></div>
+            <div className="gcell" data-c="note" style={{ width: colW.note }} />
+          </div>
+        ))}
 
         {dividers.map((d) => (
           <div key={d.col} className="coldiv" style={{ left: d.left }}

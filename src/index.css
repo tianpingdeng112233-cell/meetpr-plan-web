@@ -846,6 +846,7 @@ textarea {
   font: 600 10px var(--font-mono);
   white-space: nowrap;
 }
+.actual-chip.tone-added { color: var(--mut); background: var(--line-2); }
 .actual-chip.tone-ok { color: var(--warn); background: var(--warn-soft); }
 .actual-chip.tone-off { color: var(--bad); background: var(--bad-soft); }
 .actual-chip.tone-missed { color: var(--faint); background: var(--panel-bg); text-decoration: line-through; }
@@ -3538,3 +3539,10 @@ textarea {
 @media (max-width: 640px) {
   .build-update-banner { align-items: flex-start; }
 }
+
+/* Student-added exercises are render-only, outside the editable row grid. */
+.student-added-row { display: flex; align-items: stretch; background: var(--panel-bg); border-bottom: 1px solid var(--line); }
+.student-added-row > .gcell { flex: none; min-width: 0; padding: 4px 5px; display: flex; align-items: center; background: var(--panel-bg); }
+.student-added-row > .numeric-cell { justify-content: center; }
+.student-added-row > .student-added-name { flex-direction: column; align-items: flex-start; justify-content: center; gap: 3px; font-size: 11px; }
+.student-added-row .actual-line { border-top: 0; margin-top: 0; padding-top: 0; }
