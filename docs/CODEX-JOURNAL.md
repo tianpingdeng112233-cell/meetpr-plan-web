@@ -307,3 +307,7 @@ Test Files  89 passed (89)
 - 全量性能诊断：默认 worker 并发复验仍只有旧拼音性能门槛失败；将同一测试单独执行为 7/7、282ms。固定单 worker 执行 `npm test -- --maxWorkers=1 --minWorkers=1`，91 文件 / 888 用例全通过，57.96s，其中拼音性能用例 402ms。实现、性能测试和 1000ms 阈值均未修改。结果支持本机并发负载影响墙钟断言；不声称默认并发已修复。最终日志为 `/tmp/spec093-w0-serial-test.log`，默认复验为 `/tmp/spec093-w0-final-test.log`。
 - 独立只读审查一轮：Standards 0 finding；Spec 0 finding。两个 reviewer 使用独立上下文，受并发槽位限制先后执行，未交换对方结论。主代理亲读全部最终 diff、亲看登录和用户列表截图；没有代码返修。
 - 本卡代码、自测与截图可交付，真实 staging 联调及部署仍未完成。PR 交 David 合并；不以本地通过替代最终验收。
+
+### 继续执行补验（2026-10-17）
+
+Android 本机构建、并行后端测试与临时服务结束后，以原默认配置重新执行 `npm test`，exit 0：91 files / 888 tests，7.25s。原始输出见 `docs/evidence/spec093-2026-10-17/w0-default-tests-idle.txt`。未修改 pinyin 实现、测试或 1000ms 门槛；这次默认全量通过，保留前述并发高负载下的失败事实，不宣称墙钟测试永不波动。5198 临时 UI 服务已停止，合成 harness 仍留在忽略目录。代码已在 PR #109，仍未合并或部署；国内真实登录/admin 邮箱联调继续等待 B 部署。
