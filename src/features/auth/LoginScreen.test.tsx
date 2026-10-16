@@ -66,9 +66,12 @@ describe('LoginScreen account routing', () => {
     })
   }
 
-  it('shows the bilingual account label and placeholder', () => {
-    expect(host.querySelector('label')?.textContent).toBe('手机号或邮箱 / Phone or email')
-    expect(fields().account.placeholder).toBe('手机号或邮箱 / Phone or email')
+  it('presents an email field from the first keystroke without a phone prefix', () => {
+    expect(host.querySelector('label')?.textContent).toBe('邮箱')
+    expect(fields().account.placeholder).toBe('邮箱')
+    expect(fields().account.inputMode).toBe('email')
+    expect(fields().account.type).toBe('text')
+    expect(host.textContent).not.toContain('+86')
   })
 
   it('uses the email channel and shared success callback when the account contains @', async () => {

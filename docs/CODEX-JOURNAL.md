@@ -290,3 +290,20 @@ Test Files  89 passed (89)
 - 独立增量复审：Standards 0 项、Spec 0 项，比较本轮启动时保存的四个代码/测试文件与当前文件。
 - Opus 两个临时文件校验值在续做前后完全一致，未改、未删、未列入本轮交付；5197 服务未操作。未 commit/push/开 PR，未动 SPEC/CONTEXT、未装依赖、未手工读取 `.env`、未请求线上后端。
 - 本轮未重新浏览器目检；交付证据为 DOM/计算样式、交互/请求回归与全量自检。无剩余待裁决事项，交回 Opus 收货。
+
+## 2026-10-17 · Spec 093 卡 W0：邮箱登录与管理台邮箱查询
+
+- **任务与基线**：按 David 批准的交接 CARDS.md 的 W0 / SPEC.md §11 实施，口径以 SPEC.md 为准。独立 worktree `meetpr-plan-web-wt-093-w0`，分支 `feat/093-email-login-admin`，base `e6e9a14`（origin/main）。只改 W0；W 的申请、设密码、入驻、落地页和审批页面尚未开始，仍须等待 B 国内 staging 部署。
+- **改动**：登录字段中英文统一显示「邮箱 / Email」，初始 inputMode 为 email、移除 +86 视觉前缀；仍保留 text 输入与既有按 `@` 分流，手机号照旧规范化走手机号接口。管理台用户列表新增邮箱列，邮箱/手机号缺失显示 `—`，搜索保留姓名、手机号并增加不区分大小写的邮箱匹配；角色筛选和明细导航保留。沿用既有列表样式，横向容器增加一列，无新设计或导航。
+- **接口契约**：`AdminUser.email: string | null`，`phone: string | null`；后端卡 B 负责给 `GET /admin/users`、`GET /admin/users/:id` 补 email 字段。当前管理台在客户端过滤全量用户，不要求新增后端搜索参数。旧后端未返回 email 时前端仍显示 `—`，但无法查到邮箱，须部署后联调。
+- **公开测试 seam / 红绿证据**：沿用 LoginScreen / AdminWorkspace 组件用户交互，以及既有登录 API 路由回归。先更新邮箱初始展示的测试，红阶段 1 failed / 20 passed（旧标签），再实现后 21 passed；再新增邮箱列、无手机号账号、大小写/首尾空白邮箱搜索、旧手机号、姓名和角色过滤交互，红阶段 1 failed / 3 passed（邮箱未显示），实现后 4 passed。原手机号和邮箱登录成功/失败回归保留。原先精确拼接整行文字的导航定位改为按教练姓名匹配，以容纳新增邮箱列。
+- **UI 目检**：使用 cua 的 Codex IAB（后台模式）操作真实组件，通过本地临时 mock 页面注入合成账号；mock 拦截全部 fetch，不连接真实后端，无真实账号、凭证或个人邮箱进入截图。亲看初始邮箱登录框、两行账号的邮箱列/空值、输入大写邮箱后仅剩匹配教练。截图见 [登录](evidence/spec093-2026-10-17/w0-login-synthetic.png)、[用户列表](evidence/spec093-2026-10-17/w0-admin-users-synthetic.png)、[邮箱搜索](evidence/spec093-2026-10-17/w0-admin-email-search-synthetic.png)，图内均标明本地合成数据。临时 harness 在 git 忽略目录 `.w0-qa.local/`，不纳入交付；复核服务保留 5198，页面 `http://127.0.0.1:5198/.w0-qa.local/index.html`，加 `?admin` 后点「用户管理」。
+- **已验证**：`npm run lint`（即 `tsc --noEmit`）exit 0；`npm run build` exit 0，保留既有大于 500 kB chunk 提示；`git diff --check` 通过。只安装 lockfile 依赖，未变更 package.json/lockfile。
+- **默认全量测试异常**：两次 `npm test` 均为 90/91 文件、887/888 用例通过，唯一失败是未改动的 `pinyin.test.ts` 的 1000ms wall-clock 性能断言；首次用时约 1924ms。当时同机运行 Android Gradle、其他 Vitest 与构建任务，进程快照显示 Java 208%/71% CPU。只降低 worker 并发复验，不修改此测试、阈值或 pinyin 实现；日志 `/tmp/spec093-w0-test.log`、`/tmp/spec093-w0-test-repeat.log`。
+- **未验到 / 交付边界**：未用此改版网页登录真实国内 staging、未联调上线后的 admin email 字段；本地 mock 不替代真实认证/权限或部署验收。未部署、未 commit/push、未开 PR/合并；用户要求 PR 由 David 合并。W 页面仍未开始，独立 Standards/Spec 审查由主代理安排；本记录是实现与自测事实，不代表 Opus 收货终审。
+
+### 主代理复核与交付补充
+
+- 全量性能诊断：默认 worker 并发复验仍只有旧拼音性能门槛失败；将同一测试单独执行为 7/7、282ms。固定单 worker 执行 `npm test -- --maxWorkers=1 --minWorkers=1`，91 文件 / 888 用例全通过，57.96s，其中拼音性能用例 402ms。实现、性能测试和 1000ms 阈值均未修改。结果支持本机并发负载影响墙钟断言；不声称默认并发已修复。最终日志为 `/tmp/spec093-w0-serial-test.log`，默认复验为 `/tmp/spec093-w0-final-test.log`。
+- 独立只读审查一轮：Standards 0 finding；Spec 0 finding。两个 reviewer 使用独立上下文，受并发槽位限制先后执行，未交换对方结论。主代理亲读全部最终 diff、亲看登录和用户列表截图；没有代码返修。
+- 本卡代码、自测与截图可交付，真实 staging 联调及部署仍未完成。PR 交 David 合并；不以本地通过替代最终验收。

@@ -8,8 +8,8 @@ export const zhAuth = {
   coachOnly: '该账号不是教练，无法编写计划',
   backendUnavailable: '无法连接后端，请稍后再试',
   title: '登录编写学员计划',
-  accountLabel: '手机号或邮箱 / Phone or email',
-  accountPlaceholder: '手机号或邮箱 / Phone or email',
+  accountLabel: '邮箱',
+  accountPlaceholder: '邮箱',
   previewSample: '用样例数据预览（不连后端）',
   loginFailed: (code: string) => `登录失败（${code}）`,
 } as const
@@ -22,8 +22,8 @@ export const enAuth = {
   coachOnly: 'This account is not a coach account and cannot create plans',
   backendUnavailable: 'Unable to connect. Try again later.',
   title: 'Sign in to create athlete plans',
-  accountLabel: 'Phone or email',
-  accountPlaceholder: 'Phone or email',
+  accountLabel: 'Email',
+  accountPlaceholder: 'Email',
   previewSample: 'Preview with sample data (offline)',
   loginFailed: (code) => `Sign-in failed (${code})`,
 } satisfies Translations<typeof zhAuth>

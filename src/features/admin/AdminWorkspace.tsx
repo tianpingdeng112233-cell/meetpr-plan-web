@@ -123,7 +123,7 @@ function Icon({ name, size = 20 }: { name: IconName; size?: number }) {
   return <svg {...common} strokeWidth="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
 }
 
-function displayName(name: string | null, phone?: string): string {
+function displayName(name: string | null, phone?: string | null): string {
   return name?.trim() || phone || S.admin.unnamed
 }
 
@@ -239,7 +239,7 @@ function UsersPage({ state, openUser }: { state: ResourceState<Awaited<ReturnTyp
     const phoneQuery = query.replace(/\s/g, '')
     return [...(state.data?.users ?? [])].filter((user) => (
       (filter === 'all' || user.role === filter)
-      && (!query || displayName(user.displayName, user.phone).toLocaleLowerCase().includes(query) || user.phone.replace(/\s/g, '').includes(phoneQuery))
+      && (!query || displayName(user.displayName, user.phone).toLocaleLowerCase().includes(query) || (user.email ?? '').toLocaleLowerCase().includes(query) || (user.phone ?? '').replace(/\s/g, '').includes(phoneQuery))
     )).sort((a, b) => descending ? b.createdAt.localeCompare(a.createdAt) : a.createdAt.localeCompare(b.createdAt))
   }, [descending, filter, search, state.data])
   const filtered = filter !== 'all' || search.trim() !== ''
@@ -247,10 +247,10 @@ function UsersPage({ state, openUser }: { state: ResourceState<Awaited<ReturnTyp
     <div className="flex max-w-[1400px] flex-col gap-4" data-testid="admin-users">
       <div className="flex flex-wrap items-center gap-3"><FilterChips options={[["all", S.common.all], ['coach', S.admin.role.coach], ['coached_student', S.admin.role.coachedStudent], ['self_train_student', S.admin.role.selfTrain]]} value={filter} onChange={setFilter}/><SearchBox value={search} onChange={setSearch} placeholder={S.admin.users.search}/><span className="text-xs text-fg-tertiary tabular-nums">{state.data ? S.admin.users.count(users.length) : ''}</span></div>
       <Card className="overflow-x-auto">
-        <div className="min-w-[850px]">
-          <div className="grid h-10 grid-cols-[minmax(120px,1.1fr)_130px_160px_140px_minmax(150px,1.3fr)_24px] items-center gap-3 border-b border-border px-4 font-mono text-[10.5px] uppercase tracking-[0.08em] text-fg-tertiary"><span>{S.admin.users.name}</span><span>{S.admin.users.role}</span><span>{S.admin.users.phone}</span><button type="button" onClick={() => setDescending((value) => !value)} className="flex items-center gap-1 text-left hover:text-white">{S.admin.users.registeredAt} <span className="text-[9px]">{descending ? '▼' : '▲'}</span></button><span>{S.admin.users.keyRelation}</span><span/></div>
+        <div className="min-w-[1100px]">
+          <div className="grid h-10 grid-cols-[minmax(120px,1.1fr)_130px_minmax(220px,1.4fr)_160px_140px_minmax(150px,1.3fr)_24px] items-center gap-3 border-b border-border px-4 font-mono text-[10.5px] uppercase tracking-[0.08em] text-fg-tertiary"><span>{S.admin.users.name}</span><span>{S.admin.users.role}</span><span>{S.admin.users.email}</span><span>{S.admin.users.phone}</span><button type="button" onClick={() => setDescending((value) => !value)} className="flex items-center gap-1 text-left hover:text-white">{S.admin.users.registeredAt} <span className="text-[9px]">{descending ? '▼' : '▲'}</span></button><span>{S.admin.users.keyRelation}</span><span/></div>
           {state.loading ? <SkeletonRows/> : state.error ? <ErrorState retry={state.retry}/> : users.length === 0 ? <EmptyState text={filtered ? S.admin.users.noMatch : S.admin.overview.noUsers} clear={filtered ? () => { setFilter('all'); setSearch('') } : undefined}/> : <>
-            {users.map((user) => { const name = displayName(user.displayName, user.phone); return <button type="button" key={user.id} onClick={() => openUser(user.id, name)} className="grid h-12 w-full grid-cols-[minmax(120px,1.1fr)_130px_160px_140px_minmax(150px,1.3fr)_24px] items-center gap-3 border-b border-[#1A1A1A] px-4 text-left hover:bg-s2"><span className="truncate font-medium">{name}</span><span><Badge spec={roleBadge(user.role)}/></span><span className="font-mono text-[12.5px] text-fg-secondary tabular-nums">{user.phone}</span><span className="font-mono text-[12.5px] text-fg-tertiary tabular-nums">{dateOnly(user.createdAt)}</span><span className="truncate text-[12.5px] text-fg-secondary">{userRelation(user)}</span><span className="text-fg-tertiary"><Icon name="chevron" size={14}/></span></button> })}
+            {users.map((user) => { const name = displayName(user.displayName, user.phone); return <button type="button" key={user.id} onClick={() => openUser(user.id, name)} className="grid h-12 w-full grid-cols-[minmax(120px,1.1fr)_130px_minmax(220px,1.4fr)_160px_140px_minmax(150px,1.3fr)_24px] items-center gap-3 border-b border-[#1A1A1A] px-4 text-left hover:bg-s2"><span className="truncate font-medium">{name}</span><span><Badge spec={roleBadge(user.role)}/></span><span className="truncate font-mono text-[12.5px] text-fg-secondary" title={user.email ?? undefined}>{user.email || '—'}</span><span className="font-mono text-[12.5px] text-fg-secondary tabular-nums">{user.phone || '—'}</span><span className="font-mono text-[12.5px] text-fg-tertiary tabular-nums">{dateOnly(user.createdAt)}</span><span className="truncate text-[12.5px] text-fg-secondary">{userRelation(user)}</span><span className="text-fg-tertiary"><Icon name="chevron" size={14}/></span></button> })}
             <div className="px-4 py-2.5 text-[11.5px] text-fg-tertiary tabular-nums">{S.admin.users.rowsHint(users.length)}</div>
           </>}
         </div>

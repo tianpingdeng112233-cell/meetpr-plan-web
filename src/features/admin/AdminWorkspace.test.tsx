@@ -82,18 +82,44 @@ describe('AdminWorkspace', () => {
     vi.clearAllMocks()
   })
 
+  it('shows email identities and filters by email without requiring a phone number', async () => {
+    api.users.mockResolvedValue({ users: [
+      { id: 'email-coach', displayName: '邮箱教练', role: 'coach', phone: null, email: 'coach@example.com', createdAt: '2026-07-18', relation: null },
+      { id: 'legacy-student', displayName: '旧学员', role: 'coached_student', phone: '13900000000', email: null, createdAt: '2026-07-17', relation: null },
+    ] })
+    await act(async () => { root.render(<AdminWorkspace onLogout={vi.fn()}/>); await settle() })
+    await act(async () => { button(host, '用户管理').click(); await settle() })
+    const page = host.querySelector<HTMLElement>('[data-testid="admin-users"]')!
+    expect(page.textContent).toContain('邮箱')
+    expect(buttonContaining(page, '邮箱教练').textContent).toContain('coach@example.com')
+    expect(buttonContaining(page, '邮箱教练').textContent).toContain('—')
+    expect(buttonContaining(page, '旧学员').textContent).toContain('—')
+    const search = page.querySelector<HTMLInputElement>('input')!
+    expect(search.placeholder).toBe('搜索姓名、邮箱或手机号')
+    await act(async () => { type(search, ' COACH@EXAMPLE.COM '); await settle() })
+    expect(page.textContent).toContain('邮箱教练')
+    expect(page.textContent).not.toContain('旧学员')
+    await act(async () => { type(search, '139 0000'); await settle() })
+    expect(page.textContent).toContain('旧学员')
+    expect(page.textContent).not.toContain('邮箱教练')
+    await act(async () => { type(search, '邮箱教练'); await settle() })
+    expect(page.textContent).toContain('coach@example.com')
+    await act(async () => { button(page, '有教练学员').click(); await settle() })
+    expect(page.textContent).toContain('没有匹配的用户。')
+  })
+
   it('filters locally, preserves list back-navigation, and renders a read-only plan matrix', async () => {
     await act(async () => { root.render(<AdminWorkspace onLogout={vi.fn()}/>); await settle() })
     expect(host.textContent).toContain('COACHES // 教练总数')
 
     await act(async () => { button(host, '用户管理').click(); await settle() })
-    const search = host.querySelector<HTMLInputElement>('input[placeholder="搜索姓名或手机号"]')
+    const search = host.querySelector<HTMLInputElement>('input[placeholder="搜索姓名、邮箱或手机号"]')
     expect(search).not.toBeNull()
     await act(async () => { if (search) type(search, '139'); await settle() })
     expect(host.textContent).toContain('13900000000')
     expect(host.textContent).not.toContain('13800000000')
 
-    await act(async () => { if (search) type(search, ''); await settle(); button(host, '教练甲教练138000000002026-07-18学员 1 人').click(); await settle() })
+    await act(async () => { if (search) type(search, ''); await settle(); buttonContaining(host, '教练甲教练').click(); await settle() })
     expect(host.querySelector('[data-testid="admin-user-detail"]')).not.toBeNull()
     expect(host.textContent).not.toContain('DANGER // 管理操作')
     await act(async () => { const back = host.querySelector<HTMLButtonElement>('header button'); back?.click(); await settle() })

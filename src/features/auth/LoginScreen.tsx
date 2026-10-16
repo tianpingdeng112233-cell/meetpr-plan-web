@@ -108,12 +108,12 @@ export function LoginScreen({ onLogin, onSampleMode }: Props) {
           </div>
         )}
 
-        <label style={{ display: 'block', fontSize: 12, color: 'var(--fg-secondary)', marginBottom: 6 }}>{S.auth.accountLabel}</label>
+        <label htmlFor="login-account" style={{ display: 'block', fontSize: 12, color: 'var(--fg-secondary)', marginBottom: 6 }}>{S.auth.accountLabel}</label>
         <div style={{ ...field, marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8, padding: 0 }}>
-          {!account.includes('@') && <span style={{ padding: '11px 0 11px 13px', color: 'var(--fg-tertiary)', borderRight: '1px solid var(--border)', paddingRight: 10, fontFamily: 'var(--font-mono)' }}>+86</span>}
           <input
-            style={{ flex: 1, padding: account.includes('@') ? '11px 13px' : '11px 13px 11px 0', background: 'transparent', border: 'none', color: 'var(--txt)', fontSize: 15, fontFamily: 'var(--font-mono)', outline: 'none' }}
-            value={account} onChange={(e) => setAccount(e.target.value)} inputMode={account.includes('@') ? 'email' : 'tel'} autoComplete="username" placeholder={S.auth.accountPlaceholder} autoCapitalize="none" spellCheck={false}
+            id="login-account"
+            style={{ flex: 1, minWidth: 0, padding: '11px 13px', background: 'transparent', border: 'none', color: 'var(--txt)', fontSize: 15, fontFamily: 'var(--font-mono)', outline: 'none' }}
+            value={account} onChange={(e) => setAccount(e.target.value)} inputMode="email" autoComplete="username" placeholder={S.auth.accountPlaceholder} autoCapitalize="none" spellCheck={false}
           />
         </div>
 
