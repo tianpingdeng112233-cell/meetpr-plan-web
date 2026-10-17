@@ -1,0 +1,27 @@
+
+> meetpr-plan-web@0.1.0 build
+> tsc --noEmit && vite build
+
+vite v5.4.21 building for production...
+transforming...
+✓ 226 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                                  0.46 kB │ gzip:   0.33 kB
+dist/assets/IBMPlexMono-Regular-CAJ2AE84.ttf   112.14 kB
+dist/assets/IBMPlexMono-Medium-D78olgbW.ttf    113.39 kB
+dist/assets/IBMPlexMono-Bold-CavriqBd.ttf      114.39 kB
+dist/assets/IBMPlexMono-SemiBold--X10AUwW.ttf  116.88 kB
+dist/assets/IBMPlexSans-Regular-FfXo57ZH.ttf   180.45 kB
+dist/assets/IBMPlexSans-Bold-Bcj7HP2z.ttf      180.67 kB
+dist/assets/IBMPlexSans-Medium-8FFkTPub.ttf    182.09 kB
+dist/assets/IBMPlexSans-SemiBold-FI1ksKa3.ttf  182.21 kB
+dist/assets/index-CVwUA8zm.css                 134.32 kB │ gzip:  25.05 kB
+dist/assets/index-CDnY-xlD.js                  376.06 kB │ gzip: 126.65 kB
+dist/assets/index-cy5nOj3P.js                  741.30 kB │ gzip: 249.60 kB
+
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+✓ built in 1.99s

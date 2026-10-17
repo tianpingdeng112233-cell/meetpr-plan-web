@@ -1,0 +1,40 @@
+
+ RUN  v2.1.9 /Users/david/Projects/apps/meetpr-plan-web-wt-093-w
+
+ ❯ src/features/onboarding/onboarding.test.tsx (19 tests | 2 failed) 166ms
+   × reauthenticates the target email after setup succeeds but login fails over an old coach session 5ms
+     → expected <a href="/coach/welcome" …(1)></a> to be null
+   × reauthenticates the target email after setup succeeds but login fails over an old admin session 2ms
+     → expected <a href="/coach/welcome" …(1)></a> to be null
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/features/onboarding/onboarding.test.tsx > reauthenticates the target email after setup succeeds but login fails over an old coach session
+ FAIL  src/features/onboarding/onboarding.test.tsx > reauthenticates the target email after setup succeeds but login fails over an old admin session
+AssertionError: expected <a href="/coach/welcome" …(1)></a> to be null
+
+- Expected:
+null
+
++ Received:
+<a
+  class="onboarding-button"
+  href="/coach/welcome"
+>
+  继续登录
+</a>
+
+ ❯ src/features/onboarding/onboarding.test.tsx:206:58
+    204|   await act(async () => { host.querySelector('form')!.dispatchEvent(ne…
+    205|   expect(navigate).not.toHaveBeenCalled()
+    206|   expect(host.querySelector('a[href="/coach/welcome"]')).toBeNull()
+       |                                                          ^
+    207|   expect(host.textContent).toContain('newcoach@example.test')
+    208|   input('signInPassword', 'SyntheticOnly093!')
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ Test Files  1 failed (1)
+      Tests  2 failed | 17 passed (19)
+   Start at  05:52:11
+   Duration  706ms (transform 154ms, setup 11ms, collect 94ms, tests 166ms, environment 207ms, prepare 51ms)

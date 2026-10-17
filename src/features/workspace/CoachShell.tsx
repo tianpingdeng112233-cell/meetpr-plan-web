@@ -1,3 +1,4 @@
+import { text } from '../onboarding/text'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { AuthUser, CoachStudent } from '../../api/types'
 import { ChangePasswordDialog } from './ChangePasswordDialog'
@@ -263,6 +264,10 @@ function CoachTopBar({
             >
               {S.workspace.changePassword}
             </button>
+            <button type="button" role="menuitem" onClick={async () => {
+              if (onConfirmLeave && !(await onConfirmLeave())) return
+              window.location.assign('/coach/welcome')
+            }}>{text('入驻指南与邀请学员', 'Onboarding and invitations')}</button>
             <button type="button" role="menuitem" onClick={() => { void handleLogout() }}>
               {S.workspace.signOut}
             </button>

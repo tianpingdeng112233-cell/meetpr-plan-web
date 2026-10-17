@@ -88,3 +88,22 @@ docs/
 specs/                  001 / 002 / 003 功能规格
 vite.config.ts          dev server + 代理 + vitest 配置
 ```
+
+### Spec 093 · 国内教练入驻页面
+
+公开页面为 `/coach`（申请）、`/coach/set-password`（欢迎信中的设密码链接）和 `/i/<邀请码>`（学员安装指引）；`/coach/welcome` 需教练登录，可从工作台右上角账号菜单再次进入。管理台新增「教练申请」分区。
+
+国内安装地址通过 Vite 构建配置提供，不在页面内硬编码：
+
+```sh
+VITE_API_BASE='' \
+VITE_CN_TESTFLIGHT_URL='<当前国内包的 HTTPS TestFlight 公开地址>' \
+VITE_CN_ANDROID_URL='<当前国内 APK 的 HTTPS 网盘地址>' \
+npm run build
+```
+
+仅接受无用户名/密码的 HTTPS 安装地址。缺省或无效时，页面明确显示安装暂未开放，不生成虚假按钮或二维码。换包时修改对应配置并重新构建、按上文同源部署流程更新 `dist`。两个地址只提供已获准分发的国内包；本功能代码交付不等于分发新包。
+
+设密码凭证来自 URL fragment（`#email=...&token=...`），页面加载后立即从地址栏移除，不写入本地存储；有效期由后端验证。不要把真实欢迎信 URL、令牌或账号凭证加入仓库。后端需先启用 spec 093 接口，并确保 `/coach`、`/coach/set-password`、`/coach/welcome` 的 HTML 请求在受保护 `/coach` API 之前回退到 SPA；API 请求仍按原有鉴权处理。
+
+二维码在浏览器本地生成，没有向外部二维码服务发送邀请链接。当前国内 HTTP 站点不一定提供 Clipboard API，点击复制时会回退到用户手势触发的复制；仍失败时保留手动复制与继续安装入口。

@@ -1,3 +1,5 @@
+import { CoachApplicationsSection } from '../onboarding/CoachApplicationsSection'
+import { text } from '../onboarding/text'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   getAdminBindings,
@@ -23,14 +25,14 @@ import { EmptyState, ErrorState, SkeletonRows, useDelayedLoading } from '../../c
 
 interface Props { onLogout: () => void }
 
-type AdminPage = 'overview' | 'users' | 'userDetail' | 'bindings' | 'plans' | 'planDetail' | 'exercises'
-type RootPage = 'overview' | 'users' | 'bindings' | 'plans' | 'exercises'
+type AdminPage = 'applications' | 'overview' | 'users' | 'userDetail' | 'bindings' | 'plans' | 'planDetail' | 'exercises'
+type RootPage = 'applications' | 'overview' | 'users' | 'bindings' | 'plans' | 'exercises'
 type ResourceState<T> = { data: T | null; loading: boolean; error: boolean; retry: () => void }
 type BadgeSpec = { label: string; color: string; background: string; border: string; weight?: number }
 
 export const ADMIN_WRITE_ENABLED = false
 
-const pageTitle = (page: RootPage) => S.admin.page[page]
+const pageTitle = (page: RootPage) => page === 'applications' ? text('教练申请', 'Coach applications') : S.admin.page[page]
 
 function useResource<T>(key: string | null, load: () => Promise<T>): ResourceState<T> {
   const loader = useRef(load)
@@ -422,6 +424,7 @@ function PlanDetailPage({ state, context }: { state: ResourceState<AdminPlanWith
 
 function AdminRail({ page, navigate, onLogout }: { page: AdminPage; navigate: (page: RootPage) => void; onLogout: () => void }) {
   const tabs: Array<{ page: RootPage; label: string; icon: IconName }> = [
+    { page: 'applications', label: text('教练申请', 'Coach applications'), icon: 'users' },
     { page: 'overview', label: S.admin.page.overview, icon: 'overview' }, { page: 'users', label: S.admin.page.users, icon: 'users' }, { page: 'bindings', label: S.admin.page.bindings, icon: 'bindings' }, { page: 'plans', label: S.admin.page.plans, icon: 'plans' }, { page: 'exercises', label: S.admin.page.exercises, icon: 'exercises' },
   ]
   const activeRoot: RootPage = page === 'userDetail' ? 'users' : page === 'planDetail' ? 'plans' : page
@@ -459,5 +462,5 @@ export function AdminWorkspace({ onLogout }: Props) {
   const detailPage = page === 'userDetail' || page === 'planDetail'
   const leaf = page === 'userDetail' ? (userDetail.data ? displayName(userDetail.data.user.displayName, userDetail.data.user.phone) : userLabel) : page === 'planDetail' ? (detail.data?.name ?? selectedPlan?.name ?? '') : pageTitle(page)
 
-  return <div className="flex h-screen overflow-hidden bg-bg font-sans text-sm leading-[1.4] text-white" data-testid="admin-workspace"><AdminRail page={page} navigate={navigate} onLogout={onLogout}/><div className="relative flex min-w-0 flex-1 flex-col">{active.loading && <div className="absolute left-0 right-0 top-0 z-30 h-0.5 overflow-hidden"><div className="admin-loadbar absolute top-0 h-0.5 w-[30%] bg-brand"/></div>}<header className="flex h-14 flex-none items-center gap-3 border-b border-border px-6"><span className="text-base font-black tracking-[-0.01em]">MeetPR</span><span className="font-mono text-[11px] font-medium tracking-[0.08em] text-brand">ADMIN /</span>{detailPage && <><button type="button" onClick={goBack} className="-ml-1 flex items-center gap-1.5 rounded-[6px] px-2 py-1 text-[13px] text-fg-secondary hover:bg-s2 hover:text-white"><Icon name="back" size={15}/>{pageTitle(page === 'userDetail' ? 'users' : 'plans')}</button><span className="text-[13px] text-fg-tertiary">/</span></>}<span className="text-sm font-semibold">{leaf}</span><div className="flex-1"/></header><main className="min-w-0 flex-1 overflow-y-auto p-6">{page === 'overview' && <OverviewPage state={overview} openUser={openUser} openPlan={openPlan} navigate={navigate}/>} {page === 'users' && <UsersPage state={users} openUser={openUser}/>} {page === 'userDetail' && <UserDetailPage state={userDetail} openUser={openUser} openPlan={openPlan} onToast={showToast}/>} {page === 'bindings' && <BindingsPage state={bindings} openUser={openUser}/>} {page === 'plans' && <PlansPage state={plans} openPlan={openPlan}/>} {page === 'exercises' && <ExerciseUsagePage state={exercises}/>} {page === 'planDetail' && <PlanDetailPage state={detail} context={selectedPlan}/>}</main></div>{toast && <div className="fixed bottom-6 left-1/2 z-[60] -translate-x-1/2 rounded-md border border-border-strong bg-s2 px-[18px] py-2.5 text-[13px]">{toast}</div>}</div>
+  return <div className="flex h-screen overflow-hidden bg-bg font-sans text-sm leading-[1.4] text-white" data-testid="admin-workspace"><AdminRail page={page} navigate={navigate} onLogout={onLogout}/><div className="relative flex min-w-0 flex-1 flex-col">{active.loading && <div className="absolute left-0 right-0 top-0 z-30 h-0.5 overflow-hidden"><div className="admin-loadbar absolute top-0 h-0.5 w-[30%] bg-brand"/></div>}<header className="flex h-14 flex-none items-center gap-3 border-b border-border px-6"><span className="text-base font-black tracking-[-0.01em]">MeetPR</span><span className="font-mono text-[11px] font-medium tracking-[0.08em] text-brand">ADMIN /</span>{detailPage && <><button type="button" onClick={goBack} className="-ml-1 flex items-center gap-1.5 rounded-[6px] px-2 py-1 text-[13px] text-fg-secondary hover:bg-s2 hover:text-white"><Icon name="back" size={15}/>{pageTitle(page === 'userDetail' ? 'users' : 'plans')}</button><span className="text-[13px] text-fg-tertiary">/</span></>}<span className="text-sm font-semibold">{leaf}</span><div className="flex-1"/></header><main className="min-w-0 flex-1 overflow-y-auto p-6">{page === 'applications' && <CoachApplicationsSection />} {page === 'overview' && <OverviewPage state={overview} openUser={openUser} openPlan={openPlan} navigate={navigate}/>} {page === 'users' && <UsersPage state={users} openUser={openUser}/>} {page === 'userDetail' && <UserDetailPage state={userDetail} openUser={openUser} openPlan={openPlan} onToast={showToast}/>} {page === 'bindings' && <BindingsPage state={bindings} openUser={openUser}/>} {page === 'plans' && <PlansPage state={plans} openPlan={openPlan}/>} {page === 'exercises' && <ExerciseUsagePage state={exercises}/>} {page === 'planDetail' && <PlanDetailPage state={detail} context={selectedPlan}/>}</main></div>{toast && <div className="fixed bottom-6 left-1/2 z-[60] -translate-x-1/2 rounded-md border border-border-strong bg-s2 px-[18px] py-2.5 text-[13px]">{toast}</div>}</div>
 }

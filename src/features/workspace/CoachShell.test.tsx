@@ -168,7 +168,7 @@ describe('CoachShell', () => {
     await act(async () => { avatar.click() })
     expect(avatar.getAttribute('aria-expanded')).toBe('true')
     const items = [...host.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')]
-    expect(items).toHaveLength(2)
+    expect(items).toHaveLength(3)
     expect(host.textContent).toContain('改密码')
     expect(host.textContent).toContain('退出')
     expect(document.activeElement).toBe(items[0])
@@ -180,11 +180,15 @@ describe('CoachShell', () => {
     await act(async () => {
       items[1]?.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }))
     })
+    expect(document.activeElement).toBe(items[2])
+    await act(async () => {
+      items[2]?.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }))
+    })
     expect(document.activeElement).toBe(items[0])
     await act(async () => {
       items[0]?.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true }))
     })
-    expect(document.activeElement).toBe(items[1])
+    expect(document.activeElement).toBe(items[2])
 
     await act(async () => {
       items[1]?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))

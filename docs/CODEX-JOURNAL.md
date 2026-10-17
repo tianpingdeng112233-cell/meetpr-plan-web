@@ -328,3 +328,22 @@ TDD seam 是真实 LoginScreen 用户交互到 fetch 网络边界：发码入口
 未验：真实邮件、staging新密码登录及部署。最新 CARDS 指定双端真实找回、QQ/163 邮件分箱、beta24 已登录升级由 David 手测，统一验收文档为它们留空行。本节不把本地模拟响应算作 staging 验收。
 
 独立增量审查：Standards 0 finding；Spec 0 finding。两位只读 reviewer 使用独立上下文，因并行实装占用槽位而先后运行，并非同一人自审；分别复跑登录/找回 31 tests 通过。主代理亲读全部源码、测试及四张截图。无代码返修。缺仓内 tracker 的流程未启用，本次依已提供卡片做 review-loop。
+
+## 2026-10-17 · Spec 093 W：教练入驻和学员落地页（开发自测）
+
+- 基线：W0 `622a7c0`，另已包含 W0 找回密码增量 `ca6d538`/`8e62694` 的等价 cherry-pick。W 增量在独立 `feat/093-coach-onboarding` 工作树，提交/PR 由主代理处理；不合并、不部署、不分发 App 包。
+- 改动：公开申请/回执、fragment 设密码并邮箱登录、认证后的三段入驻指南、公开邀请页；iPhone/Android/desktop/微信 UA 分流；本地生成安装与邀请二维码、下载 SVG；完整邀请消息与 RN 文案一致；安装地址用 `VITE_CN_TESTFLIGHT_URL`/`VITE_CN_ANDROID_URL` 配置，缺值显示未开放。管理台新增审批/拒绝确认、邮件失败重发和学员邮箱冲突说明；工作台账号菜单可重新进入指南。新增五个 `platform=web` 漏斗事件，不采集自由文本或邮箱。
+- 自测 seam：通过公开 React 页面和 HTTP fetch 边界验证申请重复/邮件失败、设密码 token/登录/过期重发/密码约束、当前永久码和完整消息、审批确认/学生邮箱冲突、四类设备/失效码/断网、HTTP 剪贴板 fallback 与配置安全。逐个行为先红后绿，六份 red 日志见 evidence；新增 17 条。现有 CoachShell 键盘循环测试随第三个菜单项更新。
+- `npm test`：合并 W0 后 **93 文件、915 tests 全通过**，15.15s。中途并发构建时已有 `pinyin.test.ts` 的 1000ms 性能阈值一次失败；未放宽阈值，最终默认命令重跑通过。`npm run lint`、`npm run build` 通过；build 保留既有大 chunk 提示。Impeccable mechanical detector `[]`。
+- 浏览器：仅 `127.0.0.1:3063` 合成 API 与 `127.0.0.1:5194` Vite。已亲看申请/回执、设密码、欢迎页和复制消息、管理台确认/通过、桌面双二维码、390×844 iPhone/Android/微信 UA 仿真与失效页。截图 `docs/evidence/spec093-2026-10-17/w-*.jpg`，合成复现 API 与 HTML 在同目录 `w-fixture*`；这些文件不属于生产页面。初次截图发现管理台黑背景下文字沿用浅色页颜色，已修为管理台现有 tokens 并复拍。
+- 未验：国内真实 staging 迁移与换装、真实教练申请/欢迎信/审批/绑定全链路、真实安装地址与扫码落到实际包、真实微信与手机浏览器、无经验用户计时录屏、现存老账号数据。当前无真实安装 URL，部署需统一审批清单补齐；浏览器截图只证明本地布局和分流，不冒充真机/真实微信或生产验收。未发任何真实邮件、未接触国内数据库。
+
+### W · Spec 审查定向修复：设密码后的登录恢复
+
+- 修复 P2：浏览器已有教练/管理员 A 的会话，给 B 设密码成功，但 B 自动登录失败时，旧「继续登录」链接可能打开 A 的欢迎页。现在留在设密码页，显示固定目标邮箱，并要求重新输入该账号的新密码；恢复只调用邮箱登录，成功后才去欢迎页，不复用 A 的登录态，不重放已经消费的 reset token。
+- 先红后绿：新增 coach/admin 两种旧会话下的完整恢复回归，断言 reset 只发生一次、两次登录都发给 B、成功后当前用户为 B。`npx vitest run src/features/onboarding/onboarding.test.tsx src/features/auth/LoginScreen.test.tsx src/features/auth/ForgotPasswordScreen.test.tsx` **3 文件 / 50 tests 通过**（onboarding 19 条）；`npm run lint` 通过。日志 `spec093-w-{red,green}-session-recovery.log`。
+- 此轮浏览器截图尚未补：先前 IAB 会话结束后服务返回 browser unavailable；UI 使用既有页面表单样式，主代理继续截图复核。未操作真实账号或后端。
+- Standards 定向一致性修复：管理台错误文字改用该作用域已有 `--brand-red`，避免借用全局 App 色板 token。未增加常量镜像测试。注：原 `--danger` 实际定义在已导入的 `docs/design/coach-web/tokens/colors.css`，因此不是未定义变量；此次更改是遵循管理台现有颜色口径。浏览器复核由主代理补齐（本子会话 IAB unavailable）。
+- 修复后 `npm run lint`、`npm run build` 再次通过，见 `spec093-w-review-final.log`。登录第一次返回合成 503、第二次成功的复现 API 已保存为 `w-recovery-fixture.mjs`；只监听 localhost，无数据库、无真实邮件或账号写入。
+
+最终独立审查：Standards 0 finding；Spec 首轮 1 项 P2（设密成功、自动登录失败时可能复用旧账号），按目标邮箱重新认证修复后定向复审 0 finding。新增 coach/admin 两种旧会话回归，onboarding 19/19；与登录/菜单相关测试合计 50/50。Standards 曾将导入的 --danger 误判未定义，已核实并撤回；管理台现统一使用现有 --brand-red。主代理亲读全部最终源码、测试、lockfile，亲看 14 张 W 截图；浏览器验证登录失败后继续登录成功，截图 w-set-password-login-retry.jpg。全量 915 tests 为两条恢复回归加入前；最终增量经定向验证，未把计数混作一次全量运行。
