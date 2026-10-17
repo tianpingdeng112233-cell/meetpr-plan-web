@@ -39,7 +39,8 @@ export interface AdminUser {
   id: string
   displayName: string | null
   role: AdminManagedRole
-  phone: string
+  phone: string | null
+  email: string | null
   createdAt: string
   relation: AdminUserRelation
 }

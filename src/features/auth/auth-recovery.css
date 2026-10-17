@@ -1,0 +1,13 @@
+.auth-recovery-page { min-height: 100dvh; display: grid; place-items: center; background: var(--page-bg); padding: 24px 16px; box-sizing: border-box; }
+.auth-recovery-form { width: min(100%, 360px); box-sizing: border-box; padding: 32px; border: 1px solid var(--bd); border-radius: var(--r-lg); background: var(--card-bg); color: var(--txt); }
+.auth-recovery-form h1 { margin: 0 0 12px; font-size: 24px; font-weight: 700; }
+.auth-recovery-form p { font-size: 14px; line-height: 1.6; margin: 0 0 24px; color: var(--fg-secondary); overflow-wrap: anywhere; }
+.auth-recovery-form label { display: block; font-size: 12px; color: var(--fg-secondary); margin-bottom: 6px; }
+.auth-recovery-form input { width: 100%; box-sizing: border-box; padding: 11px 13px; margin-bottom: 16px; border: 1px solid var(--bd); border-radius: var(--r-md); background: var(--card-bg); color: var(--txt); font: 15px var(--font-sans); }
+.auth-recovery-primary { width: 100%; margin-top: 8px; padding: 12px; border: 0; border-radius: var(--r-md); background: var(--ink); color: var(--white); font: 600 14px var(--font-sans); cursor: pointer; }
+.auth-recovery-link { display: block; min-height: 44px; margin: 12px auto 0; padding: 8px; border: 0; background: transparent; color: var(--fg-secondary); font: 13px var(--font-sans); text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+.auth-recovery-link:hover { color: var(--txt); }
+.auth-recovery-primary:hover:not(:disabled) { opacity: .9; }
+.auth-recovery-form :focus-visible, .auth-recovery-link:focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; }
+.auth-recovery-form :disabled { opacity: .6; cursor: default; }
+.auth-recovery-form .auth-recovery-error { color: var(--bad); margin: 4px 0 16px; }

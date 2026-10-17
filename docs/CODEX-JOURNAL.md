@@ -290,3 +290,41 @@ Test Files  89 passed (89)
 - 独立增量复审：Standards 0 项、Spec 0 项，比较本轮启动时保存的四个代码/测试文件与当前文件。
 - Opus 两个临时文件校验值在续做前后完全一致，未改、未删、未列入本轮交付；5197 服务未操作。未 commit/push/开 PR，未动 SPEC/CONTEXT、未装依赖、未手工读取 `.env`、未请求线上后端。
 - 本轮未重新浏览器目检；交付证据为 DOM/计算样式、交互/请求回归与全量自检。无剩余待裁决事项，交回 Opus 收货。
+
+## 2026-10-17 · Spec 093 卡 W0：邮箱登录与管理台邮箱查询
+
+- **任务与基线**：按 David 批准的交接 CARDS.md 的 W0 / SPEC.md §11 实施，口径以 SPEC.md 为准。独立 worktree `meetpr-plan-web-wt-093-w0`，分支 `feat/093-email-login-admin`，base `e6e9a14`（origin/main）。只改 W0；W 的申请、设密码、入驻、落地页和审批页面尚未开始，仍须等待 B 国内 staging 部署。
+- **改动**：登录字段中英文统一显示「邮箱 / Email」，初始 inputMode 为 email、移除 +86 视觉前缀；仍保留 text 输入与既有按 `@` 分流，手机号照旧规范化走手机号接口。管理台用户列表新增邮箱列，邮箱/手机号缺失显示 `—`，搜索保留姓名、手机号并增加不区分大小写的邮箱匹配；角色筛选和明细导航保留。沿用既有列表样式，横向容器增加一列，无新设计或导航。
+- **接口契约**：`AdminUser.email: string | null`，`phone: string | null`；后端卡 B 负责给 `GET /admin/users`、`GET /admin/users/:id` 补 email 字段。当前管理台在客户端过滤全量用户，不要求新增后端搜索参数。旧后端未返回 email 时前端仍显示 `—`，但无法查到邮箱，须部署后联调。
+- **公开测试 seam / 红绿证据**：沿用 LoginScreen / AdminWorkspace 组件用户交互，以及既有登录 API 路由回归。先更新邮箱初始展示的测试，红阶段 1 failed / 20 passed（旧标签），再实现后 21 passed；再新增邮箱列、无手机号账号、大小写/首尾空白邮箱搜索、旧手机号、姓名和角色过滤交互，红阶段 1 failed / 3 passed（邮箱未显示），实现后 4 passed。原手机号和邮箱登录成功/失败回归保留。原先精确拼接整行文字的导航定位改为按教练姓名匹配，以容纳新增邮箱列。
+- **UI 目检**：使用 cua 的 Codex IAB（后台模式）操作真实组件，通过本地临时 mock 页面注入合成账号；mock 拦截全部 fetch，不连接真实后端，无真实账号、凭证或个人邮箱进入截图。亲看初始邮箱登录框、两行账号的邮箱列/空值、输入大写邮箱后仅剩匹配教练。截图见 [登录](evidence/spec093-2026-10-17/w0-login-synthetic.png)、[用户列表](evidence/spec093-2026-10-17/w0-admin-users-synthetic.png)、[邮箱搜索](evidence/spec093-2026-10-17/w0-admin-email-search-synthetic.png)，图内均标明本地合成数据。临时 harness 在 git 忽略目录 `.w0-qa.local/`，不纳入交付；复核服务保留 5198，页面 `http://127.0.0.1:5198/.w0-qa.local/index.html`，加 `?admin` 后点「用户管理」。
+- **已验证**：`npm run lint`（即 `tsc --noEmit`）exit 0；`npm run build` exit 0，保留既有大于 500 kB chunk 提示；`git diff --check` 通过。只安装 lockfile 依赖，未变更 package.json/lockfile。
+- **默认全量测试异常**：两次 `npm test` 均为 90/91 文件、887/888 用例通过，唯一失败是未改动的 `pinyin.test.ts` 的 1000ms wall-clock 性能断言；首次用时约 1924ms。当时同机运行 Android Gradle、其他 Vitest 与构建任务，进程快照显示 Java 208%/71% CPU。只降低 worker 并发复验，不修改此测试、阈值或 pinyin 实现；日志 `/tmp/spec093-w0-test.log`、`/tmp/spec093-w0-test-repeat.log`。
+- **未验到 / 交付边界**：未用此改版网页登录真实国内 staging、未联调上线后的 admin email 字段；本地 mock 不替代真实认证/权限或部署验收。未部署、未 commit/push、未开 PR/合并；用户要求 PR 由 David 合并。W 页面仍未开始，独立 Standards/Spec 审查由主代理安排；本记录是实现与自测事实，不代表 Opus 收货终审。
+
+### 主代理复核与交付补充
+
+- 全量性能诊断：默认 worker 并发复验仍只有旧拼音性能门槛失败；将同一测试单独执行为 7/7、282ms。固定单 worker 执行 `npm test -- --maxWorkers=1 --minWorkers=1`，91 文件 / 888 用例全通过，57.96s，其中拼音性能用例 402ms。实现、性能测试和 1000ms 阈值均未修改。结果支持本机并发负载影响墙钟断言；不声称默认并发已修复。最终日志为 `/tmp/spec093-w0-serial-test.log`，默认复验为 `/tmp/spec093-w0-final-test.log`。
+- 独立只读审查一轮：Standards 0 finding；Spec 0 finding。两个 reviewer 使用独立上下文，受并发槽位限制先后执行，未交换对方结论。主代理亲读全部最终 diff、亲看登录和用户列表截图；没有代码返修。
+- 本卡代码、自测与截图可交付，真实 staging 联调及部署仍未完成。PR 交 David 合并；不以本地通过替代最终验收。
+
+### 继续执行补验（2026-10-17）
+
+Android 本机构建、并行后端测试与临时服务结束后，以原默认配置重新执行 `npm test`，exit 0：91 files / 888 tests，7.25s。原始输出见 `docs/evidence/spec093-2026-10-17/w0-default-tests-idle.txt`。未修改 pinyin 实现、测试或 1000ms 门槛；这次默认全量通过，保留前述并发高负载下的失败事实，不宣称墙钟测试永不波动。5198 临时 UI 服务已停止，合成 harness 仍留在忽略目录。代码已在 PR #109，仍未合并或部署；国内真实登录/admin 邮箱联调继续等待 B 部署。
+
+
+## 2026-10-17 · Spec093 W0 追加网页找回密码（开发证据）
+
+来源为 RN `claude/blissful-curie-wk8cxa@692228d` 的 CARDS W0 与 SPEC §11。按最新一次性执行顺序先写代码，再统一审批部署；此节覆盖此前“W 等 B 部署后开工”的旧执行记录，不改历史事实。
+
+改动：登录页新增“忘记密码？”；填邮箱→公开 forgot 请求→6 位验证码、新密码、确认密码→公开 reset 请求→带成功提示回登录页。手机号显示“请填写注册时用的邮箱”；密码至少 8 个 Unicode 字符、最多 72 UTF-8 字节；确认密码仅本地验证、不发后端。错码/过期、限速、离线均可恢复；重发回到邮箱输入，清除旧码与密码；请求期间锁表单且防重复提交，不自动重试发码。邮箱规则从原 LoginScreen 原样提取，原导出保留；邮箱/手机号登录兼容不变。沿用既有视觉 tokens 与安卓中文/英文文案，无新产品设计。
+
+TDD seam 是真实 LoginScreen 用户交互到 fetch 网络边界：发码入口缺失、reset 表单缺失、非法输入未拦、错码/限速文案分别先红后绿（red1–4/green1–4 日志）。第一次红测试因 Node localStorage 夹具缺失而失败，修正为仓内同款 Map storage 后重跑取得真实缺功能红证据；未将夹具错误算有效红阶段。最后追加请求中重复提交/断网恢复回归首次即绿，明确不是先红。10 个新增组件用例通过；原登录 21 和 email-login wire 2 用例保持通过。
+
+`npm test` 92 文件/897 测试通过（最后 1 条纯测试追加前）；追加后该 suite 10/10 通过。`npm run lint` 类型检查、`npm run build` 通过；build 保留既有大 chunk 提示。Impeccable detector 输出 `[]`。
+
+浏览器：仅 localhost:5193 + 合成 HTTP fixture:3095，无真实发信/账号/密码修改。亲看桌面四状态和 390×844 手机布局，无横向溢出；浏览器 warn/error 为零。截图在 `docs/evidence/spec093-2026-10-17/`：`w0-forgot-email.jpg`、`w0-forgot-sent.jpg`、`w0-forgot-wrong-code.jpg`、`w0-forgot-success.jpg`，额外 `w0-forgot-mobile.jpg`。普通截图确认了两张 fullPage 抓图的瞬态裁切问题后重拍，没有通过改截图掩盖UI。可复现本地服务为同目录 `w0-recovery-fixture.cjs`，它不发送邮件、不存储密码。
+
+未验：真实邮件、staging新密码登录及部署。最新 CARDS 指定双端真实找回、QQ/163 邮件分箱、beta24 已登录升级由 David 手测，统一验收文档为它们留空行。本节不把本地模拟响应算作 staging 验收。
+
+独立增量审查：Standards 0 finding；Spec 0 finding。两位只读 reviewer 使用独立上下文，因并行实装占用槽位而先后运行，并非同一人自审；分别复跑登录/找回 31 tests 通过。主代理亲读全部源码、测试及四张截图。无代码返修。缺仓内 tracker 的流程未启用，本次依已提供卡片做 review-loop。

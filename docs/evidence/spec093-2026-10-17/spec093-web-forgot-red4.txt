@@ -1,0 +1,47 @@
+
+ RUN  v2.1.9 /Users/david/Projects/apps/meetpr-plan-web-wt-093-w0
+
+ ❯ src/features/auth/ForgotPasswordScreen.test.tsx (9 tests | 2 failed) 49ms
+   × keeps a wrong code recoverable and lets the user request another code 5ms
+     → expected '无法连接后端，请稍后再试' to be '验证码不对或已过期，请重新获取' // Object.is equality
+   × reports rate limiting without automatically resending requests 2ms
+     → expected '无法连接后端，请稍后再试' to be '尝试次数过多，请稍后重试' // Object.is equality
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/features/auth/ForgotPasswordScreen.test.tsx > keeps a wrong code recoverable and lets the user request another code
+AssertionError: expected '无法连接后端，请稍后再试' to be '验证码不对或已过期，请重新获取' // Object.is equality
+
+Expected: "验证码不对或已过期，请重新获取"
+Received: "无法连接后端，请稍后再试"
+
+ ❯ src/features/auth/ForgotPasswordScreen.test.tsx:99:59
+     97|   fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ error:…
+     98|   await click('重置密码')
+     99|   expect(host.querySelector('[role=alert]')?.textContent).toBe('验证码…
+       |                                                           ^
+    100|   expect(host.querySelector<HTMLInputElement>('#reset-code')?.value).t…
+    101|   await click('重新获取')
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  src/features/auth/ForgotPasswordScreen.test.tsx > reports rate limiting without automatically resending requests
+AssertionError: expected '无法连接后端，请稍后再试' to be '尝试次数过多，请稍后重试' // Object.is equality
+
+Expected: "尝试次数过多，请稍后重试"
+Received: "无法连接后端，请稍后再试"
+
+ ❯ src/features/auth/ForgotPasswordScreen.test.tsx:112:59
+    110|   fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ error:…
+    111|   await click('发送验证码')
+    112|   expect(host.querySelector('[role=alert]')?.textContent).toBe('尝试次…
+       |                                                           ^
+    113|   expect(fetchMock).toHaveBeenCalledTimes(1)
+    114| })
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+
+ Test Files  1 failed (1)
+      Tests  2 failed | 7 passed (9)
+   Start at  05:42:05
+   Duration  509ms (transform 119ms, setup 10ms, collect 143ms, tests 49ms, environment 114ms, prepare 40ms)

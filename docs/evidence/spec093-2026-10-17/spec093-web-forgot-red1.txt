@@ -1,0 +1,33 @@
+
+ RUN  v2.1.9 /Users/david/Projects/apps/meetpr-plan-web-wt-093-w0
+
+ ❯ src/features/auth/ForgotPasswordScreen.test.tsx (1 test | 1 failed) 15ms
+   × opens email recovery, requests a code without auth, and shows the neutral sent message 15ms
+     → button 忘记密码？: expected undefined to be truthy
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/features/auth/ForgotPasswordScreen.test.tsx > opens email recovery, requests a code without auth, and shows the neutral sent message
+AssertionError: button 忘记密码？: expected undefined to be truthy
+
+- Expected:
+true
+
++ Received:
+undefined
+
+ ❯ click src/features/auth/ForgotPasswordScreen.test.tsx:12:37
+     10| const click = async (label: string) => {
+     11|   const button = [...host.querySelectorAll('button')].find(b => b.text…
+     12|   expect(button, `button ${label}`).toBeTruthy()
+       |                                     ^
+     13|   await act(async () => { button!.click() })
+     14| }
+ ❯ src/features/auth/ForgotPasswordScreen.test.tsx:41:9
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+ Test Files  1 failed (1)
+      Tests  1 failed (1)
+   Start at  05:40:24
+   Duration  430ms (transform 70ms, setup 10ms, collect 90ms, tests 15ms, environment 112ms, prepare 32ms)
