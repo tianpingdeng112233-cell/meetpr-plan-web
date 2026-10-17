@@ -351,3 +351,11 @@ TDD seam 是真实 LoginScreen 用户交互到 fetch 网络边界：发码入口
 ## 2026-10-17 · Spec 093 合并前文案对齐
 
 David 直驱：学员邀请落地页第三步改为「粘贴邀请码」，与 App 中文按钮一致。仅改该处中文文案，未改邀请消息模板或英文。390×844 Chrome 合成 API 截图已亲看；截图与原始测试日志在本机 `/Users/david/Projects/scratch/spec093-closeout-20261017/`。全量 93 文件 / 917 tests、lint、带批准安装链接和空 VITE_API_BASE 的 build 通过。默认并发下既有拼音耗时断言为 2127ms（阈值 1000ms）；单 worker 全量通过，未改实现或阈值。独立 review-loop：Standards 0、Spec 0。未合并、未部署、未外发链接。
+
+## 2026-10-17 · iPhone TestFlight 安装引导
+
+David 现场要求给苹果用户增加 App Store 下载 TestFlight 的步骤。共用 InstallOptions 增加两步引导：先打开 Apple 官方 App Store 页面下载 TestFlight，安装后回本页打开测试邀请；已有 TestFlight 可直接第二步。教练欢迎页与学员邀请页共用，学员第二步仍执行复制邀请码。Android、桌面二维码、微信内打开提示沿用现有路径。
+
+回归测试先红（缺 App Store 链接）后绿，onboarding 20/20；TypeScript 与生产构建通过。390×844 iPhone UA 合成邀请页已亲看，无横向溢出；截图 `/Users/david/Projects/scratch/spec093-closeout-20261017/iphone-testflight-guide.png`。未验证真机跨 App 跳转，未部署本次补丁或外发链接。
+
+独立 review-loop 一轮：Standards 0 findings，Spec 0 findings。最终登录、找回密码、入驻回归合计 3 文件 / 51 tests 通过。

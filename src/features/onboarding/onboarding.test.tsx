@@ -215,3 +215,15 @@ it.each(['coach', 'admin'])('reauthenticates the target email after setup succee
   expect(logins).toHaveLength(2)
   expect(logins.map(([, init]) => JSON.parse(init!.body as string).email)).toEqual(['newcoach@example.test', 'newcoach@example.test'])
 })
+
+it('guides iPhone visitors to install TestFlight before returning to the invitation', async () => {
+  vi.spyOn(navigator, 'userAgent', 'get').mockReturnValue('iPhone')
+  vi.stubEnv('VITE_CN_TESTFLIGHT_URL', 'https://example.test/ios')
+  const { InstallOptions } = await import('./install')
+  await act(async () => root.render(<InstallOptions code="ABCD234567" />))
+  const storeLink = host.querySelector('a[href="https://apps.apple.com/cn/app/testflight/id899247664"]')
+  expect(storeLink?.textContent).toContain('App Store')
+  expect(host.textContent).toContain('安装后回到本页')
+  expect(host.textContent).toContain('已安装 TestFlight 可直接进行第 2 步')
+  expect(host.querySelector('button')?.textContent).toContain('复制邀请码并去安装')
+})
