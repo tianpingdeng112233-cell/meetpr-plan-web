@@ -56,6 +56,13 @@ export function InstallOptions({ code }: { code?: string }) {
   return <>
     {inWechat ? <p role="status">{text('点右上角 ··· 选「在浏览器打开」，再安装 App。', 'Tap ··· in the top-right corner and choose “Open in browser” to install the app.')}</p>
       : device === 'desktop' ? <div className="onboarding-qr-grid">{(['iphone', 'android'] as const).map(target => <div key={target}><h2>{target === 'iphone' ? 'iPhone' : text('安卓', 'Android')}</h2>{links[target] ? <QrImage value={links[target]!} label={text(`用${target === 'iphone' ? ' iPhone ' : '安卓手机'}扫码安装`, `Scan with ${target === 'iphone' ? 'iPhone' : 'Android'} to install`)} /> : <p>{text('安装链接暂未开放，请联系教练或管理员。', 'Installation is not available yet. Contact your coach or administrator.')}</p>}</div>)}</div>
+        : device === 'iphone' && links.iphone ? <>
+          <p>{text('已安装 TestFlight 可直接进行第 2 步。', 'Already have TestFlight? Go straight to step 2.')}</p>
+          <ol>
+            <li><p>{text('先从 App Store 下载 TestFlight。', 'First, download TestFlight from the App Store.')}</p><a className="onboarding-button" href="https://apps.apple.com/cn/app/testflight/id899247664" target="_blank" rel="noopener noreferrer">{text('去 App Store 下载 TestFlight', 'Get TestFlight on the App Store')}</a></li>
+            <li><p>{text('安装后回到本页，打开测试邀请，在 TestFlight 中安装 MeetPR。', 'After installing, return to this page, open the invitation, and install MeetPR in TestFlight.')}</p><button className="onboarding-primary" disabled={busy} onClick={() => void install('iphone')}>{code ? text('复制邀请码并去安装', 'Copy invite code and install') : text('打开测试邀请，安装 MeetPR', 'Open invitation and install MeetPR')}</button></li>
+          </ol>
+        </>
         : links[device] ? <button className="onboarding-primary" disabled={busy} onClick={() => void install(device)}>{code ? text('复制邀请码并去安装', 'Copy invite code and install') : text('安装 App', 'Install the app')}</button>
           : <p role="status">{text('安装链接暂未开放，请联系教练或管理员。', 'Installation is not available yet. Contact your coach or administrator.')}</p>}
     {error && <><p role="alert" className="onboarding-error">{error}</p>{device !== 'desktop' && links[device] && <a className="onboarding-button" href={links[device]!} onClick={() => trackOnboarding('install_clicked', { device })}>{text('我已手动复制，继续安装', 'I copied the code; continue to install')}</a>}</>}
