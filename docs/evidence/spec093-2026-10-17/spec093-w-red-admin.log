@@ -1,0 +1,31 @@
+
+ RUN  v2.1.9 /Users/david/Projects/apps/meetpr-plan-web-wt-093-w
+
+ ❯ src/features/onboarding/onboarding.test.tsx (0 test)
+
+⎯⎯⎯⎯⎯⎯ Failed Suites 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/features/onboarding/onboarding.test.tsx [ src/features/onboarding/onboarding.test.tsx ]
+Error: Failed to resolve import "./CoachApplicationsSection" from "src/features/onboarding/onboarding.test.tsx". Does the file exist?
+  Plugin: vite:import-analysis
+  File: /Users/david/Projects/apps/meetpr-plan-web-wt-093-w/src/features/onboarding/onboarding.test.tsx:78:52
+  109|    });
+  110|    vi.stubGlobal("fetch", fetcher);
+  111|    const { CoachApplicationsSection } = await import("./CoachApplicationsSection");
+     |                                                      ^
+  112|    await act(async () => root.render(/* @__PURE__ */ jsxDEV(CoachApplicationsSection, {}, void 0, false, {
+  113|      fileName: "/Users/david/Projects/apps/meetpr-plan-web-wt-093-w/src/features/onboarding/onboarding.test.tsx",
+ ❯ TransformPluginContext._formatError node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:49258:41
+ ❯ TransformPluginContext.error node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:49253:16
+ ❯ normalizeUrl node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:64307:23
+ ❯ node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:64439:39
+ ❯ TransformPluginContext.transform node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:64366:7
+ ❯ PluginContainer.transform node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:49099:18
+ ❯ loadAndTransform node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:51978:27
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+ Test Files  1 failed (1)
+      Tests  no tests
+   Start at  05:43:24
+   Duration  687ms (transform 24ms, setup 18ms, collect 0ms, tests 0ms, environment 266ms, prepare 40ms)

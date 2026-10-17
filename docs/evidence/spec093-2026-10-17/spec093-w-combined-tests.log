@@ -1,0 +1,115 @@
+
+> meetpr-plan-web@0.1.0 test
+> vitest run
+
+
+ RUN  v2.1.9 /Users/david/Projects/apps/meetpr-plan-web-wt-093-w
+
+ ✓ src/features/plan-editor/import/import.test.ts (33 tests) 20ms
+ ✓ src/features/plan-editor/reconcile.test.ts (70 tests) 26ms
+(node:65981) Warning: `--localstorage-file` was provided without a valid path
+(Use `node --trace-warnings ...` to show where the warning was created)
+ ✓ src/features/chat/MessagesPage-ui.test.tsx (27 tests) 436ms
+ ✓ src/features/plan-editor/remoteMirror.test.ts (16 tests) 44ms
+ ✓ src/features/plan-editor/locked-ui.test.tsx (20 tests) 583ms
+ ✓ src/features/workspace/PlanWorkspace.test.tsx (25 tests) 477ms
+ ✓ src/features/workspace/VideosPage-ui.test.tsx (42 tests) 1038ms
+ ✓ src/features/plan-editor/week-band-ui.test.tsx (18 tests) 973ms
+ ✓ src/features/catalog/CatalogPage.test.tsx (8 tests) 312ms
+ ✓ src/features/workspace/CoachShell.test.tsx (9 tests) 376ms
+ ✓ src/features/workspace/RosterBoard.test.tsx (10 tests) 280ms
+ ✓ src/features/plan-editor/plan-shift-ui.test.tsx (17 tests) 2067ms
+ ✓ src/features/plan-editor/multiday-selection-ui.test.tsx (15 tests) 2098ms
+ ✓ src/features/plan-editor/draftMirror-ui.test.tsx (33 tests) 2866ms
+   ✓ PlanEditor local draft recovery > uses the 'saved' leave-guard copy 346ms
+ ✓ src/features/onboarding/onboarding.test.tsx (17 tests) 953ms
+ ✓ src/features/plan-editor/dayMove-ui.test.tsx (10 tests) 1606ms
+   ✓ whole-day column dragging > keeps an ordinary header click as day selection 301ms
+ ✓ src/features/plan-editor/cell-selection-ui.test.tsx (8 tests) 1554ms
+   ✓ plan editor cell selection UI > selects one independent cell, reports A1 · W31, and clears it with Escape 698ms
+ ✓ src/features/admin/AdminWorkspace.test.tsx (4 tests) 549ms
+ ✓ src/features/plan-editor/draftMirror.test.ts (9 tests) 17ms
+ ✓ src/features/plan-editor/actuals-ui.test.tsx (6 tests) 607ms
+ ✓ src/features/plan-editor/exerciseIndex.test.ts (15 tests) 16ms
+ ✓ src/features/plan-editor/multirow-selection-ui.test.tsx (9 tests) 1465ms
+   ✓ plan editor multi-row selection UI > adds a row with Command-click while keeping the original row as anchor 349ms
+ ✓ src/features/workspace/TrackingDashboard.test.tsx (8 tests) 761ms
+ ✓ src/features/plan-editor/updateRetry.test.tsx (7 tests) 678ms
+ ✓ src/features/plan-editor/exercise-picker-ui.test.tsx (7 tests) 754ms
+ ✓ src/api/exercises.test.ts (10 tests) 44ms
+ ✓ src/features/plan-editor/mapping-intensity.test.ts (4 tests) 13ms
+ ✓ src/features/plan-editor/actuals.test.ts (13 tests) 8ms
+ ✓ src/features/plan-editor/context-rail-ui.test.tsx (5 tests) 563ms
+ ✓ src/features/plan-editor/student-added-ui.test.tsx (6 tests) 387ms
+ ✓ src/features/workspace/student-plan-capacity-ui.test.tsx (3 tests) 186ms
+(node:66092) Warning: `--localstorage-file` was provided without a valid path
+(Use `node --trace-warnings ...` to show where the warning was created)
+ ✓ src/i18n/en-smoke.test.tsx (3 tests) 641ms
+   ✓ English locale smoke > renders the login page and PlanEditor top bar without CJK copy 414ms
+ ✓ src/features/plan-editor/clipboard.test.ts (8 tests) 11ms
+ ✓ src/features/plan-editor/inputGuard.test.ts (35 tests) 12ms
+ ✓ src/features/plan-editor/contextRail.test.ts (16 tests) 20ms
+ ✓ src/features/plan-editor/autosave.test.ts (11 tests) 14ms
+ ✓ src/features/workspace/ChangePasswordDialog.behavior.test.tsx (10 tests) 219ms
+ ✓ src/features/auth/ForgotPasswordScreen.test.tsx (10 tests) 298ms
+ ✓ src/features/chat/setRef.test.tsx (51 tests) 114ms
+ ✓ src/api/client.test.ts (7 tests) 46ms
+ ✓ src/features/plan-editor/saveFailure-ui.test.tsx (13 tests) 788ms
+ ✓ src/features/plan-editor/copy-last-week.test.tsx (7 tests) 883ms
+ ✓ src/features/plan-editor/tier-sections.test.tsx (5 tests) 285ms
+ ✓ src/features/plan-editor/dayMove.test.ts (9 tests) 9ms
+ ✓ src/features/plan-editor/weeklySummary.test.ts (6 tests) 5ms
+ ✓ src/features/chat/chatOutbox.test.ts (7 tests) 14ms
+ ✓ src/features/plan-editor/mapping-shift.test.ts (7 tests) 10ms
+ ✓ src/api/uploads.test.ts (3 tests) 9ms
+ ✓ src/features/plan-editor/pct-anchor-ui.test.tsx (5 tests) 495ms
+ ✓ src/features/auth/LoginScreen.test.tsx (21 tests) 121ms
+ ✓ src/features/plan-editor/reconcile-import.test.ts (4 tests) 14ms
+ ✓ src/features/plan-editor/import/import-dates.test.ts (7 tests) 7ms
+ ✓ src/components/states/states.test.tsx (7 tests) 111ms
+ ✓ src/features/plan-editor/components/CustomExerciseDialog.test.tsx (5 tests) 239ms
+ ✓ src/features/plan-editor/selectionModel.test.ts (7 tests) 7ms
+ ✓ src/features/plan-editor/leave-guard.test.tsx (3 tests) 352ms
+ ✓ src/features/plan-editor/components/TopBar.test.tsx (2 tests) 103ms
+ ✓ src/features/plan-editor/saveFailure.test.ts (32 tests) 10ms
+ ✓ src/features/chat/chatModel.test.ts (14 tests) 24ms
+ ✓ src/features/plan-editor/input-guard-e2e.test.tsx (3 tests) 430ms
+ ✓ src/features/chat/useVisiblePolling.test.tsx (4 tests) 61ms
+ ✓ src/features/plan-editor/week-capacity-ui.test.tsx (2 tests) 187ms
+ ✓ src/features/plan-editor/weekBandModel.test.ts (5 tests) 7ms
+ ✓ src/features/plan-editor/mapping-cursor.test.ts (5 tests) 6ms
+ ✓ src/api/markers.test.ts (6 tests) 20ms
+ ✓ src/features/workspace/studentPlanCapacity.test.ts (6 tests) 14ms
+ ✓ src/features/workspace/RequestsPage.test.tsx (3 tests) 106ms
+ ✓ src/api/pendingRevision.test.ts (3 tests) 9ms
+ ✓ src/buildUpdate.test.ts (5 tests) 55ms
+ ✓ src/features/workspace/coachViewNavigation.test.ts (4 tests) 8ms
+ ✓ src/features/workspace/annotationDrawing.test.ts (4 tests) 5ms
+ ✓ src/api/auth.test.ts (4 tests) 11ms
+ ✓ src/features/plan-editor/components/ContextRail.view.test.tsx (1 test) 46ms
+ ✓ src/features/catalog/catalogModel.test.ts (4 tests) 5ms
+ ✓ src/features/workspace/ChangePasswordDialog.test.ts (11 tests) 5ms
+ ✓ src/api/auth.email-login.test.ts (2 tests) 8ms
+ ✓ src/App.test.tsx (4 tests) 48ms
+ ✓ src/features/plan-editor/pinyin.test.ts (7 tests) 944ms
+   ✓ matchesPinyin > stays bounded on adversarial state-accumulating input 938ms
+ ✓ src/features/chat/chatSync.test.ts (3 tests) 7ms
+ ✓ src/features/workspace/pendingPlan.test.ts (3 tests) 5ms
+ ✓ src/features/workspace/PlanDialogs.test.tsx (2 tests) 79ms
+ ✓ src/i18n/locale.test.ts (3 tests) 3ms
+ ✓ src/api/admin.test.ts (1 test) 9ms
+ ✓ src/features/plan-editor/mapping-lock.test.ts (3 tests) 5ms
+ ✓ src/features/workspace/VideosPage.test.ts (3 tests) 4ms
+ ✓ src/features/plan-editor/components/ContextBar.test.tsx (1 test) 39ms
+ ✓ src/features/workspace/videoPlayback.test.ts (4 tests) 3ms
+ ✓ src/api/coach.test.ts (1 test) 8ms
+ ✓ src/features/plan-editor/calendar.test.ts (3 tests) 5ms
+ ✓ src/i18n/date-only.test.ts (1 test) 49ms
+ ✓ src/features/workspace/metricThresholds.test.ts (2 tests) 3ms
+ ✓ src/i18n/plural.test.ts (2 tests) 2ms
+ ✓ src/reloadSafety.test.ts (1 test) 3ms
+
+ Test Files  93 passed (93)
+      Tests  915 passed (915)
+   Start at  05:48:59
+   Duration  15.15s (transform 3.30s, setup 813ms, collect 15.64s, tests 28.82s, environment 48.27s, prepare 7.79s)

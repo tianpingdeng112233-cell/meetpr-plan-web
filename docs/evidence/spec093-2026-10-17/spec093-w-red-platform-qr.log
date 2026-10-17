@@ -1,0 +1,25 @@
+
+ RUN  v2.1.9 /Users/david/Projects/apps/meetpr-plan-web-wt-093-w
+
+ ❯ src/features/onboarding/onboarding.test.tsx (17 tests | 1 failed) 150ms
+   × routes Desktop visitors without leaking other device buttons 6ms
+     → expected 'data:image/svg+xml;base64,PHN2ZyB4bWx…' not to be 'data:image/svg+xml;base64,PHN2ZyB4bWx…' // Object.is equality
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/features/onboarding/onboarding.test.tsx > routes Desktop visitors without leaking other device buttons
+AssertionError: expected 'data:image/svg+xml;base64,PHN2ZyB4bWx…' not to be 'data:image/svg+xml;base64,PHN2ZyB4bWx…' // Object.is equality
+ ❯ src/features/onboarding/onboarding.test.tsx:148:69
+    146|   expect(host.textContent).toContain(visible)
+    147|   expect(host.querySelectorAll('img')).toHaveLength(images)
+    148|   if (images === 2) expect(host.querySelectorAll('img')[0].src).not.to…
+       |                                                                     ^
+    149|   if (ua.includes('MicroMessenger')) expect(host.querySelector('button…
+    150| })
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 16 passed (17)
+   Start at  05:46:41
+   Duration  917ms (transform 149ms, setup 11ms, collect 102ms, tests 150ms, environment 206ms, prepare 41ms)

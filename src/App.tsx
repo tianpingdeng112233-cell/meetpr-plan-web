@@ -1,3 +1,7 @@
+import { CoachApplicationPage } from './features/onboarding/OnboardingPages'
+import { InviteLandingPage } from './features/onboarding/InviteLandingPage'
+import { SetCoachPasswordPage } from './features/onboarding/SetCoachPasswordPage'
+import { CoachWelcomePage } from './features/onboarding/CoachWelcomePage'
 import { useEffect, useState } from 'react'
 import { LoginScreen } from './features/auth/LoginScreen'
 import { PlanWorkspace } from './features/workspace/PlanWorkspace'
@@ -13,6 +17,15 @@ import { BuildUpdateGuard } from './BuildUpdateGuard'
 type View = 'login' | 'workspace' | 'sample'
 
 export default function App() {
+  const path = window.location.pathname.replace(/\/+$/, '') || '/'
+  if (path === '/coach') return <CoachApplicationPage />
+  if (path === '/coach/set-password') return <SetCoachPasswordPage />
+  if (path === '/coach/welcome') return <CoachWelcomePage />
+  if (path.startsWith('/i/')) return <InviteLandingPage code={path.slice(3).toUpperCase()} />
+  return <WorkspaceApp />
+}
+
+function WorkspaceApp() {
   const [user, setUser] = useState<AuthUser | null>(() => {
     const cached = currentUser()
     if (!cached || cached.role === 'coach' || cached.role === 'admin') return cached

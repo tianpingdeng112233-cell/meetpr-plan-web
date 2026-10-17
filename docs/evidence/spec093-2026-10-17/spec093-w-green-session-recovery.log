@@ -1,0 +1,15 @@
+
+ RUN  v2.1.9 /Users/david/Projects/apps/meetpr-plan-web-wt-093-w
+
+ ✓ src/features/auth/LoginScreen.test.tsx (21 tests) 28ms
+ ✓ src/features/auth/ForgotPasswordScreen.test.tsx (10 tests) 61ms
+ ✓ src/features/onboarding/onboarding.test.tsx (19 tests) 129ms
+
+ Test Files  3 passed (3)
+      Tests  50 passed (50)
+   Start at  05:52:24
+   Duration  766ms (transform 341ms, setup 53ms, collect 480ms, tests 218ms, environment 699ms, prepare 136ms)
+
+
+> meetpr-plan-web@0.1.0 lint
+> tsc --noEmit
