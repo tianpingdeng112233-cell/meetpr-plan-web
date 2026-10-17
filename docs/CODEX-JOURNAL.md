@@ -347,3 +347,7 @@ TDD seam 是真实 LoginScreen 用户交互到 fetch 网络边界：发码入口
 - 修复后 `npm run lint`、`npm run build` 再次通过，见 `spec093-w-review-final.log`。登录第一次返回合成 503、第二次成功的复现 API 已保存为 `w-recovery-fixture.mjs`；只监听 localhost，无数据库、无真实邮件或账号写入。
 
 最终独立审查：Standards 0 finding；Spec 首轮 1 项 P2（设密成功、自动登录失败时可能复用旧账号），按目标邮箱重新认证修复后定向复审 0 finding。新增 coach/admin 两种旧会话回归，onboarding 19/19；与登录/菜单相关测试合计 50/50。Standards 曾将导入的 --danger 误判未定义，已核实并撤回；管理台现统一使用现有 --brand-red。主代理亲读全部最终源码、测试、lockfile，亲看 14 张 W 截图；浏览器验证登录失败后继续登录成功，截图 w-set-password-login-retry.jpg。全量 915 tests 为两条恢复回归加入前；最终增量经定向验证，未把计数混作一次全量运行。
+
+## 2026-10-17 · Spec 093 合并前文案对齐
+
+David 直驱：学员邀请落地页第三步改为「粘贴邀请码」，与 App 中文按钮一致。仅改该处中文文案，未改邀请消息模板或英文。390×844 Chrome 合成 API 截图已亲看；截图与原始测试日志在本机 `/Users/david/Projects/scratch/spec093-closeout-20261017/`。全量 93 文件 / 917 tests、lint、带批准安装链接和空 VITE_API_BASE 的 build 通过。默认并发下既有拼音耗时断言为 2127ms（阈值 1000ms）；单 worker 全量通过，未改实现或阈值。独立 review-loop：Standards 0、Spec 0。未合并、未部署、未外发链接。

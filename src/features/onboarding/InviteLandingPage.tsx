@@ -24,7 +24,7 @@ export function InviteLandingPage({ code }: { code: string }) {
     {invalid ? <p>{text('这个邀请已经失效，请联系你的教练要一个新的', 'This invitation is no longer valid. Ask your coach for a new one.')}</p> : <>
       <p className="onboarding-code" aria-label={text('邀请码', 'Invite code')}>{groupedCode(code)}</p>
       {!result && !unreachable ? <p role="status">{text('正在确认邀请码…', 'Checking invitation…')}</p> : <>{unreachable && <p role="status">{text('暂时无法确认教练信息，你仍可以安装 App 并使用上方邀请码。', 'We cannot load the coach details right now. You can still install the app and use the code above.')}</p>}<section><InstallOptions code={code} /></section></>}
-      <ol><li>{text('安装 App', 'Install the app')}</li><li>{text('打开后注册账号', 'Open it and create an account')}</li><li>{text('在「输入邀请码」那一页点「粘贴」，然后提交。教练确认后就能看到训练计划。', 'On the invite code screen, tap Paste and submit. Your plan appears once your coach accepts.')}</li></ol>
+      <ol><li>{text('安装 App', 'Install the app')}</li><li>{text('打开后注册账号', 'Open it and create an account')}</li><li>{text('在「输入邀请码」那一页点「粘贴邀请码」，然后提交。教练确认后就能看到训练计划。', 'On the invite code screen, tap Paste and submit. Your plan appears once your coach accepts.')}</li></ol>
     </>}
   </OnboardingFrame>
 }
