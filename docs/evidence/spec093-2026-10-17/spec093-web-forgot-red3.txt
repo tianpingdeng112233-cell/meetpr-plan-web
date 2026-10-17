@@ -1,0 +1,78 @@
+
+ RUN  v2.1.9 /Users/david/Projects/apps/meetpr-plan-web-wt-093-w0
+
+ ❯ src/features/auth/ForgotPasswordScreen.test.tsx (7 tests | 4 failed) 49ms
+   × rejects invalid reset input locally: 12345 / valid-local-password 7ms
+     → expected undefined to be '请输入 6 位验证码' // Object.is equality
+   × rejects invalid reset input locally: 123456 / short 4ms
+     → expected undefined to be '请输入 8–72 位密码' // Object.is equality
+   × rejects invalid reset input locally: 123456 / 密密密密密密密密密密密密密密密密密密密密密密密密密 4ms
+     → expected undefined to be '请输入 8–72 位密码' // Object.is equality
+   × rejects invalid reset input locally: 123456 / valid-local-password 4ms
+     → expected undefined to be '两次输入的密码不一致' // Object.is equality
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 4 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/features/auth/ForgotPasswordScreen.test.tsx > rejects invalid reset input locally: 12345 / valid-local-password
+AssertionError: expected undefined to be '请输入 6 位验证码' // Object.is equality
+
+- Expected: 
+"请输入 6 位验证码"
+
++ Received: 
+undefined
+
+ ❯ src/features/auth/ForgotPasswordScreen.test.tsx:84:59
+     82|   fill('reset-code', code); fill('reset-password', password); fill('re…
+     83|   await click('重置密码')
+     84|   expect(host.querySelector('[role=alert]')?.textContent).toBe(message)
+       |                                                           ^
+     85|   expect(fetchMock).toHaveBeenCalledTimes(1)
+     86| })
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/4]⎯
+
+ FAIL  src/features/auth/ForgotPasswordScreen.test.tsx > rejects invalid reset input locally: 123456 / short
+ FAIL  src/features/auth/ForgotPasswordScreen.test.tsx > rejects invalid reset input locally: 123456 / 密密密密密密密密密密密密密密密密密密密密密密密密密
+AssertionError: expected undefined to be '请输入 8–72 位密码' // Object.is equality
+
+- Expected: 
+"请输入 8–72 位密码"
+
++ Received: 
+undefined
+
+ ❯ src/features/auth/ForgotPasswordScreen.test.tsx:84:59
+     82|   fill('reset-code', code); fill('reset-password', password); fill('re…
+     83|   await click('重置密码')
+     84|   expect(host.querySelector('[role=alert]')?.textContent).toBe(message)
+       |                                                           ^
+     85|   expect(fetchMock).toHaveBeenCalledTimes(1)
+     86| })
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/4]⎯
+
+ FAIL  src/features/auth/ForgotPasswordScreen.test.tsx > rejects invalid reset input locally: 123456 / valid-local-password
+AssertionError: expected undefined to be '两次输入的密码不一致' // Object.is equality
+
+- Expected: 
+"两次输入的密码不一致"
+
++ Received: 
+undefined
+
+ ❯ src/features/auth/ForgotPasswordScreen.test.tsx:84:59
+     82|   fill('reset-code', code); fill('reset-password', password); fill('re…
+     83|   await click('重置密码')
+     84|   expect(host.querySelector('[role=alert]')?.textContent).toBe(message)
+       |                                                           ^
+     85|   expect(fetchMock).toHaveBeenCalledTimes(1)
+     86| })
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/4]⎯
+
+ Test Files  1 failed (1)
+      Tests  4 failed | 3 passed (7)
+   Start at  05:41:44
+   Duration  532ms (transform 126ms, setup 11ms, collect 153ms, tests 49ms, environment 118ms, prepare 28ms)
+

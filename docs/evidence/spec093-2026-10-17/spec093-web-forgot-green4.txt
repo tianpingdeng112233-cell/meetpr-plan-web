@@ -1,0 +1,12 @@
+
+ RUN  v2.1.9 /Users/david/Projects/apps/meetpr-plan-web-wt-093-w0
+
+ ✓ src/api/auth.email-login.test.ts (2 tests) 3ms
+ ✓ src/features/auth/LoginScreen.test.tsx (21 tests) 34ms
+ ✓ src/features/auth/ForgotPasswordScreen.test.tsx (9 tests) 59ms
+
+ Test Files  3 passed (3)
+      Tests  32 passed (32)
+   Start at  05:42:17
+   Duration  542ms (transform 144ms, setup 16ms, collect 359ms, tests 96ms, environment 390ms, prepare 112ms)
+

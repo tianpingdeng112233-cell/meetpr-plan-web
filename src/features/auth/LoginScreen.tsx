@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react'
 import { AuthRoleError, clearLoginNotice, emailLogin, login, peekLoginNotice } from '../../api/auth'
 import { ApiException } from '../../api/client'
 import type { AuthUser } from '../../api/types'
+import { ForgotPasswordScreen } from './ForgotPasswordScreen'
+import { isValidLoginEmail } from './validation'
 import { S } from '../../i18n/strings'
 
 interface Props {
@@ -16,17 +18,10 @@ const errMsg: Record<string, string> = {
 
 const EMAIL_VALIDATION_ERROR = S.auth.enterValidEmailCredentials
 const EMAIL_CREDENTIALS_ERROR = S.auth.invalidEmailCredentials
-// 与后端逐字节同源:zod@3.25.76 v3/types.ts 的 emailRegex 原样拷贝
-// (backend 校验 = z.string().trim().email().max(320);正则升级时随 zod 版本同步)。
-const emailPattern = /^(?!\.)(?!.*\.\.)([A-Z0-9_'+\-\.]*)[A-Z0-9_+-]@([A-Z0-9][A-Z0-9\-]*\.)+[A-Z]{2,}$/i
-const EMAIL_MAX_LENGTH = 320
-
-export function isValidLoginEmail(raw: string): boolean {
-  const value = raw.trim()
-  return value.length <= EMAIL_MAX_LENGTH && emailPattern.test(value)
-}
+export { isValidLoginEmail } from './validation'
 
 export function LoginScreen({ onLogin, onSampleMode }: Props) {
+  const [recovering, setRecovering] = useState(false)
   const [account, setAccount] = useState('')
   const [password, setPassword] = useState('')
   const [busy, setBusy] = useState(false)
@@ -88,6 +83,10 @@ export function LoginScreen({ onLogin, onSampleMode }: Props) {
     fontSize: 15, fontFamily: 'var(--font-sans)', outline: 'none', boxSizing: 'border-box',
   }
 
+  if (recovering) return <ForgotPasswordScreen initialEmail={account} onBack={() => setRecovering(false)} onSuccess={email => {
+    setAccount(email); setPassword(''); setErr(''); setNotice(S.auth.passwordUpdated); setRecovering(false)
+  }} />
+
   return (
     <div style={{ height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--page-bg)' }}>
       <form onSubmit={submit} style={{ width: 360, padding: 32, background: 'var(--card-bg)', border: '1px solid var(--bd)', borderRadius: 'var(--r-lg)' }}>
@@ -129,6 +128,8 @@ export function LoginScreen({ onLogin, onSampleMode }: Props) {
         }}>
           {busy ? S.common.signingIn : S.common.signIn}
         </button>
+
+        <button type="button" className="auth-recovery-link" onClick={() => setRecovering(true)}>{S.auth.forgotLink}</button>
 
         <div onClick={onSampleMode} style={{ marginTop: 16, textAlign: 'center', color: 'var(--fg-tertiary)', fontSize: 12, cursor: 'pointer' }}>
           {S.auth.previewSample}
