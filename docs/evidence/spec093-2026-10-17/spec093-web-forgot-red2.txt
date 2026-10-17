@@ -18,10 +18,10 @@ Warning: A component is changing a controlled input to be uncontrolled. This is 
  FAIL  src/features/auth/ForgotPasswordScreen.test.tsx > resets with the six-digit code, returns to login, and uses the new password
 AssertionError: expected null to be truthy
 
-- Expected: 
+- Expected:
 true
 
-+ Received: 
++ Received:
 null
 
  ❯ fill src/features/auth/ForgotPasswordScreen.test.tsx:17:17
@@ -39,4 +39,3 @@ null
       Tests  1 failed | 1 passed (2)
    Start at  05:41:12
    Duration  502ms (transform 123ms, setup 11ms, collect 148ms, tests 27ms, environment 118ms, prepare 34ms)
-

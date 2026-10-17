@@ -7,4 +7,3 @@ export function isValidLoginEmail(raw: string): boolean {
   const value = raw.trim()
   return value.length <= EMAIL_MAX_LENGTH && emailPattern.test(value)
 }
-

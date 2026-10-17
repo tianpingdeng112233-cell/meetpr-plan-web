@@ -15,4 +15,3 @@ Warning: A component is changing a controlled input to be uncontrolled. This is 
       Tests  1 passed (1)
    Start at  05:41:00
    Duration  597ms (transform 126ms, setup 11ms, collect 154ms, tests 23ms, environment 196ms, prepare 29ms)
-

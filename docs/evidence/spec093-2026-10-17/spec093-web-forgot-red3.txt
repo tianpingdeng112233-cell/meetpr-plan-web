@@ -16,10 +16,10 @@
  FAIL  src/features/auth/ForgotPasswordScreen.test.tsx > rejects invalid reset input locally: 12345 / valid-local-password
 AssertionError: expected undefined to be '请输入 6 位验证码' // Object.is equality
 
-- Expected: 
+- Expected:
 "请输入 6 位验证码"
 
-+ Received: 
++ Received:
 undefined
 
  ❯ src/features/auth/ForgotPasswordScreen.test.tsx:84:59
@@ -36,10 +36,10 @@ undefined
  FAIL  src/features/auth/ForgotPasswordScreen.test.tsx > rejects invalid reset input locally: 123456 / 密密密密密密密密密密密密密密密密密密密密密密密密密
 AssertionError: expected undefined to be '请输入 8–72 位密码' // Object.is equality
 
-- Expected: 
+- Expected:
 "请输入 8–72 位密码"
 
-+ Received: 
++ Received:
 undefined
 
  ❯ src/features/auth/ForgotPasswordScreen.test.tsx:84:59
@@ -55,10 +55,10 @@ undefined
  FAIL  src/features/auth/ForgotPasswordScreen.test.tsx > rejects invalid reset input locally: 123456 / valid-local-password
 AssertionError: expected undefined to be '两次输入的密码不一致' // Object.is equality
 
-- Expected: 
+- Expected:
 "两次输入的密码不一致"
 
-+ Received: 
++ Received:
 undefined
 
  ❯ src/features/auth/ForgotPasswordScreen.test.tsx:84:59
@@ -75,4 +75,3 @@ undefined
       Tests  4 failed | 3 passed (7)
    Start at  05:41:44
    Duration  532ms (transform 126ms, setup 11ms, collect 153ms, tests 49ms, environment 118ms, prepare 28ms)
-

@@ -10,10 +10,10 @@
  FAIL  src/features/auth/ForgotPasswordScreen.test.tsx > opens email recovery, requests a code without auth, and shows the neutral sent message
 AssertionError: button 忘记密码？: expected undefined to be truthy
 
-- Expected: 
+- Expected:
 true
 
-+ Received: 
++ Received:
 undefined
 
  ❯ click src/features/auth/ForgotPasswordScreen.test.tsx:12:37
@@ -31,4 +31,3 @@ undefined
       Tests  1 failed (1)
    Start at  05:40:24
    Duration  430ms (transform 70ms, setup 10ms, collect 90ms, tests 15ms, environment 112ms, prepare 32ms)
-
