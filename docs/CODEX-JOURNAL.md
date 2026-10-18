@@ -359,3 +359,9 @@ David 现场要求给苹果用户增加 App Store 下载 TestFlight 的步骤。
 回归测试先红（缺 App Store 链接）后绿，onboarding 20/20；TypeScript 与生产构建通过。390×844 iPhone UA 合成邀请页已亲看，无横向溢出；截图 `/Users/david/Projects/scratch/spec093-closeout-20261017/iphone-testflight-guide.png`。未验证真机跨 App 跳转，未部署本次补丁或外发链接。
 
 独立 review-loop 一轮：Standards 0 findings，Spec 0 findings。最终登录、找回密码、入驻回归合计 3 文件 / 51 tests 通过。
+
+## 2026-10-18 · Coach web login entry correction
+
+David 现场要求欢迎页工作台入口直接到网页登录并说明如何登录。欢迎 CTA 改为 `/coach/login`；该入口先展示已有 LoginScreen，说明使用申请邮箱和已设密码，隐藏离线示例入口。缓存会话不跳过此入口；成功登录后回 `/` 与原角色工作台。默认根路径和工作台空态未改。
+
+回归先红后绿：欢迎页→登录页（缓存教练会话仍显示登录）；补充 coach/admin 登录后路径与工作台断言。最终 93 文件 / 921 tests 通过（单 worker），生产构建通过；构建保留空 API base 与批准的 CN 安装链接。浏览器亲看登录页，截图在本机 `scratch/coach-login-mail-20261018/coach-login.png`。独立 Standards / Spec 均 0 findings。此记录是工程验证，非整轮产品验收。

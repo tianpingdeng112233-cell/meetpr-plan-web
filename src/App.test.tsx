@@ -6,7 +6,7 @@ import type { AuthUser } from './api/types'
 const auth = vi.hoisted(() => ({ currentUser: vi.fn(), logout: vi.fn() }))
 
 vi.mock('./api/auth', () => ({ currentUser: auth.currentUser, logout: auth.logout }))
-vi.mock('./features/auth/LoginScreen', () => ({ LoginScreen: () => <div data-testid="login">login</div> }))
+vi.mock('./features/auth/LoginScreen', () => ({ LoginScreen: ({ onLogin }: { onLogin: (user: AuthUser) => void }) => <button data-testid="login" onClick={() => onLogin(auth.currentUser())}>login</button> }))
 vi.mock('./features/workspace/PlanWorkspace', () => ({ PlanWorkspace: () => <div data-testid="coach">coach</div> }))
 vi.mock('./features/admin/AdminWorkspace', () => ({ AdminWorkspace: () => <div data-testid="admin">admin</div> }))
 vi.mock('./features/plan-editor/PlanEditor', () => ({ PlanEditor: () => <div>sample</div> }))
@@ -33,12 +33,23 @@ describe('App role routing', () => {
     act(() => root.unmount())
     host.remove()
     vi.clearAllMocks()
+    history.replaceState(null, '', '/')
   })
 
   it.each([['admin', 'admin'], ['coach', 'coach']] as const)('routes %s to its independent workspace', async (role, testId) => {
     auth.currentUser.mockReturnValue(user(role))
     await act(async () => { root.render(<App/>); await Promise.resolve() })
     expect(host.querySelector(`[data-testid="${testId}"]`)).not.toBeNull()
+  })
+
+  it.each([['admin', 'admin'], ['coach', 'coach']] as const)('requires explicit login then restores the %s workspace URL', async (role, testId) => {
+    auth.currentUser.mockReturnValue(user(role))
+    history.replaceState(null, '', '/coach/login')
+    await act(async () => root.render(<App />))
+    expect(host.querySelector(`[data-testid="${testId}"]`)).toBeNull()
+    await act(async () => host.querySelector<HTMLButtonElement>('[data-testid="login"]')!.click())
+    expect(host.querySelector(`[data-testid="${testId}"]`)).not.toBeNull()
+    expect(location.pathname).toBe('/')
   })
 
   it.each(['coached_student', 'self_train_student'] as const)(

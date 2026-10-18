@@ -5,10 +5,12 @@ import type { AuthUser } from '../../api/types'
 import { ForgotPasswordScreen } from './ForgotPasswordScreen'
 import { isValidLoginEmail } from './validation'
 import { S } from '../../i18n/strings'
+import { text } from '../onboarding/text'
 
 interface Props {
   onLogin: (user: AuthUser) => void
-  onSampleMode: () => void
+  onSampleMode?: () => void
+  coachOnboarding?: boolean
 }
 
 const errMsg: Record<string, string> = {
@@ -20,7 +22,7 @@ const EMAIL_VALIDATION_ERROR = S.auth.enterValidEmailCredentials
 const EMAIL_CREDENTIALS_ERROR = S.auth.invalidEmailCredentials
 export { isValidLoginEmail } from './validation'
 
-export function LoginScreen({ onLogin, onSampleMode }: Props) {
+export function LoginScreen({ onLogin, onSampleMode, coachOnboarding = false }: Props) {
   const [recovering, setRecovering] = useState(false)
   const [account, setAccount] = useState('')
   const [password, setPassword] = useState('')
@@ -97,6 +99,8 @@ export function LoginScreen({ onLogin, onSampleMode }: Props) {
         </div>
         <div style={{ color: 'var(--fg-tertiary)', fontSize: 13, marginBottom: 24 }}>{S.auth.title}</div>
 
+        {coachOnboarding && <p style={{ color: 'var(--fg-secondary)', fontSize: 13, lineHeight: 1.6, marginBottom: 20 }}>{text('请使用申请内测时的邮箱和已设置的密码登录。登录后即可管理学员、编辑和发布计划。', 'Sign in with the email you used to apply for the beta and the password you set. Then manage students, edit and publish plans.')}</p>}
+
         {notice && (
           <div role="status" style={{
             marginBottom: 20, padding: '10px 12px', borderRadius: 'var(--r-md)',
@@ -131,9 +135,9 @@ export function LoginScreen({ onLogin, onSampleMode }: Props) {
 
         <button type="button" className="auth-recovery-link" onClick={() => setRecovering(true)}>{S.auth.forgotLink}</button>
 
-        <div onClick={onSampleMode} style={{ marginTop: 16, textAlign: 'center', color: 'var(--fg-tertiary)', fontSize: 12, cursor: 'pointer' }}>
+        {onSampleMode && <div onClick={onSampleMode} style={{ marginTop: 16, textAlign: 'center', color: 'var(--fg-tertiary)', fontSize: 12, cursor: 'pointer' }}>
           {S.auth.previewSample}
-        </div>
+        </div>}
       </form>
     </div>
   )
