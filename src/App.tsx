@@ -22,11 +22,12 @@ export default function App() {
   if (path === '/coach/set-password') return <SetCoachPasswordPage />
   if (path === '/coach/welcome') return <CoachWelcomePage />
   if (path.startsWith('/i/')) return <InviteLandingPage code={path.slice(3).toUpperCase()} />
-  return <WorkspaceApp />
+  return <WorkspaceApp requireCoachLogin={path === '/coach/login'} />
 }
 
-function WorkspaceApp() {
+function WorkspaceApp({ requireCoachLogin = false }: { requireCoachLogin?: boolean }) {
   const [user, setUser] = useState<AuthUser | null>(() => {
+    if (requireCoachLogin) return null
     const cached = currentUser()
     if (!cached || cached.role === 'coach' || cached.role === 'admin') return cached
     // Clear a stale student session written by an older client version rather
@@ -69,8 +70,12 @@ function WorkspaceApp() {
   } else {
     content = (
       <LoginScreen
-        onLogin={(u) => { setUser(u); setView('workspace') }}
-        onSampleMode={() => setView('sample')}
+        onLogin={(u) => {
+          if (requireCoachLogin) window.history.replaceState(null, '', '/')
+          setUser(u); setView('workspace')
+        }}
+        onSampleMode={requireCoachLogin ? undefined : () => setView('sample')}
+        coachOnboarding={requireCoachLogin}
       />
     )
   }
