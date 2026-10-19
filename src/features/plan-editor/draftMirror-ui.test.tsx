@@ -729,9 +729,8 @@ describe('PlanEditor local draft recovery', () => {
     await act(async () => { await vi.advanceTimersByTimeAsync(3000) })
     const status = host.querySelector<HTMLElement>('[data-testid="plan-save-status"]')!
     expect(status.textContent).toContain('已暂存 11:15')
-    expect(status.style.background).toBe('var(--warn-soft)')
-    expect([...host.querySelectorAll('button')].find((button) => button.textContent === '更新计划')?.style.border)
-      .toContain('var(--warn)')
+    expect(status.classList.contains('published-dirty')).toBe(true)
+    expect([...host.querySelectorAll('button')].find((button) => button.textContent === '更新计划')?.classList.contains('block-primary')).toBe(true)
 
     pendingApi.deletePendingRevision.mockClear()
     await act(async () => {

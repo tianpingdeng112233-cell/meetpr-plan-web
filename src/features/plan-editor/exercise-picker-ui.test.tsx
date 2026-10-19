@@ -186,7 +186,7 @@ describe('PlanEditor exercise picker keyboard binding', () => {
     expect(host.querySelector('[data-popover]')).not.toBeNull()
   })
 
-  it('bumps usage only when a created exercise binds into a plan row', async () => {
+  it('bumps usage when a custom exercise created through the picker binds into a plan row', async () => {
     const index = new ExerciseIndex([])
     const bumpSpy = vi.spyOn(index, 'bump')
     const onCreateExercise = vi.fn(async () => ({ id: 'custom-1', name: '自定义动作' }))
@@ -203,22 +203,12 @@ describe('PlanEditor exercise picker keyboard binding', () => {
       await act(async () => { form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })) })
     }
 
-    // Toolbar「＋ 动作」only adds to the catalog — must not count as usage.
-    const toolbarBtn = Array.from(host.querySelectorAll('button')).find((b) => b.textContent?.trim() === '＋ 动作')!
-    act(() => toolbarBtn.click())
-    const dialogInput = Array.from(host.querySelectorAll<HTMLInputElement>('form input'))
-      .find((el) => el.placeholder.includes('平板侧支撑'))!
-    act(() => setInput(dialogInput, '自定义动作'))
-    await submitDialog()
-    expect(onCreateExercise).toHaveBeenCalledTimes(1)
-    expect(bumpSpy).not.toHaveBeenCalled()
-
     // Creating through the picker binds the row — this one counts.
     const rowInput = host.querySelector<HTMLInputElement>('[data-c="name"] input')!
     act(() => { rowInput.focus(); setInput(rowInput, '自定义动作二') })
     act(() => rowInput.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })))
     await submitDialog()
-    expect(onCreateExercise).toHaveBeenCalledTimes(2)
+    expect(onCreateExercise).toHaveBeenCalledTimes(1)
     expect(bumpSpy).toHaveBeenCalledTimes(1)
     expect(bumpSpy).toHaveBeenCalledWith('custom-1')
   })

@@ -109,7 +109,7 @@ describe('plan editor intensity-or-weight save and publish chain', () => {
     expect(host.querySelector('[role="alert"]')).toBeNull()
 
     await act(async () => {
-      buttonByText(host, '保存草稿').click()
+      window.dispatchEvent(new KeyboardEvent('keydown', {key:'s', metaKey:true, bubbles:true, cancelable:true}))
       await Promise.resolve()
       await Promise.resolve()
     })
@@ -126,6 +126,7 @@ describe('plan editor intensity-or-weight save and publish chain', () => {
     expect(onPublish).toHaveBeenCalledTimes(1)
     expect(alert).not.toHaveBeenCalled()
     expect(confirm).not.toHaveBeenCalled()
-    expect(buttonByText(host, '已发布 · 不可撤回').disabled).toBe(true)
+    expect(host.textContent).not.toContain('发布给学员')
+    expect(buttonByText(host, '更新计划')).toBeDefined()
   })
 })

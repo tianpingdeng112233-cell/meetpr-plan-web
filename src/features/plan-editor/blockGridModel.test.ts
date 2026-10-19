@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildBlockGrid, fillBlockDays, pasteBlockRows, changeBlockWeekday, changeBlockDate } from './blockGridModel'
+import { changeBlockPattern, buildBlockGrid, fillBlockDays, pasteBlockRows, changeBlockWeekday, changeBlockDate } from './blockGridModel'
 import { relabelWeeksForStartDate } from './mapping'
 import type { ExerciseRow, Week } from './types'
 
@@ -77,4 +77,26 @@ it('keeps Friday in D3 and leaves D2 empty when W4 omits Wednesday', () => {
   const filled = fillBlockDays(weeks, { weekNumber: 1, dx: 1 }, 4, '2026-10-19')
   expect(filled[3].days[2].rows[0].name).toBe('w1-2')
   expect(filled[3].days[4].rows[0].name).toBe('w4-4')
+})
+
+it('changes the whole weekday pattern atomically without exchanging Dx prescriptions', () => {
+  const weeks = fixture([[0, 2, 4], [0, 2, 4]])
+  const result = changeBlockPattern(weeks, [0, 4, 6], '2026-10-19', [0, 2, 4])!
+  expect(result[0].days[4].rows[0].id).toBe('w1-2')
+  expect(result[0].days[6].rows[0].id).toBe('w1-4')
+  expect(result[0].days[2].rows).toHaveLength(0)
+  expect(weeks[0].days[2].rows[0].id).toBe('w1-2')
+  weeks[1].days[4].rows[0].hasLogs = true
+  expect(changeBlockPattern(weeks, [0, 4, 6], '2026-10-19', [0, 2, 4])).toBeNull()
+  const safe = changeBlockPattern(weeks, [0, 1, 6], '2026-10-19', [0, 2, 4])!
+  expect(safe[1].days[4].rows[0].id).toBe('w2-4')
+  expect(safe[1].days[1].rows[0].id).toBe('w2-2')
+})
+
+it('preserves a single-day exception when another Dx weekday changes', () => {
+  const weeks = fixture([[0, 3, 4]]) // D2 was moved from Wednesday to Thursday.
+  const result = changeBlockPattern(weeks, [0, 2, 6], '2026-10-19', [0, 2, 4])!
+  expect(result[0].days[3].rows[0]?.id).toBe('w1-3')
+  expect(result[0].days[2].rows).toHaveLength(0)
+  expect(result[0].days[6].rows[0]?.id).toBe('w1-4')
 })

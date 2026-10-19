@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react'
-import { WeekdayDateSelector, calendarFieldLabel, calendarInputStyle, mmdd, planEndISO, todayISO, weekdayIndex } from '../plan-editor/components/PlanCalendarControls'
-import { DOW_LABELS } from '../plan-editor/mapping'
+import { calendarFieldLabel, calendarInputStyle, mmdd, planEndISO, weekdayIndex } from '../plan-editor/components/PlanCalendarControls'
+import { defaultFirstDate, orderedWeekdays } from './blockPlanSettings'
 import { S } from '../../i18n/strings'
 import { registerReloadBlocker } from '../../reloadSafety'
 
@@ -45,96 +45,90 @@ const primaryButton: CSSProperties = {
   color: 'var(--white)',
 }
 
-function Stepper({ value, onChange }: { value: number; onChange: (value: number) => void }) {
-  return (
-    <div style={{ display: 'inline-flex', width: 'fit-content', border: '1px solid var(--border-strong)', borderRadius: 'var(--r-md)', overflow: 'hidden' }}>
-      <button type="button" aria-label={S.editor.decreaseWeek} disabled={value <= 1} onClick={() => onChange(Math.max(1, value - 1))} style={{ ...secondaryButton, width: 38, padding: 0, border: 0, borderRadius: 0 }}>－</button>
-      <span style={{ minWidth: 72, display: 'grid', placeItems: 'center', borderInline: '1px solid var(--border)', fontFamily: 'var(--font-mono)', fontWeight: 700 }}>{S.common.countWeeks(value)}</span>
-      <button type="button" aria-label={S.editor.increaseWeek} disabled={value >= 52} onClick={() => onChange(Math.min(52, value + 1))} style={{ ...secondaryButton, width: 38, padding: 0, border: 0, borderRadius: 0 }}>＋</button>
-    </div>
-  )
-}
+export interface BlockPlanSettings { name: string; weeks: number; startDate: string; weekdays: number[] }
 
-export function NewPlanDialog({ open, studentName, onClose, onCreate }: {
+export function NewPlanDialog({ open, studentName, onClose, onCreate, settings, calendarLocked = false, calendarLockedHint, weeksLocked = false }: {
   open: boolean
   studentName: string
   onClose: () => void
-  onCreate: (name: string, weeks: number, startDate: string, anchorWeekday: number) => Promise<void>
+  onCreate: (name: string, weeks: number, startDate: string, anchorWeekday: number, weekdays: number[]) => Promise<void>
+  settings?: BlockPlanSettings
+  calendarLockedHint?: string
+  calendarLocked?: boolean
+  weeksLocked?: boolean
 }) {
   const [name, setName] = useState(S.workspace.dialogs.newPlan)
-  const [weeks, setWeeks] = useState(12)
-  const [startDate, setStartDate] = useState(todayISO())
+  const [weeks, setWeeks] = useState(4)
+  const [days, setDays] = useState<number[]>([0, 2, 4, 5])
+  const [first, setFirst] = useState(0)
+  const [startDate, setStartDate] = useState(defaultFirstDate(0))
   const [creating, setCreating] = useState(false)
   const [error, setError] = useState('')
   const reloadBlockedRef = useRef(false)
   reloadBlockedRef.current = open || creating
-
   useEffect(() => registerReloadBlocker(() => reloadBlockedRef.current), [])
-
   useEffect(() => {
     if (!open) return
-    setName(S.workspace.dialogs.newPlan)
-    setWeeks(12)
-    setStartDate(todayISO())
-    setCreating(false)
-    setError('')
+    setName(settings?.name ?? S.workspace.dialogs.newPlan)
+    setWeeks(settings?.weeks ?? 4)
+    setDays(settings?.weekdays ?? [0, 2, 4, 5])
+    setFirst(settings?.weekdays[0] ?? 0)
+    setStartDate(settings?.startDate ?? defaultFirstDate(0))
+    setCreating(false); setError('')
   }, [open])
-
   if (!open) return null
-  const endDate = planEndISO(startDate, weeks)
-  const validName = name.trim().length > 0
-
-  return (
-    <div onMouseDown={() => { if (!creating) onClose() }} style={overlay}>
-      <form
-        aria-label={S.workspace.dialogs.newPlanTitle}
-        onMouseDown={(event) => event.stopPropagation()}
-        onSubmit={(event) => {
-          event.preventDefault()
-          if (!validName || creating) return
-          setCreating(true)
-          setError('')
-          void onCreate(name.trim(), weeks, startDate, weekdayIndex(startDate) + 1).catch(() => {
-            setError(S.workspace.dialogs.createFailed)
-            setCreating(false)
-          })
-        }}
-        style={panel}
-      >
-        <div>
-          <h3 style={{ margin: 0, fontSize: 18 }}>{S.workspace.dialogs.newPlanTitle}</h3>
-          <div style={{ color: 'var(--fg-tertiary)', marginTop: 5, fontSize: 12 }}>{S.workspace.dialogs.studentPrefix}{studentName}</div>
-        </div>
-
-        <label style={{ display: 'grid', gap: 7 }}>
-          <span style={calendarFieldLabel}>{S.workspace.dialogs.planName}</span>
-          <input autoFocus value={name} onChange={(event) => setName(event.target.value)} style={calendarInputStyle} />
-        </label>
-
-        <div style={{ display: 'grid', gap: 7 }}>
-          <span style={calendarFieldLabel}>{S.workspace.dialogs.cycleLength}</span>
-          <Stepper value={weeks} onChange={setWeeks} />
-        </div>
-
-        <div style={{ display: 'grid', gap: 7 }}>
-          <span style={calendarFieldLabel}>{S.workspace.dialogs.dayOneWeekday}</span>
-          <WeekdayDateSelector value={startDate} onChange={setStartDate} dateLabel={S.editor.startDate} />
-        </div>
-
-        <div style={{ padding: '11px 12px', border: '1px dashed var(--border-strong)', borderRadius: 'var(--r-md)', color: 'var(--fg-secondary)', fontFamily: 'var(--font-mono)', fontSize: 11 }}>
-          {S.workspace.dialogs.rangeSummary(DOW_LABELS[weekdayIndex(startDate)], mmdd(startDate), weeks, mmdd(endDate))}
-        </div>
-
-        {error && <div role="alert" style={{ color: 'var(--brand-red)', fontSize: 12 }}>{error}</div>}
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 'var(--sp-sm)' }}>
-          <button type="button" disabled={creating} onClick={onClose} style={secondaryButton}>{S.common.cancel}</button>
-          <button type="submit" disabled={!validName || creating} style={{ ...primaryButton, opacity: (!validName || creating) ? 0.55 : 1 }}>
-            {creating ? S.workspace.dialogs.creating : S.workspace.dialogs.createPlan}
-          </button>
-        </div>
-      </form>
-    </div>
-  )
+  const ordered = orderedWeekdays(days, first)
+  const valid = name.trim().length > 0 && days.length > 0 && !!startDate
+    && (calendarLocked || weekdayIndex(startDate) === first || (settings?.startDate === startDate && settings.weekdays[0] === first))
+  const title = settings ? S.block.settings : S.workspace.dialogs.newPlanTitle
+  const chooseFirst = (value: number) => { setFirst(value); if (!calendarLocked) setStartDate(defaultFirstDate(value)) }
+  return <div onMouseDown={() => { if (!creating) onClose() }} style={overlay}>
+    <form role="dialog" aria-modal="true" aria-label={title} className="block-plan-dialog" onMouseDown={event => event.stopPropagation()}
+      onKeyDown={event => { if (event.key === 'Escape' && !creating) onClose() }}
+      onSubmit={event => {
+        event.preventDefault()
+        if (!valid || creating) return
+        setCreating(true); setError('')
+        void onCreate(name.trim(), weeks, startDate, weekdayIndex(startDate) + 1, ordered).catch((reason: unknown) => {
+          setError(reason instanceof Error && reason.message === 'PATTERN_CONFLICT' ? S.block.patternConflict : reason instanceof Error && reason.message === 'PATTERN_STORAGE_FAILED' ? S.block.patternFailed : settings ? S.block.settingsFailed : S.workspace.dialogs.createFailed)
+        }).finally(() => setCreating(false))
+      }} style={{ ...panel, width: 540, borderRadius: 14 }}>
+      <h3 style={{ margin: 0, fontSize: 20 }}>{title}</h3>
+      <div style={{ color: 'var(--fg-tertiary)', fontSize: 12 }}>{S.workspace.dialogs.studentPrefix}{studentName}</div>
+      <div className="block-plan-name-weeks">
+        <label><span style={calendarFieldLabel}>{S.workspace.dialogs.planName}</span>
+          <input autoFocus value={name} disabled={!!settings || creating} onChange={event => setName(event.target.value)} style={calendarInputStyle} /></label>
+        <fieldset disabled={creating || weeksLocked}><legend>{S.block.weeks}</legend>
+          {settings ? <input aria-label={S.block.weeks} type="number" min={1} max={52} value={weeks} onChange={event => setWeeks(Math.max(1, Math.min(52, Number(event.target.value) || 1)))} />
+            : <div className="block-week-options">{[3, 4, 5, 6].map(value => <button type="button" key={value} aria-pressed={weeks === value} onClick={() => setWeeks(value)}>{value}</button>)}</div>}
+        </fieldset>
+      </div>
+      <fieldset disabled={creating}><legend>{S.block.trainingDays}</legend><div className="block-training-days">
+        {S.common.weekdaysMondayFirst.map((label, day) => <button key={day} type="button" data-training-weekday={day}
+          aria-pressed={days.includes(day)} className={day === first && days.includes(day) ? 'first' : ''}
+          onClick={() => {
+            const next = days.includes(day) ? days.filter(value => value !== day) : [...days, day]
+            setDays(next)
+            if (next.length && !next.includes(first)) chooseFirst(next[0])
+          }}>{label}<small>{days.includes(day) ? `D${ordered.indexOf(day) + 1}` : '—'}</small></button>)}
+      </div></fieldset>
+      <fieldset disabled={creating}><legend>{S.block.firstDay}</legend><div className="block-first-days">
+        {[...days].sort((a,b) => a-b).map(day => <button key={day} type="button" data-d1={day} aria-pressed={day === first} onClick={() => chooseFirst(day)}>{S.common.weekdaysMondayFirst[day]}</button>)}
+      </div></fieldset>
+      <label className="block-first-date"><span style={calendarFieldLabel}>{S.block.firstDate}</span>
+        <input type="date" aria-label={S.block.firstDate} value={startDate} title={calendarLocked ? calendarLockedHint : undefined} disabled={calendarLocked || creating}
+          onChange={event => { setStartDate(event.target.value); setError('') }} style={calendarInputStyle} />
+      </label>
+      {startDate && !calendarLocked && !valid && weekdayIndex(startDate) !== first && <p role="alert">{S.block.invalidDate}</p>}
+      <p className="block-schedule-hint">{S.block.dateHint}<br />{S.block.ends(mmdd(planEndISO(startDate, weeks)), weeks, weeks * days.length)}</p>
+      <div className="block-pattern-preview">{ordered.map((day, index) => <span key={day}>D{index + 1} {S.common.weekdaysMondayFirst[day]}</span>)}</div>
+      {error && <div role="alert" style={{ color: 'var(--brand-red)', fontSize: 12 }}>{error}</div>}
+      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+        <button type="button" disabled={creating} onClick={onClose} style={secondaryButton}>{S.common.cancel}</button>
+        <button type="submit" disabled={!valid || creating} style={{ ...primaryButton, opacity: !valid || creating ? 0.55 : 1 }}>{creating ? S.editor.saving : settings ? S.editor.apply : S.workspace.dialogs.createPlan}</button>
+      </div>
+    </form>
+  </div>
 }
 
 export function DeletePlanDialog({ open, name, weeks, trainingDays, deleting, error, onClose, onDelete }: {

@@ -10,7 +10,11 @@ import {
 } from './intensityModel'
 import { ApiException } from '../../api/client'
 import { BlockGrid } from './components/BlockGrid'
-import { buildBlockGrid, blockTargetDay, fillBlockDays, changeBlockDate, changeBlockWeekday, type BlockAddress } from './blockGridModel'
+import { buildBlockGrid, changeBlockPattern, blockTargetDay, fillBlockDays, changeBlockDate, changeBlockWeekday, type BlockAddress } from './blockGridModel'
+import { NewPlanDialog } from '../workspace/PlanDialogs'
+import { loadBlockWeekdays, saveBlockWeekdays } from '../workspace/blockPlanSettings'
+import { BlockHistory } from './components/BlockHistory'
+import './components/block-history.css'
 import { TopBar } from './components/TopBar'
 import { DayColumn } from './components/DayColumn'
 import { ExercisePopover } from './components/ExercisePopover'
@@ -34,6 +38,7 @@ import { classifySaveFailure } from './saveFailure'
 import { formatTranslatedDaysPasteStatus, parseClipboardRows, serializeDayForClipboard, serializeRowsForClipboard } from './clipboard'
 import {
   addDays,
+  resizeWeeksForCount,
   applyShiftedDaysToWeeks,
   isoDate,
   mdLabel,
@@ -149,6 +154,7 @@ export interface PlanEditorProps {
   onMarkComplete?: () => void | Promise<void>
   /** Backfill the current plan's past, unlogged sessions as assumed-complete（补记历史）. */
   onBackfillHistory?: () => void | Promise<void>
+  onOpenVideos?: () => void
   onBackToBoard?: () => void | Promise<void>
   /** Registers the guarded-leave path used by workspace navigation and account controls. */
   onLeaveGuardChange?: (guard: (() => Promise<boolean>) | null) => void
@@ -530,9 +536,11 @@ export function PlanEditor(props: PlanEditorProps) {
   const [planStartDate, setPlanStartDate] = useState<string | null>(props.planStartDate ?? null)
   // Presentation-only fallback keeps cleared Dx targets available during this edit session.
   const lastBlockWeekdays = useRef(buildBlockGrid(initialWeeks, props.planStartDate).columns.map(column => column.weekday))
-  const [columnWeekdays, setColumnWeekdays] = useState<Record<number, number>>({})
+  const [columnWeekdays, setColumnWeekdays] = useState<Record<number, number>>(() => Object.fromEntries((loadBlockWeekdays(props.currentPlanId) ?? []).map((day, dx) => [dx, day])))
+  const [settingsOpen, setSettingsOpen] = useState(false)
+  const [setsDraft, setSetsDraft] = useState<{ rowId: string; value: string | null } | null>(null)
   const observedBlock = buildBlockGrid(weeks, planStartDate)
-  const blockWeekdays = Array.from({ length: Math.max(lastBlockWeekdays.current.length, observedBlock.columns.length) }, (_, dx) => (
+  const blockWeekdays = Array.from({ length: Math.max(Object.keys(columnWeekdays).length, lastBlockWeekdays.current.length, observedBlock.columns.length) }, (_, dx) => (
     columnWeekdays[dx] ?? (observedBlock.rows.some(row => row.cells[dx]?.day)
       ? observedBlock.columns[dx].weekday : lastBlockWeekdays.current[dx] ?? observedBlock.columns[dx]?.weekday ?? 0)
   ))
@@ -1777,6 +1785,7 @@ export function PlanEditor(props: PlanEditorProps) {
   useGlobalKeyboardHandler(({ event: e, editable }) => {
     if (suspendedRef.current) return false
     const target = e.target instanceof HTMLElement ? e.target : null
+    if (target?.closest('.block-history,[role="dialog"],[role="menu"],.block-topbar')) return false
     const gridInput = !!target?.closest('[data-plan-cell-key]')
 
     // Escape only clears the inspection selection — allowed even on
@@ -1798,6 +1807,11 @@ export function PlanEditor(props: PlanEditorProps) {
 
     const mod = e.metaKey || e.ctrlKey
     const key = e.key.toLowerCase()
+    if (mod && key === 's' && !e.altKey && !e.shiftKey) {
+      e.preventDefault()
+      if (!readOnly && props.onSave) void handleSave()
+      return true
+    }
     const weekStep = e.altKey && !mod && !e.shiftKey && (
       e.key === 'ArrowLeft' || e.key === 'ArrowRight'
     )
@@ -1973,6 +1987,7 @@ export function PlanEditor(props: PlanEditorProps) {
   }
 
   const [saving, setSaving] = useState(false)
+  const [draftSaveFailed, setDraftSaveFailed] = useState(false)
 
   // --- 保存与草稿自动保存 --------------------------------------------------------------------
   // All persistence funnels through one serialized controller: the manual button, the debounced
@@ -2032,6 +2047,44 @@ export function PlanEditor(props: PlanEditorProps) {
     (nextStart: string) => applyStartDate(nextStart),
     [applyStartDate],
   )
+
+  const applyPlanSettings = async (_name: string, count: number, start: string, _anchor: number, pattern: number[]) => {
+    if (readOnly || saving || publishing.current) throw new Error('SETTINGS_BUSY')
+    if (count < latestWeeks.current.length) {
+      const removed = latestWeeks.current.filter(week => week.num > count).flatMap(week => week.days.filter(day => day.rows.length || day.serverDayId))
+      if (!window.confirm(S.editor.removalWarning(count, latestWeeks.current.length, removed.length, removed.reduce((sum, day) => sum + day.rows.length, 0)))) return
+    }
+    // Validate against the final calendar before issuing any metadata requests.
+    const startDelta = currentPlanStart.current ? ((addDays(start, 0).getDay() - addDays(currentPlanStart.current, 0).getDay()) + 7) % 7 : 0
+    const previousPattern = blockWeekdays.map(day => (day + startDelta) % 7)
+    const preview = resizeWeeksForCount(relabelWeeksForStartDate(latestWeeks.current, start), count, start)
+    if (JSON.stringify(pattern) !== JSON.stringify(previousPattern) && !changeBlockPattern(preview, pattern, start, previousPattern)) throw new Error('PATTERN_CONFLICT')
+    if (start !== currentPlanStart.current) await handleChangeStartDate(start)
+    if (count !== latestWeeks.current.length) {
+      if (calendarLocked || !props.onChangePlanWeeks) throw new Error('CALENDAR_LOCKED')
+      if (!(await saver.current.flush())) throw new Error('SAVE_FAILED')
+      setSaving(true)
+      try {
+        await props.onChangePlanWeeks(count)
+        const resized = resizeWeeksForCount(latestWeeks.current, count, start)
+        latestWeeks.current = resized
+        skipNextAutosave.current = true
+        setWeeks(resized)
+        historyRef.current = []; historyStartRef.current = []; redoRef.current = []; redoStartRef.current = []
+        if (!unsavedRef.current) markMirrorCovered(mirrorContent(resized, start, count))
+        setStatusText(S.editor.cycleUpdated(count))
+      } finally { setSaving(false) }
+    }
+    if (!saveBlockWeekdays(props.currentPlanId, pattern)) throw new Error('PATTERN_STORAGE_FAILED')
+    if (JSON.stringify(pattern) !== JSON.stringify(previousPattern)) {
+      const next = changeBlockPattern(latestWeeks.current, pattern, start, previousPattern)
+      if (!next) throw new Error('PATTERN_CONFLICT')
+      if (next !== latestWeeks.current) { skipNextAutosave.current = false; setWeeksWithHistory(next) }
+    }
+    lastBlockWeekdays.current = pattern
+    setColumnWeekdays(Object.fromEntries(pattern.map((weekday, dx) => [dx, weekday])))
+    setSettingsOpen(false)
+  }
 
   // Rows the coach still has to deal with, in grid order:
   //  - unbound: has a name or filled sets but no catalog binding — save reconciliation drops
@@ -2099,6 +2152,7 @@ export function PlanEditor(props: PlanEditorProps) {
     const markPastAsAssumedComplete = importedPastHistory.current
     const verb = auto ? S.editor.autosaving : S.editor.saving
     setSaving(true); setStatusText(verb); setDegradedSaveStatus(null)
+    setDraftSaveFailed(false)
     try {
       // Big saves (imports) crawl through the backend rate limit for minutes — show real
       // per-day movement so the coach can tell progress from a hang. Tiny saves stay quiet.
@@ -2171,6 +2225,7 @@ export function PlanEditor(props: PlanEditorProps) {
           + (error instanceof ApiException && (failure.kind === 'rejected' || failure.kind === 'serverError')
             ? ` ${error.status}` : '')
         setStatusText(auto ? S.editor.autosaveFailedReason(reason) : S.editor.saveFailedReason(reason))
+        setDraftSaveFailed(true)
         lastSaveFailureAlert.current = S.editor.publishSaveFailure[failure.kind]
           + (failure.kind === 'network' ? '' : `\n${S.editor.saveFailureTech(failure.tech)}`)
       }
@@ -2695,7 +2750,7 @@ export function PlanEditor(props: PlanEditorProps) {
   return (
     <div ref={rootRef} onMouseDownCapture={event => {
       const target = event.target as HTMLElement
-      if (!target.closest('.block-cell,.block-context-menu,.ex-popover,[data-popover],[role="dialog"]')) {
+      if (!target.closest('.block-history,.block-cell,.block-context-menu,.ex-popover,[data-popover],[role="dialog"]')) {
         closeBlockEditor(); setBlockMenu(null)
       }
     }} className="plan-editor" style={{
@@ -2726,7 +2781,7 @@ export function PlanEditor(props: PlanEditorProps) {
             })
           }
         } : undefined}
-        onSave={!readOnly && props.onSave ? handleSave : undefined} saving={saving}
+          onSave={!readOnly && props.onSave ? handleSave : undefined} saving={saving} draftSaveFailed={draftSaveFailed}
         onImport={!readOnly && props.exerciseIndex && planStartDate ? handleImport : undefined}
         planStartDate={planStartDate ?? undefined}
         calendarLocked={calendarLocked || !props.onChangeStartDate}
@@ -2740,7 +2795,16 @@ export function PlanEditor(props: PlanEditorProps) {
         undoNeedsRefresh={undoNeedsRefresh}
         onUndoShift={!readOnly && props.planStatus === 'published' && latestShift ? handleUndoPlanShift : undefined}
         studentPlanCursor={props.studentPlanCursor}
+        weeksCount={weeks.length}
+        onPlanSettings={!readOnly && planStartDate ? () => setSettingsOpen(true) : undefined}
       />
+      {planStartDate && <NewPlanDialog open={settingsOpen} studentName={studentName}
+        settings={{ name: planName, weeks: weeks.length, startDate: planStartDate, weekdays: blockWeekdays }}
+        calendarLocked={calendarLocked || !props.onChangeStartDate}
+        calendarLockedHint={calendarLockedHint}
+        weeksLocked={calendarLocked || !props.onChangePlanWeeks}
+        onClose={() => setSettingsOpen(false)} onCreate={applyPlanSettings} />}
+
       {recoveryMirror && (
         <DraftMirrorBanner
           savedAt={recoveryMirror.mirror.savedAt}
@@ -2774,7 +2838,9 @@ export function PlanEditor(props: PlanEditorProps) {
               onFill={fillBlock}
               onWeekday={(dx, weekday) => {
                 if (!planStartDate || readOnly) return
-                setColumnWeekdays({ ...Object.fromEntries(blockWeekdays.map((value, index) => [index, value])), [dx]: weekday })
+                const nextPattern = blockWeekdays.map((value, index) => index === dx ? weekday : value)
+                if (!saveBlockWeekdays(props.currentPlanId, nextPattern)) { window.alert(S.block.patternFailed); return }
+                setColumnWeekdays(Object.fromEntries(nextPattern.map((value, index) => [index, value])))
                 setWeeksWithHistory(prev => changeBlockWeekday(prev, dx, weekday, planStartDate, blockWeekdays))
                 closeBlockEditor()
               }}
@@ -2815,6 +2881,7 @@ export function PlanEditor(props: PlanEditorProps) {
                         dayMoveDisabledHint={dayMoveDisabledReason(day, dayMoveLocked)}
                         onDayMoveStart={(e) => handleDayMoveStart(wk.num, day, e)}
                         onResizeStart={(col, e) => handleResizeStart(day.dow, col, e)}
+                        onSetsDraftChange={(rowId, value) => setSetsDraft({ rowId, value })}
                         onNameFocus={(rowId, name, el) => handleNameFocus(wk.num, day.dow, rowId, name, el)}
                         onNameChange={(rowId, value, el) => handleNameChange(wk.num, day.dow, rowId, value, el)}
                         onNameKeyDown={(rowId, event) => handleNameKeyDown(wk.num, day.dow, rowId, event)}
@@ -2843,6 +2910,12 @@ export function PlanEditor(props: PlanEditorProps) {
             />
           </div>
         </div>
+        <BlockHistory studentId={props.studentId} studentName={studentName}
+          row={(() => {
+            const row = editingDay && cellSelection ? resolvePlanCell(displayWeeks, cellSelection)?.row ?? null : null
+            return row && setsDraft?.rowId === row.id && setsDraft.value === '' ? { ...row, boxes: [] } : row
+          })()}
+          profile={props.onboardingProfile} overview={props.exerciseStatsOverview} onVideos={props.onOpenVideos} />
       </div>
       {blockMenu && <div className="block-context-menu" role="menu" style={{ left: blockMenu.x, top: blockMenu.y }}>
         <button type="button" role="menuitem" onClick={() => { void copySelectedDay(); setBlockMenu(null) }}>{S.editor.blockCopy}</button>

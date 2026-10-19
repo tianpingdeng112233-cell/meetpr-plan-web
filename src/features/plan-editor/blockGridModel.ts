@@ -148,3 +148,40 @@ export function changeBlockDate(weeks: Week[], target: BlockAddress, date: strin
   const moved = moveToOffset(row.week, day, dow, start)
   return moved === row.week ? weeks : weeks.map(week => week === row.week ? moved : week)
 }
+
+/** Apply a whole pattern from one snapshot, so occupied destinations cannot swap Dx identities.
+ * Logged days stay put. A collision with a stationary day rejects the entire change.
+ */
+export function changeBlockPattern(weeks: Week[], pattern: readonly number[], start: string, previous: readonly number[]): Week[] | null {
+  const grid = buildBlockGrid(weeks, start, previous)
+  const startWeekday = (addDays(start, 0).getDay() + 6) % 7
+  let changed = false
+  const result: Week[] = []
+  for (const { week, cells } of grid.rows) {
+    // Removing populated Dx has no approved deletion semantics: keep all content.
+    if (cells.slice(pattern.length).some(cell => cell.day)) return null
+    const moves = cells.flatMap((cell, dx) => {
+      const day = cell.day
+      if (!day || pattern[dx] == null || pattern[dx] === previous[dx] || day.completedAt || day.rows.some(row => row.hasLogs)) return []
+      const dow = (pattern[dx] - startWeekday + 7) % 7
+      return day.dow === dow ? [] : [{ day, dow }]
+    })
+    const sources = new Set(moves.map(move => move.day.dow))
+    const targets = new Set(moves.map(move => move.dow))
+    if (targets.size !== moves.length) return null
+    if (moves.some(move => week.days.some(day => day.dow === move.dow
+      && !sources.has(day.dow) && (day.rows.length || day.serverDayId || day.completedAt)))) return null
+    if (!moves.length) { result.push(week); continue }
+    changed = true
+    const days = Array.from({ length: 7 }, (_, dow) => {
+      const existing = week.days.find(day => day.dow === dow)
+      const incoming = moves.find(move => move.dow === dow)
+      if (!incoming && !sources.has(dow)) return existing
+      const date = addDays(start, (week.num - 1) * 7 + dow)
+      return { ...existing, dow, dowLabel: dowLabel(date), dateLabel: mdLabel(date),
+        rows: incoming?.day.rows ?? [], rest: !incoming, releasedSortOrders: [], shiftedToDate: null, shiftBadge: null }
+    }).filter((day): day is DayCol => !!day)
+    result.push({ ...week, days })
+  }
+  return changed ? result : weeks
+}

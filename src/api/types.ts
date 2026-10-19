@@ -125,9 +125,26 @@ export interface StudentSetLog {
   logged_at: string
 }
 
+export interface ExerciseHistorySet {
+  set_index: number
+  weight_kg: string
+  reps: number
+  rpe: string | null
+  completed: boolean
+  failed: boolean
+  assumed: boolean
+  has_video: boolean
+  video_id?: string | null
+}
+export interface ExerciseHistorySession {
+  date: string
+  prescribed?: { sets: number; reps: number }
+  sets: ExerciseHistorySet[]
+}
 export interface ExerciseStatsDetail {
   rep_prs: { reps: number; weight_kg: string; logged_at: string; source: 'imported' | 'logged' }[]
-  recent_sessions: { date: string; sets: { set_index: number; weight_kg: string; reps: number; rpe: string | null; completed: boolean; failed: boolean; assumed: boolean; has_video: boolean }[] }[]
+  recent_sessions: ExerciseHistorySession[]
+  filtered_sessions?: ExerciseHistorySession[]
   by_set_count: Record<string, { date: string; set_count: number; best_weight_kg: string; total_reps: number; completed_sets: number }[]>
   e1rm: { value: string; computed_at: string } | null
   one_rm_reference: string | null

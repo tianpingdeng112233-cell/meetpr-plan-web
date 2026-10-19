@@ -1,3 +1,4 @@
+import { saveBlockWeekdays } from './blockPlanSettings'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { AuthUser, ChatConversation, ChatReadState, CoachBindRequest, CoachStudent, ExerciseResponse, ExerciseStatsOverview, PlanResponse, PlanWithChildren, StudentOnboardingProfile, StudentVideo } from '../../api/types'
 import {
@@ -589,7 +590,7 @@ export function PlanWorkspace({ onLogout, me }: Props) {
     if (!catalog || !studentId) return
     setNewPlanOpen(true)
   }
-  const createNewPlan = async (name: string, weeks: number, startDate: string, anchorWeekday: number) => {
+  const createNewPlan = async (name: string, weeks: number, startDate: string, anchorWeekday: number, weekdays: number[]) => {
     if (!catalog || !studentId) throw new Error('PLAN_CONTEXT_MISSING')
     const generation = ++loadGeneration.current
     const targetStudentId = studentId
@@ -609,6 +610,7 @@ export function PlanWorkspace({ onLogout, me }: Props) {
         created = { ...legacyCreated, ...patched, anchor_weekday: patched.anchor_weekday ?? anchorWeekday }
       }
       if (generation !== loadGeneration.current) return
+      if (!saveBlockWeekdays(created.id, weekdays)) window.alert(S.block.patternFailed)
       updateStudentPlans(targetStudentId, (prev) => [created, ...prev])
       await loadPlan(created.id, catalog, generation)
       setNewPlanOpen(false)
@@ -895,6 +897,7 @@ export function PlanWorkspace({ onLogout, me }: Props) {
             studentName={S.workspace.plan.sampleStudent}
             planName={S.workspace.plan.samplePlan}
             exerciseIndex={index}
+            onOpenVideos={() => { void changeView('messages') }}
             onBackToBoard={() => { void changeView('board') }}
           />
           <SamplePreviewBanner onRefresh={() => window.location.reload()} />
@@ -1031,6 +1034,7 @@ export function PlanWorkspace({ onLogout, me }: Props) {
         onBackfillHistory={loaded && loaded.plan.status !== 'draft' && loaded.plan.start_date < todayISO()
           ? () => { setBackfillError(''); setBackfillOpen(true) }
           : undefined}
+        onOpenVideos={() => { void changeView('messages') }}
         onBackToBoard={() => { void changeView('board') }}
         onLeaveGuardChange={setLeaveGuard}
         onPendingRevisionSavedAtChange={loaded ? (savedAt) => {

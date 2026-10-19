@@ -1,0 +1,33 @@
+import type { Translations } from './types'
+export const zhBlock = {
+  retrySave: '重试保存',
+  history: '历史', collapse: '收起历史', expand: '展开历史',
+  historyHint: '点开一天、选中一个动作，这里显示它的近 5 次记录；填了组数、次数会继续收窄。',
+  recent: '近 5 次', top: '顶组', reps: (n: number) => `${n} 次`,
+  degraded: '按组次筛选需更新后端', noRecords: (scope: string) => `暂无${scope ? ` ${scope} 的` : ''}记录`, back: '回到上一级',
+  play: '播放训练视频', videos: '前往视频页',
+  settings: '计划设置', settingsMenu: '计划设置（第一练日期 · 周数 · 星期）', switchPlan: '切换计划', student: '学员', plan: '计划',
+  weeks: '周数', trainingDays: '① 每周哪几天练', firstDay: '② 哪天是 D1 · 其余按星期顺着往后排', firstDate: '③ 第一练日期（W1 · D1）',
+  dateHint: '默认最近的一个周一；D1 换成别的星期，日期跟着换到最近的那一天。每周从 D1 那天算 7 天。',
+  ends: (end: string, weeks: number, days: number) => `结束于 ${end}（共 ${weeks} 周 · ${days} 练）`,
+  invalidDate: '第一练日期必须与 D1 的星期一致', settingsFailed: '计划设置保存失败，请重试',
+  shrink: (from: number, to: number) => `从 ${from} 周缩短为 ${to} 周？超出范围的训练内容将删除。`,
+  patternConflict: '星期调整会与已打卡的日期冲突，或移除仍有内容的 Dx。请保留这些练日后重试。',
+  patternLocal: '星期规律保存在本机', patternFailed: '无法在本机保存星期规律，请检查浏览器存储权限后重试',
+} as const
+export const enBlock: Translations<typeof zhBlock> = {
+  retrySave: 'Retry save',
+  history: 'History', collapse: 'Collapse history', expand: 'Expand history',
+  historyHint: 'Open a day and select an exercise to see its last 5 sessions. Enter sets and reps to narrow the history.',
+  recent: 'Last 5 sessions', top: 'Top set', reps: n => `${n} reps`,
+  degraded: 'Update the backend to filter by sets/reps', noRecords: scope => scope ? `No ${scope} records` : 'No records', back: 'Back one level',
+  play: 'Play training video', videos: 'Go to videos',
+  settings: 'Plan settings', settingsMenu: 'Plan settings (first date · weeks · weekdays)', switchPlan: 'Switch plan', student: 'Student', plan: 'Plan',
+  weeks: 'Weeks', trainingDays: '① Training weekdays', firstDay: '② Choose D1 · remaining days follow in weekday order', firstDate: '③ First training date (W1 · D1)',
+  dateHint: 'Defaults to the next Monday, including today. Changing D1 selects the next matching weekday. Each week spans 7 days from D1.',
+  ends: (end, weeks, days) => `Ends ${end} (${weeks} weeks · ${days} sessions)`,
+  invalidDate: 'The first training date must match the D1 weekday', settingsFailed: 'Could not save plan settings. Please retry.',
+  shrink: (from, to) => `Shorten from ${from} to ${to} weeks? Training beyond this range will be deleted.`,
+  patternConflict: 'This pattern would collide with a logged day or remove a populated Dx. Keep those training days and retry.',
+  patternLocal: 'Weekday pattern is stored on this device', patternFailed: 'Could not store the weekday pattern. Check browser storage permissions and retry.',
+}

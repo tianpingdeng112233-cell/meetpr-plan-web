@@ -226,10 +226,11 @@ describe('exercise history lock UI', () => {
     ))
     openBlockDay(host)
 
-    const shift = [...host.querySelectorAll('button')].find((button) => button.textContent?.includes('起始'))
-    if (!shift) throw new Error('start-date button not found')
-    expect(shift.disabled).toBe(true)
-    expect(shift.title).toContain('已有学员打卡动作')
+    act(() => host.querySelector<HTMLButtonElement>('[data-plan-menu-trigger]')!.click())
+    act(() => ([...document.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')].find(button => button.textContent?.startsWith('计划设置'))!).click())
+    const date = host.querySelector<HTMLInputElement>('input[type="date"]')!
+    expect(date.disabled).toBe(true)
+    expect(date.title).toContain('已有学员打卡动作')
   })
 
   it('whole-day paste replaces only unlocked rows and appends overflow after locked rows', () => {
@@ -294,7 +295,7 @@ describe('exercise history lock UI', () => {
     })
     expect(confirm).toHaveBeenCalledWith(expect.stringContaining('保存会立即改变 ta 正在看的计划'))
     expect(onSave).toHaveBeenCalledTimes(1)
-    expect(buttonByText(host, '已发布 · 不可撤回').disabled).toBe(true)
+    expect(host.textContent).not.toContain('发布给学员')
   })
 
   it('published update confirm folds in the unbound-row skip warning', async () => {
