@@ -815,7 +815,7 @@ Spec：更新后的 §4 门禁/白名单、空日回包和恢复闭环均已定�
 
 - `src/features/plan-editor/components/BlockGrid.tsx`：沿用已有 `patternIndex` 区分规律列（包含数据投票推出的列）与额外列；只有额外列在不足一半的周出现才标记。列头 title 使用完整显示文案，积木 title 使用完整动作名与速记；移除名字子元素的单独 title，避免覆盖整块悬停全文。
 - `src/features/plan-editor/components/block-grid.css`：列头宽度受列约束、单行省略；积木按内容宽度换行，名字至少 `min(6em, 100%)`，第二行速记靠右、溢出省略，短行 24px。插入按钮常驻 18px 灰色圆形，hover/focus 加深；空格＋常驻。保留原网格轨道与缝隙定位，未改只读渲染条件。
-- `src/i18n/strings-editor.ts`：只显示前三个周号，超过三个时给出总周数；中文为「等 N 周」，英文为「N weeks total」。N 按卡片示例理解为总数，不是剩余数。
+- `src/i18n/strings-editor.ts`：只显示前三个周号，超过三个时给出总周数；中英文都表示总周数，不是剩余数。（历史实现；已由后续列头简化热修删除。）
 - `src/features/plan-editor/mapping.ts`：草稿保存回包不再把新建日的 ID/完成态回填进插入前完全缺席的休息日历史；原有真实训练日与发布态日程投影继续保留。
 - `src/features/plan-editor/PlanEditor.tsx`：Undo/Redo 使训练日从当前树消失时，将明确移除的源 ID 纳入现有删除意图；沿用 sourceToken 处理在途保存回包。连续撤销/重做保留目标仍缺席的待删日，恢复日则取消对应当前待删记录。没有修改保存适配器或服务端删除门禁。
 - `src/features/plan-editor/block-grid-ui.test.tsx`：12 周夹具（W1=2026-01-12，每周原有四练，少数周插入第五练，W6/W7 少一练）含长名、逐组重量和逐组 RPE；覆盖稀有列、半数边界、推断规律列、中英文、省略与悬停 CSS/DOM、撤销保存重挂载、在途保存、连续 Undo/Redo 和常驻＋/只读。
@@ -854,3 +854,24 @@ npx vitest run src/features/plan-editor/block-grid-ui.test.tsx
 - 保存、镜像、后移的既有测试在最终全量中全部通过。未改 011/012 的受保护 reconcile、clipboard、selectionModel、dayMove 测试。
 
 浏览器亲验仍按 CARD-E 由 Claude 在沙箱外完成。本轮 DOM/CSS 测试不能证明真实像素尺寸、长行实际换行或按钮无视觉遮挡，不宣称浏览器验收、部署或上线通过。
+
+## 2026-10-19 · 012 加号居中热修
+
+- 现场：`fix/012-plus-center`，开工 HEAD `deedbae`；首条命令创建并删除工作树内临时文件，exit 0。
+- 改动：`components/BlockGrid.tsx` 将插入按钮和空格子的全角加号替换为内联 SVG，10×10 viewBox 中两线在 (5,5) 相交，`currentColor`、strokeWidth=1.5、aria-hidden；圆内 SVG 10px，空格 SVG 沿用原 23px 尺寸。`components/block-grid.css` 添加 flex 双轴居中与 line-height:0；保留 18px 圆、颜色、hover/focus、布局与点击行为。路径前缀均为 `src/features/plan-editor/`。
+- 测试：`src/features/plan-editor/block-grid-ui.test.tsx` 新增 `centers SVG plus signs in insertion buttons and empty cells`，通过 PlanEditor DOM 和读取实际 CSS 检查两处 SVG、尺寸、隐藏语义、继承颜色及居中样式。
+- 红 → 绿命令：`npx vitest run src/features/plan-editor/block-grid-ui.test.tsx -t 'centers SVG plus'`。改实现前 exit 1：`Tests  1 failed | 52 skipped (53)`，失败含 `expected null not to be null`、`expected '＋' not to contain '＋'`、`expected 'inline-block' to be 'flex'`；改后 exit 0：`Tests  1 passed | 52 skipped (53)`。日志 `/tmp/meetpr-plus-red.log`、`/tmp/meetpr-plus-green.log`。
+- `npm test`：exit 0，`Test Files  98 passed (98)`、`Tests  994 passed (994)`，10.47s；`/tmp/meetpr-plus-test.log`。
+- `npx tsc --noEmit`：exit 0，无诊断；`/tmp/meetpr-plus-tsc.log`。
+- `npm run build`：exit 0，`built in 3.45s`，仅 >500 kB chunk 提示；`/tmp/meetpr-plus-build.log`。
+- 自审：Standards / 本次用户要求均无发现；`git diff --check` 通过，Impeccable 机械扫描 `[]`。没有 commit、push 或锁文件修改。
+- 浏览器验证受限：启动本地 Vite 被沙箱拒绝，原错 `Error: listen EPERM: operation not permitted 127.0.0.1:5187`，未取得截图，不宣称视觉验收完成。
+- 期间发现外部修改 `specs/012-insert-delete-training-day/SPEC.md` 的列头说明；本次未触碰或回退，交付范围仍仅两处加号、相关 CSS、新用例与本段记录。
+
+## 2026-10-19 · 012 追加：列头统一只显示星期
+
+- 按 David 新决定修改 `src/features/plan-editor/components/BlockGrid.tsx`：列头与 title 直接使用星期标签，删除周次统计和条件拼接；`src/i18n/strings-editor.ts` 删除对应中英文条目。保留上一轮 SVG/CSS、插入删除和列排列行为。
+- 先修改 `src/features/plan-editor/block-grid-ui.test.tsx` 的既有中文、英文、额外列和插入用例，再运行 `npx vitest run src/features/plan-editor/block-grid-ui.test.tsx`：红 `Tests  5 failed | 48 passed (53)`（期望纯星期，实际仍带周次后缀），实现后绿 `Tests  53 passed (53)`。日志 `/tmp/meetpr-weekday-red.log`、`/tmp/meetpr-weekday-green.log`。
+- 保留外部 SPEC §1 的新决定，同步 `specs/012-insert-delete-training-day/SPEC.md` 的表述与验收示例，以及 `CARD-E.md` 的对应要求；历史记录的旧英文文案改为语义描述并注明后续删除，历史测试事实保留。
+- 全量 `npm test` exit 0：98 files / 994 passed（9.65s）；`npx tsc --noEmit` exit 0 无诊断；`npm run build` exit 0（2.21s），仅 chunk >500 kB 提示。日志 `/tmp/meetpr-weekday-{test,tsc,build}.log`。
+- 全仓 `rg --hidden --no-ignore` 搜索旧中英文文案、i18n 键及统计变量（含 docs/specs/dist，仅排除 .git/node_modules），无匹配，rg exit 1；日志 `/tmp/meetpr-weekday-residue.log`。`git diff --check` 通过。未 commit/push，未改锁文件；浏览器验证仍受上一轮本地监听权限限制。

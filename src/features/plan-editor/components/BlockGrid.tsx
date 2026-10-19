@@ -107,8 +107,7 @@ export function BlockGrid(props: Props) {
   return <div className="block-grid" ref={ref} style={{ '--block-columns': grid.columns.length } as React.CSSProperties}
     onMouseDown={startRectangle} onClickCapture={event => { if (suppressClick.current) { event.stopPropagation(); event.preventDefault() } }}>
     <div className="block-column-row"><span />{grid.columns.map(column => {
-      const activeWeeks = grid.rows.filter(row => row.cells[column.dx]?.day).map(row => row.week.num)
-      const label = `${DOW_LABELS[column.weekday]}${column.patternIndex === null && activeWeeks.length > 0 && activeWeeks.length < grid.rows.length / 2 ? ` · ${S.editor.blockOnlyWeeks(activeWeeks)}` : ''}`
+      const label = DOW_LABELS[column.weekday]
       return <div className="block-column" key={column.dx}>
         <button type="button" title={label} disabled={props.readOnly || !props.startDate} onClick={() => setColumnEditor(columnEditor === column.dx ? null : column.dx)}>
           <span>{label}</span>
@@ -153,7 +152,11 @@ export function BlockGrid(props: Props) {
             onKeyDown={event => { if (event.target === event.currentTarget && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); event.stopPropagation(); event.currentTarget.click() } }}>
             {editing && day ? props.renderDay(week, day, cell.dx, cell.dayNumber ?? cells.filter(c => c.day && c.day.dow < day.dow).length + 1) : <>
               <div className="block-date"><span>{cell.dayNumber ? `D${cell.dayNumber} · ${day?.dateLabel}` : day?.dateLabel}</span>{day?.shiftBadge && <span data-shift-badge="">{S.editor.shifted}</span>}{(day?.completedAt || (rows.length > 0 && rows.every(row => row.hasLogs))) && <span>✓ {S.editor.blockDone}</span>}</div>
-              {day && rows.length === 0 && !props.readOnly && <span className="block-empty">＋</span>}
+              {day && rows.length === 0 && !props.readOnly && <span className="block-empty">
+                <svg width="23" height="23" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
+                  <path d="M5 1v8M1 5h8" />
+                </svg>
+              </span>}
               {rows.map((row, i) => {
                 const name = fmt.exerciseName({ name: row.name, name_en: row.nameEn }) || S.common.unnamed
                 const summary = `${shorthand(row)}${row.hasLogs ? ' ✓' : ''}`
@@ -176,7 +179,11 @@ export function BlockGrid(props: Props) {
           return <div key={id} className="block-insert-gap" data-insert-week={week.num} data-insert-before={before?.day?.dow ?? 'start'}
             style={{ gridColumn: Math.min(edge, grid.columns.length + 1), gridRow: 1, justifySelf: edge > grid.columns.length + 1 ? 'end' : 'start' }}>
             <button type="button" aria-label={S.editor.blockInsertDay} aria-expanded={insertMenu === id}
-              onClick={() => setInsertMenu(insertMenu === id ? null : id)}>＋</button>
+              onClick={() => setInsertMenu(insertMenu === id ? null : id)}>
+              <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
+                <path d="M5 1v8M1 5h8" />
+              </svg>
+            </button>
             {insertMenu === id && <div className="block-insert-menu" role="menu" onKeyDown={event => { if (event.key === 'Escape') { event.stopPropagation(); setInsertMenu(null) } }}>
               {dates.map(date => <button type="button" role="menuitem" data-insert-date={date} key={date}
                 onClick={() => { props.onInsert(week.num, date); setInsertMenu(null) }}>{DOW_LABELS[(addDays(date, 0).getDay() + 6) % 7]} {mdLabel(addDays(date, 0))}</button>)}
