@@ -241,6 +241,43 @@ it('lays out intensity and weight controls as one horizontal prescription line',
 })
 
 
+it.each([3, 10])('wraps all %i per-set RPE and weight boxes in an auto-height edit row', count => {
+  const style = document.createElement('style')
+  style.textContent = readFileSync('src/features/plan-editor/components/block-grid.css', 'utf8')
+  document.head.append(style)
+  try {
+    const weeks = fixture()
+    Object.assign(weeks[0].days[0].rows[0], {
+      intensity: { mode: 'rpe', value: '8', high: '' }, intensityMode: 'per_set',
+      intensityBoxes: Array.from({ length: count }, () => ({ val: '8', empty: false })),
+      weightMode: 'per_set', boxes: Array.from({ length: count }, () => ({ val: '120', empty: false })),
+    })
+    act(() => root.render(<PlanEditor initialWeeks={weeks} weeksCount={4} studentName="Student" planName="Block" />))
+    click(cell(1,0))
+    const row = cell(1,0).querySelector('[data-rowid="w1-0-0"]')!
+    for (const field of ['intensity', 'weight']) {
+      const controls = row.querySelector<HTMLElement>(`.${field}-controls`)!
+      const inputs = controls.querySelectorAll<HTMLInputElement>(`[data-guard-field="${field}"]`)
+      expect(inputs).toHaveLength(count)
+      for (const input of inputs) {
+        expect(input.disabled).toBe(false)
+        act(() => {
+          input.focus()
+          Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, field === 'intensity' ? '9' : '125')
+          input.dispatchEvent(new Event('input', { bubbles: true }))
+        })
+        expect(document.activeElement).toBe(input)
+        expect(input.value).toBe(field === 'intensity' ? '9' : '125')
+      }
+      expect(getComputedStyle(controls).flexWrap).toBe('wrap')
+      expect(getComputedStyle(controls).overflowX).toBe('visible')
+      expect(getComputedStyle(controls).overflowY).toBe('visible')
+      expect(getComputedStyle(controls.parentElement!).height).toBe('auto')
+    }
+    expect(getComputedStyle(row.querySelector('.exercise-row-main')!).height).toBe('auto')
+  } finally { style.remove() }
+})
+
 it.each(['date', 'weekday'])('keeps Dx identities after changing a column, then changing its %s again', action => {
   act(() => root.render(<PlanEditor initialWeeks={fixture(1)} weeksCount={1} studentName="Student" planName="Block" planStartDate="2026-10-19" />))
   const changeWeekday = (value: string) => {

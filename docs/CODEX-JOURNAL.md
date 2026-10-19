@@ -658,3 +658,37 @@ Error: listen EPERM: operation not permitted 127.0.0.1:5180
 ### 验收边界
 
 无已知 SPEC 偏离或新增产品决策。jsdom 证据覆盖浮窗 DOM 位置、真实 CSS 的宽度/比例/颜色、已给定浏览器几何边界下的定位和缩放、视频 API/控件与焦点行为；不等于浏览器渲染或真实媒体播放验收。按 CARD-C，浏览器尺寸/视频播放/横屏黑边/悬停效果交 Claude 在沙箱外亲验；本轮未启动服务或绕过此前 EPERM 限制。
+
+## 2026-10-19 · 011 卡 D：逐组强度 / 重量框裁切热修
+
+基线 `fix/011-per-set-boxes` / `2b41fe2`，开工工作树干净。Step 0 先在本工作树创建并删除临时文件，exit 0；随后读取 CONTEXT、CLAUDE、CARD-D 和 SPEC。
+
+根因：block-grid.css 将强度和重量控件设为 `flex-wrap: nowrap` 与 `overflow-x: auto`，窄列把后续逐组框藏进横向滚动区域。行及单元格原本已有 `height: auto`，无需修改行高或网格结构。
+
+改动文件：
+
+- `src/features/plan-editor/components/DayColumn.tsx`：仅给实际逐组强度、逐组重量容器添加 `is-per-set` 展示 class。
+- `src/features/plan-editor/components/block-grid.css`：仅覆盖这两种逐组容器为 `flex-wrap: wrap`、双轴 overflow visible；沿用原行高自适应。普通单值容器沿用全部原样式。
+- `src/features/plan-editor/block-grid-ui.test.tsx`：新增 3 组 / 10 组最高层 PlanEditor 回归，验证所有 RPE / 重量框在 DOM、可聚焦输入、实际 CSS 允许换行且不裁切、行和单元格高度为 auto；原单值行及卡 A/B/C 用例保留。
+- `docs/CODEX-JOURNAL.md`：本段证据。未修改数据模型、reconcile 或锁文件，未 commit / push。
+
+先红后绿（均实际执行同一命令 `npx vitest run src/features/plan-editor/block-grid-ui.test.tsx`）：
+
+```text
+RED:  Test Files 1 failed (1); Tests 2 failed | 18 passed (20); exit 1
+      3 组和 10 组均报 AssertionError: expected 'nowrap' to be 'wrap'
+GREEN: Test Files 1 passed (1); Tests 20 passed (20); exit 0
+```
+
+原始输出：`/tmp/meetpr-card-d-red.log`、`/tmp/meetpr-card-d-green.log`。
+
+代码自审：按 code-review 对 `git diff HEAD`（基线 `2b41fe2`，未提交）做独立只读 Standards / Spec 两轴审查，均无发现；审查者未独立重跑测试。
+
+修复后的全量验证：
+
+- `npm test`：exit 0，98 files / 938 passed，9.22s；`/tmp/meetpr-card-d-test.log`。
+- `npx tsc --noEmit`：exit 0，无诊断；`/tmp/meetpr-card-d-tsc.log`。
+- `npm run build`：exit 0，Vite 2.50s；保留已有 >500 kB chunk 提示；`/tmp/meetpr-card-d-build.log`。
+- `git diff --check`：exit 0。
+
+验收边界：本轮 jsdom 验证 DOM、交互和真实 CSS 规则，不提供浏览器几何布局证据。1440px 宽、历史栏展开时 10 组全部可见且逐框可点可输，按 CARD-D 交 Claude 在沙箱外浏览器亲验；本轮不声明该浏览器验收已通过。

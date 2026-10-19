@@ -541,7 +541,7 @@ function EditableIntensity({ row, width, edit, selectedCell, selectCell, cellKey
       onClick={(event) => { stop(event); selectCell(singleValue ? 0 : undefined) }}
       style={{ width, padding: '4px 4px', gap: 3, display: 'flex', flexWrap: 'wrap', alignItems: 'center' }}
     >
-      <div className="intensity-controls">{row.mode === 'bodyweight' ? (
+      <div className={`intensity-controls${singleValue && intensityMode === 'per_set' ? ' is-per-set' : ''}`}>{row.mode === 'bodyweight' ? (
         <span className="mode-badge bodyweight" title={row.hasLogs ? S.editor.rowLocked : S.editor.bodyweightNoIntensity}>{S.common.bodyweight}</span>
       ) : (
         <>
@@ -728,7 +728,7 @@ function EditableWeight({ row, width, edit, selectedCell, selectCell, cellKey, r
   })
   return (
     <div className="gcell weightcell" data-c="weight" style={{ width, padding: '3px 4px', display: 'flex', flexWrap: 'wrap', alignItems: 'center' }}>
-      <span className="weight-controls">
+      <span className={`weight-controls${displayMode === 'per_set' ? ' is-per-set' : ''}`}>
         <select
           aria-label={S.editor.weightMode}
           value={displayMode}
