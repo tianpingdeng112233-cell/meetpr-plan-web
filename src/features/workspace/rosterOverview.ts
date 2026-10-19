@@ -5,6 +5,7 @@ import type {
   PlanResponse,
   PlanWithChildren,
   StudentOnboardingProfile,
+  StudentVideo,
 } from '../../api/types'
 import { isStudentPendingNextWeek } from './pendingPlan'
 import { completionRateTone } from './metricThresholds'
@@ -42,6 +43,7 @@ export interface RosterOverviewRow {
   redFlag: string
   competitionDays: number | null
   isRegistered: boolean | null
+  pendingVideoCount: number | null
   unreadCount: number
   data: RosterDataEntry
 }
@@ -114,12 +116,14 @@ export function deriveRosterRows({
   dataByStudent,
   plansByStudent,
   conversations,
+  videosByStudent = {},
   reference = new Date(),
 }: {
   students: CoachStudent[]
   dataByStudent: RosterDataByStudent
   plansByStudent: Record<string, PlanResponse[]>
   conversations: ChatConversation[] | null
+  videosByStudent?: Readonly<Record<string, StudentVideo[] | null | undefined>>
   reference?: Date
 }): RosterOverviewRow[] {
   const unreadByStudent = new Map(
@@ -147,6 +151,7 @@ export function deriveRosterRows({
       redFlag,
       competitionDays: competition.days,
       isRegistered: competition.registered,
+      pendingVideoCount: videosByStudent[student.id]?.filter(video => video.viewed_at == null).length ?? null,
       unreadCount: unreadByStudent.get(student.id) ?? 0,
       data,
     }

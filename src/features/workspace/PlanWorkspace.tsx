@@ -1,3 +1,6 @@
+import { findChatVideo, type ChatVideoTarget } from '../chat/setRef'
+import { deriveVideoFeedback } from '../plan-editor/feedbackModel'
+import { EditorChat } from '../chat/EditorChat'
 import { markVideoViewed } from '../../api/markers'
 import type { FeedbackSession, EditorFeedbackHandle } from '../plan-editor/feedbackSession'
 import { saveBlockWeekdays } from './blockPlanSettings'
@@ -23,10 +26,9 @@ import { BackfillHistoryDialog, CompletePlanDialog, DeletePlanDialog, NewPlanDia
 import { getBindRequests, getExerciseStatsOverview, getStudentVideos, refreshCoachStudents } from '../../api/coach'
 import { CoachShell, type CoachView } from './CoachShell'
 import { StudentBoard } from './StatsViews'
-import { StudentHubPage } from './StudentHubPage'
 import { REQUEST_POLL_INTERVAL_MS, RequestsPage } from './RequestsPage'
 import { CatalogPage } from '../catalog/CatalogPage'
-import { navigateCoachView } from './coachViewNavigation'
+import { navigateCoachView, normalizeCoachView, legacyStudentFromLocation } from './coachViewNavigation'
 import { TrackingDashboard } from './TrackingDashboard'
 import { clearDraftMirror } from '../plan-editor/draftMirror'
 import { listConversations } from '../../api/chat'
@@ -88,6 +90,15 @@ export function PlanWorkspace({ onLogout, me }: Props) {
   const [conversations, setConversations] = useState<ChatConversation[] | null>(null)
   const [sessionDead, setSessionDead] = useState(false)
   const [bindLostIds, setBindLostIds] = useState<Set<string>>(() => new Set())
+  const chatPreference = `meetpr:editor-chat:${me.id}`
+  const [chatOpen, setChatOpen] = useState(() => { try { return localStorage.getItem(chatPreference) === 'true' } catch { return false } })
+  const changeChatOpen = (open: boolean) => {
+    setChatOpen(open)
+    try { localStorage.setItem(chatPreference, String(open)) } catch { /* Session state still works. */ }
+  }
+  const [chatVideoIntent, setChatVideoIntent] = useState<{ studentId: string; target: ChatVideoTarget } | null>(null)
+  const intentSequence = useRef(0)
+  const [editorIntent, setEditorIntent] = useState<{ studentId: string; kind: 'videos' | 'chat'; ready: boolean } | null>(null)
   const [chatActiveId, setChatActiveId] = useState<string | null>(null)
   const [chatDrafts, setChatDrafts] = useState<Record<string, string>>({})
   const [commandExerciseId, setCommandExerciseId] = useState<string | null>(null)
@@ -536,10 +547,11 @@ export function PlanWorkspace({ onLogout, me }: Props) {
         const cat: Catalog = new Map(ex.map((e) => [e.id, { name: displayExerciseName(e.name), nameEn: e.name_en, custom: e.created_by_coach_id != null }]))
         setExerciseList(ex); setCatalog(cat); setIndex(new ExerciseIndex(ex, {}, exerciseUsage.current)); setStudents(st)
         if (st.length > 0) {
-          await loadStudent(st[0].id, cat, ex)
+          const initialStudentId = st.find(student => student.id === legacyStudentFromLocation())?.id ?? st[0].id
+          await loadStudent(initialStudentId, cat, ex)
           if (!alive) return
           void refreshInbox()
-          void loadRosterBackground(st, st[0].id)
+          void loadRosterBackground(st, initialStudentId)
         }
         setLastSyncedAt(new Date())
       } catch (e) {
@@ -563,16 +575,19 @@ export function PlanWorkspace({ onLogout, me }: Props) {
     immediate: false,
   })
 
-  useVisiblePolling(refreshInbox, view === 'messages' ? 30_000 : 60_000, {
+  useVisiblePolling(refreshInbox, view === 'editor' ? 30_000 : 60_000, {
     enabled: !sessionDead && students.length > 0,
     immediate: false,
   })
 
   useEffect(() => {
-    if (view === 'messages' && students.length > 0 && !sessionDead) void refreshInbox()
+    if (view === 'editor' && students.length > 0 && !sessionDead) void refreshInbox()
   }, [refreshInbox, sessionDead, students.length, view])
 
+  const cancelEditorIntent = () => { intentSequence.current += 1; setEditorIntent(null); setChatVideoIntent(null) }
+
   const switchStudent = async (id: string) => {
+    cancelEditorIntent()
     if (!catalog || id === studentId) return
     try {
       await loadStudent(id, catalog)
@@ -602,6 +617,7 @@ export function PlanWorkspace({ onLogout, me }: Props) {
     setLastSyncedAt(new Date())
   }
   const switchPlan = async (id: string) => {
+    cancelEditorIntent()
     if (!catalog || id === planId) return
     try {
       await loadPlan(id, catalog)
@@ -753,9 +769,11 @@ export function PlanWorkspace({ onLogout, me }: Props) {
     leaveGuardRef.current ? leaveGuardRef.current() : true
   ), [])
 
-  const changeView = async (nextView: CoachView): Promise<boolean> => {
+  const changeView = async (requestedView: CoachView): Promise<boolean> => {
+    const nextView = normalizeCoachView(requestedView)
     if (nextView === view) return true
     if (viewTransitioning.current) return false
+    cancelEditorIntent()
     viewTransitioning.current = true
     // The guard's flush can take a while on big plans; blur + overlay (below)
     // close the window where the still-mounted editor could accept edits that
@@ -797,7 +815,8 @@ export function PlanWorkspace({ onLogout, me }: Props) {
     dataByStudent: rosterDataByStudent,
     plansByStudent,
     conversations,
-  }), [conversations, plansByStudent, rosterDataByStudent, students])
+    videosByStudent,
+  }), [conversations, plansByStudent, rosterDataByStudent, students, videosByStudent])
   const rosterCounts = useMemo(() => deriveRosterCounts(rosterRows), [rosterRows])
   const pendingStudents = useMemo(() => (
     filterRosterRows(rosterRows, 'pending').map((row) => row.student)
@@ -829,6 +848,29 @@ export function PlanWorkspace({ onLogout, me }: Props) {
     }
   }
 
+  useEffect(() => {
+    if (!editorIntent || !editorIntent.ready || view !== 'editor' || studentSwitching || booting || error
+      || editorIntent.studentId !== studentId) return
+    if (editorIntent.kind === 'videos') {
+      const videos = videosByStudent[studentId]
+      if (!Array.isArray(videos) || !editorFeedbackRef.current) return // Keep the intent through loading/failure and a later retry.
+      if (videos.some(video => video.viewed_at == null)) editorFeedbackRef.current.openFeedbackVideo()
+    }
+    if (editorIntent.kind === 'chat') changeChatOpen(true)
+    setEditorIntent(null)
+  }, [editorIntent, view, studentId, studentSwitching, booting, error, videosByStudent, loaded])
+
+  const chatEntries = useMemo(() => deriveVideoFeedback(loaded?.weeks ?? [], videosByStudent[studentId] ?? [], [], loaded?.plan.start_date).entries, [loaded, videosByStudent, studentId])
+  useEffect(() => {
+    if (!chatVideoIntent) return
+    if (view !== 'editor' || chatVideoIntent.studentId !== studentId) { setChatVideoIntent(null); return }
+    const videos = videosByStudent[studentId]
+    if (!Array.isArray(videos) || studentSwitching || !editorFeedbackRef.current) return
+    const video = findChatVideo(videos, chatVideoIntent.target)
+    if (video) editorFeedbackRef.current.openFeedbackVideo(video.id)
+    setChatVideoIntent(null)
+  }, [chatVideoIntent, view, studentId, videosByStudent, studentSwitching, loaded])
+
   if (error) {
     return (
       <Centered>
@@ -855,16 +897,31 @@ export function PlanWorkspace({ onLogout, me }: Props) {
       ), 0)
     : null
   const unreadCount = unreadTotal(conversations)
-  const openStudentEditor = async (id: string) => {
-    if (!catalog || (view === 'editor' && id === studentId)) return
-    if (view === 'editor' && leaveGuardRef.current && !(await leaveGuardRef.current())) return
+  const openStudentEditor = async (id: string, preserveIntent = false) => {
+    if (!preserveIntent) cancelEditorIntent()
+    if (!catalog) return false
+    if (view === 'editor' && id === studentId) return true
+    if (view === 'editor' && leaveGuardRef.current && !(await leaveGuardRef.current())) return false
     try {
-      await loadStudent(id, catalog)
+      if (!(await loadStudent(id, catalog))) return false
       if (view !== 'editor') setView('editor')
+      return true
     } catch (e) {
       const fallback = S.workspace.plan.openStudentPlanFailed
       setError({ message: errText(e, fallback), retry: { kind: 'student', id, fallback, openEditor: true } })
+      return false
     }
+  }
+  const openFromOverview = async (id: string, kind: 'videos' | 'chat') => {
+    const sequence = ++intentSequence.current
+    setEditorIntent({ studentId: id, kind, ready: false })
+    // Start independently: a slow list must not delay mounting the editor.
+    const videoLoad = kind === 'videos' ? refreshStudentVideos(id) : Promise.resolve()
+    const opened = await openStudentEditor(id, true)
+    await videoLoad
+    if (sequence !== intentSequence.current) return
+    if (!opened) { setEditorIntent(null); return }
+    setEditorIntent({ studentId: id, kind, ready: true })
   }
   const openExerciseFromCommand = async (id: string) => {
     setCommandExerciseId(null)
@@ -908,7 +965,7 @@ export function PlanWorkspace({ onLogout, me }: Props) {
         label: fmt.exerciseName({ name: catalog?.get(exercise.id)?.name ?? displayExerciseName(exercise.name), name_en: exercise.name_en }),
         secondary: resolveLocale() === 'zh' ? exercise.name_en : null,
       }))}
-      onCommandStudent={(id) => openStudentEditor(id)}
+      onCommandStudent={async id => { await openStudentEditor(id) }}
       onCommandExercise={openExerciseFromCommand}
     >
       {sessionDead && <div className="chat-session-banner">{S.workspace.plan.sessionExpired}</div>}
@@ -921,7 +978,7 @@ export function PlanWorkspace({ onLogout, me }: Props) {
             studentName={S.workspace.plan.sampleStudent}
             planName={S.workspace.plan.samplePlan}
             exerciseIndex={index}
-            onOpenVideos={() => { void changeView('messages') }}
+            onOpenVideos={() => editorFeedbackRef.current?.openFeedbackVideo()}
             onBackToBoard={() => { void changeView('board') }}
           />
           <SamplePreviewBanner onRefresh={() => window.location.reload()} />
@@ -1061,7 +1118,7 @@ export function PlanWorkspace({ onLogout, me }: Props) {
         onBackfillHistory={loaded && loaded.plan.status !== 'draft' && loaded.plan.start_date < todayISO()
           ? () => { setBackfillError(''); setBackfillOpen(true) }
           : undefined}
-        onOpenVideos={() => { void changeView('messages') }}
+        onOpenVideos={() => editorFeedbackRef.current?.openFeedbackVideo()}
         onBackToBoard={() => { void changeView('board') }}
         onLeaveGuardChange={setLeaveGuard}
         onPendingRevisionSavedAtChange={loaded ? (savedAt) => {
@@ -1073,6 +1130,15 @@ export function PlanWorkspace({ onLogout, me }: Props) {
             : prev)
         } : undefined}
         suspended={viewSwitching}
+      />
+      <EditorChat entries={chatEntries} editor={editorShellRef} open={chatOpen} onOpenChange={changeChatOpen}
+        me={me} students={students} selectedStudentId={studentId} conversations={conversations}
+        bindLostIds={bindLostIds} sessionDead={sessionDead} activeId={chatActiveId} drafts={chatDrafts}
+        onPlayVideo={(id, target) => { if (id === studentId) setChatVideoIntent({ studentId: id, target }) }}
+        onActiveIdChange={setChatActiveId} onStudentChange={id => { void switchStudent(id) }}
+        onOpenPlan={id => { void openStudentEditor(id) }} onDraftChange={updateChatDraft}
+        onConversationsChanged={applyConversations} onReadStateApplied={applyReadState}
+        onBindLost={id => setBindLostIds(prev => new Set(prev).add(id))} onSessionExpired={() => setSessionDead(true)}
       />
       {viewSwitching && (
         <div
@@ -1144,6 +1210,9 @@ export function PlanWorkspace({ onLogout, me }: Props) {
           counts={rosterCounts}
           onSelect={selectBoardStudent}
           onOpen={(id) => { void openStudentEditor(id) }}
+          videosByStudent={videosByStudent}
+          onOpenVideos={id => { void openFromOverview(id, 'videos') }}
+          onOpenChat={id => { void openFromOverview(id, 'chat') }}
           onRetryOverview={refreshRosterOverview}
           onRetryProfile={refreshRosterProfile}
           onRetryWeekTonnage={(id) => refreshRosterWeekTonnage(id, plansByStudentRef.current[id] ?? [], true)}
@@ -1160,28 +1229,6 @@ export function PlanWorkspace({ onLogout, me }: Props) {
           onEnsureOverview={ensureTrackingOverview}
         />
       : <div className="empty-page">{S.workspace.plan.acceptForTracking}</div>)}
-    {view === 'messages' && (hasStudents
-      ? <StudentHubPage
-          me={me}
-          students={students}
-          selectedStudentId={studentId}
-          videosByStudent={videosByStudent}
-          onRefreshVideos={refreshStudentVideos}
-          conversations={conversations}
-          bindLostIds={bindLostIds}
-          sessionDead={sessionDead}
-          activeId={chatActiveId}
-          drafts={chatDrafts}
-          onActiveIdChange={setChatActiveId}
-          onStudentChange={setStudentId}
-          onOpenPlan={(id) => { void openStudentEditor(id) }}
-          onDraftChange={updateChatDraft}
-          onConversationsChanged={applyConversations}
-          onReadStateApplied={applyReadState}
-          onBindLost={(conversationId) => setBindLostIds((prev) => new Set(prev).add(conversationId))}
-          onSessionExpired={() => setSessionDead(true)}
-        />
-      : <div className="empty-page">{S.workspace.plan.acceptForMessages}</div>)}
     </CoachShell>
   )
 }

@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { setLocale } from '../../i18n/locale'
-import { act, useCallback, useRef, useState } from 'react'
+import { act, useCallback, useEffect, useRef, useState } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ApiException } from '../../api/client'
@@ -42,7 +42,9 @@ vi.mock('../chat/chatOutbox', () => ({
   chatOutbox: { publishConfirmed: api.publishConfirmed },
 }))
 
-import { VideosPage, type VideoTarget } from './VideosPage'
+import { VideoWorkbench } from './VideoWorkbench'
+import { BlockHistory } from '../plan-editor/components/BlockHistory'
+import type { FeedbackSession } from '../plan-editor/feedbackSession'
 import { createKeyedRequestVersions } from './requestVersions'
 import { isReloadBlocked } from '../../reloadSafety'
 
@@ -135,7 +137,8 @@ const setSelect = (element: HTMLSelectElement, value: string) => act(() => {
 const buttonWithText = (host: HTMLElement, text: string) =>
   [...host.querySelectorAll('button')].find((button) => button.textContent?.includes(text)) ?? null
 
-function VideosHarness({ studentId, target }: { studentId: string; target?: VideoTarget | null }) {
+function VideosHarness({ studentId }: { studentId: string }) {
+  const [feedback, setFeedback] = useState<FeedbackSession | null>({ videoId: null, playerOpen: false, includeViewed: true })
   const [rowsByStudent, setRowsByStudent] = useState<Record<string, StudentVideo[] | null | undefined>>({})
   const requestVersions = useRef(createKeyedRequestVersions())
   const refreshVideos = useCallback(async (id: string) => {
@@ -152,17 +155,13 @@ function VideosHarness({ studentId, target }: { studentId: string; target?: Vide
       setRowsByStudent((previous) => ({ ...previous, [id]: null }))
     }
   }, [])
-  return (
-    <VideosPage
-      studentId={studentId}
-      videos={rowsByStudent[studentId]}
-      onRefreshVideos={refreshVideos}
-      target={target}
-    />
-  )
+  useEffect(() => { void refreshVideos(studentId) }, [studentId, refreshVideos])
+  return <BlockHistory key={studentId} studentId={studentId} studentName="学员" row={null}
+    videos={rowsByStudent[studentId]} entries={(rowsByStudent[studentId] ?? []).map(video => ({ video, inPlan: false }))}
+    feedback={feedback} onFeedbackChange={setFeedback} onRefreshVideos={refreshVideos} />
 }
 
-describe('VideosPage master-detail interactions', () => {
+describe('Feedback history rail and shared portrait workbench', () => {
   let host: HTMLDivElement
   let root: Root
   let mounted: boolean
@@ -220,69 +219,15 @@ describe('VideosPage master-detail interactions', () => {
       await settle()
     })
     mounted = true
-    // The player is on-demand since the student hub: open the first clip so
-    // the detail-pane assertions keep their historical precondition.
-    const first = host.querySelector<HTMLButtonElement>('.video-master-row')
+    // Open the first clip through the feedback queue; business assertions exercise the real rail.
+    const first = host.querySelector<HTMLButtonElement>('[data-feedback-video]')
     if (first) {
       await act(async () => { first.click(); await settle() })
     }
   }
 
-  it('collapses the clip list and restores the saved state', async () => {
-    await renderHarness()
-    const toggle = host.querySelector<HTMLButtonElement>('[aria-label="收起视频片段列表"]')!
 
-    click(toggle)
-    expect(host.querySelector('.videos-master')?.classList.contains('collapsed')).toBe(true)
-    expect(toggle.getAttribute('aria-expanded')).toBe('false')
-    expect(window.localStorage.getItem('meetpr:sidebar:videos')).toBe('true')
 
-    act(() => root.unmount())
-    mounted = false
-    root = createRoot(host)
-    await renderHarness()
-    expect(host.querySelector('.videos-master')?.classList.contains('collapsed')).toBe(true)
-    expect(host.querySelector('[aria-label="展开视频片段列表"]')).not.toBeNull()
-  })
-
-  it('renders true pending/reviewed counts and filters the master list', async () => {
-    await renderHarness()
-    const tabs = [...host.querySelectorAll<HTMLButtonElement>('.video-filter-tabs button')]
-    expect(tabs.map((tab) => tab.textContent)).toEqual(['全部3', '待审2', '已反馈1'])
-    expect(host.querySelectorAll('.video-master-row')).toHaveLength(3)
-
-    click(tabs[1]!)
-    await act(settle)
-    expect(host.querySelectorAll('.video-master-row')).toHaveLength(2)
-    expect([...host.querySelectorAll('.video-master-row .video-status')].map((tag) => tag.textContent))
-      .toEqual(['待审', '待审'])
-
-    click(tabs[2]!)
-    await act(settle)
-    expect(host.querySelectorAll('.video-master-row')).toHaveLength(1)
-    expect(host.querySelector('.video-master-row .video-status')?.textContent).toBe('已反馈')
-  })
-
-  it('shows a retryable failure instead of an empty list and recovers on the next successful load', async () => {
-    api.getStudentVideos
-      .mockRejectedValueOnce(new Error('video unavailable'))
-      .mockResolvedValueOnce(videos)
-
-    await renderHarness()
-
-    expect(host.querySelector('.video-list-state')?.textContent).toContain('视频加载失败')
-    expect(host.textContent).not.toContain('暂无符合条件的视频')
-    expect(host.querySelector('.videos-master-head')?.textContent).not.toContain('0 条')
-
-    await act(async () => {
-      buttonWithText(host, '重试')?.click()
-      await settle()
-    })
-
-    expect(api.getStudentVideos).toHaveBeenCalledTimes(2)
-    expect(host.querySelectorAll('.video-master-row')).toHaveLength(3)
-    expect(host.querySelector('.videos-master-head')?.textContent).toContain('3 条 · 近 2 个训练日')
-  })
 
   it('marks a pending video viewed at halfway and does not resend after success', async () => {
     api.getStudentVideos
@@ -307,7 +252,7 @@ describe('VideosPage master-detail interactions', () => {
     })
     expect(api.markVideoViewed).toHaveBeenCalledTimes(1)
     expect(api.markVideoViewed).toHaveBeenCalledWith('video-1')
-    expect(host.querySelector('.video-detail-head .video-status')?.textContent).toBe('已反馈')
+    expect(host.querySelector('[data-feedback-video="video-1"]')?.classList.contains('viewed')).toBe(true)
 
     video.currentTime = 15
     act(() => video.dispatchEvent(new Event('timeupdate')))
@@ -343,49 +288,7 @@ describe('VideosPage master-detail interactions', () => {
     expect(host.querySelector('[role="alert"]')).toBeNull()
   })
 
-  it('switches to all and locates a group-card target hidden by the current filter', async () => {
-    await renderHarness()
-    click([...host.querySelectorAll<HTMLButtonElement>('.video-filter-tabs button')][1]!)
-    await act(settle)
-    expect(host.textContent).not.toContain('卧推')
 
-    await act(async () => {
-      root.render(<VideosHarness
-        studentId="student-1"
-        target={{
-          requestId: 1,
-          setLogId: 'log-2',
-          dayDate: '2026-07-18',
-          exerciseName: '卧推',
-          setIndex: 1,
-        }}
-      />)
-      await settle()
-    })
-
-    expect(host.querySelector<HTMLButtonElement>('[role="tab"][aria-selected="true"]')?.textContent).toBe('全部3')
-    expect(host.querySelector('.video-detail-head')?.textContent).toContain('卧推')
-    expect(host.querySelector('.video-master-row.selected')?.textContent).toContain('卧推')
-  })
-
-  it('keeps the player closed until a clip is picked and closes it via the × button', async () => {
-    await act(async () => {
-      root.render(<VideosHarness studentId="student-1" />)
-      await settle()
-    })
-    mounted = true
-    expect(host.querySelector('.videos-detail')).toBeNull()
-    expect(host.querySelector('.videos-master')).not.toBeNull()
-
-    const first = host.querySelector<HTMLButtonElement>('.video-master-row')!
-    await act(async () => { first.click(); await settle() })
-    expect(host.querySelector('.videos-detail')).not.toBeNull()
-
-    click(host.querySelector<HTMLButtonElement>('.video-detail-close')!)
-    await act(settle)
-    expect(host.querySelector('.videos-detail')).toBeNull()
-    expect(host.querySelector('.video-master-row.selected')).toBeNull()
-  })
 
   it('annotated markers carry a badge and open the drawn frame overlay', async () => {
     api.getVideoMarkers.mockResolvedValue([{
@@ -408,46 +311,15 @@ describe('VideosPage master-detail interactions', () => {
     expect(host.querySelector('.video-annotation-view')).toBeNull()
   })
 
-  it('never falls back to day/exercise/set matching when the target has a set_log_id', async () => {
-    await renderHarness()
-    const before = host.querySelector('.video-detail-head')?.textContent
-    await act(async () => {
-      root.render(<VideosHarness
-        studentId="student-1"
-        target={{
-          requestId: 9,
-          // A real id that matches no video: the same set may have another
-          // upload whose day/exercise/index triple would collide.
-          setLogId: 'log-vanished',
-          dayDate: '2026-07-18',
-          exerciseName: '卧推',
-          setIndex: 1,
-        }}
-      />)
-      await settle()
-    })
-    expect(host.querySelector('.video-detail-head')?.textContent).toBe(before)
-  })
 
-  it('uses sticky date-group heading structure and displays source 0-based set indexes as 1-based', async () => {
-    await renderHarness()
-    const groups = [...host.querySelectorAll('.video-date-group')]
-    expect(groups).toHaveLength(2)
-    expect(groups.every((group) => group.firstElementChild?.classList.contains('video-date-heading'))).toBe(true)
-    expect(groups[0]?.querySelector('.video-date-heading')?.textContent).toContain('07-18 周六')
-    expect(groups[0]?.querySelector('.video-date-heading')?.textContent).toContain('2 条')
-    expect(host.querySelector('.video-master-row')?.textContent).toContain('第 1 组')
-    expect(host.querySelector('.video-detail-head')?.textContent).toContain('第 1 组')
-  })
 
   it('renders the student-reported RPE and uses 未填 when it is absent', async () => {
     await renderHarness()
-    expect(host.querySelector('.video-student-rpe')?.textContent).toContain('学员自报 @8.5')
+    expect(host.querySelector('.video-student-rpe')?.textContent).toContain('学员 RPE @8.5')
 
-    click(host.querySelectorAll('.video-master-row')[2]!)
+    click(host.querySelectorAll('[data-feedback-video]')[2]!)
     await act(settle)
-    expect(host.querySelector('.video-student-rpe')?.textContent).toContain('学员自报 未填')
-    expect(host.querySelector('.video-data-card')?.textContent).toContain('学员自报 RPE未填')
+    expect(host.querySelector('.video-student-rpe')?.textContent).toContain('学员 RPE 未填')
   })
 
   it('locks the calibration select to the full 5-10 half-step range', async () => {
@@ -470,13 +342,13 @@ describe('VideosPage master-detail interactions', () => {
     const control = host.querySelector<HTMLSelectElement>('[aria-label="教练校准 RPE"]')!
     setSelect(control, '8')
     await act(settle)
-    expect(host.querySelector('.video-coach-rpe')?.textContent).toContain('教练校准 @8')
+    expect(host.querySelector('.video-coach-rpe')?.textContent).toContain('教练 RPE @8')
 
     // Second save on the SAME video goes in-flight before the refresh returns.
     api.patchCoachRpe.mockImplementation(() =>
       new Promise((resolve) => { releasePatch = resolve }))
     setSelect(host.querySelector<HTMLSelectElement>('[aria-label="教练校准 RPE"]')!, '9')
-    expect(host.querySelector('.video-coach-rpe')?.textContent).toContain('教练校准 @9')
+    expect(host.querySelector('.video-coach-rpe')?.textContent).toContain('教练 RPE @9')
 
     // First save's refresh lands: same video id, coach_rpe now '8.0'. It must
     // NOT cancel the in-flight second save or clobber its optimistic value.
@@ -486,7 +358,7 @@ describe('VideosPage master-detail interactions', () => {
         : video))
       await settle()
     })
-    expect(host.querySelector('.video-coach-rpe')?.textContent).toContain('教练校准 @9')
+    expect(host.querySelector('.video-coach-rpe')?.textContent).toContain('教练 RPE @9')
     expect(host.querySelector<HTMLSelectElement>('[aria-label="教练校准 RPE"]')?.disabled).toBe(true)
 
     // Second save resolves and wins.
@@ -495,7 +367,7 @@ describe('VideosPage master-detail interactions', () => {
       releasePatch({ set_log_id: 'log-1', coach_rpe: '9.0' })
       await settle()
     })
-    expect(host.querySelector('.video-coach-rpe')?.textContent).toContain('教练校准 @9')
+    expect(host.querySelector('.video-coach-rpe')?.textContent).toContain('教练 RPE @9')
     expect(host.querySelector<HTMLSelectElement>('[aria-label="教练校准 RPE"]')?.disabled).toBe(false)
   })
 
@@ -508,7 +380,7 @@ describe('VideosPage master-detail interactions', () => {
     const control = host.querySelector<HTMLSelectElement>('[aria-label="教练校准 RPE"]')!
     setSelect(control, '9')
     expect(api.patchCoachRpe).toHaveBeenCalledWith('log-1', 9)
-    expect(host.querySelector('.video-coach-rpe')?.textContent).toContain('教练校准 @9')
+    expect(host.querySelector('.video-coach-rpe')?.textContent).toContain('教练 RPE @9')
     expect(host.querySelector('.video-rpe-calibration')?.classList.contains('calibrated')).toBe(true)
     expect(control.disabled).toBe(true)
 
@@ -516,17 +388,17 @@ describe('VideosPage master-detail interactions', () => {
       release({ set_log_id: 'log-1', coach_rpe: '9.0' })
       await settle()
     })
-    expect(host.querySelector('.video-coach-rpe')?.textContent).toContain('教练校准 @9')
+    expect(host.querySelector('.video-coach-rpe')?.textContent).toContain('教练 RPE @9')
     expect(host.querySelector<HTMLSelectElement>('[aria-label="教练校准 RPE"]')?.disabled).toBe(false)
   })
 
   it('clears an existing coach calibration optimistically', async () => {
     await renderHarness()
-    click(host.querySelector('[aria-label="下一条视频"]'))
+    click(host.querySelector('[data-feedback-video="video-2"]'))
     await act(settle)
-    expect(host.querySelector('.video-coach-rpe')?.textContent).toContain('教练校准 @9')
+    expect(host.querySelector('.video-coach-rpe')?.textContent).toContain('教练 RPE @9')
 
-    click(buttonWithText(host, '清除校准'))
+    click(buttonWithText(host, '清除'))
     expect(api.patchCoachRpe).toHaveBeenCalledWith('log-2', null)
     expect(host.querySelector('.video-coach-rpe')).toBeNull()
     await act(settle)
@@ -538,29 +410,29 @@ describe('VideosPage master-detail interactions', () => {
     api.patchCoachRpe.mockImplementation(() =>
       new Promise((_resolve, rejectPromise) => { reject = rejectPromise }))
     await renderHarness()
-    click(host.querySelector('[aria-label="下一条视频"]'))
+    click(host.querySelector('[data-feedback-video="video-2"]'))
     await act(settle)
 
     setSelect(host.querySelector<HTMLSelectElement>('[aria-label="教练校准 RPE"]')!, '8')
-    expect(host.querySelector('.video-coach-rpe')?.textContent).toContain('教练校准 @8')
+    expect(host.querySelector('.video-coach-rpe')?.textContent).toContain('教练 RPE @8')
     await act(async () => {
       reject(new Error('backend unavailable'))
       await settle()
     })
 
-    expect(host.querySelector('.video-coach-rpe')?.textContent).toContain('教练校准 @9')
+    expect(host.querySelector('.video-coach-rpe')?.textContent).toContain('教练 RPE @9')
     expect(host.querySelector('.video-rpe-error')?.textContent).toBe('RPE 校准失败，已恢复原值')
     expect(host.querySelector<HTMLSelectElement>('[aria-label="教练校准 RPE"]')?.value).toBe('9')
   })
 
   it('hides calibration controls when the video has no set log', async () => {
     await renderHarness()
-    click(host.querySelectorAll('.video-master-row')[2]!)
+    click(host.querySelectorAll('[data-feedback-video]')[2]!)
     await act(settle)
 
-    expect(host.querySelector('.video-student-rpe')?.textContent).toContain('学员自报 未填')
+    expect(host.querySelector('.video-student-rpe')?.textContent).toContain('学员 RPE 未填')
     expect(host.querySelector('[aria-label="教练校准 RPE"]')).toBeNull()
-    expect(buttonWithText(host, '清除校准')).toBeNull()
+    expect(buttonWithText(host, '清除')).toBeNull()
   })
 
   it('resets calibration state on switch and ignores the previous video response', async () => {
@@ -570,48 +442,28 @@ describe('VideosPage master-detail interactions', () => {
     await renderHarness()
 
     setSelect(host.querySelector<HTMLSelectElement>('[aria-label="教练校准 RPE"]')!, '6.5')
-    expect(host.querySelector('.video-coach-rpe')?.textContent).toContain('教练校准 @6.5')
-    click(host.querySelector('[aria-label="下一条视频"]'))
+    expect(host.querySelector('.video-coach-rpe')?.textContent).toContain('教练 RPE @6.5')
+    click(host.querySelector('[data-feedback-video="video-2"]'))
     await act(settle)
-    expect(host.querySelector('.video-coach-rpe')?.textContent).toContain('教练校准 @9')
+    expect(host.querySelector('.video-coach-rpe')?.textContent).toContain('教练 RPE @9')
     expect(host.querySelector<HTMLSelectElement>('[aria-label="教练校准 RPE"]')?.value).toBe('9')
 
     await act(async () => {
       release({ set_log_id: 'log-1', coach_rpe: '6.5' })
       await settle()
     })
-    expect(host.querySelector('.video-detail-head')?.textContent).toContain('卧推')
-    expect(host.querySelector('.video-coach-rpe')?.textContent).toContain('教练校准 @9')
+    expect(host.querySelector('.history-player header')?.textContent).toContain('卧推')
+    expect(host.querySelector('.video-coach-rpe')?.textContent).toContain('教练 RPE @9')
     expect(host.querySelector<HTMLSelectElement>('[aria-label="教练校准 RPE"]')?.value).toBe('9')
   })
 
-  it('keeps boundary controls in place and isolates navigation keys from feedback', async () => {
-    await renderHarness()
-    const previous = host.querySelector<HTMLButtonElement>('[aria-label="上一条视频"]')
-    const next = host.querySelector<HTMLButtonElement>('[aria-label="下一条视频"]')
-    expect(previous?.disabled).toBe(true)
-    expect(next?.disabled).toBe(false)
-    expect(host.querySelector('.video-detail-head')?.textContent).toContain('深蹲')
-
-    const feedback = host.querySelector<HTMLTextAreaElement>('.video-feedback textarea')!
-    feedback.focus()
-    act(() => feedback.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true })))
-    expect(host.querySelector('.video-detail-head')?.textContent).toContain('深蹲')
-
-    act(() => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true })))
-    await act(settle)
-    expect(host.querySelector('.video-detail-head')?.textContent).toContain('卧推')
-    act(() => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true })))
-    await act(settle)
-    expect(host.querySelector<HTMLButtonElement>('[aria-label="下一条视频"]')?.disabled).toBe(true)
-  })
 
   it('leaves arrow keys to the video element so scrubbing is not hijacked', async () => {
     await renderHarness()
     const video = host.querySelector('video')!
     act(() => video.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true })))
     await act(settle)
-    expect(host.querySelector('.video-detail-head')?.textContent).toContain('深蹲')
+    expect(host.querySelector('.history-player header')?.textContent).toContain('深蹲')
   })
 
   it('toggles playback with Space while exempting inputs and the focused video element', async () => {
@@ -619,7 +471,7 @@ describe('VideosPage master-detail interactions', () => {
     const video = host.querySelector<HTMLVideoElement>('video')!
     Object.defineProperty(video, 'paused', { value: true, configurable: true })
 
-    act(() => window.dispatchEvent(new KeyboardEvent('keydown', { key: ' ', bubbles: true })))
+    act(() => host.querySelector('.history-player')!.dispatchEvent(new KeyboardEvent('keydown', { key: ' ', bubbles: true })))
     expect(HTMLMediaElement.prototype.play).toHaveBeenCalledTimes(1)
 
     const feedback = host.querySelector<HTMLTextAreaElement>('.video-feedback textarea')!
@@ -634,7 +486,7 @@ describe('VideosPage master-detail interactions', () => {
   it('offers 0.25× and pauses before button or keyboard frame stepping', async () => {
     await renderHarness()
     expect([...host.querySelectorAll('.video-speeds button')].map((button) => button.textContent))
-      .toEqual(['0.25×', '0.5×', '1×', '1.5×', '2×'])
+      .toEqual(['0.25×', '0.5×', '1×', '2×'])
     const video = host.querySelector<HTMLVideoElement>('video')!
     Object.defineProperties(video, {
       duration: { configurable: true, value: 2 },
@@ -647,7 +499,7 @@ describe('VideosPage master-detail interactions', () => {
     expect(HTMLMediaElement.prototype.pause).toHaveBeenCalledTimes(1)
     expect(video.currentTime).toBeCloseTo(1 + 1 / 30)
 
-    act(() => window.dispatchEvent(new KeyboardEvent('keydown', { key: ',', bubbles: true })))
+    act(() => host.querySelector('.history-player')!.dispatchEvent(new KeyboardEvent('keydown', { key: ',', bubbles: true })))
     expect(HTMLMediaElement.prototype.pause).toHaveBeenCalledTimes(2)
     expect(video.currentTime).toBeCloseTo(1)
   })
@@ -657,7 +509,7 @@ describe('VideosPage master-detail interactions', () => {
     const firstVideo = host.querySelector<HTMLVideoElement>('video')!
     expect(firstVideo.getAttribute('src')).toBe('https://example.test/video-1')
 
-    click(host.querySelector('[aria-label="下一条视频"]'))
+    click(host.querySelector('[data-feedback-video="video-2"]'))
 
     expect(firstVideo.getAttribute('src')).toBeNull()
     expect(HTMLMediaElement.prototype.pause).toHaveBeenCalledTimes(1)
@@ -772,7 +624,7 @@ describe('VideosPage master-detail interactions', () => {
     })
     expect(buttonWithText(host, '发送中')?.textContent).toContain('发送中…')
 
-    click(host.querySelector('[aria-label="下一条视频"]'))
+    click(host.querySelector('[data-feedback-video="video-2"]'))
     await act(settle)
     expect(host.querySelector<HTMLTextAreaElement>('.video-feedback textarea')?.value).toBe('')
     expect(buttonWithText(host, '发送反馈')?.textContent).toContain('发送反馈')
@@ -802,7 +654,7 @@ describe('VideosPage master-detail interactions', () => {
       Object.defineProperty(window, 'innerHeight', { configurable: true, value: 900 })
       Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1440 })
       await act(async () => {
-        root.render(<VideosPage studentId="student-1" videos={videos} onRefreshVideos={async () => {}}
+        root.render(<VideoWorkbench studentId="student-1" videos={videos} onRefreshVideos={async () => {}}
           embedded={{ video: videos[0], title: 'W1 · D1', anchor: { current: host }, onClose: () => {} }} />)
         mounted = true; await settle()
       })
@@ -829,7 +681,7 @@ describe('VideosPage master-detail interactions', () => {
   it.each([false, true])('013 repair 1 marks portrait playback halfway, retries failure and deduplicates (feedback=%s)', async feedback => {
     const sidebar = feedback ? document.createElement('div') : null
     await act(async () => {
-      root.render(<VideosPage studentId="student-1" videos={videos} onRefreshVideos={async () => {}}
+      root.render(<VideoWorkbench studentId="student-1" videos={videos} onRefreshVideos={async () => {}}
         embedded={{ video: videos[0], title: 'W1 · D1', anchor: { current: host }, sidebar, onClose: () => {} }} />)
       mounted = true; await settle()
     })
@@ -857,7 +709,7 @@ describe('VideosPage master-detail interactions', () => {
   it('013 repair 1 exposes the existing RPE calibration in the feedback rail only', async () => {
     const sidebar = document.createElement('div')
     const render = async (video = videos[0], feedback = true) => act(async () => {
-      root.render(<VideosPage studentId="student-1" videos={videos} onRefreshVideos={async () => {}}
+      root.render(<VideoWorkbench studentId="student-1" videos={videos} onRefreshVideos={async () => {}}
         embedded={{ video, title: 'W1 · D1', anchor: { current: host }, sidebar: feedback ? sidebar : null, onClose: () => {} }} />)
       mounted = true; await settle()
     })
@@ -895,7 +747,7 @@ describe('VideosPage master-detail interactions', () => {
     const context = { clearRect: vi.fn(), save: vi.fn(), restore: vi.fn(), beginPath: vi.fn(), moveTo: vi.fn(), lineTo: vi.fn(), stroke: vi.fn(), strokeStyle: '', lineWidth: 0 }
     vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(context as unknown as CanvasRenderingContext2D)
     await act(async () => {
-      root.render(<VideosPage studentId="student-1" videos={videos} onRefreshVideos={async () => {}}
+      root.render(<VideoWorkbench studentId="student-1" videos={videos} onRefreshVideos={async () => {}}
         embedded={{ video: videos[0], title: 'W1 · D1', anchor: { current: host }, onClose: () => {} }} />)
       mounted = true; await settle()
     })
@@ -911,7 +763,7 @@ describe('VideosPage master-detail interactions', () => {
   it('013 shared portrait workbench preserves reply and speed when the same video window reopens', async () => {
     const sidebar = document.createElement('div'); host.append(sidebar)
     const render = async (playerOpen: boolean) => act(async () => {
-      root.render(<VideosPage studentId="student-1" videos={videos} onRefreshVideos={async () => {}}
+      root.render(<VideoWorkbench studentId="student-1" videos={videos} onRefreshVideos={async () => {}}
         embedded={{ video: videos[0], title: 'W1 · D1', anchor: { current: sidebar }, sidebar, playerOpen, onClose: () => {} }} />)
       mounted = true; await settle()
     })
@@ -969,9 +821,9 @@ describe('VideosPage master-detail interactions', () => {
     expect(host.querySelector('.video-annotation-layer.live')).not.toBeNull()
 
     // The live layer keeps playback shortcuts working: space toggles play.
-    act(() => window.dispatchEvent(new KeyboardEvent('keydown', { key: ' ', bubbles: true })))
+    act(() => host.querySelector('.history-player')!.dispatchEvent(new KeyboardEvent('keydown', { key: ' ', bubbles: true })))
     expect(HTMLMediaElement.prototype.play).toHaveBeenCalled()
-    expect(host.querySelector('.video-detail-head')?.textContent).toContain('深蹲')
+    expect(host.querySelector('.history-player header')?.textContent).toContain('深蹲')
 
     click(buttonWithText(host, '发送到聊天'))
     await act(settle)
@@ -1073,7 +925,7 @@ describe('VideosPage master-detail interactions', () => {
     })
 
     // Switch clips while the first send is still in flight, open a new layer.
-    click(host.querySelectorAll('.video-master-row')[1]!)
+    click(host.querySelectorAll('[data-feedback-video]')[1]!)
     await act(settle)
     prepare()
     click(host.querySelector('.video-annotate'))
@@ -1202,7 +1054,7 @@ describe('VideosPage master-detail interactions', () => {
     expect(host.querySelector('.video-marker-error')?.textContent).toBe('打点保存失败，请稍后重试')
   })
 
-  it('updates the marker list immediately after a successful POST and Esc cancels the inline editor', async () => {
+  it('updates the marker list immediately after a successful POST and Cancel discards the inline editor', async () => {
     const created: VideoMarker = {
       ...initialMarker,
       id: 'marker-2',
@@ -1218,7 +1070,7 @@ describe('VideosPage master-detail interactions', () => {
 
     click(host.querySelector('.video-add-marker'))
     expect(host.querySelector('.video-marker-editor')).not.toBeNull()
-    act(() => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })))
+    click(buttonWithText(host, '取消'))
     expect(host.querySelector('.video-marker-editor')).toBeNull()
 
     click(host.querySelector('.video-add-marker'))
@@ -1246,9 +1098,9 @@ describe('VideosPage master-detail interactions', () => {
     click(host.querySelector('.video-add-marker'))
     setInput(host.querySelector<HTMLInputElement>('[aria-label="打点短评"]')!, '只属于 A 视频')
     click(buttonWithText(host, '保存打点'))
-    click(host.querySelector('[aria-label="下一条视频"]'))
+    click(host.querySelector('[data-feedback-video="video-2"]'))
     await act(settle)
-    expect(host.querySelector('.video-detail-head')?.textContent).toContain('卧推')
+    expect(host.querySelector('.history-player header')?.textContent).toContain('卧推')
     expect(host.querySelector('.video-markers-card h2')?.textContent).toBe('打点 · 0 处')
 
     await act(async () => {
@@ -1286,9 +1138,9 @@ describe('VideosPage master-detail interactions', () => {
     // And a 404 from another surface having deleted it first is success too.
     api.getVideoMarkers.mockResolvedValue([initialMarker])
     api.deleteVideoMarker.mockRejectedValueOnce(new ApiException(404, 'VIDEO_MARKER_NOT_FOUND'))
-    click(host.querySelectorAll('.video-master-row')[1]!)
+    click(host.querySelectorAll('[data-feedback-video]')[1]!)
     await act(settle)
-    click(host.querySelectorAll('.video-master-row')[0]!)
+    click(host.querySelectorAll('[data-feedback-video]')[0]!)
     await act(settle)
     click(host.querySelector('[aria-label="删除 0:04 打点"]'))
     await act(settle)

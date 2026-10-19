@@ -1,4 +1,4 @@
-import type { ChatMessage, ChatSetRefV1 } from '../../api/types'
+import type { ChatMessage, ChatSetRefV1, StudentVideo } from '../../api/types'
 import { fmt, S } from '../../i18n/strings'
 import { stableSetRefFirstLine } from '../../i18n/stable-zh'
 
@@ -156,4 +156,13 @@ export function SetRefCard({
     </button>}
     {note !== null && note !== '' && <p className="set-ref-note">{note}</p>}
   </section>
+}
+
+/** Stable set identity is authoritative; legacy cards alone may use the dated triple. */
+export type ChatVideoTarget = { setLogId: string | null; dayDate: string; exerciseName: string; setIndex: number }
+export function findChatVideo(videos: readonly StudentVideo[], target: ChatVideoTarget): StudentVideo | undefined {
+  return target.setLogId != null
+    ? videos.find(video => video.set_log_id === target.setLogId)
+    : videos.find(video => (video.logged_at ?? video.created_at).slice(0, 10) === target.dayDate
+      && video.exercise_name === target.exerciseName && video.set_index === target.setIndex)
 }

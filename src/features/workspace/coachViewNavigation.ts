@@ -1,5 +1,17 @@
 import type { CoachView } from './CoachShell'
 
+// Retired persisted view names are accepted only at this compatibility boundary.
+export function normalizeCoachView(value: string | null): CoachView {
+  return value === 'board' || value === 'catalog' || value === 'requests' || value === 'tracking' ? value : 'editor'
+}
+
+export function legacyStudentFromLocation(): string | null {
+  const params = new URLSearchParams(window.location.search || window.location.hash.slice(1))
+  const view = params.get('view')
+  return view === 'messages' || view === 'feedback'
+    ? params.get('studentId') ?? params.get('student') : null
+}
+
 interface CoachViewNavigation {
   currentView: CoachView
   nextView: CoachView

@@ -2,7 +2,7 @@ import { createPortal } from 'react-dom'
 import { PortraitVideoWindow } from '../plan-editor/components/PortraitVideoWindow'
 import type { RefObject } from 'react'
 import { VideoFrameButtons, VideoSpeedButtons } from './VideoTransport'
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { ApiException } from '../../api/client'
 import { openConversation } from '../../api/chat'
 import { getUploadUrl, patchCoachRpe, postCoachFeedback } from '../../api/coach'
@@ -11,7 +11,6 @@ import { abortChatImage, sendChatImage, type ChatImageSendSession } from '../../
 import type { ChatConversation, StudentVideo, VideoMarker } from '../../api/types'
 import { chatOutbox } from '../chat/chatOutbox'
 import { newClientId } from '../chat/chatModel'
-import { kg } from './WorkspaceCommon'
 import {
   annotationLineWidth,
   drawTimeBadge,
@@ -25,14 +24,12 @@ import {
   type AnnotationStroke,
   type AnnotationTool,
 } from './annotationDrawing'
-import { usePersistentCollapse } from './usePersistentCollapse'
 import { useGlobalKeyboardHandler } from './globalKeyboard'
 import { frameStepTime, precisionScrubTime, PRECISION_SCRUB_THRESHOLD_PX } from './videoPlayback'
 import { fmt, S } from '../../i18n/strings'
 import { resolveLocale } from '../../i18n/locale'
 import { registerReloadBlocker } from '../../reloadSafety'
 
-type VideoFilter = 'all' | 'pending' | 'reviewed'
 type MarkerAvailability = 'loading' | 'available' | 'error' | 'unavailable'
 
 const coachRpeOptions = Array.from({ length: 11 }, (_, index) => 5 + index * 0.5)
@@ -43,28 +40,7 @@ const compactDayLabel = (day: string, zhSeparator = '-') => {
   const [year, month, date] = day.slice(0, 10).split('-').map(Number)
   return fmt.monthDay(new Date(year, month - 1, date), () => `${String(month).padStart(2, '0')}${zhSeparator}${String(date).padStart(2, '0')}`)
 }
-const dayLabel = (day: string) => {
-  const [year, month, date] = day.split('-').map(Number)
-  const parsed = new Date(year, month - 1, date)
-  return `${compactDayLabel(day)} ${S.common.weekdaysSundayFirst[parsed.getDay()]}`
-}
 const setLabel = (index: number | null | undefined) => index == null ? null : S.video.setNumber(index + 1)
-const statusLabel = (video: StudentVideo) => video.viewed_at == null ? S.video.pending : S.video.reviewed
-const loadLabel = (video: StudentVideo) => (
-  video.weight_kg != null && video.reps != null
-    ? `${kg(video.weight_kg)}kg × ${video.reps}`
-    : video.weight_kg != null
-      ? `${kg(video.weight_kg)}kg`
-      : video.reps != null ? S.video.repCount(video.reps) : ''
-)
-const videoTitle = (video: StudentVideo) =>
-  [fmt.exerciseName({
-    name: video.exercise_name || video.filename || S.video.trainingVideo,
-    name_en: video.name_en,
-  }), loadLabel(video)].filter(Boolean).join(' ')
-const size = (bytes: number) => bytes < 1024 * 1024
-  ? `${Math.round(bytes / 1024)} KB`
-  : `${(bytes / 1024 / 1024).toFixed(1)} MB`
 const timeLabel = (seconds: number) => {
   const safe = Number.isFinite(seconds) && seconds > 0 ? Math.floor(seconds) : 0
   return `${Math.floor(safe / 60)}:${String(safe % 60).padStart(2, '0')}`
@@ -81,9 +57,6 @@ const toast = (message: string) => {
 const isSecurityError = (error: unknown) => (
   error instanceof DOMException && error.name === 'SecurityError'
 )
-
-export const moveVideoIndex = (index: number, direction: -1 | 1, total: number) =>
-  Math.max(0, Math.min(total - 1, index + direction))
 
 export const markerPositionPercent = (timeMs: number, durationSeconds: number) => {
   if (!Number.isFinite(timeMs) || !Number.isFinite(durationSeconds) || durationSeconds <= 0) return 0
@@ -105,25 +78,14 @@ export const videoAssociation = (video: {
   ].filter(Boolean).join(' · ')
 }
 
-export interface VideoTarget {
-  requestId: number
-  setLogId: string | null
-  dayDate: string
-  exerciseName: string
-  setIndex: number
-}
-
 export function VideoWorkbench({
   studentId,
-  videos: videoState,
   onRefreshVideos,
   conversation = null,
   onConversationOpened,
-  target,
-  onDetailOpenChange,
   embedded,
 }: {
-  embedded?: {
+  embedded: {
     video: StudentVideo
     playerOpen?: boolean
     title: string
@@ -140,14 +102,7 @@ export function VideoWorkbench({
   onRefreshVideos: (studentId: string) => Promise<void>
   conversation?: ChatConversation | null
   onConversationOpened?: (conversation: ChatConversation) => void
-  target?: VideoTarget | null
-  onDetailOpenChange?: (open: boolean) => void
 }) {
-  const videos = videoState ?? []
-  const videosReady = Array.isArray(videoState)
-  const [masterCollapsed, toggleMaster] = usePersistentCollapse('meetpr:sidebar:videos')
-  const [filter, setFilter] = useState<VideoFilter>('all')
-  const [activeId, setActiveId] = useState<string | null>(null)
   const [videoSource, setVideoSource] = useState<{ videoId: string; url: string } | null>(null)
   const [rate, setRate] = useState(1)
   const [playbackError, setPlaybackError] = useState('')
@@ -219,7 +174,6 @@ export function VideoWorkbench({
   const sentTimer = useRef<number>()
   const draftRef = useRef('')
   const activeVideoIdRef = useRef<string | null>(null)
-  const handledTargetRequest = useRef<number | null>(null)
   const viewedRequests = useRef<Set<string>>(new Set())
   const reloadBlockedRef = useRef(false)
   reloadBlockedRef.current = annotationOpen
@@ -243,67 +197,15 @@ export function VideoWorkbench({
   }, [onRefreshVideos, studentId])
 
   useEffect(() => {
-    setActiveId(null)
     urlRequest.current += 1
     markerRequest.current += 1
     feedbackRequest.current += 1
     coachRpeRequest.current += 1
-    if (!embedded) void refreshVideos()
   }, [refreshVideos])
 
-  const counts = useMemo(() => ({
-    all: videos.length,
-    pending: videos.filter((video) => video.viewed_at == null).length,
-    reviewed: videos.filter((video) => video.viewed_at != null).length,
-  }), [videos])
-  const visibleVideos = useMemo(() => videos.filter((video) => (
-    filter === 'all'
-    || (filter === 'pending' && video.viewed_at == null)
-    || (filter === 'reviewed' && video.viewed_at != null)
-  )), [filter, videos])
-  const selectedId = visibleVideos.some((video) => video.id === activeId)
-    ? activeId
-    : null
-  const activeIndex = visibleVideos.findIndex((video) => video.id === selectedId)
-  const active = embedded?.video ?? (activeIndex < 0 ? null : visibleVideos[activeIndex] ?? null)
-  const url = videoSource && videoSource.videoId === active?.id ? videoSource.url : ''
-  activeVideoIdRef.current = active?.id ?? null
-  const detailOpen = active != null
-  useLayoutEffect(() => { onDetailOpenChange?.(detailOpen) }, [detailOpen, onDetailOpenChange])
-  useEffect(() => {
-    if (activeId != null && !visibleVideos.some((video) => video.id === activeId)) {
-      setActiveId(null)
-    }
-  }, [activeId, visibleVideos])
-  const trainingDays = useMemo(() => new Set(videos.map(videoDay)).size, [videos])
-  const grouped = useMemo(() => {
-    const groups = new Map<string, StudentVideo[]>()
-    visibleVideos.forEach((video) => {
-      const day = videoDay(video)
-      const rows = groups.get(day)
-      if (rows) rows.push(video)
-      else groups.set(day, [video])
-    })
-    return [...groups.entries()]
-  }, [visibleVideos])
-
-  useEffect(() => {
-    if (!target || handledTargetRequest.current === target.requestId) return
-    // A non-null set_log_id must match exactly: falling back to the
-    // day/exercise/set-index triple could land on a different upload of the
-    // same set. The triple fallback exists only for legacy refs without an id.
-    const matched = target.setLogId != null
-      ? videos.find((video) => video.set_log_id === target.setLogId)
-      : videos.find((video) => (
-          videoDay(video) === target.dayDate
-          && video.exercise_name === target.exerciseName
-          && video.set_index === target.setIndex
-        ))
-    if (!matched) return
-    handledTargetRequest.current = target.requestId
-    setFilter('all')
-    setActiveId(matched.id)
-  }, [target?.requestId, videos])
+  const active = embedded.video
+  const url = videoSource && videoSource.videoId === active.id ? videoSource.url : ''
+  activeVideoIdRef.current = active.id
 
   const resetFeedback = useCallback(() => {
     feedbackRequest.current += 1
@@ -397,13 +299,6 @@ export function VideoWorkbench({
     if (video) video.playbackRate = rate
   }, [rate, url])
 
-  const pickVideo = (video: StudentVideo) => setActiveId(video.id)
-  const move = useCallback((direction: -1 | 1) => {
-    if (activeIndex < 0) return
-    const next = moveVideoIndex(activeIndex, direction, visibleVideos.length)
-    if (next !== activeIndex) setActiveId(visibleVideos[next]?.id ?? null)
-  }, [activeIndex, visibleVideos])
-
   useGlobalKeyboardHandler(({ event, editable, video }) => {
       if (embedded && !(event.target instanceof Element && event.target.closest('.history-player,.feedback-workbench,[data-feedback-mode]'))) return false
       if (embedded && event.altKey && !editable && /^Digit[1-5]$/.test(event.code)) {
@@ -416,12 +311,7 @@ export function VideoWorkbench({
         return true
       }
       if (editable || video || event.metaKey || event.ctrlKey || event.altKey) return false
-      if (!embedded && (event.key === 'ArrowLeft' || event.key === 'ArrowRight')) {
-        event.preventDefault()
-        if (active == null) setActiveId(visibleVideos[0]?.id ?? null)
-        else move(event.key === 'ArrowLeft' ? -1 : 1)
-        return true
-      } else if (event.key === ' ' || event.key === 'Spacebar') {
+      if (event.key === ' ' || event.key === 'Spacebar') {
         event.preventDefault()
         togglePlayback()
         return true
@@ -432,17 +322,6 @@ export function VideoWorkbench({
       }
       return false
   }, 10)
-
-  // Live-layer annotation keeps the whole transport usable — including
-  // space/arrow shortcuts. Only Esc is intercepted to close the layer
-  // (unless a send is in flight); typed input is already covered by the
-  // dispatcher's editable guard.
-  useGlobalKeyboardHandler(({ event }) => {
-    if (embedded || !annotationOpen || event.key !== 'Escape') return false
-    event.preventDefault()
-    if (!annotationSending) closeAnnotation()
-    return true
-  }, 1000)
 
   useEffect(() => () => {
     if (sentTimer.current != null) window.clearTimeout(sentTimer.current)
@@ -982,11 +861,6 @@ export function VideoWorkbench({
 
   const markerServiceVisible = markerAvailability === 'available' || markerAvailability === 'error'
 
-  const detailMeta = active ? [
-    dayLabel(videoDay(active)),
-    setLabel(active.set_index),
-  ].filter(Boolean).join(' · ') : ''
-
   const stageActions = ((!annotateUnavailable || markerServiceVisible) && (
                   <div className="video-stage-actions">
                     {!annotateUnavailable && (
@@ -1339,7 +1213,7 @@ export function VideoWorkbench({
       )}
     </span>
   )
-  if (embedded) return <>
+  return <>
     {embedded.playerOpen !== false && <PortraitVideoWindow title={embedded.title} positionLabel={embedded.positionLabel} anchor={embedded.anchor} onClose={embedded.onClose}>
       {player}
       {!embedded.sidebar && markerPanel}
@@ -1347,135 +1221,4 @@ export function VideoWorkbench({
     {embedded.sidebar && createPortal(<div className="feedback-workbench">{rpeCalibration}{markerPanel}{feedbackPanel}</div>, embedded.sidebar)}
   </>
 
-  return (
-    <main className={`videos-page${masterCollapsed ? ' master-collapsed' : ''}`}>
-      {active && <section className="videos-detail">
-        {(
-          <>
-            <header className="video-detail-head">
-              <button
-                type="button"
-                className="video-detail-close"
-                aria-label={S.video.closePlayer}
-                onClick={() => setActiveId(null)}
-              >×</button>
-              <b>{videoTitle(active)}</b>
-              <span className={`video-status ${active.viewed_at == null ? 'pending' : 'reviewed'}`}>
-                {statusLabel(active)}
-              </span>
-              <small>{detailMeta}</small>
-              {rpeCalibration}
-              <span className="video-detail-nav">
-                <i>{activeIndex + 1} / {visibleVideos.length}</i>
-                <button
-                  type="button"
-                  aria-label={S.video.previousVideo}
-                  disabled={activeIndex === 0}
-                  onClick={() => move(-1)}
-                >‹</button>
-                <button
-                  type="button"
-                  aria-label={S.video.nextVideo}
-                  disabled={activeIndex === visibleVideos.length - 1}
-                  onClick={() => move(1)}
-                >›</button>
-              </span>
-            </header>
-
-            {player}
-
-            <div className="video-detail-bottom">
-              {feedbackPanel}
-
-              <section className="video-data-card">
-                <h2>{S.video.setData}</h2>
-                <dl>
-                  <div><dt>{S.common.weight}</dt><dd>{active.weight_kg == null ? '—' : `${kg(active.weight_kg)} kg`}</dd></div>
-                  <div><dt>{S.common.reps}</dt><dd>{active.reps == null ? '—' : active.reps}</dd></div>
-                  <div><dt>{S.video.athleteRpeLabel}</dt><dd>{active.rpe == null ? S.video.notProvided : Number(active.rpe)}</dd></div>
-                  <div><dt>{S.video.fileSize}</dt><dd>{size(active.size_bytes)}</dd></div>
-                </dl>
-              </section>
-
-              {markerPanel}
-            </div>
-          </>
-        )}
-      </section>}
-
-      <aside className={`videos-master${masterCollapsed ? ' collapsed' : ''}`}>
-        <header className="videos-master-head">
-          {videosReady && <span>{S.video.summary(videos.length, trainingDays)}</span>}
-          <button
-            type="button"
-            className="column-collapse-toggle"
-            aria-label={masterCollapsed ? S.video.expandList : S.video.collapseList}
-            aria-expanded={!masterCollapsed}
-            title={masterCollapsed ? S.video.expandList : S.video.collapseList}
-            onClick={toggleMaster}
-          >
-            {masterCollapsed ? '›' : '‹'}
-          </button>
-        </header>
-        {videosReady && <div className="video-filter-tabs" role="tablist" aria-label={S.video.status}>
-          {([
-            ['all', S.common.all],
-            ['pending', S.video.pending],
-            ['reviewed', S.video.reviewed],
-          ] as const).map(([value, label]) => (
-            <button
-              type="button"
-              role="tab"
-              aria-selected={filter === value}
-              className={filter === value ? 'active' : ''}
-              onClick={() => setFilter(value)}
-              key={value}
-            >
-              {label}<span>{counts[value]}</span>
-            </button>
-          ))}
-        </div>}
-        <div className="video-master-scroll">
-          {!videosReady
-            ? <div className="video-list-empty video-list-state">
-                <span>{videoState === null ? S.video.loadFailed : S.common.loadingEllipsis}</span>
-                {videoState === null && <button type="button" onClick={() => { void refreshVideos() }}>{S.common.retry}</button>}
-              </div>
-            : grouped.length === 0
-              ? <div className="video-list-empty">{S.video.noMatching}</div>
-              : grouped.map(([day, rows]) => (
-                  <section className="video-date-group" key={day}>
-                    <h2 className="video-date-heading">
-                      <span>{dayLabel(day)}</span>
-                      <small>{S.video.itemCount(rows.length)}</small>
-                    </h2>
-                    {rows.map((video) => {
-                      const selected = video.id === active?.id
-                      return (
-                        <button
-                          type="button"
-                          className={`video-master-row${selected ? ' selected' : ''}`}
-                          aria-current={selected ? 'true' : undefined}
-                          onClick={() => pickVideo(video)}
-                          key={video.id}
-                        >
-                          <span className="video-thumb" aria-hidden="true">▶</span>
-                          <span className="video-row-copy">
-                            <b>{videoTitle(video)}</b>
-                            <small>
-                              {compactDayLabel(day)} · {setLabel(video.set_index) ?? S.video.unlinkedSet} · RPE {video.rpe == null ? '—' : Number(video.rpe)}
-                            </small>
-                          </span>
-                          <span className={`video-status ${video.viewed_at == null ? 'pending' : 'reviewed'}`}>
-                            {statusLabel(video)}
-                          </span>
-                        </button>
-                      )
-                    })}
-                  </section>
-              ))}
-        </div>
-      </aside>
-    </main>
-  )
 }

@@ -113,6 +113,7 @@ vi.mock('../plan-editor/PlanEditor', async importOriginal => {
     onPublish?: () => Promise<void>
     onChangeStartDate?: (startDate: string) => Promise<void>
   }) => {
+    api.captureEditorProps(props)
     if (api.realEditor) return <real.PlanEditor {...props as import('../plan-editor/PlanEditor').PlanEditorProps} />
     const { initialWeeks, onLeaveGuardChange, students, currentStudentId, plans, onPublish } = props
     api.captureEditorProps(props)
@@ -288,6 +289,92 @@ describe('PlanWorkspace editor remount', () => {
   let host: HTMLDivElement
   let root: Root
 
+  it('013 overview waits for the target plan and videos, then opens the first in-plan pending video', async () => {
+    api.realEditor = true
+    api.getPlan.mockResolvedValue(plan('初始计划'))
+    api.getCoachStudents.mockResolvedValue([
+      { id: 'student', display_name: '学员', status: 'active', evaluation: null },
+      { id: 'second', display_name: '乙', status: 'active', evaluation: null },
+    ])
+    const secondPlan = { ...plan('乙计划'), id: 'second-plan', trainee_id: 'second' }
+    api.getStudentPlans.mockImplementation((id: string) => Promise.resolve([id === 'second' ? secondPlan : plan('初始计划')]))
+    api.getStudentVideos.mockResolvedValue([video('old-block', '上个计划'), video('target', '深蹲')])
+    await act(async () => { root.render(<PlanWorkspace onLogout={vi.fn()} me={me} />); await settle() })
+    await act(async () => { clickNav(host, '总览'); await settle() })
+    let resolvePlan!: (value: PlanWithChildren) => void
+    let resolveVideos!: (value: StudentVideo[]) => void
+    api.getPlan.mockImplementation(() => new Promise(resolve => { resolvePlan = resolve }))
+    api.getStudentVideos.mockImplementation(() => new Promise(resolve => { resolveVideos = resolve }))
+    await act(async () => { host.querySelector<HTMLButtonElement>('[data-student-id="second"] [data-count="videos"] button')!.click(); await settle() })
+    expect(host.querySelector('[data-feedback-mode]')).toBeNull()
+    await act(async () => { resolvePlan(secondPlan); await settle() })
+    expect(host.querySelector('.block-grid')).not.toBeNull()
+    expect(host.querySelector('[data-feedback-mode]')).toBeNull()
+    await act(async () => { resolveVideos([{ ...video('old-block', '上个计划'), plan_exercise_id: null }, video('target', '深蹲')]); await settle() })
+    expect(host.querySelector('[data-feedback-mode]')).not.toBeNull()
+    expect(host.querySelector('[data-feedback-video="target"]')?.classList.contains('selected')).toBe(true)
+    expect(host.querySelector('.history-player')).not.toBeNull()
+    expect(api.markVideoViewed).not.toHaveBeenCalled()
+  })
+
+  it.each(['empty', 'leave'])('013 does not open feedback after an empty refresh or a newer navigation: %s', async scenario => {
+    api.realEditor = true
+    api.getPlan.mockResolvedValue(plan('计划'))
+    api.getStudentVideos.mockResolvedValue([video('pending', '深蹲')])
+    await act(async () => { root.render(<PlanWorkspace onLogout={vi.fn()} me={me} />); await settle() })
+    await act(async () => { clickNav(host, '总览'); await settle() })
+    let release!: (videos: StudentVideo[]) => void
+    api.getStudentVideos.mockImplementation(() => new Promise(resolve => { release = resolve }))
+    await act(async () => { host.querySelector<HTMLButtonElement>('[data-count="videos"] button')!.click(); await settle() })
+    if (scenario === 'leave') await act(async () => { clickNav(host, '动作库'); await settle() })
+    await act(async () => { release(scenario === 'empty' ? [] : [video('pending', '深蹲')]); await settle() })
+    if (scenario === 'leave') await act(async () => { clickNav(host, '计划编排'); await settle() })
+    expect(host.querySelector('.block-grid')).not.toBeNull()
+    expect(host.querySelector('[data-feedback-mode]')).toBeNull()
+    expect(host.querySelector('.history-player')).toBeNull()
+  })
+
+  it('013 unread opens chat, remembers collapse, and switches the conversation with the editor athlete', async () => {
+    api.getPlan.mockResolvedValue(plan('聊天计划'))
+    api.getCoachStudents.mockResolvedValue([
+      { id: 'student', display_name: '学员', status: 'active', evaluation: null },
+      { id: 'second', display_name: '乙', status: 'active', evaluation: null },
+    ])
+    api.listConversations.mockResolvedValue([chatConversation(3), { ...chatConversation(1), id: 'second-chat', other_party: { id: 'second', display_name: '乙' } }])
+    api.getMessages.mockImplementation((id: string) => Promise.resolve({ messages: [{ ...chatMessage, conversation_id: id, body: id === 'second-chat' ? '乙的消息' : '甲的消息' }], meta: { other_last_read: null, has_more: false } }))
+    await act(async () => { root.render(<PlanWorkspace onLogout={vi.fn()} me={me} />); await settle() })
+    expect(host.querySelector('.editor-chat-toggle')?.textContent).toContain('3')
+    await act(async () => { clickNav(host, '总览'); await settle() })
+    expect(host.querySelector('.editor-chat')).toBeNull()
+    await act(async () => { host.querySelector<HTMLButtonElement>('[data-student-id="student"] [data-count="messages"] button')!.click(); await settle() })
+    expect(host.querySelector('.editor-chat-window')?.textContent).toContain('甲的消息')
+    await act(async () => { host.querySelector<HTMLButtonElement>('[data-testid="switch-second"]')!.click(); await settle() })
+    expect(host.querySelector('.editor-chat-window')?.textContent).toContain('乙的消息')
+    expect(host.querySelector('.editor-chat-window')?.textContent).not.toContain('甲的消息')
+    await act(async () => { host.querySelector<HTMLButtonElement>('[aria-label="收起聊天"]')!.click(); await settle() })
+    expect(host.querySelector('.editor-chat-window')).toBeNull()
+    await act(async () => { host.querySelector<HTMLButtonElement>('.editor-chat-toggle')!.click(); await settle() })
+    act(() => root.unmount()); root = createRoot(host)
+    await act(async () => { root.render(<PlanWorkspace onLogout={vi.fn()} me={me} />); await settle() })
+    expect(host.querySelector('.editor-chat-window')).not.toBeNull()
+  })
+
+  it('013 legacy messages address keeps its athlete and lands in the plan editor', async () => {
+    window.history.replaceState(null, '', '?view=messages&studentId=second')
+    api.getCoachStudents.mockResolvedValue([
+      { id: 'student', display_name: '学员', status: 'active', evaluation: null },
+      { id: 'second', display_name: '乙', status: 'active', evaluation: null },
+    ])
+    const target = { ...plan('乙计划'), trainee_id: 'second' }
+    api.getStudentPlans.mockResolvedValue([target])
+    api.getPlan.mockResolvedValue(target)
+    try {
+      await act(async () => { root.render(<PlanWorkspace onLogout={vi.fn()} me={me} />); await settle() })
+      expect(host.querySelector('[data-testid="current-student"]')?.textContent).toBe('second')
+      expect(host.querySelector('.coach-nav-item.active')?.textContent).toContain('计划编排')
+    } finally { window.history.replaceState(null, '', '/') }
+  })
+
   it('013 retries failed video loads, expands a collapsed rail temporarily, and keeps confirmed viewed state through stale refreshes', async () => {
     api.realEditor = true
     api.getPlan.mockResolvedValue(plan('safe'))
@@ -422,14 +509,14 @@ describe('PlanWorkspace editor remount', () => {
     expect(position()).toBe('1 / 2')
     await playback(host)
     expect(host.querySelector('[data-feedback-video="v1"]')).toBeNull()
-    expect(position()).toBe('— / 1')
+    expect(position()).toBeUndefined()
     await includeViewed()
     expect(position()).toBe('2 / 3')
     await includeViewed()
     await act(async () => { host.querySelector<HTMLButtonElement>('[data-feedback-video="v2"]')!.click(); await settle() })
     expect(position()).toBe('1 / 1')
     await playback(host)
-    expect(position()).toBe('— / 0')
+    expect(position()).toBeUndefined()
   })
 
   it('013 show actuals persists per coach, leaves unlogged prescriptions gray, keeps student additions read-only and copies prescriptions', async () => {
@@ -801,7 +888,7 @@ describe('PlanWorkspace editor remount', () => {
     expect(host.querySelector('[data-testid="editor-note"]')?.textContent).toBe('首位学员仍可编辑')
     expect(host.textContent).not.toContain('无法连接后端')
     expect(host.querySelector('.coach-statusbar')?.textContent).toContain('待排 1')
-    const studentTab = [...host.querySelectorAll('button')].find((item) => item.firstElementChild?.textContent === '反馈工作区')
+    const studentTab = [...host.querySelectorAll('button')].find((item) => item.firstElementChild?.textContent === '计划编排')
     expect(studentTab?.querySelector('.coach-nav-badge')).toBeNull()
   }, 15_000)
 
@@ -1090,6 +1177,7 @@ describe('PlanWorkspace editor remount', () => {
   }, 15_000)
 
   it('反馈刷新后的新视频不会被较早发出的后台响应覆盖', async () => {
+    api.realEditor = true
     const selectedPlan = studentPlan({ id: 'plan-a', studentId: 'student-a', name: '视频测试计划' })
     const initialVideo = video('video-a', '刷新前视频')
     const refreshedVideo = video('video-a', '反馈后最新视频')
@@ -1119,13 +1207,11 @@ describe('PlanWorkspace editor remount', () => {
       await settle()
     })
     await act(async () => {
-      clickNav(host, '反馈工作区')
+      await api.captureEditorProps.mock.calls.at(-1)![0].onRefreshVideos('student-a')
       await settle()
     })
-    expect(host.textContent).toContain('刷新前视频')
-
     await act(async () => {
-      host.querySelector<HTMLButtonElement>('.video-master-row')?.click()
+      host.querySelector<HTMLButtonElement>('.pending-entry')?.click()
       await settle()
     })
     const feedback = host.querySelector<HTMLTextAreaElement>('.video-feedback textarea')!
@@ -1149,7 +1235,7 @@ describe('PlanWorkspace editor remount', () => {
     expect(host.textContent).not.toContain('后台旧视频')
   }, 15_000)
 
-  it('选择左栏学员会同时切换聊天会话并刷新右栏视频', async () => {
+  it('切换编辑器学员会同时切换聊天会话', async () => {
     const studentAPlan = studentPlan({ id: 'plan-a', studentId: 'student-a', name: '甲计划' })
     const conversationA: ChatConversation = {
       ...chatConversation(0),
@@ -1187,31 +1273,26 @@ describe('PlanWorkspace editor remount', () => {
       await settle()
     })
     await act(async () => {
-      clickNav(host, '反馈工作区')
+      host.querySelector<HTMLButtonElement>('.editor-chat-toggle')!.click()
       await settle()
     })
-    expect(host.querySelector('.student-hub-page')?.children).toHaveLength(2)
-    expect(host.querySelector('.chat-row.active')?.textContent).toContain('甲学员')
-    expect(host.querySelector('.videos-detail')).toBeNull()
-    expect(host.querySelector('.video-master-row')?.textContent).toContain('甲视频')
+    expect(host.querySelector('.editor-chat-window')?.textContent).toContain('甲消息')
 
     api.getMessages.mockClear()
     api.getStudentVideos.mockClear()
-    const studentBRow = [...host.querySelectorAll<HTMLButtonElement>('.chat-row')]
-      .find((row) => row.textContent?.includes('乙学员'))!
+    const studentBRow = host.querySelector<HTMLButtonElement>('[data-testid="switch-student-b"]')!
     await act(async () => {
       studentBRow.click()
       await settle()
     })
 
-    expect(host.querySelector('.chat-row.active')?.textContent).toContain('乙学员')
+    expect(host.querySelector('.editor-chat-head')?.textContent).toContain('乙学员')
     expect(host.querySelector('.chat-thread')?.textContent).toContain('乙消息')
-    expect(host.querySelector('.video-master-row')?.textContent).toContain('乙视频')
     expect(api.getMessages).toHaveBeenCalledWith('conversation-b', { mode: 'latest', limit: 50 })
-    expect(api.getStudentVideos).toHaveBeenCalledWith('student-b')
   }, 15_000)
 
-  it('聊天组卡播放会切到全部筛选并在右栏定位对应视频', async () => {
+  it.each([true, false])('013 chat capsule plays its video only when owned by the current athlete: %s', async (owned) => {
+    api.realEditor = true
     const setLogId = '70000000-0000-4000-8000-000000000001'
     const setRef = {
       v: 1 as const,
@@ -1236,7 +1317,7 @@ describe('PlanWorkspace editor remount', () => {
     api.listConversations.mockResolvedValue([chatConversation(0)])
     api.getStudentVideos.mockResolvedValue([
       video('other-video', '另一条待审视频'),
-      targetVideo,
+      ...(owned ? [targetVideo] : []),
     ])
     api.getMessages.mockResolvedValue({
       messages: [{
@@ -1255,47 +1336,40 @@ describe('PlanWorkspace editor remount', () => {
       await settle()
     })
     await act(async () => {
-      clickNav(host, '反馈工作区')
+      host.querySelector<HTMLButtonElement>('.editor-chat-toggle')!.click()
       await settle()
     })
-    const pendingTab = [...host.querySelectorAll<HTMLButtonElement>('.video-filter-tabs button')]
-      .find((tab) => tab.textContent?.startsWith('待审'))!
+    expect(host.querySelector('.history-player')).toBeNull()
     await act(async () => {
-      pendingTab.click()
-      await settle()
-    })
-    expect(host.querySelector('.videos-detail')).toBeNull()
-    expect(host.querySelector('.video-master-row')?.textContent).toContain('另一条待审视频')
-
-    await act(async () => {
-      host.querySelector<HTMLButtonElement>('.set-ref-play')?.click()
+      host.querySelector<HTMLButtonElement>('.chat-video-capsule')!.click()
       await settle()
     })
 
-    expect(host.querySelector<HTMLButtonElement>('[role="tab"][aria-selected="true"]')?.textContent).toContain('全部')
-    expect(host.querySelector('.video-detail-head')?.textContent).toContain('目标卧推')
-    expect(host.querySelector('.video-master-row.selected')?.textContent).toContain('目标卧推')
+    if (owned) {
+      expect(host.querySelector('[data-feedback-mode]')).not.toBeNull()
+      expect(host.querySelector('.history-player header')?.textContent).toContain('目标卧推')
+      expect(host.querySelector('.editor-chat-window')).not.toBeNull()
+    } else {
+      expect(host.querySelector('[data-feedback-mode]')).toBeNull()
+      expect(host.querySelector('.history-player')).toBeNull()
+    }
+    expect(api.markVideoViewed).not.toHaveBeenCalled()
   }, 15_000)
 
-  it('零学员空态可进入消息页且不发聊天请求', async () => {
+  it('零学员预览保留五项导航且无聊天浮窗、不发聊天请求', async () => {
     api.getCoachStudents.mockResolvedValue([])
 
     await act(async () => {
       root.render(<PlanWorkspace onLogout={vi.fn()} me={me} />)
       await settle()
     })
-    expect(host.querySelectorAll('.coach-nav-item')).toHaveLength(6)
+    expect(host.querySelectorAll('.coach-nav-item')).toHaveLength(5)
     expect([...host.querySelectorAll('.coach-nav-item')].map((item) => item.firstElementChild?.textContent)).toEqual([
-      '总览', '计划编排', '反馈工作区', '动作库', '学员申请', '追踪',
+      '总览', '计划编排', '动作库', '学员申请', '追踪',
     ])
     expect(api.listConversations).not.toHaveBeenCalled()
 
-    await act(async () => {
-      clickNav(host, '反馈工作区')
-      await settle()
-    })
-
-    expect(host.querySelector('.empty-page')?.textContent).toBe('接受学员申请后即可查看学员消息与训练视频')
+    expect(host.querySelector('.editor-chat')).toBeNull()
     expect(host.querySelector('.coach-shell-body')?.children).toHaveLength(2)
     expect(host.querySelector('.coach-main')).not.toBeNull()
     expect(api.listConversations).not.toHaveBeenCalled()
@@ -1424,11 +1498,10 @@ describe('PlanWorkspace editor remount', () => {
       await settle()
     })
     await act(async () => {
-      clickNav(host, '反馈工作区')
+      host.querySelector<HTMLButtonElement>('.editor-chat-toggle')!.click()
       await settle()
     })
     await act(async () => {
-      host.querySelector<HTMLButtonElement>('.chat-row')?.click()
       await settle()
     })
     expect(api.markConversationRead).toHaveBeenCalledWith('conversation', 'chat-message')
@@ -1437,7 +1510,7 @@ describe('PlanWorkspace editor remount', () => {
       resolveStale([chatConversation(1)])
       await settle()
     })
-    const messagesTab = [...host.querySelectorAll('button')].find((item) => item.firstElementChild?.textContent === '反馈工作区')
+    const messagesTab = [...host.querySelectorAll('button')].find((item) => item.firstElementChild?.textContent === '计划编排')
     expect(messagesTab?.querySelector('.coach-nav-badge')).toBeNull()
   }, 15_000)
 

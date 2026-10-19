@@ -167,6 +167,6 @@ export function BlockHistory({ studentId, studentName, row, profile, overview, o
   </aside>
     {currentPlayer && (!collapsed || feedback) && <VideoWorkbench studentId={studentId ?? ''} videos={videos} onRefreshVideos={onRefreshVideos ?? noRefresh}
       embedded={{ ...currentPlayer, playerOpen: feedback ? feedback.playerOpen : true, anchor: rail, onClose: closePlayer, onVideoViewed, sidebar: feedback ? sidebar : null, studentName,
-        positionLabel: feedback ? `${visibleIndex < 0 ? '—' : visibleIndex + 1} / ${visibleEntries.length}` : undefined }} /> }
+        positionLabel: feedback && visibleIndex >= 0 ? `${visibleIndex + 1} / ${visibleEntries.length}` : undefined }} /> }
   </>
 }

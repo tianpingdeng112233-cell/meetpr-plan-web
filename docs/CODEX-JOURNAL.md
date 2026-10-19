@@ -1024,3 +1024,16 @@ npx vitest run src/features/plan-editor/block-grid-ui.test.tsx
 - `git diff --check` 通过。
 - Standards 独立只读审查：0 项实质问题。Spec 独立只读审查：三项范围内 0 项缺做/多做/做错。
 - 以上属于开发自测与代码/CSS审查，DOM 结构与计算样式不能证明浏览器实际像素布局。未启动 dev server 或更改配置；外部浏览器复验仍使用保留的 `/mock-feedback.html?lang=zh`、`/mock-feedback.html?lang=en`，重点看 W1·D1 长行、W2·D1 显示实际的末行状态，以及 405px 英文控制条。
+
+## 2026-10-19 · 013 卡 B：删反馈工作区、聊天浮窗、总览两列（Codex 中断，Claude 明示降级收尾）
+
+- Codex 实装到一半撞上用量上限（最早 10/25 恢复），未跑全量、未写本段。按全局分工「Codex 不可用 → 明示降级为 Claude 实装」，由 Claude 在同一工作树接手收尾。
+- Codex 已完成：删 `StudentHubPage` / `VideosPage`（业务断言迁到 `VideoWorkbench-ui.test.tsx`、`VideoWorkbench.test.ts`，含过半标已看、RPE 校准、反馈发送、打点）；导航五项与「计划编排」徽标；老 `view=messages|feedback` 地址落到计划编排同一学员（`coachViewNavigation.ts` 兼容边界）；`EditorChat` 浮窗（复用 `MessagesPage` 的 floating 模式）；总览两列、排序、跳转（等编辑器与视频到位再打开，切学员 / 计划取消）。
+- Claude 补修：
+  - `EditorChat` 定位用 `useLayoutEffect` 读父元素 ref，首挂载时 ref 尚未挂上，effect 提前返回且不再重跑，浮窗永远停在 `right: 300px`，竖屏大窗打开时与之重叠（SPEC §4）。新增 `src/features/chat/EditorChat.test.tsx` 先红（Expected 44px / Received 300px），改为被动 `useEffect` 后转绿。
+  - 大窗序号：当前一段播放过半移出待看列表后显示「— / 0」，改为隐藏序号（`PlanWorkspace.test.tsx` 两条断言先改红再转绿）。
+  - `rosterOverview.ts` / `StatsViews.tsx` / `RosterBoard.test.tsx` 内联 `import('../../api/types')` 类型改为具名导入。
+- 旧词 grep（非测试源码）：「反馈工作区」、`nav.feedback`、`feedbackShort`、`feedbackKeywords`、`shortcuts.feedback`、`acceptForMessages` 均无残留；`'messages'` / `'feedback'` 只剩老地址兼容判断。
+- 三条命令：`npm test` 101 files / 1021 passed；`npx tsc --noEmit` exit 0；`npm run build` exit 0（仅 chunk >500 kB 提示）。
+- 浏览器验收（Claude，临时夹具 mock-feedback / mock-workspace，1440×900，中英文，验完已删）：导航无反馈工作区、计划编排徽标 = 未读 + 待看；浮窗收起 / 展开、记忆、切学员换内容；聊天视频胶囊 → 反馈模式并高亮对应积木，浮窗让到大窗左侧；总览两列数字、点待看直达该学员第一段待看、点未读切学员并展开浮窗。
+- 已知遗留（不阻塞，待 Codex 10/25 后清）：`VideoWorkbench` 的非 embedded「整页」分支在生产已无调用方（旧 VideosPage 已删），但迁移来的约 35 条 UI 测试仍经它渲染。业务逻辑与 embedded 共用同一套 hooks，覆盖有效但路径不等价；后续卡：删整页分支、把这些测试改到 embedded 渲染。
