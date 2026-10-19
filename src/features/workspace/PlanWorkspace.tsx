@@ -10,7 +10,8 @@ import type { CreateCustomExerciseInput } from '../../api/exercises'
 import { ApiException } from '../../api/client'
 import { deriveStudentPlanCursor, mapPlanToWeeks, type Catalog } from '../plan-editor/mapping'
 import { displayExerciseName, ExerciseIndex } from '../plan-editor/exerciseIndex'
-import { reconcilePlan, reconcileImportedPlan, resizeServerPlanWeeks } from '../plan-editor/reconcile'
+import { reconcileImportedPlan, resizeServerPlanWeeks } from '../plan-editor/reconcile'
+import { saveBlockPlan } from '../plan-editor/saveBlockPlan'
 import { PlanEditor } from '../plan-editor/PlanEditor'
 import { buildWeeks as buildSampleWeeks } from '../plan-editor/sampleData'
 import { SamplePreviewBanner } from './SamplePreviewBanner'
@@ -934,14 +935,14 @@ export function PlanWorkspace({ onLogout, me }: Props) {
           updateStudentPlans(updated.trainee_id, (prev) => prev.map((p) => (p.id === updated.id ? updated : p)))
           setLoaded((prev) => (prev && prev.plan.id === updated.id ? { ...prev, plan: { ...prev.plan, ...updated } } : prev))
         } : undefined}
-        onSave={loaded && planContentEditable ? async (weeks, importStart, markPastAsAssumedComplete, onProgress) => {
+        onSave={loaded && planContentEditable ? async (weeks, importStart, markPastAsAssumedComplete, onProgress, deletedDayIds) => {
           const reconcileOptions = {
             published: loaded.plan.status === 'published',
             catalog: catalog ?? undefined,
           }
           const result = importStart
             ? await reconcileImportedPlan(loaded.plan.id, weeks, importStart, onProgress, reconcileOptions)
-            : await reconcilePlan(loaded.plan.id, weeks, onProgress, reconcileOptions)
+            : await saveBlockPlan(loaded.plan.id, weeks, onProgress, { ...reconcileOptions, deletedDayIds })
           if (importStart && markPastAsAssumedComplete) {
             // The plan itself is already reconciled at this point. History
             // marking rides a backend endpoint that may not be deployed yet

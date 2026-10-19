@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { ExerciseRow, Week } from './types'
 import {
-  clearDraftMirrorIfHash, createDraftMirrorWriter, DRAFT_MIRROR_PREFIX, DRAFT_MIRROR_VERSION,
+  clearDraftMirrorIfHash, createDraftMirror, createDraftMirrorWriter, DRAFT_MIRROR_PREFIX, DRAFT_MIRROR_VERSION,
   draftContentHash, draftMirrorStorageKey, loadDraftMirror, saveDraftMirror,
   type DraftMirrorContent,
 } from './draftMirror'
@@ -235,4 +235,16 @@ describe('local draft mirror storage', () => {
     expect(() => saveDraftMirror('plan', content(), storage)).not.toThrow()
     expect(loadDraftMirror('plan', storage)).toBeNull()
   })
+})
+
+
+it('reads the shipped v3 hash for legacy empty flags without creating training days', () => {
+  const storage = new MemoryStorage()
+  const mirror = createDraftMirror('legacy-v3', content('keep edit'))
+  // Old v3 hashes ignored this stale flag; retain that compatibility exactly.
+  mirror.content.weeks[0].days[1].rest = false
+  storage.setItem(draftMirrorStorageKey('legacy-v3'), JSON.stringify(mirror))
+  const loaded = loadDraftMirror('legacy-v3', storage)!
+  expect(loaded.content.weeks[0].days[1].rest).toBe(true)
+  expect(loaded.content.weeks[0].days[0].rows[0].note).toBe('keep edit')
 })

@@ -430,7 +430,8 @@ export function mapPlanToWeeks(plan: PlanWithChildren, catalog: Catalog): Week[]
         dateLabel: '',
         serverDayId: serverDay?.id ?? null,
         completedAt: serverDay?.completed_at ?? null,
-        rest: !exs || exs.length === 0,
+        // A persisted empty training day is still a card, distinct from a rest slot.
+        rest: !serverDay,
         rows: exs?.map((exercise) => mapExercise(exercise, catalog)) ?? [],
       }
       days.push(relabelDaySchedule(

@@ -999,4 +999,111 @@ describe('PlanEditor local draft recovery', () => {
     expect(allowed).toBe(false)
     expect(confirm).toHaveBeenCalledWith(expect.stringContaining(expected))
   })
+
+  it.each(['insert', 'delete'] as const)('restores an unpublished empty-day %s from the real remote mirror', async action => {
+    vi.useFakeTimers()
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    const initial = relabelWeeksForStartDate(weeks(''), '2026-10-19')
+    if (action === 'delete') Object.assign(initial[0].days[3], { serverDayId: 'empty-day', rest: false })
+    const onSave = vi.fn(async (weeks: Week[], _start?: string | null, _past?: boolean, _progress?: unknown, _deleted?: readonly string[]) => ({ changedDays: 1, skippedRows: 0, degradedRows: 0, weeks: structuredClone(weeks) }))
+    const render = async (key: string) => act(async () => root.render(<PlanEditor key={key}
+      initialWeeks={initial} weeksCount={1} planStartDate="2026-10-19" studentName="学员" planName="计划"
+      currentPlanId="empty-mirror" initialPublished planStatus="published" onSave={onSave} />))
+    await render('first')
+    if (action === 'insert') {
+      act(() => host.querySelector<HTMLButtonElement>('[data-insert-before="0"] button')!.click())
+      act(() => host.querySelector<HTMLButtonElement>('[data-insert-date="2026-10-22"]')!.click())
+    } else {
+      act(() => host.querySelector<HTMLElement>('[data-block-week="1"][data-dow="3"]')!.click())
+      act(() => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Delete', bubbles: true })))
+    }
+    await act(async () => { await vi.advanceTimersByTimeAsync(4000) })
+    expect(pendingApi.putPendingRevision).toHaveBeenCalled()
+    const mirror = pendingApi.putPendingRevision.mock.calls.at(-1)![1]
+    expect(mirror.content.weeks[0].days[3].rest).toBe(action === 'delete')
+    expect(loadDraftMirror('empty-mirror')?.content.weeks[0].days[3].rest).toBe(action === 'delete')
+    pendingApi.getPendingRevision.mockResolvedValue({ plan_id: mirror.planId, version: mirror.version, content_hash: mirror.contentHash, content: mirror.content, saved_at: '2026-10-19T10:00:00Z' })
+    await render('reopened')
+    expect(host.querySelector('[data-testid="draft-mirror-banner"]')).not.toBeNull()
+    act(() => click(host, '恢复'))
+    const day = host.querySelector('[data-block-week="1"][data-dow="3"]')
+    if (action === 'insert') expect(day?.querySelector('.block-date')?.textContent).toBe('D2 · 10/22')
+    else expect(day?.querySelector('.block-date')?.textContent ?? '').not.toContain('D2')
+    expect(host.querySelector('.block-topbar')?.textContent).toContain('有未推送修改')
+    if (action === 'delete') {
+      await act(async () => click(host, '更新计划'))
+      expect(onSave.mock.calls[0][4]).toEqual(['empty-day'])
+    }
+  })
+
+
+  it('keeps a server empty day while restoring an older v3 snapshot that only edits another day', async () => {
+    const initial = relabelWeeksForStartDate(weeks('live'), '2026-10-19')
+    Object.assign(initial[0].days[3], { serverDayId: 'empty-day', rest: false })
+    const old = structuredClone(initial)
+    old[0].days[0].rows[0].note = 'legacy edit'
+    old[0].days[3].rest = true // Shipped v3 writers normalized empty rows to rest.
+    saveDraftMirror('legacy-empty', { weeks: old, planStartDate: '2026-10-19', weeksCount: 1 })
+    await act(async () => root.render(<PlanEditor initialWeeks={initial} weeksCount={1} planStartDate="2026-10-19"
+      studentName="学员" planName="计划" currentPlanId="legacy-empty" initialPublished />))
+    act(() => click(host, '恢复'))
+    expect(host.querySelector('[data-dow="3"] .block-date')?.textContent).toBe('D2 · 10/22')
+    openBlockDay(host)
+    expect(host.querySelector<HTMLInputElement>('[data-c="note"] input')?.value).toBe('legacy edit')
+  })
+
+  it('does not turn a moved-away server day into an empty card when stashing a date edit', async () => {
+    vi.useFakeTimers()
+    const initial = relabelWeeksForStartDate(weeks(''), '2026-10-19')
+    initial[0].days[0].serverDayId = 'source-day'
+    await act(async () => root.render(<PlanEditor initialWeeks={initial} weeksCount={1} planStartDate="2026-10-19"
+      studentName="学员" planName="计划" currentPlanId="move-mirror" initialPublished />))
+    openBlockDay(host)
+    act(() => host.querySelector<HTMLButtonElement>('[aria-label="修改本日日期"]')!.click())
+    act(() => setInput(host.querySelector<HTMLInputElement>('input[type="date"]')!, '2026-10-22'))
+    await act(async () => { await vi.advanceTimersByTimeAsync(4000) })
+    const mirror = pendingApi.putPendingRevision.mock.calls.at(-1)![1]
+    expect(mirror.content.weeks[0].days[0]).toMatchObject({ rest: true, rows: [], serverDayId: null })
+    expect(mirror.content.weeks[0].days[3].rows).toHaveLength(1)
+  })
+
+  it('keeps a server empty day when a recovered deletion has no matching local action evidence', async () => {
+    const initial = relabelWeeksForStartDate(weeks(''), '2026-10-19')
+    Object.assign(initial[0].days[3], { serverDayId: 'empty-day', rest: false })
+    const candidate = structuredClone(initial)
+    Object.assign(candidate[0].days[3], { serverDayId: null, rest: true })
+    saveDraftMirror('foreign-deletion', { weeks: candidate, planStartDate: '2026-10-19', weeksCount: 1 })
+    const onSave = vi.fn()
+    const alert = vi.spyOn(window, 'alert').mockImplementation(() => {})
+    await act(async () => root.render(<PlanEditor initialWeeks={initial} weeksCount={1} planStartDate="2026-10-19"
+      studentName="学员" planName="计划" currentPlanId="foreign-deletion" initialPublished onSave={onSave} />))
+    act(() => click(host, '恢复'))
+    expect(host.querySelector('[data-block-week="1"][data-dow="3"] .block-date')?.textContent).toBe('D2 · 10/22')
+    await act(async () => click(host, '更新计划'))
+    expect(onSave).not.toHaveBeenCalled()
+    expect(alert).toHaveBeenCalledWith('W1 · D2（周四 10/22）还没有动作：先填动作或删除这天，再更新')
+  })
+
+  it('does not reuse discarded deletion evidence if the same remote snapshot is offered again', async () => {
+    vi.useFakeTimers()
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    const initial = relabelWeeksForStartDate(weeks(''), '2026-10-19')
+    Object.assign(initial[0].days[3], { serverDayId: 'empty-day', rest: false })
+    const render = (key: string) => act(async () => root.render(<PlanEditor key={key} initialWeeks={initial} weeksCount={1}
+      planStartDate="2026-10-19" studentName="学员" planName="计划" currentPlanId="discard-deletion" initialPublished />))
+    await render('first')
+    act(() => host.querySelector<HTMLElement>('[data-block-week="1"][data-dow="3"]')!.click())
+    act(() => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Delete', bubbles: true })))
+    await act(async () => { await vi.advanceTimersByTimeAsync(4000) })
+    const mirror = pendingApi.putPendingRevision.mock.calls.at(-1)![1]
+    const response = { plan_id: mirror.planId, version: mirror.version, content_hash: mirror.contentHash, content: mirror.content, saved_at: '2026-10-19T10:00:00Z' }
+    pendingApi.getPendingRevision.mockResolvedValue(response)
+    await render('discard')
+    act(() => click(host, '丢弃'))
+    pendingApi.getPendingRevision.mockResolvedValue(response)
+    await render('remote-again')
+    act(() => click(host, '恢复'))
+    expect(host.querySelector('[data-block-week="1"][data-dow="3"] .block-date')?.textContent).toBe('D2 · 10/22')
+  })
+
 })

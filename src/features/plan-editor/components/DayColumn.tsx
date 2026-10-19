@@ -990,7 +990,7 @@ export function DayColumn({
     <div className={`day${selected ? ' sel' : ''}${dayMoveClass}${weekBand ? ' week-band-day' : ''}`} data-dow={day.dow} onClick={onSelect}>
       {blockView ? <>
         <div className="block-edit-head">
-          <div><strong>W{weekNumber} · D{blockView.dx + 1} {dayTheme}</strong>
+          <div><strong>W{weekNumber} · D{blockView.dx + 1} · </strong>
             <span className="block-edit-date">
               <button type="button" aria-label={S.editor.blockDate} aria-expanded={dateOpen}
                 disabled={readOnly || !!day.completedAt || day.rows.some(row => row.hasLogs)}

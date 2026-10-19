@@ -286,7 +286,7 @@ it.each(['date', 'weekday'])('keeps Dx identities after changing a column, then 
     act(() => { select.value = value; select.dispatchEvent(new Event('change', { bubbles:true })) })
   }
   changeWeekday('3')
-  expect([...host.querySelectorAll('.block-column button')].map(button => button.textContent)).toEqual(['D1周四', 'D2周三', 'D3周五', 'D4周六'])
+  expect([...host.querySelectorAll('.block-column button')].map(button => button.textContent)).toEqual(['周四', '周三', '周五', '周六'])
   if (action === 'weekday') changeWeekday('1')
   else {
     click(cell(1,0))
@@ -298,4 +298,294 @@ it.each(['date', 'weekday'])('keeps Dx identities after changing a column, then 
   expect(cell(1,0).querySelector('[data-rowid="w1-0-0"]')).not.toBeNull()
   expect(cell(1,1).dataset.dow).toBe('2')
   expect(cell(1,1).querySelector('[data-rowid="w1-2-0"]')).not.toBeNull()
+})
+
+it('shows only weekdays in column headers and date-ordered Dx on every card and edit header', () => {
+  const weeks = fixture()
+  weeks[1].days[2].rows = []; weeks[1].days[2].rest = true
+  act(() => root.render(<PlanEditor initialWeeks={weeks} weeksCount={4} studentName="学员" planName="计划" planStartDate="2026-10-19" />))
+  expect([...host.querySelectorAll('.block-column button')].map(el => el.textContent)).toEqual(['周一', '周三 · 只在 W1、W3、W4', '周五', '周六'])
+  expect(cell(2,2).querySelector('.block-date')?.textContent).toBe('D2 · 10/30')
+  expect(cell(2,3).querySelector('.block-date')?.textContent).toBe('D3 · 10/31')
+  click(cell(2,2))
+  expect(cell(2,2).querySelector('.block-edit-head')?.textContent).toContain('W2 · D2 · 周五 10/30')
+})
+
+it('inserts Thursday from the W2 gap, opens its empty editor, and keeps other weeks blank and numbered', async () => {
+  act(() => root.render(<PlanEditor initialWeeks={fixture()} weeksCount={4} studentName="学员" planName="计划" planStartDate="2026-10-19" />))
+  const gap = host.querySelector('[data-insert-week="2"][data-insert-before="2"] button')!
+  expect(gap).not.toBeNull()
+  click(gap)
+  const choices = [...host.querySelectorAll('[role="menuitem"][data-insert-date]')]
+  expect(choices.map(el => el.getAttribute('data-insert-date'))).toEqual(['2026-10-29'])
+  click(choices[0])
+  expect(host.querySelectorAll('.block-column')[2].textContent).toBe('周四 · 只在 W2')
+  expect(cell(2,2).classList.contains('is-editing')).toBe(true)
+  expect(cell(2,2).querySelector('.block-edit-head')?.textContent).toContain('W2 · D3 · 周四 10/29')
+  expect(cell(2,2).querySelectorAll('.exrow')).toHaveLength(0)
+  await key('Escape')
+  expect(cell(2,4).querySelector('.block-date')?.textContent).toBe('D5 · 10/31')
+  for (const w of [1,3,4]) {
+    expect(cell(w,2).textContent).toBe('')
+    expect(cell(w,2).querySelector('.block-empty')).toBeNull()
+    expect(cell(w,4).querySelector('.block-date')?.textContent).toMatch(/^D4 · /)
+  }
+  expect(host.querySelector('[data-insert-week="2"][data-insert-before="4"]')).toBeNull()
+})
+
+it('confirms whole-day deletion, renumbers, collapses the extra column, and restores it with undo', async () => {
+  const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
+  act(() => root.render(<PlanEditor initialWeeks={fixture()} weeksCount={4} studentName="学员" planName="计划" planStartDate="2026-10-19" />))
+  click(host.querySelector('[data-insert-week="2"][data-insert-before="2"] button')!)
+  click(host.querySelector('[data-insert-date="2026-10-29"]')!)
+  await key('Escape'); click(cell(2,2)); await key('Delete')
+  expect(confirm).toHaveBeenLastCalledWith('删除 W2 · D3（周四 10/29）及其中 0 个动作？')
+  expect(host.querySelectorAll('.block-column')).toHaveLength(5)
+  confirm.mockReturnValue(true)
+  await key('Delete')
+  expect(host.querySelectorAll('.block-column')).toHaveLength(4)
+  expect(cell(2,2).querySelector('.block-date')?.textContent).toBe('D3 · 10/30')
+  await key('z', true)
+  expect(host.querySelectorAll('.block-column')).toHaveLength(5)
+  expect(cell(2,2).querySelector('.block-date')?.textContent).toBe('D3 · 10/29')
+})
+
+it('disables whole-day deletion with logs but keeps clear-day and brick deletion separate', async () => {
+  const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
+  const weeks = fixture()
+  weeks[0].days[0].rows[0].hasLogs = true
+  act(() => root.render(<PlanEditor initialWeeks={weeks} weeksCount={4} studentName="学员" planName="计划" planStartDate="2026-10-19" />))
+  act(() => cell(1,0).dispatchEvent(new MouseEvent('contextmenu', { bubbles: true })))
+  const remove = [...host.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')].find(b => b.textContent === '删除这天')!
+  expect(remove).toBeDefined()
+  expect(remove.disabled).toBe(true)
+  expect(remove.title).toBe('已有打卡记录，不能删除')
+  click(cell(1,0)); await key('Delete')
+  expect(confirm).not.toHaveBeenCalled()
+  expect(cell(1,0).querySelectorAll('.exrow')).toHaveLength(4)
+  await key('Escape')
+  click(cell(2,0).querySelector('[data-rowid="w2-0-1"]')!)
+  click(cell(2,0).querySelector('[data-rowid="w2-0-2"]')!, { metaKey: true })
+  await key('Delete')
+  expect(cell(2,0).querySelectorAll('[data-rowid]')).toHaveLength(2)
+  expect(cell(2,0).querySelector('.block-date')?.textContent).toBe('D1 · 10/26')
+  act(() => cell(2,0).dispatchEvent(new MouseEvent('contextmenu', { bubbles: true })))
+  click([...host.querySelectorAll('[role="menuitem"]')].find(b => b.textContent === '清空本日')!)
+  expect(cell(2,0).querySelectorAll('[data-rowid]')).toHaveLength(0)
+  expect(cell(2,0).querySelector('.block-date')?.textContent).toBe('D1 · 10/26')
+})
+
+it('lists only available start/end dates, reuses a pattern column, and hides insertion in read-only mode', async () => {
+  const weeks = fixture()
+  weeks[1].days[0].rows = []; weeks[1].days[0].rest = true
+  act(() => root.render(<PlanEditor initialWeeks={weeks} weeksCount={4} studentName="学员" planName="计划" planStartDate="2026-10-19" />))
+  click(host.querySelector('[data-insert-week="2"][data-insert-before="start"] button')!)
+  expect([...host.querySelectorAll('[data-insert-date]')].map(el => el.getAttribute('data-insert-date'))).toEqual(['2026-10-26','2026-10-27'])
+  click(host.querySelector('[data-insert-date="2026-10-26"]')!)
+  expect(host.querySelectorAll('.block-column')).toHaveLength(4)
+  expect(cell(2,0).querySelector('.block-edit-head')?.textContent).toContain('W2 · D1 · 周一 10/26')
+  await key('Escape')
+  click(host.querySelector('[data-insert-week="2"][data-insert-before="5"] button')!)
+  expect([...host.querySelectorAll('[data-insert-date]')].map(el => el.getAttribute('data-insert-date'))).toEqual(['2026-11-01'])
+  click(host.querySelector('[data-insert-date="2026-11-01"]')!)
+  expect(cell(2,4).querySelector('.block-edit-head')?.textContent).toContain('W2 · D5 · 周日 11/1')
+  act(() => root.render(<PlanEditor key="readonly" initialWeeks={weeks} weeksCount={4} studentName="学员" planName="计划" planStartDate="2026-10-19" readOnly />))
+  expect(host.querySelector('[data-insert-week]')).toBeNull()
+})
+
+it('labels insertion, limited columns, delete confirmation and locked deletion in English', async () => {
+  setLocale('en')
+  const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
+  act(() => root.render(<PlanEditor initialWeeks={fixture()} weeksCount={4} studentName="Student" planName="Block" planStartDate="2026-10-19" />))
+  click(host.querySelector('[data-insert-week="2"][data-insert-before="2"] [aria-label="Insert training day"]')!)
+  click(host.querySelector('[data-insert-date="2026-10-29"]')!)
+  expect(host.querySelectorAll('.block-column')[2].textContent).toBe('Thu · Only in W2')
+  await key('Escape')
+  act(() => cell(2,2).dispatchEvent(new MouseEvent('contextmenu', { bubbles: true })))
+  click([...host.querySelectorAll('[role="menuitem"]')].find(el => el.textContent === 'Delete day')!)
+  expect(confirm).toHaveBeenCalledWith('Delete W2 · D3 (Thu Oct 29) and its 0 exercises?')
+  expect(host.querySelectorAll('.block-column')).toHaveLength(4)
+})
+
+it.each(['insert','delete'])('keeps published %s local until Update plan and reopens the saved structure', async action => {
+  vi.useFakeTimers()
+  try {
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    let saved = fixture()
+    const onSave = vi.fn(async (weeks: Week[]) => {
+      saved = structuredClone(weeks)
+      return { changedDays: 1, skippedRows: 0, degradedRows: 0, weeks: saved }
+    })
+    act(() => root.render(<PlanEditor initialWeeks={saved} weeksCount={4} studentName="学员" planName="计划" planStartDate="2026-10-19" initialPublished onSave={onSave} />))
+    if (action !== 'delete') {
+      click(cell(1,0).querySelector('[data-rowid]')!)
+      await key('c', true)
+      click(host.querySelector('[data-insert-week="2"][data-insert-before="2"] button')!)
+      click(host.querySelector('[data-insert-date="2026-10-29"]')!)
+      if (action === 'insert') await key('v', true)
+    } else {
+      click(cell(2,1)); await key('Delete')
+    }
+    await act(async () => { await vi.advanceTimersByTimeAsync(4000) })
+    expect(host.querySelector('.block-topbar')?.textContent).toContain('有未推送修改')
+    expect(onSave).not.toHaveBeenCalled()
+    await act(async () => { [...host.querySelectorAll('button')].find(button => button.textContent?.includes('更新计划'))!.click() })
+    expect(onSave).toHaveBeenCalledTimes(1)
+    expect(saved[1].days[3].rows.length).toBe(action === 'insert' ? 1 : 0)
+    expect(saved[1].days[2].rows.length).toBe(action !== 'delete' ? 4 : 0)
+    act(() => root.render(<PlanEditor key="reopen" initialWeeks={saved} weeksCount={4} studentName="学员" planName="计划" planStartDate="2026-10-19" initialPublished onSave={onSave} />))
+    const card = host.querySelector(`[data-block-week="2"][data-dow="${action !== 'delete' ? 3 : 4}"]`)!
+    expect(card.querySelector('.block-date')?.textContent).toBe(action !== 'delete' ? 'D3 · 10/29' : 'D2 · 10/30')
+    await act(async () => { await vi.advanceTimersByTimeAsync(4000) })
+    expect(onSave).toHaveBeenCalledTimes(1)
+  } finally { vi.useRealTimers() }
+})
+
+it('autosaves a draft empty-day insertion and deletion through the existing save callback', async () => {
+  vi.useFakeTimers()
+  try {
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    const onSave = vi.fn(async (weeks: Week[]) => ({ changedDays: 1, skippedRows: 0, degradedRows: 0, weeks: structuredClone(weeks) }))
+    act(() => root.render(<PlanEditor initialWeeks={fixture()} weeksCount={4} studentName="学员" planName="计划" planStartDate="2026-10-19" onSave={onSave} />))
+    click(host.querySelector('[data-insert-week="2"][data-insert-before="2"] button')!)
+    click(host.querySelector('[data-insert-date="2026-10-29"]')!)
+    await act(async () => { await vi.advanceTimersByTimeAsync(4000) })
+    expect(onSave).toHaveBeenCalledTimes(1)
+    expect(onSave.mock.calls[0][0][1].days[3]).toMatchObject({ rest: false, rows: [] })
+    await key('Delete')
+    await act(async () => { await vi.advanceTimersByTimeAsync(4000) })
+    expect(onSave).toHaveBeenCalledTimes(2)
+    expect(onSave.mock.calls[1][0][1].days[3]).toMatchObject({ rest: true, rows: [] })
+    expect(host.querySelectorAll('.block-column')).toHaveLength(4)
+  } finally { vi.useRealTimers() }
+})
+
+
+it.each([[false, 'zh'], [true, 'zh'], [false, 'en'], [true, 'en']] as const)('blocks empty training days before publishing or updating (published=%s, locale=%s), and cycles the review chip', async (published, locale) => {
+  vi.useFakeTimers()
+  try {
+    setLocale(locale)
+    const alert = vi.spyOn(window, 'alert').mockImplementation(() => {})
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    const onSave = vi.fn(async (weeks: Week[]) => ({ changedDays: 1, skippedRows: 0, degradedRows: 0, weeks: structuredClone(weeks) }))
+    const onPublish = vi.fn().mockResolvedValue(undefined)
+    act(() => root.render(<PlanEditor initialWeeks={fixture()} weeksCount={4} studentName="学员" planName="计划" planStartDate="2026-10-19" initialPublished={published} onSave={onSave} onPublish={onPublish} />))
+    for (const week of [2,3]) {
+      click(host.querySelector(`[data-insert-week="${week}"][data-insert-before="2"] button`)!)
+      click(host.querySelector(`[data-insert-date="2026-${week === 2 ? '10-29' : '11-05'}"]`)!)
+    }
+    click(host.querySelector('.block-primary')!)
+    expect(alert).toHaveBeenCalledWith(locale === 'zh' ? 'W2 · D3（周四 10/29）还没有动作：先填动作或删除这天，再更新' : 'W2 · D3 (Thu Oct 29) has no exercises: add exercises or delete this day before updating')
+    expect(onSave).not.toHaveBeenCalled()
+    expect(onPublish).not.toHaveBeenCalled()
+    const chip = [...host.querySelectorAll('button')].find(button => button.textContent === (locale === 'zh' ? '! 2 处待核对' : '! 2 to review'))!
+    expect(chip).toBeTruthy()
+    click(chip)
+    expect(host.querySelector('.daygrid')?.closest('[data-block-week]')?.getAttribute('data-block-week')).toBe('2')
+    click(chip)
+    expect(host.querySelector('.daygrid')?.closest('[data-block-week]')?.getAttribute('data-block-week')).toBe('3')
+    if (!published) {
+      await act(async () => { await vi.advanceTimersByTimeAsync(4000) })
+      expect(onSave).toHaveBeenCalledTimes(1)
+      expect(onSave.mock.calls[0][0][1].days[3]).toMatchObject({ rest: false, rows: [] })
+    }
+  } finally { vi.useRealTimers() }
+})
+
+it.each(['Delete', 'menu'])('passes only explicitly deleted server IDs to saving, with undo/redo (%s)', async gesture => {
+  vi.useFakeTimers()
+  try {
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    const weeks = fixture()
+    weeks[1].days[3] = { ...weeks[1].days[3], rest: false, serverDayId: 'empty-server' }
+    const onSave = vi.fn(async (weeks: Week[], _start?: string | null, _past?: boolean, _progress?: unknown, _deleted?: readonly string[]) => ({ changedDays: 1, skippedRows: 0, degradedRows: 0, weeks: structuredClone(weeks) }))
+    act(() => root.render(<PlanEditor initialWeeks={weeks} weeksCount={4} studentName="学员" planName="计划" planStartDate="2026-10-19" onSave={onSave} />))
+    const empty = host.querySelector('[data-block-week="2"][data-dow="3"]')!
+    if (gesture === 'Delete') { click(empty); await key('Delete') }
+    else {
+      act(() => empty.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true })))
+      click([...host.querySelectorAll('[role="menuitem"]')].find(button => button.textContent === '删除这天')!)
+    }
+    await key('z', true)
+    await act(async () => { await vi.advanceTimersByTimeAsync(4000) })
+    expect(onSave.mock.calls[0][4]).toEqual([])
+    await act(async () => { window.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', metaKey: true, shiftKey: true, bubbles: true })) })
+    await act(async () => { await vi.advanceTimersByTimeAsync(4000) })
+    expect(onSave.mock.calls[1][4]).toEqual(['empty-server'])
+  } finally { vi.useRealTimers() }
+})
+
+it('keeps explicit deletion intent through save, undo/save with a new server ID, and redo/save', async () => {
+  vi.useFakeTimers()
+  try {
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    const weeks = fixture()
+    weeks[1].days[3] = { ...weeks[1].days[3], rest: false, serverDayId: 'empty-server' }
+    const onSave = vi.fn(async (weeks: Week[], _start?: string | null, _past?: boolean, _progress?: unknown, _deleted?: readonly string[]) => {
+      const saved = structuredClone(weeks)
+      saved[1].days[3].serverDayId = saved[1].days[3].rest ? null : `restored-empty-${onSave.mock.calls.length}`
+      return { changedDays: 1, skippedRows: 0, degradedRows: 0, weeks: saved }
+    })
+    act(() => root.render(<PlanEditor initialWeeks={weeks} weeksCount={4} studentName="学员" planName="计划" planStartDate="2026-10-19" onSave={onSave} />))
+    click(host.querySelector('[data-block-week="2"][data-dow="3"]')!)
+    await key('Delete')
+    await act(async () => { await vi.advanceTimersByTimeAsync(4000) })
+    expect(onSave.mock.calls[0][4]).toEqual(['empty-server'])
+    for (let cycle = 0; cycle < 2; cycle++) {
+      await key('z', true)
+      await act(async () => { await vi.advanceTimersByTimeAsync(4000) })
+      expect(onSave.mock.calls[cycle * 2 + 1][4]).toEqual([])
+      await act(async () => { window.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', metaKey: true, shiftKey: true, bubbles: true })) })
+      await act(async () => { await vi.advanceTimersByTimeAsync(4000) })
+      expect(onSave.mock.calls[cycle * 2 + 2][4]).toEqual([`restored-empty-${cycle * 2 + 2}`])
+    }
+  } finally { vi.useRealTimers() }
+})
+
+it('binds a new server ID to an explicit deletion made while the empty-day autosave is in flight', async () => {
+  vi.useFakeTimers()
+  try {
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    let finish!: (value: { changedDays: number; skippedRows: number; degradedRows: number; weeks: Week[] }) => void
+    const onSave = vi.fn(async (weeks: Week[], _start?: string | null, _past?: boolean, _progress?: unknown, _deleted?: readonly string[]) => {
+      if (onSave.mock.calls.length === 1) return new Promise<{ changedDays: number; skippedRows: number; degradedRows: number; weeks: Week[] }>(resolve => { finish = resolve })
+      return { changedDays: 1, skippedRows: 0, degradedRows: 0, weeks: structuredClone(weeks) }
+    })
+    act(() => root.render(<PlanEditor initialWeeks={fixture()} weeksCount={4} studentName="学员" planName="计划" planStartDate="2026-10-19" onSave={onSave} />))
+    click(host.querySelector('[data-insert-week="2"][data-insert-before="2"] button')!)
+    click(host.querySelector('[data-insert-date="2026-10-29"]')!)
+    await act(async () => { await vi.advanceTimersByTimeAsync(1600) })
+    expect(onSave).toHaveBeenCalledTimes(1)
+    await key('Delete')
+    const saved = structuredClone(onSave.mock.calls[0][0])
+    saved[1].days[3].serverDayId = 'new-empty-id'
+    await act(async () => { finish({ changedDays: 1, skippedRows: 0, degradedRows: 0, weeks: saved }); await vi.advanceTimersByTimeAsync(4000) })
+    expect(onSave.mock.calls[1][4]).toEqual(['new-empty-id'])
+    expect(host.querySelector('[data-block-week="2"][data-dow="3"]')).toBeNull()
+  } finally { vi.useRealTimers() }
+})
+
+it.each(['replacement-empty', 'old-empty'])('does not transfer an old Delete action to a newly inserted empty day at the same date (%s)', async savedId => {
+  vi.useFakeTimers()
+  try {
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    const weeks = fixture()
+    weeks[1].days[3] = { ...weeks[1].days[3], rest: false, serverDayId: 'old-empty' }
+    const onSave = vi.fn(async (weeks: Week[], _start?: string | null, _past?: boolean, _progress?: unknown, _deleted?: readonly string[]) => {
+      const saved = structuredClone(weeks)
+      if (!saved[1].days[3].rest) saved[1].days[3].serverDayId = savedId
+      return { changedDays: 1, skippedRows: 0, degradedRows: 0, weeks: saved }
+    })
+    act(() => root.render(<PlanEditor initialWeeks={weeks} weeksCount={4} studentName="学员" planName="计划" planStartDate="2026-10-19" onSave={onSave} />))
+    click(host.querySelector('[data-block-week="2"][data-dow="3"]')!)
+    await key('Delete')
+    click(host.querySelector('[data-insert-week="2"][data-insert-before="2"] button')!)
+    click(host.querySelector('[data-insert-date="2026-10-29"]')!)
+    await act(async () => { await vi.advanceTimersByTimeAsync(4000) })
+    click(host.querySelector('[data-block-week="2"][data-dow="3"] [data-day-calendar-label]')!)
+    const date = host.querySelector<HTMLInputElement>('.is-editing input[type="date"]')!
+    act(() => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(date, '2026-10-27'); date.dispatchEvent(new Event('input', { bubbles: true })) })
+    await act(async () => { await vi.advanceTimersByTimeAsync(4000) })
+    expect(onSave.mock.calls[1][4]).not.toContain(savedId)
+  } finally { vi.useRealTimers() }
 })

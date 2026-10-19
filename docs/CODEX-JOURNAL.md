@@ -692,3 +692,115 @@ GREEN: Test Files 1 passed (1); Tests 20 passed (20); exit 0
 - `git diff --check`：exit 0。
 
 验收边界：本轮 jsdom 验证 DOM、交互和真实 CSS 规则，不提供浏览器几何布局证据。1440px 宽、历史栏展开时 10 组全部可见且逐框可点可输，按 CARD-D 交 Claude 在沙箱外浏览器亲验；本轮不声明该浏览器验收已通过。
+
+## 2026-10-19 · SPEC 012：插入 / 删除训练日
+
+基线 `feat/012-insert-delete-day` / `0be8622`；全程工作目录 `/Users/david/Projects/apps/meetpr-plan-web-wt-011`。第一项操作是在该目录创建并删除临时文件，exit 0；随后完整读取 CONTEXT、CLAUDE、CARD、SPEC 012，以及 SPEC 011 §1/§4/§5。SPEC 012 是本轮唯一验收口径。
+
+### 改动文件
+
+- `src/features/plan-editor/blockGridModel.ts`：每周按实际日期编号；枚举本周空日期、插入和受锁保护的删除；区分规律列与额外列，保留 011 旧计划落列、日期编辑、填充规则。
+- `src/features/plan-editor/components/BlockGrid.tsx`、`components/DayColumn.tsx`、`components/block-grid.css`、`PlanEditor.tsx`：星期列头、卡片与编辑头 Dx、缝隙/首尾插入入口、确认删除/撤销、打卡锁、额外列空白与自动收起。
+- `src/features/workspace/blockPlanSettings.ts`：沿用本地展示配置，另存额外星期，避免重开把单周插入变成规律。
+- 新增 `src/features/plan-editor/saveBlockPlan.ts`，并接入 `src/features/workspace/PlanWorkspace.tsx`：先执行真实 reconcile，再用现有 batch API 保存显式纯空日；带版本条件、分批写入、使用回包同步日程。普通无空日保存不增加 GET。`reconcile.ts` 未改。
+- `src/features/plan-editor/mapping.ts`、`draftMirror.ts`、`PlanEditor.tsx`：使用已有 rest 字段区分正式空日与休息槽位，保存/恢复空日结构；快照字段与 v3 版本不变，兼容旧 v3 哈希与已有空日身份，恢复时保留服务端打卡锁。
+- `src/i18n/strings-editor.ts`：中英文插入、仅部分周出现、删除确认与锁定提示。
+- 测试：`blockGridModel.test.ts`、`block-grid-ui.test.tsx`、`block-date-save.test.ts`、`draftMirror-ui.test.tsx`、`draftMirror.test.ts`；`block-history-ui.test.tsx` 迁移 Dx 显示位置断言；`locked-ui.test.tsx` 将原单日 Delete 清空断言改为右键 Clear day，保留原打卡行保护断言。
+- `docs/CODEX-JOURNAL.md`：本段。没有修改持久化数据结构、后端、锁文件，也没有 commit / push / PR。
+
+### 实际红 → 绿
+
+以下命令均先实际观察失败，再实现对应行为；数字来自本轮工具输出，非推算。路径均以 `src/features/plan-editor/` 为前缀。
+
+| 命令 | RED | GREEN |
+|---|---|---|
+| `npx vitest run src/features/plan-editor/blockGridModel.test.ts`：每周 Dx | 1 failed / 8 passed | 9 passed |
+| 同命令：插入 / 删除 | 分别 1 failed / 9 passed、1 failed / 10 passed | 分别 10、11 passed |
+| 同命令：额外列填充、空日碰撞与规律调整、重载推导 | 分别 1 failed / 11、12、13 passed | 分别 12、13、14 passed |
+| `npx vitest run src/features/plan-editor/block-grid-ui.test.tsx`：列头与卡片、插入、删除锁 | 分别 1 failed / 20 passed、1 failed / 21 passed、2 failed / 22 passed | 分别 21、22、24 passed |
+| 同命令：已发布纯空日未推送状态 | 1 failed / 28 passed | 29 passed |
+| `npx vitest run src/features/plan-editor/block-date-save.test.ts`：纯空日真实保存边界 | 2 failed / 4 passed（预期 batch 请求 1，实际 0） | 6 passed |
+| 同命令：普通日期移动不创建幽灵空日、已存空日移动不残留源日 | 分别 2 failed / 6 passed、2 failed / 8 passed | 分别 8、10 passed |
+| `npx vitest run src/features/plan-editor/draftMirror-ui.test.tsx`：实际 planId 下纯空日增删的本地/远端快照与重开恢复 | 2 failed / 33 passed | 35 passed |
+| 同命令：旧快照空日兼容、移走源日快照 | 2 failed / 35 passed | 37 passed |
+
+额外的草稿自动保存测试首次 1 failed / 29 passed，定位为测试回调原样返回同一 weeks 引用，与真实 reconcile 回包不同；改为克隆回包后 30 passed，未因此修改生产逻辑。该项不计作生产修复的红绿证据。
+
+### SPEC 验收清单与测试 seam 对照
+
+1. `blockGridModel` / `block-grid-ui`：按周日期顺序编号、星期列头、卡片与编辑头同步。
+2. 同上：W2 周三与周五之间插周四，W2 D1–D5、其余周编号和内容不变，额外列空白。
+3. 同上：空日期枚举、相邻无空日隐藏入口、首尾入口、只读隐藏；已有列复用。
+4. 同上及 `locked-ui`：Delete 和右键删除、确认取消/执行、撤销、打卡锁与提示。
+5. 既有积木选区 Delete 回归保留；右键 Clear day 保留内容清空语义。
+6. 模型与组件覆盖删除最后一个额外日后收列、规律列保留。
+7. `block-grid-ui` / `block-date-save` / `draftMirror-ui`：草稿自动保存；已发布插入（含纯空日）/删除仅在 Update plan 后保存并重开；不编辑不保存；真实 reconcile + 内存 API 边界验证请求和回读，无孤儿日。存量 011 夹具全绿。
+8. 中英文文案与下列三项检查。
+
+### 审查与最终验证
+
+独立只读 Standards / Spec 审查基线 `0be8622`。审查发现的保存后幽灵空日、纯空日快照与重载缺口已补测试修复；Standards 最后指出的恢复回调 `studentAddedByDay` 依赖已补齐。Spec 复核无剩余明确缺口。两轴审查不替代 Opus 浏览器验收。
+
+- `npm test`：exit 0，**98 files / 967 passed**，8.87s；日志 `/tmp/meetpr-012-test-final.log`。
+- `npx tsc --noEmit`：exit 0，无诊断；日志 `/tmp/meetpr-012-tsc-final.log`。
+- `npm run build`：exit 0，Vite 2.55s；保留已有 >500 kB chunk 提示；日志 `/tmp/meetpr-012-build-final.log`。
+- `git diff --check`：exit 0。
+
+### 不确定处与验收边界
+
+未发现已知 SPEC 偏离。SPEC 写的是选中整张日卡删除；多日选区 Delete 按 011 保留原清空行为，单日 Delete 使用新删除行为。为满足空日插入，保存适配器调用现有 batch API，未更改 reconcile 本身或接口结构；测试使用真实 reconcile 和 mock 服务端状态，不是线上部署证据。浏览器亲验按 CARD 由 Claude 在沙箱外完成，本轮未执行、不宣称通过。
+
+## 2026-10-19 · SPEC 012 第 1 轮返修：空日交付门禁与显式删除
+
+继续在 `feat/012-insert-delete-day` / `0be8622` 未提交工作树实施。重读 Claude 更新的 SPEC §4 两条；本段取代上轮“已发布纯空日可更新”的行为说明。用户已报告上一轮 967 测试及 1440×900 浏览器部分验收通过；本轮不把该证据视为新增返修的浏览器验收。
+
+### 本轮改动文件
+
+- `src/features/plan-editor/PlanEditor.tsx`：首次发布与更新前拦空日，按周 Dx/日期给出中英文提示，空日计入待核对并逐个定位；草稿保存不拦。记录 Delete / 删除这天产生的 ID，随撤销/重做保存动作历史；保存途中删除的新日待回包后绑定 ID。运行时身份随保存克隆延续，避免把旧日删除记录转移给同槽替代日；插入/填充替代后当前删除意图失效，Undo 仍可恢复旧动作。
+- `src/features/plan-editor/saveBlockPlan.ts`：空日的已发布写入在请求前拒绝；调用方仍为草稿时另核实服务端最新状态。删除空日仅接受 `deletedDayIds` 白名单，不再从页面缺席推断。保留的服务端空日回包恢复 `rest:false`，仍参与待核对及门禁。
+- 新增 `src/features/plan-editor/dayDeletionIntent.ts`：本地编辑元数据按 planId/快照 hash 保存明确 ID；不改计划树、DayCol 或远端 v3 快照结构。丢弃、已覆盖、回到无候选基线时清理；运行时 token 不序列化。
+- `src/features/workspace/PlanWorkspace.tsx`：把显式删除 ID 传给保存适配层。
+- `src/i18n/strings-editor.ts`：空日门禁与待核对提示，中英文齐全。
+- `src/features/plan-editor/block-grid-ui.test.tsx`：发布/更新零请求、逐个定位、草稿自动保存、显式删除及多轮撤销重做、保存竞态、替代日身份，中英文断言。
+- `src/features/plan-editor/block-date-save.test.ts`：真实 reconcile 边界的隐藏空日保留、白名单删除、空日发布阻断、远端已发布竞争与空日回包。
+- `src/features/plan-editor/draftMirror-ui.test.tsx`：同机恢复后继续更新会携带明确删除 ID；没有匹配记录或已丢弃记录时保留服务端空日。
+- `docs/CODEX-JOURNAL.md`：本段。SPEC.md 的变更来自用户，本轮未改该文件。
+
+### 实际红 → 绿
+
+所有 RED 都在对应实现之前实际执行；以下前缀均为 `npx vitest run src/features/plan-editor/`，每次使用同一测试文件复跑。
+
+| 测试文件 / 行为 | RED | GREEN |
+|---|---|---|
+| `block-grid-ui.test.tsx` 发布/更新拦空日及芯片 | 2 failed / 29 passed | 31 passed |
+| `block-date-save.test.ts` 页面未展示的服务端空日保留 | 1 failed / 10 passed | 11 passed |
+| `block-grid-ui.test.tsx` Delete/右键白名单与Undo/Redo | 2 failed / 31 passed | 33 passed |
+| `block-date-save.test.ts` 保存边界已发布空日拒绝 | 1 failed / 10 passed | 11 passed |
+| `block-grid-ui.test.tsx` 保存→Undo保存新ID→Redo | 1 failed / 33 passed | 34 passed |
+| `block-date-save.test.ts` 远端发布竞争、保留源空日参与门禁 | 3 failed / 9 passed | 12 passed |
+| `block-grid-ui.test.tsx` 保存中删除尚无ID的新日 | 1 failed / 34 passed | 35 passed |
+| `draftMirror-ui.test.tsx` 恢复明确删除后继续Update | 1 failed / 36 passed | 37 passed |
+| `block-grid-ui.test.tsx` 同槽替代日不继承旧删除 | 1 failed / 35 passed | 36 passed |
+| 同文件：同ID替代、连续两轮Undo/Save/Redo | 2 failed / 37 passed | 39 passed |
+| `draftMirror-ui.test.tsx` 丢弃记录不再授权旧镜像删除 | 1 failed / 38 passed | 39 passed |
+
+原始日志：`/tmp/meetpr-012-r1-{gate,delete,intent,savegate,redo,boundary,inflight,recovery,lineage,history,discard}-{red,green}.log`。最后的 `history-green` 同时跑组件与镜像两文件，77 passed；中英文和无本机证据的补充断言包含在最终全量内。新 SPEC 明确替换的旧“已发布可保存空日”断言已改为阻断；011 非空日日期移动、reconcile 及其受保护测试未改。
+
+### 独立审查与最终命令
+
+Standards：定向审查发现的服务端发布状态竞争、保存中无 ID 删除、身份误回绑及多轮恢复问题均补红绿修复，复审无剩余问题；最后确认本地删除记录清理不会覆盖待恢复候选。
+
+Spec：更新后的 §4 门禁/白名单、空日回包和恢复闭环均已定向复核；同槽新/旧 ID 替代问题已关闭。两轴均为代码自审，不代替 Claude 浏览器收货。
+
+- `npm test`：exit 0，**98 files / 980 passed**，9.36s；`/tmp/meetpr-012-r1-test-final.log`。
+- `npx tsc --noEmit`：exit 0，无诊断；`/tmp/meetpr-012-r1-tsc-final.log`。
+- `npm run build`：exit 0，Vite 2.93s；已有 >500 kB chunk 提示仍在；`/tmp/meetpr-012-r1-build-final.log`。
+- `git diff --check`：exit 0。
+
+未改 reconcile、后端、计划数据结构、锁文件；未 commit / push / 开 PR。
+
+### 按新增条款字面执行的边界
+
+1. 纯空日改日期/规律时，不再推断删除服务端源空日：目标空日可保存，源空日保留并进入待核对；要移除源日需明确 Delete。该行为是“只允许 Delete / 删除这天产生删除 ID”的字面执行。011 的非空处方移动仍使用原 reconcile 路径，全量回归通过。
+2. 明确删除记录只存本机编辑元数据，不新增远端快照字段。跨设备恢复、存储失败或缺少匹配 hash 时，服务端空日保留，教练需再次明确删除；不会把镜像里缺席当作删除授权。同机记录匹配的删除恢复可继续更新。
+3. 本轮新增交互仅有组件证据，真实浏览器复验仍交 Claude；未写线上数据。

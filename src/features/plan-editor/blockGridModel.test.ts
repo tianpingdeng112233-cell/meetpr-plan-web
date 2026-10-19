@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { changeBlockPattern, buildBlockGrid, fillBlockDays, pasteBlockRows, changeBlockWeekday, changeBlockDate } from './blockGridModel'
+import { insertBlockDay, blockInsertDates, deleteBlockDay, changeBlockPattern, buildBlockGrid, fillBlockDays, pasteBlockRows, changeBlockWeekday, changeBlockDate } from './blockGridModel'
 import { relabelWeeksForStartDate } from './mapping'
 import type { ExerciseRow, Week } from './types'
 
@@ -99,4 +99,82 @@ it('preserves a single-day exception when another Dx weekday changes', () => {
   expect(result[0].days[3].rows[0]?.id).toBe('w1-3')
   expect(result[0].days[2].rows).toHaveLength(0)
   expect(result[0].days[6].rows[0]?.id).toBe('w1-4')
+})
+
+
+it('numbers each week by its dates rather than its weekday column, including shifted dates', () => {
+  const weeks = fixture([[0, 2, 4, 5], [0, 4, 5]])
+  weeks[0].days[0].shiftedToDate = '2026-10-22'
+  const grid = buildBlockGrid(weeks, '2026-10-19', [0, 2, 4, 5])
+  expect(grid.rows[1].cells.filter(cell => cell.day).map(cell => cell.dayNumber)).toEqual([1, 2, 3])
+  expect(grid.rows[0].cells.find(cell => cell.day?.dow === 0)?.dayNumber).toBe(2)
+})
+
+
+it('inserts an empty day only in W2 and adds a weekday column without changing its pattern', () => {
+  const weeks = fixture([[0,2,4,5], [0,2,4,5], [0,2,4,5], [0,2,4,5]])
+  expect(blockInsertDates(weeks[1], '2026-10-19', 2, 4)).toEqual(['2026-10-29'])
+  expect(blockInsertDates(weeks[1], '2026-10-19', 4, 5)).toEqual([])
+  expect(blockInsertDates(weeks[1], '2026-10-19', null, 0)).toEqual([])
+  expect(blockInsertDates(weeks[1], '2026-10-19', 5, null)).toEqual(['2026-11-01'])
+  const next = insertBlockDay(weeks, 2, '2026-10-29', '2026-10-19')
+  expect(next[0]).toBe(weeks[0]); expect(next[2]).toBe(weeks[2]); expect(next[3]).toBe(weeks[3])
+  expect(next[1].days[3]).toMatchObject({ rest: false, rows: [], dateLabel: '10/29' })
+  const grid = buildBlockGrid(next, '2026-10-19', [0,2,4,5], [3])
+  expect(grid.columns.map(c => c.weekday)).toEqual([0,2,3,4,5])
+  expect(grid.rows.map(r => r.cells[2].day?.dow ?? null)).toEqual([null,3,null,null])
+  expect(grid.rows[1].cells.map(c => c.dayNumber)).toEqual([1,2,3,4,5])
+  expect(grid.rows[0].cells.map(c => c.dayNumber)).toEqual([1,2,null,3,4])
+  expect(insertBlockDay(next, 2, '2026-10-29', '2026-10-19')).toBe(next)
+  expect(insertBlockDay(next, 2, '2026-11-02', '2026-10-19')).toBe(next)
+})
+
+
+it('deletes unlocked days, collapses empty extra columns, retains pattern slots, and rejects logged days', () => {
+  let weeks = fixture([[0,2,4,5], [0,2,4,5]])
+  weeks = insertBlockDay(weeks, 2, '2026-10-29', '2026-10-19')
+  weeks[1].days[3].rows = [row('extra')]
+  let next = deleteBlockDay(weeks, 2, 3)
+  expect(next[1].days[3]).toMatchObject({ rest: true, rows: [] })
+  expect(buildBlockGrid(next, '2026-10-19', [0,2,4,5], [3]).columns.map(c => c.weekday)).toEqual([0,2,4,5])
+  next = deleteBlockDay(next, 2, 4)
+  next = deleteBlockDay(next, 1, 4)
+  const grid = buildBlockGrid(next, '2026-10-19', [0,2,4,5], [3])
+  expect(grid.columns.map(c => c.weekday)).toEqual([0,2,4,5])
+  expect(grid.rows.map(r => r.cells[2].day)).toEqual([null,null])
+  expect(grid.rows[1].cells[3].dayNumber).toBe(3)
+  weeks[0].days[0].rows[0].hasLogs = true
+  expect(deleteBlockDay(weeks, 1, 0)).toBe(weeks)
+  weeks[0].days[2].completedAt = '2026-10-21'
+  expect(deleteBlockDay(weeks, 1, 2)).toBe(weeks)
+})
+
+it('fills an inserted column into blank weeks and edits its date without touching the adjacent pattern day', () => {
+  let weeks = fixture([[0,2,4,5], [0,2,4,5], [0,2,4,5]])
+  weeks = insertBlockDay(weeks, 1, '2026-10-22', '2026-10-19')
+  weeks[0].days[3].rows = [row('extra')]
+  const filled = fillBlockDays(weeks, {weekNumber: 1, dx: 2}, 3, '2026-10-19', [0,2,4,5], [3])
+  expect(filled[1].days[3].rows.map(r => r.name)).toEqual(['extra'])
+  expect(filled[1].days[4].rows.map(r => r.name)).toEqual(['w2-4'])
+  const moved = changeBlockDate(filled, {weekNumber: 2, dx: 2}, '2026-11-01', '2026-10-19', [0,2,4,5], [3])
+  expect(moved[1].days[6].rows.map(r => r.name)).toEqual(['extra'])
+  expect(moved[1].days[4].rows.map(r => r.name)).toEqual(['w2-4'])
+})
+
+it('reserves an inserted empty date against single-day and whole-pattern edits', () => {
+  const weeks = insertBlockDay(fixture([[0,2,4,5]]), 1, '2026-10-22', '2026-10-19')
+  expect(changeBlockDate(weeks, { weekNumber: 1, dx: 1 }, '2026-10-22', '2026-10-19', [0,2,4,5], [3])).toBe(weeks)
+  expect(changeBlockPattern(weeks, [0,3,4,5], '2026-10-19', [0,2,4,5], [3])).toBeNull()
+  const changed = changeBlockPattern(weeks, [0,2,4,6], '2026-10-19', [0,2,4,5], [3])!
+  expect(changed).not.toBeNull()
+  expect(changed[0].days[3]).toMatchObject({ rest: false, rows: [] })
+  expect(changed[0].days[6].rows[0].name).toBe('w1-5')
+})
+
+it('reconstructs the extra Thursday column on a fresh load without local view metadata', () => {
+  const weeks = fixture([[0,2,4,5], [0,2,3,4,5], [0,2,4,5], [0,2,4,5]])
+  const grid = buildBlockGrid(weeks, '2026-10-19')
+  expect(grid.columns.map(c => c.weekday)).toEqual([0,2,3,4,5])
+  expect(grid.columns[2].patternIndex).toBeNull()
+  expect(grid.rows.map(r => r.cells[2].day?.dow ?? null)).toEqual([null,3,null,null])
 })
