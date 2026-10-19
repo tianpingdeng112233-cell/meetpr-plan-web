@@ -332,10 +332,10 @@ it('shows only weekdays in column headers and date-ordered Dx on every card and 
 })
 
 it.each([
-  [[2, 3, 5, 8], '周四 · 只在 W2、W3、W5 等 4 周'],
-  [[2, 3, 5], '周四 · 只在 W2、W3、W5'],
+  [[2, 3, 5, 8], '周四'],
+  [[2, 3, 5], '周四'],
   [[2, 3, 5, 8, 10, 12], '周四'],
-] as const)('labels only rare extra columns in a legacy 12-week plan (%s)', (extraWeeks, thursday) => {
+] as const)('shows only weekdays for extra columns in a legacy 12-week plan (%s)', (extraWeeks, thursday) => {
   const weeks = hotfixFixture([...extraWeeks])
   act(() => root.render(<PlanEditor initialWeeks={weeks} weeksCount={12} studentName="学员" planName="01-12" planStartDate="2026-01-12" />))
   expect([...host.querySelectorAll('.block-column button')].map(el => el.textContent))
@@ -368,11 +368,11 @@ it('keeps a data-inferred regular column plain even when fewer than half the wee
     .toEqual(['周一', '周三', '周五', '周六'])
 })
 
-it('caps the rare-week list in English and keeps the full displayed label on hover', () => {
+it('shows only the weekday in English extra-column headers and hover titles', () => {
   setLocale('en')
   act(() => root.render(<PlanEditor initialWeeks={hotfixFixture()} weeksCount={12} studentName="Student" planName="01-12" planStartDate="2026-01-12" />))
   const button = host.querySelectorAll<HTMLButtonElement>('.block-column button')[2]
-  expect(button.textContent).toBe('Thu · Only in W2, W3, W5 (4 weeks total)')
+  expect(button.textContent).toBe('Thu')
   expect(button.title).toBe(button.textContent)
 })
 
@@ -422,7 +422,7 @@ it('inserts Thursday from the W2 gap, opens its empty editor, and keeps other we
   const choices = [...host.querySelectorAll('[role="menuitem"][data-insert-date]')]
   expect(choices.map(el => el.getAttribute('data-insert-date'))).toEqual(['2026-10-29'])
   click(choices[0])
-  expect(host.querySelectorAll('.block-column')[2].textContent).toBe('周四 · 只在 W2')
+  expect(host.querySelectorAll('.block-column')[2].textContent).toBe('周四')
   expect(cell(2,2).classList.contains('is-editing')).toBe(true)
   expect(cell(2,2).querySelector('.block-edit-head')?.textContent).toContain('W2 · D3 · 周四 10/29')
   expect(cell(2,2).querySelectorAll('.exrow')).toHaveLength(0)
@@ -628,13 +628,40 @@ it('shows gap and empty-cell plus signs without hover, but hides both in read-on
   } finally { style.remove() }
 })
 
-it('labels insertion, limited columns, delete confirmation and locked deletion in English', async () => {
+it('centers SVG plus signs in insertion buttons and empty cells', () => {
+  const style = document.createElement('style')
+  style.textContent = readFileSync('src/features/plan-editor/components/block-grid.css', 'utf8')
+  document.head.append(style)
+  try {
+    const weeks = fixture()
+    Object.assign(weeks[1].days[0], { rest: true, rows: [] })
+    act(() => root.render(<PlanEditor initialWeeks={weeks} weeksCount={4} studentName="学员" planName="计划" planStartDate="2026-10-19" />))
+    const button = host.querySelector<HTMLElement>('.block-insert-gap > button')!
+    const empty = cell(2,0).querySelector<HTMLElement>('.block-empty')!
+    for (const [plus, size] of [[button, '10'], [empty, '23']] as const) {
+      const svg = plus.querySelector('svg')
+      expect.soft(svg).not.toBeNull()
+      expect.soft(plus.textContent).not.toContain('＋')
+      expect.soft(svg?.getAttribute('width')).toBe(size)
+      expect.soft(svg?.getAttribute('height')).toBe(size)
+      expect.soft(svg?.getAttribute('aria-hidden')).toBe('true')
+      expect.soft(svg?.getAttribute('stroke')).toBe('currentColor')
+      const css = getComputedStyle(plus)
+      expect.soft(css.display).toBe('flex')
+      expect.soft(css.alignItems).toBe('center')
+      expect.soft(css.justifyContent).toBe('center')
+      expect.soft(css.lineHeight).toBe('0')
+    }
+  } finally { style.remove() }
+})
+
+it('labels insertion, weekday columns, delete confirmation and locked deletion in English', async () => {
   setLocale('en')
   const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
   act(() => root.render(<PlanEditor initialWeeks={fixture()} weeksCount={4} studentName="Student" planName="Block" planStartDate="2026-10-19" />))
   click(host.querySelector('[data-insert-week="2"][data-insert-before="2"] [aria-label="Insert training day"]')!)
   click(host.querySelector('[data-insert-date="2026-10-29"]')!)
-  expect(host.querySelectorAll('.block-column')[2].textContent).toBe('Thu · Only in W2')
+  expect(host.querySelectorAll('.block-column')[2].textContent).toBe('Thu')
   await key('Escape')
   act(() => cell(2,2).dispatchEvent(new MouseEvent('contextmenu', { bubbles: true })))
   click([...host.querySelectorAll('[role="menuitem"]')].find(el => el.textContent === 'Delete day')!)
