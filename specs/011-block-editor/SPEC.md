@@ -1,6 +1,6 @@
 # 011 — 计划编辑器按 block 重制（周按行 × Dx 按列）
 
-- **Status**: InProgress（spec 2026-10-19「确认」，屏幕稿同日「定稿」；UI 卡 A/B 见同目录 CARD-A.md、CARD-B.md）
+- **Status**: Done（2026-10-19 #113 合并，随 backend #304 部署 staging `668552b`；UI 卡 A/B/C 见同目录）
 - **拍板**: David 2026-10-19 依据教练线下走查（飞书「教练端线下走查」）发起 /grill，三轮问完并「确认」。逐题记录：`~/Projects/scratch/plan-block-grill-20261019.md`。
 - **级别 / 节奏**: T3（主编辑器形态重制）/ P1。本仓无 CI，合并闸门 = 本地全量测试 + `tsc --noEmit` + build + Opus 浏览器亲验。
 - **后端依赖**: MeetPR-backend `specs/051-exercise-stats-filtered-history`（历史栏「组」「组×次」两级与视频 id）。新前端遇旧后端必须能降级，见 §3.4。
