@@ -1,3 +1,4 @@
+import { openBlockDay } from './blockGridTestUtils'
 import { act, useState } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -31,12 +32,6 @@ function buttonByText(container: HTMLElement, text: string): HTMLButtonElement {
   const button = [...container.querySelectorAll('button')].find((item) => item.textContent?.includes(text))
   if (!button) throw new Error(`button not found: ${text}`)
   return button
-}
-
-function elementByText(container: HTMLElement, text: string): HTMLElement {
-  const element = [...container.querySelectorAll<HTMLElement>('span')].find((item) => item.textContent?.includes(text))
-  if (!element) throw new Error(`element not found: ${text}`)
-  return element
 }
 
 function setInput(input: HTMLInputElement, value: string): void {
@@ -197,34 +192,27 @@ describe('exercise history lock UI', () => {
         row('invalid', { reps: '99', boxes: [{ val: '', empty: true }] }),
       ])]} weeksCount={1} studentName="学员" planName="计划" />,
     ))
+    openBlockDay(host)
 
     const issueButton = buttonByText(host, '待核对')
     expect(issueButton.title).toContain('值无效')
     expect(issueButton.title).toContain('次数需 1–50')
     act(() => issueButton.dispatchEvent(new MouseEvent('click', { bubbles: true })))
-    await act(async () => { await vi.advanceTimersByTimeAsync(60) })
+    await act(async () => { await vi.advanceTimersByTimeAsync(100) })
     expect(document.activeElement).toBe(host.querySelector('[data-guard-field="reps"]'))
   })
 
-  it('disables copy on a mixed day and clear-day removes only unlocked rows', () => {
+  it('clears a mixed day with Delete while retaining logged rows', () => {
     const locked = row('locked', { serverRowId: 'pe-lock', serverSortOrder: 0, hasLogs: true })
     const editable = row('editable', { serverRowId: 'pe-edit', serverSortOrder: 1 })
     act(() => root?.render(
       <PlanEditor initialWeeks={[week(1, [row('source')]), week(2, [locked, editable])]}
         weeksCount={2} studentName="学员" planName="计划" />,
     ))
-    const targetDay = host.querySelector<HTMLElement>('.weekband[data-wnum="2"] .day[data-dow="0"]')!
-    act(() => targetDay.dispatchEvent(new MouseEvent('click', { bubbles: true })))
-
-    const copy = elementByText(host, '复制上周计划到本周')
-    expect(copy.className).toContain('disabled')
-    expect(copy.title).toContain('已打卡')
-    expect(host.textContent).not.toContain('设为休息')
-
-    act(() => {
-      copy.dispatchEvent(new MouseEvent('click', { bubbles: true }))
-      elementByText(host, '清空本日').dispatchEvent(new MouseEvent('click', { bubbles: true }))
-    })
+    openBlockDay(host)
+    openBlockDay(host, 2, 0)
+    expect(host.textContent).not.toContain('复制上周计划到本周')
+    act(() => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Delete', bubbles: true })))
     const remaining = host.querySelectorAll('.weekband[data-wnum="2"] [data-rowid]')
     expect(remaining).toHaveLength(1)
     expect((remaining[0] as HTMLElement).dataset.rowid).toBe('locked')
@@ -236,6 +224,7 @@ describe('exercise history lock UI', () => {
       <PlanEditor initialWeeks={[week(1, [row('locked', { hasLogs: true })])]} weeksCount={1}
         studentName="学员" planName="计划" planStartDate="2026-01-01" />,
     ))
+    openBlockDay(host)
 
     const shift = [...host.querySelectorAll('button')].find((button) => button.textContent?.includes('起始'))
     if (!shift) throw new Error('start-date button not found')
@@ -266,6 +255,7 @@ describe('exercise history lock UI', () => {
       <PlanEditor initialWeeks={[week(1, [editable, locked])]} weeksCount={1}
         studentName="学员" planName="计划" />,
     ))
+    openBlockDay(host)
     const day = host.querySelector<HTMLElement>('.weekband[data-wnum="1"] .day[data-dow="0"]')!
     act(() => day.dispatchEvent(new MouseEvent('click', { bubbles: true })))
     const remove = day.querySelector<HTMLElement>('[data-rowid="editable"] .rowdel')!
@@ -287,6 +277,7 @@ describe('exercise history lock UI', () => {
       <PlanEditor initialWeeks={[week(1, [row('editable')])]} weeksCount={1}
         studentName="学员" planName="已发布计划" initialPublished onSave={onSave} />,
     ))
+    openBlockDay(host)
     const note = host.querySelector<HTMLInputElement>('[data-c="note"] input')!
     act(() => setInput(note, '本地修改'))
     await act(async () => { await vi.advanceTimersByTimeAsync(2_000) })
@@ -316,6 +307,7 @@ describe('exercise history lock UI', () => {
       ])]} weeksCount={1}
         studentName="学员" planName="已发布计划" initialPublished onSave={onSave} />,
     ))
+    openBlockDay(host)
     await act(async () => {
       buttonByText(host, '更新计划').dispatchEvent(new MouseEvent('click', { bubbles: true }))
       await Promise.resolve()
@@ -330,6 +322,7 @@ describe('exercise history lock UI', () => {
       <PlanEditor initialWeeks={[week(1, [])]} weeksCount={1} studentName="学员" planName="已发布计划"
         initialPublished planStartDate="2026-01-01" exerciseIndex={new ExerciseIndex([])} />,
     ))
+    openBlockDay(host)
     const input = host.querySelector<HTMLInputElement>('input[type="file"]')!
     Object.defineProperty(input, 'files', { value: [new File(['x'], 'plan.xlsx')], configurable: true })
     await act(async () => input.dispatchEvent(new Event('change', { bubbles: true })))
@@ -348,6 +341,7 @@ describe('exercise history lock UI', () => {
       <PlanEditor initialWeeks={[week(1, [row('editable', { serverRowId: 'pe', serverSortOrder: 0 })])]}
         weeksCount={1} studentName="学员" planName="已发布计划" initialPublished onSave={onSave} />,
     ))
+    openBlockDay(host)
     const note = host.querySelector<HTMLInputElement>('[data-c="note"] input')!
     act(() => setInput(note, '竞态中的本地修改'))
     await act(async () => {

@@ -1,3 +1,4 @@
+import { openBlockDay } from './blockGridTestUtils'
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -39,6 +40,7 @@ function week(secondDayRows: ExerciseRow[] = []): Week {
     dow,
     dowLabel: `周${dow + 1}`,
     dateLabel: `7/${27 + dow}`,
+    serverDayId: dow === 1 ? 'empty-second-day' : null,
     rest: dow > 1 || (dow === 1 && secondDayRows.length === 0),
     rows: dow === 0 ? firstDayRows : dow === 1 ? secondDayRows : [],
   }))
@@ -64,7 +66,7 @@ function setInput(input: HTMLInputElement, value: string): void {
 }
 
 function selectedIds(host: HTMLElement): string[] {
-  return [...host.querySelectorAll<HTMLElement>('.exrow.row-sel')].map((element) => element.dataset.rowid ?? '')
+  return [...host.querySelectorAll<HTMLElement>('.row-sel[data-rowid]')].map((element) => element.dataset.rowid ?? '')
 }
 
 describe('plan editor multi-row selection UI', () => {
@@ -100,24 +102,24 @@ describe('plan editor multi-row selection UI', () => {
     act(() => root.render(
       <PlanEditor initialWeeks={[week()]} weeksCount={1} studentName="学员" planName="计划" />,
     ))
+    openBlockDay(host, 31)
 
     act(() => pointerClick(host.querySelector('[data-rowid="row-b"]')!))
-    act(() => pointerClick(host.querySelector('[data-rowid="row-d"] [data-plan-cell="name"] input')!, { metaKey: true }))
+    act(() => pointerClick(host.querySelector('[data-rowid="row-d"]')!, { metaKey: true }))
 
     expect(selectedIds(host)).toEqual(['row-b', 'row-d'])
-    expect(host.textContent).toContain('当前行 · 动作 B')
   })
 
   it('toggles rows off, moves a removed anchor to the earliest remaining row, and collapses extras on Escape', () => {
     act(() => root.render(
       <PlanEditor initialWeeks={[week()]} weeksCount={1} studentName="学员" planName="计划" />,
     ))
+    openBlockDay(host, 31)
     act(() => pointerClick(host.querySelector('[data-rowid="row-c"]')!))
     act(() => pointerClick(host.querySelector('[data-rowid="row-a"]')!, { metaKey: true }))
 
     act(() => pointerClick(host.querySelector('[data-rowid="row-c"]')!, { metaKey: true }))
     expect(selectedIds(host)).toEqual(['row-a'])
-    expect(host.textContent).toContain('当前行 · 动作 A')
 
     act(() => pointerClick(host.querySelector('[data-rowid="row-b"]')!, { ctrlKey: true }))
     expect(selectedIds(host)).toEqual(['row-a', 'row-b'])
@@ -129,11 +131,11 @@ describe('plan editor multi-row selection UI', () => {
     act(() => root.render(
       <PlanEditor initialWeeks={[week()]} weeksCount={1} studentName="学员" planName="计划" />,
     ))
+    openBlockDay(host, 31)
     act(() => pointerClick(host.querySelector('[data-rowid="row-b"]')!))
     act(() => pointerClick(host.querySelector('[data-rowid="row-d"]')!, { shiftKey: true }))
 
     expect(selectedIds(host)).toEqual(['row-b', 'row-c', 'row-d'])
-    expect(host.textContent).toContain('当前行 · 动作 B')
   })
 
   it('uses tiered display order for an interleaved Shift range and multi-row copy', async () => {
@@ -149,6 +151,7 @@ describe('plan editor multi-row selection UI', () => {
     await act(async () => {
       root.render(<PlanEditor initialWeeks={[interleaved]} weeksCount={1} studentName="学员" planName="计划" />)
     })
+    openBlockDay(host, 31)
 
     act(() => pointerClick(host.querySelector('[data-rowid="main-1"]')!))
     act(() => pointerClick(host.querySelector('[data-rowid="aux-1"]')!, { shiftKey: true }))
@@ -168,19 +171,21 @@ describe('plan editor multi-row selection UI', () => {
     act(() => root.render(
       <PlanEditor initialWeeks={[week([target])]} weeksCount={1} studentName="学员" planName="计划" />,
     ))
+    openBlockDay(host, 31)
     act(() => pointerClick(host.querySelector('[data-rowid="row-a"]')!))
     act(() => pointerClick(host.querySelector('[data-rowid="row-c"]')!, { metaKey: true }))
 
     act(() => pointerClick(host.querySelector('[data-rowid="row-target"]')!, { metaKey: true }))
 
     expect(selectedIds(host)).toEqual(['row-target'])
-    expect(host.querySelector('[data-rowid="row-target"]')?.closest('.day')?.className).toContain('sel')
+    expect(host.querySelector('[data-rowid="row-target"]')?.closest('.block-cell')?.className).toContain('is-selected')
   })
 
   it('serializes a multi-row copy in day order rather than click order', async () => {
     await act(async () => {
       root.render(<PlanEditor initialWeeks={[week()]} weeksCount={1} studentName="学员" planName="计划" />)
     })
+    openBlockDay(host, 31)
     act(() => pointerClick(host.querySelector('[data-rowid="row-c"]')!))
     act(() => pointerClick(host.querySelector('[data-rowid="row-a"]')!, { metaKey: true }))
     act(() => pointerClick(host.querySelector('[data-rowid="row-b"]')!, { metaKey: true }))
@@ -199,6 +204,7 @@ describe('plan editor multi-row selection UI', () => {
     await act(async () => {
       root.render(<PlanEditor initialWeeks={[week()]} weeksCount={1} studentName="学员" planName="计划" />)
     })
+    openBlockDay(host, 31)
     act(() => pointerClick(host.querySelector('[data-rowid="row-a"]')!))
     act(() => pointerClick(host.querySelector('[data-rowid="row-b"]')!, { metaKey: true }))
     const focusedInput = host.querySelector<HTMLInputElement>('[data-rowid="row-b"] [data-plan-cell="name"] input')!
@@ -235,6 +241,7 @@ describe('plan editor multi-row selection UI', () => {
     act(() => root.render(
       <PlanEditor initialWeeks={[data]} weeksCount={1} studentName="学员" planName="计划" />,
     ))
+    openBlockDay(host, 31)
     act(() => pointerClick(host.querySelector('[data-rowid="row-a"]')!))
     act(() => pointerClick(host.querySelector('[data-rowid="row-b"]')!, { metaKey: true }))
     const thirdIntensity = host.querySelector<HTMLInputElement>('[data-rowid="row-b"] [data-set-index="2"]')!
@@ -246,15 +253,15 @@ describe('plan editor multi-row selection UI', () => {
     act(() => setInput(setsInput, '1'))
 
     expect(host.querySelector('.plan-cell-selected')).toBeNull()
-    expect(host.querySelector('[data-cell-reference]')?.textContent).toBe('—')
+    expect(host.querySelector('[data-cell-reference]')).toBeNull()
     expect(selectedIds(host)).toEqual(['row-a', 'row-b'])
-    expect(host.textContent).toContain('当前行 · 动作 A')
   })
 
   it('pastes the whole copied selection into another day in one Command-V', async () => {
     await act(async () => {
       root.render(<PlanEditor initialWeeks={[week()]} weeksCount={1} studentName="学员" planName="计划" />)
     })
+    openBlockDay(host, 31)
     act(() => pointerClick(host.querySelector('[data-rowid="row-a"]')!))
     act(() => pointerClick(host.querySelector('[data-rowid="row-c"]')!, { metaKey: true }))
     await act(async () => {
@@ -262,7 +269,7 @@ describe('plan editor multi-row selection UI', () => {
       await Promise.resolve()
     })
 
-    act(() => pointerClick(host.querySelector('.day[data-dow="1"]')!))
+    openBlockDay(host, 31, 1)
     await act(async () => {
       window.dispatchEvent(new KeyboardEvent('keydown', { key: 'v', metaKey: true, bubbles: true }))
       await Promise.resolve()
@@ -275,12 +282,12 @@ describe('plan editor multi-row selection UI', () => {
 
     act(() => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', metaKey: true, bubbles: true })))
     expect(host.querySelectorAll('.day[data-dow="1"] .exrow')).toHaveLength(0)
-    expect(host.querySelector('.exrow.row-sel')).toBeNull()
+    expect(host.querySelector('.row-sel[data-rowid]')).toBeNull()
 
     act(() => window.dispatchEvent(new KeyboardEvent('keydown', {
       key: 'z', metaKey: true, shiftKey: true, bubbles: true,
     })))
     expect(host.querySelectorAll('.day[data-dow="1"] .exrow')).toHaveLength(2)
-    expect(host.querySelector('.exrow.row-sel')).toBeNull()
+    expect(host.querySelector('.row-sel[data-rowid]')).toBeNull()
   })
 })

@@ -365,3 +365,144 @@ David 现场要求给苹果用户增加 App Store 下载 TestFlight 的步骤。
 David 现场要求欢迎页工作台入口直接到网页登录并说明如何登录。欢迎 CTA 改为 `/coach/login`；该入口先展示已有 LoginScreen，说明使用申请邮箱和已设密码，隐藏离线示例入口。缓存会话不跳过此入口；成功登录后回 `/` 与原角色工作台。默认根路径和工作台空态未改。
 
 回归先红后绿：欢迎页→登录页（缓存教练会话仍显示登录）；补充 coach/admin 登录后路径与工作台断言。最终 93 文件 / 921 tests 通过（单 worker），生产构建通过；构建保留空 API base 与批准的 CN 安装链接。浏览器亲看登录页，截图在本机 `scratch/coach-login-mail-20261018/coach-login.png`。独立 Standards / Spec 均 0 findings。此记录是工程验证，非整轮产品验收。
+
+
+## 2026-10-19 · 011 卡 A：block 网格开发与自测（尚未收货）
+
+工作树 `/Users/david/Projects/apps/meetpr-plan-web-wt-011`，分支 `feat/011-block-editor`，基线 `dd5a2dd`。启动临时文件试写、删除成功；已完整读取 CONTEXT、CLAUDE、CARD-A 与 SPEC（含屏幕稿）。本轮未 commit、push、开 PR，未改锁文件、数据模型、快照、API 请求体或 reconcile；未做 CARD-B 的历史栏、顶栏、计划菜单或新建对话框。离线预览临时文件已删除。
+
+### 实现与文件清单
+
+主区改为周行 × Dx 列；速记与原位单格编辑、逐行备注、填充柄预览与确认、框选积木和多天、键盘复制粘贴/删除/撤销、列星期和本周单格日期接线。复用原 DayColumn 的输入、锁定、实际值、自加动作、拖拽排序与后移；原顶栏和上下文内容保持。移除周期条、周 tabs/翻页、选中条、公式栏与加周入口。新版网格覆盖旧固定行高、裁切与冻结列样式。
+
+新增文件（相对仓根）：
+
+- `src/features/plan-editor/blockGridModel.ts`
+- `src/features/plan-editor/components/BlockGrid.tsx`
+- `src/features/plan-editor/components/block-grid.css`
+- `src/features/plan-editor/blockGridModel.test.ts`
+- `src/features/plan-editor/block-grid-ui.test.tsx`
+- `src/features/plan-editor/blockGridTestUtils.ts`
+
+修改实现及记录：
+
+- `src/features/plan-editor/PlanEditor.tsx`
+- `src/features/plan-editor/components/DayColumn.tsx`
+- `src/i18n/strings-editor.ts`
+- `docs/CODEX-JOURNAL.md`
+
+迁移到新入口/手势的既有组件测试（以下均位于 `src/features/plan-editor/`）：
+
+- `actuals-ui.test.tsx`
+- `cell-selection-ui.test.tsx`
+- `context-rail-ui.test.tsx`
+- `copy-last-week.test.tsx`
+- `dayMove-ui.test.tsx`
+- `draftMirror-ui.test.tsx`
+- `exercise-picker-ui.test.tsx`
+- `leave-guard.test.tsx`
+- `locked-ui.test.tsx`
+- `multiday-selection-ui.test.tsx`
+- `multirow-selection-ui.test.tsx`
+- `pct-anchor-ui.test.tsx`
+- `plan-shift-ui.test.tsx`
+- `updateRetry.test.tsx`
+- `week-band-ui.test.tsx`
+- `week-capacity-ui.test.tsx`
+
+旧控件专属用例随页面替换而迁移/合并，不把测试总数下降说成新增测试；受保护的 `selectionModel.test.ts`、`clipboard.test.ts`、`dayMove.test.ts`、`reconcile.test.ts` 原样保留，最终分别 7、8、9、70 条通过（合计 94）。
+
+### 先红后绿与最终命令
+
+| 命令 | 实际红阶段 → 绿阶段 |
+| --- | --- |
+| `npx vitest run src/features/plan-editor/blockGridModel.test.ts` | Dx 投影：1 failed → 1 passed；复制/粘贴/改日期增量：3 failed / 1 passed → 4 passed；服务端日身份保持在原日历坐标：1 failed / 4 passed → 5 passed |
+| `npx vitest run src/features/plan-editor/block-grid-ui.test.tsx` | 初始 4×4/编辑交互：1 failed → 1 passed；清空后空位与显式列星期：2 failed / 9 passed → 11 passed；覆盖区框选：1 failed / 11 passed → 12 passed；空 Dx 展开与英文控件：2 failed / 12 passed → 14 passed |
+| `npm test` | exit 0，95 files / 904 tests，9.65s |
+| `npx tsc --noEmit` | exit 0，无诊断 |
+| `npm run build` | exit 0，Vite 2.71s；保留既有 >500 kB chunk 提示 |
+| `git diff --check` | exit 0 |
+
+红绿原始输出：`/tmp/card-a-shape-{red,green}.log`、`/tmp/card-a-marquee-{red,green}.log`、`/tmp/card-a-empty-{red,green}.log`；最终三命令分别 `/tmp/card-a-final-test.log`、`/tmp/card-a-final-tsc.log`、`/tmp/card-a-final-build.log`。初始模型红绿和身份回归已在工具输出中实跑；首次组件测试的 `localStorage.clear is not a function` 是测试夹具问题，移除无关 clear 后才取得业务断言红，不计为功能红证据，也没有修改测试基础设施。
+
+六种存量夹具为 12 周导入、已发布带打卡、学员自加、后移、练数不一、星期不规律：逐格打开核对动作名、组数、次数、重量、备注和日期，并检查打卡实际值/自加记录；输入树不变，模拟时间推进后没有保存请求。另有拖填确认和一步撤销、框选分节追加和一步撤销、中英文控件等组件回归。jsdom 只证明 DOM/交互，不证明浏览器布局。
+
+独立只读审查按 Standards / Spec 两轴执行两轮。Standards 指出的日期搬移不能携带 serverDayId 已修，并补 1 红 → 5 绿。Spec 指出的会话空位丢失、显式星期被已打卡多数覆盖、编辑覆盖区框选误选隐藏天已修；固定 58px/overflow:hidden 已局部覆盖。两轮后另补空格展开和英文下拉回归。审查未将以下约束缺口判为通过。
+
+### 与 SPEC 不一致、待裁决与未验证
+
+1. **单格日期不是完整的任意例外日期能力**：当前只允许本周 7 天内的空日历位置；目标已有训练/服务端日或跨周时不改。列星期修改也跳过已占用目标，可能只改部分周。SPEC 未明确这些限制；不能据此宣布 §5 全部完成。
+2. **后移日恢复原日期的缺口**：当目标仍是原 calendar offset，处方没有变更，现有 reconcile 的 canonical 相等分支不产生写入，后续 schedule 同步会恢复服务端后移日期。现有接口只支持整批后移/撤销最近整批，没有单日取消。遵守“不改 reconcile/请求体/模型”约束，未用伪造处方变化或删建来绕过。该项需 Opus/David 确认接口与范围，未完成。
+3. **Dx 星期规则与全空骨架只在本页会话保留**：未增加持久化字段。重新打开仍按存量日期众数推导；若多数周已打卡，显式列头星期可能回到旧值；全部训练日清空并重开后可能只剩 D1。CARD-B 新建骨架尚未接入，未擅自新增加 Dx 控件。持久化口径需与不改数据模型的约束对齐。
+4. **浏览器验收缺失**：没有亲验 1440×900 的 4×4 一屏与 8 动作展开、不裁切、历史栏展开后尺寸，不能把 CSS/DOM 断言充当该验收。`npm run dev -- --host 127.0.0.1` 被沙箱禁止监听；离线 file: 预览又被浏览器自动安全审查拒绝（仅允许 http:/https:），停止该路径，没有换 surface/协议绕过。待 Opus 按 SPEC 浏览器亲验。
+
+监听原始报错（`/tmp/card-a-vite.log`）：
+
+```text
+error when starting dev server:
+Error: listen EPERM: operation not permitted 127.0.0.1:5180
+    at Server.setupListenHandle [as _listen2] (node:net:1986:21)
+    at listenInCluster (node:net:2065:12)
+    at node:net:2274:7
+    at process.processTicksAndRejections (node:internal/process/task_queues:90:21)
+```
+
+所有 Vitest 测试均无需监听端口并成功运行，没有沙箱权限导致的测试失败。以上为开发和自测证据，卡 A 仍有列出的 SPEC 缺口及浏览器门禁，不作功能通过或可合并结论。
+
+
+## 2026-10-19 · 011 卡 A 第 1 轮收货返修
+
+本轮按 David 的 6 项定向返修要求执行，工作树仍为 `/Users/david/Projects/apps/meetpr-plan-web-wt-011`，HEAD 已核实为 `4022344`；试写并删除临时文件成功。重读 SPEC §2、§4、§5、§6 新增条目。未 commit/push/开 PR，未改锁文件、reconcile、数据模型或 4 个受保护测试，未做 CARD-B。
+
+本条覆盖上一节已经裁决的待决定项：单格日期仅本周空位、后移日不单独恢复已写入 SPEC；星期规律持久化和改周数交卡 B，本轮不再作为卡 A 待决项。David 转述 Claude 在沙箱外完成上一版 1440×900 亲验：4×4 一屏可见、W1D2 拖到 W4 确认覆盖后复制成功；这是收货方证据，不冒充本轮 Codex 浏览器验证。
+
+本轮改动文件（相对仓根，共 13 个；其他未提交文件沿用上一轮）：
+
+- `src/features/plan-editor/PlanEditor.tsx`：去掉编辑卡 headerContext 接线；恢复原 `fillSelectedIntensityDown` 与 Cmd/Ctrl+D；删除 formulaCellDraft、curWeekLabel、hasRowClipboard 空壳及死回调；日期操作共用界面星期映射。
+- `src/features/plan-editor/components/DayColumn.tsx`：日期默认显示文字，点击才挂载日期选择浮层；移除 block 编辑卡上下文；处方方式与值置于同一行容器，实际值仍保留。
+- `src/features/plan-editor/components/block-grid.css`：普通处方行约 40px、强度/重量控件同排；多组输入在格内横向滚动，实际值仍按内容撑高；日期选择浮层定位。
+- `src/features/plan-editor/components/BlockGrid.tsx`：星期标签改用已有 `DOW_LABELS`，删除锚定日期硬编码。
+- `src/features/plan-editor/blockGridModel.ts`：先占匹配星期列，再将不匹配的存量日期依序补空位；两种日期操作接收同一套 weekday 投影。
+- `src/features/plan-editor/blockGridModel.test.ts`：W4 缺周三时 D2 留空、周五仍在 D3，填充周三不覆盖周五；旧不规律夹具期望按新条目更新。
+- `src/features/plan-editor/block-grid-ui.test.tsx`：日期点击展开/选择后关闭、头部无画像、处方控件同排；连续改列后再改单格/改列不串到另一训练日。
+- `src/features/plan-editor/cell-selection-ui.test.tsx`：恢复逐组强度/重量 Cmd+D 与只读保护断言。
+- `src/features/plan-editor/context-rail-ui.test.tsx`：保留旧上下文组件的直接渲染回归，移除它必须挂在编辑卡里的旧集成假设；新编辑卡无上下文由 block-grid-ui 验证。
+- `src/features/plan-editor/dayMove-ui.test.tsx`：改单格日期先点日期文字，再操作出现的日期输入。
+- `src/features/plan-editor/week-band-ui.test.tsx`：卡头操作断言区分日期文字按钮与右侧 Esc 收起。
+- `src/features/plan-editor/block-date-save.test.ts`（新增）：真实 reconcile + API 边界保存证明，未改 reconcile 本身。
+- `docs/CODEX-JOURNAL.md`：本条开发证据。
+
+红 → 绿（均实际运行）：
+
+| 命令 | 失败数与通过数 |
+| --- | --- |
+| `npx vitest run src/features/plan-editor/blockGridModel.test.ts` | 缺周三落列：1 failed / 5 passed → 6 passed |
+| `npx vitest run src/features/plan-editor/cell-selection-ui.test.tsx` | 逐组 Cmd+D：2 failed / 6 passed → 8 passed |
+| `npx vitest run src/features/plan-editor/block-grid-ui.test.tsx` | 紧凑头部：1 failed / 14 passed；同排样式：1 failed / 15 passed；实现后该 suite 16 passed；连续改列寻址增量：2 failed / 16 passed → 18 passed |
+| `npx vitest run src/features/plan-editor/block-date-save.test.ts` | 2 passed；这是已有保存路径的补证，首次即绿，不伪称先红 |
+
+日志在 `/tmp/card-a-r1-weekday-{red,green}.log`、`/tmp/card-a-r1-cmdd-{red,green}.log`、`/tmp/card-a-r1-header-red.log`、`/tmp/card-a-r1-density-red.log`、`/tmp/card-a-r1-targeted.log`（5 files / 37 tests，包含当时 16 条 block-grid UI）、`/tmp/card-a-r1-projection-{red,green}.log`（最终相关 3 files / 25 tests）、`/tmp/card-a-r1-save.log`。过程中一次 JSX 包装闭合错误，以及 CSS raw import 被 Vitest stub/DOM URL 与 Node fs 不兼容的夹具错误，均已修正，不计为有效业务红证据；样式用例改为读取实际 CSS 后重新验证旧样式失败、修复样式通过。未修改测试基础设施或为沙箱改变测试行为。
+
+保存安全证据：以 published 服务端树和有 serverRowId 的 2 行同动作不同处方起步，分别通过 `changeBlockDate` / `changeBlockWeekday` 移到本周空日，再调用真实 `reconcilePlan`。断言只发 1 个 batch 请求，delete_day_ids 精确含旧日，upsert_days 仅含新坐标且保留两份组次/重量/备注；未移动的另一日原样保留；模拟服务端按现有 batch 契约处理后总计 3 行、ID 唯一、父日均存在、旧行 ID 消失，新身份正确回绑；再次保存不新增请求。因此保留已保存行的日期入口。证据边界是现有后端 batch 契约下的前端请求与返回树，不是线上数据库实测。
+
+独立审查：Standards 首轮 1 个 P1、Spec 首轮 1 个 P1，均指向同一问题——界面按显式星期落列，日期模型却重新推导 Dx，连续操作可能搬错行。已统一传入 blockWeekdays，并在改日期时保留其他列的星期规则；新增两条连续交互测试从 2 红转 18 绿，同时断言实际行 ID 和相邻列。两轴定向复核均确认该项关闭，未发现本轮其他实质缺陷。未将审查当作 Opus 最终验收。
+
+最终命令结果：
+
+- `npm test`：exit 0，**96 files / 911 tests**，14.32s；`/tmp/card-a-r1-full-final.log`。
+- `npx tsc --noEmit`：exit 0，无诊断；`/tmp/card-a-r1-tsc-final.log`。
+- `npm run build`：exit 0，Vite 2.20s；保留既有 >500 kB chunk 提示；`/tmp/card-a-r1-build-final.log`。
+- `git diff --check`：exit 0。4 个受保护测试与 reconcile/lockfile diff 均为空。
+
+本轮未验证：真实浏览器中修订后的 5 行卡实际高度及多组输入滚动。CSS/DOM 回归证明控件同排，但不冒充约 400px 的实测。浏览器现有标签没有本地验收页；尝试正常 Vite 服务仍被沙箱拒绝，未改端口/协议或安全配置绕过，原始输出 `/tmp/card-a-r1-vite.log`：
+
+```text
+error when starting dev server:
+Error: listen EPERM: operation not permitted 127.0.0.1:5180
+    at Server.setupListenHandle [as _listen2] (node:net:1986:21)
+    at listenInCluster (node:net:2065:12)
+    at node:net:2274:7
+    at process.processTicksAndRejections (node:internal/process/task_queues:90:21)
+```
+
+全部测试正常在 jsdom 运行，没有因沙箱权限而失败的测试。代码返修与自测交回收货，实际编辑卡高度仍需沙箱外浏览器复验。

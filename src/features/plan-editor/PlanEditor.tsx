@@ -6,18 +6,13 @@ import { groupActualsByExercise, groupStudentAddedByDay, type ActualSet, type St
 import { getStudentSetLogs } from '../../api/coach'
 import { getPlan, shiftPlan, undoPlanShift } from '../../api/plans'
 import {
-  isSingleValueIntensity,
-  materializeIntensityRow,
-  rowIntensity,
-  rowIntensityBoxes,
-  rowWeightBoxes,
+  materializeIntensityRow, isSingleValueIntensity, rowIntensity, rowIntensityBoxes, rowWeightBoxes,
 } from './intensityModel'
 import { ApiException } from '../../api/client'
+import { BlockGrid } from './components/BlockGrid'
+import { buildBlockGrid, blockTargetDay, fillBlockDays, changeBlockDate, changeBlockWeekday, type BlockAddress } from './blockGridModel'
 import { TopBar } from './components/TopBar'
-import { Toolbar } from './components/Toolbar'
-import { ContextBar } from './components/ContextBar'
 import { DayColumn } from './components/DayColumn'
-import { DayHeaderContext } from './components/ContextRail'
 import { ExercisePopover } from './components/ExercisePopover'
 import { CustomExerciseDialog } from './components/CustomExerciseDialog'
 import type { ExerciseIndex, ExerciseHit } from './exerciseIndex'
@@ -45,7 +40,6 @@ import {
   recommendedDateForDay,
   projectWeekSchedule,
   relabelWeeksForStartDate,
-  resizeWeeksForCount,
   syncPlanScheduleToWeeks,
   type StudentPlanCursor,
 } from './mapping'
@@ -59,7 +53,6 @@ import {
 import { createRemoteMirrorWriter, type RemoteMirrorState, type RemoteMirrorWriter } from './remoteMirror'
 import { getPendingRevision, type PendingRevisionResponse } from '../../api/pendingRevision'
 import { DraftMirrorBanner } from './components/DraftMirrorBanner'
-import { FormulaBar } from './components/FormulaBar'
 import {
   absoluteDayIndex,
   applyPlanDayPlacements,
@@ -70,7 +63,6 @@ import {
   placePlanDayOffsets,
   planCellKey,
   resolvePlanCell,
-  samePlanCell,
   type PlanDayTarget,
   type PlanCellField,
   type PlanCellSelection,
@@ -80,7 +72,6 @@ import { S, fmt, resolveLocale } from '../../i18n/strings'
 import { registerReloadBlocker } from '../../reloadSafety'
 import { MUSCLE_LABEL } from '../catalog/catalogModel'
 import {
-  closestWeekToViewportCenter,
   reorderRowsInWeek,
   trainingDayOrdinal,
 } from './weekBandModel'
@@ -92,7 +83,6 @@ interface RowTarget { wnum: number; dow: number; rowId: string }
 interface RowSelection { anchor: RowTarget | null; rowIds: Set<string> }
 interface DaySelection { anchor: Sel | null; days: Set<string> }
 interface RowSelectionModifiers { toggle: boolean; range: boolean }
-interface FormulaCellDraft { selection: PlanCellSelection; rawValue: string }
 interface CreateExerciseState { open: boolean; initialName: string; bindTarget: RowTarget | null }
 type ClipboardKind = 'day' | 'days' | 'row'
 interface DayMoveVisual {
@@ -103,7 +93,6 @@ interface DayMoveVisual {
   targetValid: boolean
 }
 
-const COPY_LABEL = S.editor.copyLastWeek
 const DAY_MOVE_THRESHOLD = 5
 // One automatic retry for a failed「更新计划」before the modal error (David 2026-08-23).
 export const UPDATE_RETRY_DELAY = 1500
@@ -237,28 +226,6 @@ export function findIssueRows(wks: Week[]): IssueRow[] {
   return findDetailedIssueRows(wks).map(({ rowId, kind }) => ({ rowId, kind }))
 }
 
-function weekLabel(num: number): string {
-  return S.editor.weekTab(num)
-}
-
-function scrollElementLeft(element: HTMLElement, left: number, behavior?: ScrollBehavior) {
-  if (typeof element.scrollTo === 'function') element.scrollTo({ left, behavior })
-  else element.scrollLeft = left
-}
-
-const WEEK_BAND_GAP_PX = 28
-
-function snapScrollerToNearestWeek(scroller: HTMLElement) {
-  const slots = [...scroller.querySelectorAll<HTMLElement>('[data-week-slot][data-wnum]')]
-  const nearest = slots.reduce<HTMLElement | null>((best, slot) => {
-    if (!best) return slot
-    return Math.abs(slot.offsetLeft - scroller.scrollLeft) < Math.abs(best.offsetLeft - scroller.scrollLeft)
-      ? slot
-      : best
-  }, null)
-  if (nearest) scrollElementLeft(scroller, nearest.offsetLeft, 'smooth')
-}
-
 function importRangeLabel(weeks: Week[]): string {
   const first = weeks[0]
   const last = weeks[weeks.length - 1]
@@ -296,6 +263,7 @@ function cloneRow(row: ExerciseRow, prefix: string, index: number): ExerciseRow 
     intensity: source.intensity ? { ...source.intensity } : source.intensity,
     intensityBoxes: source.intensityBoxes?.map((box) => ({ ...box })),
     boxes: source.boxes.map((box) => ({ ...box })),
+    opaqueSets: source.opaqueSets?.map(set => ({ ...set })),
   }
 }
 
@@ -560,10 +528,22 @@ export function PlanEditor(props: PlanEditorProps) {
   const persistedPlanStart = useRef<string | null>(props.planStartDate ?? null)
   const pendingPlanStart = useRef<string | null>(null)
   const [planStartDate, setPlanStartDate] = useState<string | null>(props.planStartDate ?? null)
+  // Presentation-only fallback keeps cleared Dx targets available during this edit session.
+  const lastBlockWeekdays = useRef(buildBlockGrid(initialWeeks, props.planStartDate).columns.map(column => column.weekday))
+  const [columnWeekdays, setColumnWeekdays] = useState<Record<number, number>>({})
+  const observedBlock = buildBlockGrid(weeks, planStartDate)
+  const blockWeekdays = Array.from({ length: Math.max(lastBlockWeekdays.current.length, observedBlock.columns.length) }, (_, dx) => (
+    columnWeekdays[dx] ?? (observedBlock.rows.some(row => row.cells[dx]?.day)
+      ? observedBlock.columns[dx].weekday : lastBlockWeekdays.current[dx] ?? observedBlock.columns[dx]?.weekday ?? 0)
+  ))
+  lastBlockWeekdays.current = blockWeekdays
+
   // Kept with the import token so an autosave retry reuses the coach's explicit
   // answer rather than prompting again or silently changing historical data.
   const importedPastHistory = useRef(false)
   const [colW, setColW] = useState<ColWidths[]>(() => Array.from({ length: 7 }, () => ({ ...COL_DEFAULTS })))
+  const [editingDay, setEditingDay] = useState<Sel | null>(null)
+  const [blockMenu, setBlockMenu] = useState<{ x: number; y: number } | null>(null)
   const [sel, setSel] = useState<Sel | null>(null)
   // SPEC-038:学员实际完成组,serverRowId → sets。失败静默(编排主流程不受影响)。
   const [actualsByExercise, setActualsByExercise] = useState<Map<string, ActualSet[]>>(() => new Map())
@@ -602,7 +582,6 @@ export function PlanEditor(props: PlanEditorProps) {
   const selectedRow = rowSelection.anchor
   const selectedRowIds = rowSelection.rowIds
   const [cellSelection, setCellSelection] = useState<PlanCellSelection | null>(null)
-  const [formulaCellDraft, setFormulaCellDraft] = useState<FormulaCellDraft | null>(null)
   // Authoritative published state, initialized from the backend plan status. Monotonic:
   // set true on a real publish and never cleared — there is no backend unpublish, so 发布后不可撤回.
   // Published plans remain editable, but only through explicit confirmed updates;
@@ -626,9 +605,6 @@ export function PlanEditor(props: PlanEditorProps) {
   const dayMoveLocked = props.planStatus != null
     ? props.planStatus !== 'draft' && props.planStatus !== 'published'
     : false
-  const [copyDone, setCopyDone] = useState(false)
-  const [hasRowClipboard, setHasRowClipboard] = useState(false)
-  const [curWeekLabel, setCurWeekLabel] = useState('—')
   const [pop, setPop] = useState<PopState>({ visible: false, x: 0, y: 0, wnum: 0, dow: 0, rowId: '', query: '' })
   const [activeIndex, setActiveIndex] = useState(0)
   const [createExercise, setCreateExercise] = useState<CreateExerciseState>({ open: false, initialName: '', bindTarget: null })
@@ -661,12 +637,6 @@ export function PlanEditor(props: PlanEditorProps) {
   const visibleWeekRef = useRef<number | null>(null)
   const skipNextScheduleAutosave = useRef(false)
   useEffect(() => () => dayMoveCleanupRef.current?.(false), [])
-
-  useEffect(() => {
-    setFormulaCellDraft((current) => (
-      current && samePlanCell(current.selection, cellSelection) ? current : null
-    ))
-  }, [cellSelection])
 
   useEffect(() => {
     setDaySelection((current) => convergeDaySelection(current, weeks))
@@ -925,7 +895,6 @@ export function PlanEditor(props: PlanEditorProps) {
   }, [mirrorPlanId])
 
   const setVisibleWeek = useCallback((weekNumber: number) => {
-    setCurWeekLabel(weekLabel(weekNumber))
     const index = latestWeeks.current.findIndex((week) => week.num === weekNumber)
     if (index >= 0) setVisibleWeekIndex(index)
     if (visibleWeekRef.current === weekNumber) return
@@ -948,43 +917,6 @@ export function PlanEditor(props: PlanEditorProps) {
         ? { ...current, visible: false }
         : current
     ))
-  }, [])
-
-  // ---- horizontal scroll-spy (also drives virtualisation) ----
-  const updateCur = useCallback(() => {
-    const sc = scrollerRef.current
-    if (!sc) return
-    const viewportLeft = sc.getBoundingClientRect().left
-    const candidates = [...sc.querySelectorAll<HTMLElement>('[data-week-slot][data-wnum]')].flatMap((band, index) => {
-      const rect = band.getBoundingClientRect()
-      const week = Number(band.dataset.wnum)
-      return Number.isInteger(week)
-        ? [{ weekNumber: week, index, left: rect.left, width: rect.width }]
-        : []
-    })
-    const bestWeek = closestWeekToViewportCenter(viewportLeft, sc.clientWidth, candidates)
-    if (bestWeek != null) setVisibleWeek(bestWeek)
-  }, [setVisibleWeek])
-
-  // Land on the current week on first mount without mounting the whole plan.
-  useEffect(() => {
-    const current = weeks[initialVisibleWeekIndex]
-    if (!current) return
-    setVisibleWeek(current.num)
-    const id = window.requestAnimationFrame(() => {
-      const slot = weeksRef.current?.querySelector<HTMLElement>(`[data-week-slot][data-wnum="${current.num}"]`)
-      const scroller = scrollerRef.current
-      if (scroller) scrollElementLeft(scroller, slot?.offsetLeft ?? 0)
-      const firstTrain = current.days.find((day) => !isRestDay(day))
-      if (firstTrain) {
-        const target = { wnum: current.num, dow: firstTrain.dow }
-        setSel((existing) => existing ?? target)
-        setDaySelection((existingSelection) => existingSelection.anchor ? existingSelection : singleDaySelection(target))
-      }
-    })
-    return () => window.cancelAnimationFrame(id)
-    // mount-only initial positioning
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   // ---- global drag (column resize) + pan ----
@@ -1011,8 +943,7 @@ export function PlanEditor(props: PlanEditorProps) {
         const scroller = scrollerRef.current
         scroller?.classList.remove('panning')
         if (scroller) {
-          scroller.style.scrollSnapType = 'x mandatory'
-          snapScrollerToNearestWeek(scroller)
+          scroller.style.scrollSnapType = 'none'
         }
       }
     }
@@ -1039,20 +970,11 @@ export function PlanEditor(props: PlanEditorProps) {
     }
     sc.addEventListener('wheel', onWheel, { passive: false })
     sc.addEventListener('mousedown', onDown)
-    sc.addEventListener('scroll', updateCur)
-    // Viewport resizes move the band centre without a scroll event; re-run the
-    // same centre rule so the active tab and virtualisation window track it.
-    const resizeObserver = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(updateCur)
-    resizeObserver?.observe(sc)
-    window.addEventListener('resize', updateCur)
     return () => {
       sc.removeEventListener('wheel', onWheel)
       sc.removeEventListener('mousedown', onDown)
-      sc.removeEventListener('scroll', updateCur)
-      resizeObserver?.disconnect()
-      window.removeEventListener('resize', updateCur)
     }
-  }, [updateCur])
+  }, [])
 
   // ---- handlers ----
   const handleResizeStart = (dow: number, col: ColKey, e: React.MouseEvent) => {
@@ -1293,23 +1215,7 @@ export function PlanEditor(props: PlanEditorProps) {
         : singleRowSelection({ wnum, dow, rowId })
     ))
     setCellSelection(selection)
-    setFormulaCellDraft((current) => (
-      current && samePlanCell(current.selection, selection) ? current : null
-    ))
   }
-  const handleSetsDraftChange = (
-    wnum: number,
-    dow: number,
-    rowId: string,
-    rawValue: string | null,
-  ) => {
-    const selection: PlanCellSelection = { weekNumber: wnum, dow, rowId, field: 'sets' }
-    setFormulaCellDraft((current) => {
-      if (rawValue !== null) return { selection, rawValue }
-      return current && samePlanCell(current.selection, selection) ? null : current
-    })
-  }
-
   const positionPopAt = (el: HTMLElement, wnum: number, dow: number, rowId: string, query: string) => {
     const root = rootRef.current
     if (!root) return
@@ -1571,50 +1477,10 @@ export function PlanEditor(props: PlanEditorProps) {
     }))
   }
 
-  const handleCopyPrev = () => {
-    setCopyDone(false)
-    if (readOnly || !sel || sel.wnum <= 1) return
-    const targetWeek = weeks.find((week) => week.num === sel.wnum)
-    const srcWeek = weeks.find((week) => week.num === sel.wnum - 1)
-    if (!targetWeek || !srcWeek) return
-    if (targetWeek.days.some((day) => day.rows.some((row) => row.hasLogs))) return
-    const sourceDays = new Map(srcWeek.days.map((day) => [day.dow, day]))
-    if (!targetWeek.days.some((day) => sourceDays.has(day.dow))) return
-    const occupiedDays = targetWeek.days.filter((day) => !isRestDay(day)).length
-    if (
-      occupiedDays > 0
-      && !window.confirm(S.editor.overwriteWeekConfirm(occupiedDays))
-    ) return
-
-    const nextWeeks = weeks.map((wk) => wk.num !== sel.wnum ? wk : {
-      ...wk,
-      days: wk.days.map((day) => {
-        const source = sourceDays.get(day.dow)
-        if (!source) return day
-        return {
-          ...day,
-          rest: isRestDay(source),
-          rows: cloneRows(source.rows, 'copy-week'),
-          releasedSortOrders: [],
-        }
-      }),
-    })
-    setWeeksWithHistory(nextWeeks)
-    setRowSelection(singleRowSelection(null))
-    setCopyDone(true)
-    window.setTimeout(() => setCopyDone(false), 1300)
-  }
-
   const selectedDay = useCallback((): DayCol | null => {
     if (!sel) return null
     return weeks.find((week) => week.num === sel.wnum)?.days.find((day) => day.dow === sel.dow) ?? null
   }, [sel, weeks])
-
-  const selectedRowValue = useCallback((): ExerciseRow | null => {
-    if (!selectedRow) return null
-    const day = weeks.find((week) => week.num === selectedRow.wnum)?.days.find((d) => d.dow === selectedRow.dow)
-    return day?.rows.find((row) => row.id === selectedRow.rowId) ?? null
-  }, [selectedRow, weeks])
 
   const selectedRowsValue = useCallback((): ExerciseRow[] => {
     if (!selectedRow) return []
@@ -1650,7 +1516,6 @@ export function PlanEditor(props: PlanEditorProps) {
     rowClipboardRef.current = null
     clipboardKindRef.current = 'days'
     clipboardTextRef.current = text
-    setHasRowClipboard(false)
     try { await navigator.clipboard?.writeText(text) } catch { /* internal clipboard still works */ }
     setStatusText(S.editor.copiedDays(selected.length))
   }, [selectedDaysValue])
@@ -1664,7 +1529,6 @@ export function PlanEditor(props: PlanEditorProps) {
     rowClipboardRef.current = null
     clipboardKindRef.current = 'day'
     clipboardTextRef.current = text
-    setHasRowClipboard(false)
     try { await navigator.clipboard?.writeText(text) } catch { /* internal clipboard still works */ }
     setStatusText(S.editor.copiedDay(dayDisplay(week, day)))
   }, [sel, selectedDay, weeks])
@@ -1679,7 +1543,6 @@ export function PlanEditor(props: PlanEditorProps) {
     rowClipboardRef.current = cloneRows(rows, 'clip-row')
     clipboardKindRef.current = 'row'
     clipboardTextRef.current = text
-    setHasRowClipboard(true)
     try { await navigator.clipboard?.writeText(text) } catch { /* internal clipboard still works */ }
     setStatusText(rows.length === 1
       ? S.editor.copiedExercise(
@@ -1694,7 +1557,7 @@ export function PlanEditor(props: PlanEditorProps) {
       ...wk,
       days: wk.days.map((day) => {
         if (day.dow !== sel.dow) return day
-        return { ...day, rest: false, rows: [...day.rows, ...inserted] }
+        return { ...day, rest: false, rows: (['main', 'aux'] as const).flatMap(tier => [...day.rows.filter(row => rowTier(row) === tier), ...inserted.filter(row => rowTier(row) === tier)]) }
       }),
     }))
     setDaySelection(singleDaySelection(sel))
@@ -1774,6 +1637,7 @@ export function PlanEditor(props: PlanEditorProps) {
       return
     }
 
+    if (selectedDay()?.rows.length && !window.confirm(S.editor.overwriteDaysConfirm(1))) return
     setWeeksWithHistory((prev) => prev.map((wk) => wk.num !== sel.wnum ? wk : {
       ...wk,
       days: wk.days.map((day) => day.dow !== sel.dow ? day : replaceUnlockedRows(
@@ -1838,9 +1702,10 @@ export function PlanEditor(props: PlanEditorProps) {
       window.requestAnimationFrame(() => {
         const sc = scrollerRef.current
         const slot = weeksRef.current?.querySelector<HTMLElement>(`[data-week-slot][data-wnum="${next.weekNumber}"]`)
-        if (sc && slot) scrollElementLeft(sc, slot.offsetLeft, 'smooth')
+        if (sc && slot) slot.scrollIntoView?.({ block: 'nearest', inline: 'nearest', behavior: 'smooth' })
       })
     }
+    setEditingDay({ wnum: next.weekNumber, dow: next.dow })
     setSel({ wnum: next.weekNumber, dow: next.dow })
     setDaySelection(singleDaySelection({ wnum: next.weekNumber, dow: next.dow }))
     setRowSelection(singleRowSelection({ wnum: next.weekNumber, dow: next.dow, rowId: next.rowId }))
@@ -1916,7 +1781,11 @@ export function PlanEditor(props: PlanEditorProps) {
 
     // Escape only clears the inspection selection — allowed even on
     // read-only historical plans and while a selected grid input has focus.
-    if (e.key === 'Escape' && (!editable || gridInput)) {
+    if (e.key === 'Escape') {
+      if (document.activeElement instanceof HTMLElement) document.activeElement.blur()
+      setEditingDay(null)
+      setBlockMenu(null)
+      setPop(current => ({ ...current, visible: false }))
       setCellSelection(null)
       setDaySelection((current) => current.anchor && current.days.size > 1
         ? singleDaySelection(current.anchor)
@@ -1937,6 +1806,7 @@ export function PlanEditor(props: PlanEditorProps) {
       jumpToAdjacentWeek(e.key === 'ArrowLeft' ? -1 : 1)
       return true
     }
+
     if (mod && key === 'd' && !e.altKey && !e.shiftKey && (!editable || gridInput)) {
       if (readOnly) {
         e.preventDefault()
@@ -1977,6 +1847,21 @@ export function PlanEditor(props: PlanEditorProps) {
       return true
     }
 
+    if (!readOnly && !editable && (key === 'delete' || key === 'backspace')) {
+      e.preventDefault()
+      if (selectedRowIds.size > 0 && selectedRow) {
+        setWeeksWithHistory(prev => prev.map(week => week.num !== selectedRow.wnum ? week : { ...week,
+          days: week.days.map(day => {
+            if (day.dow !== selectedRow.dow) return day
+            const removed = day.rows.filter(row => selectedRowIds.has(row.id) && !row.hasLogs)
+            return { ...day, rows: day.rows.filter(row => !removed.includes(row)),
+              releasedSortOrders: [...new Set([...(day.releasedSortOrders ?? []), ...removed.flatMap(row => row.serverSortOrder == null ? [] : [row.serverSortOrder])])] }
+          }),
+        }))
+        setRowSelection(singleRowSelection(null))
+      } else handleClearDay()
+      return true
+    }
     if (readOnly || !mod) return false
     if (key === 'c' && selectedRowIds.size > 1) {
       e.preventDefault()
@@ -2147,49 +2032,6 @@ export function PlanEditor(props: PlanEditorProps) {
     (nextStart: string) => applyStartDate(nextStart),
     [applyStartDate],
   )
-
-  const handleChangePlanWeeks = useCallback(async (nextCount: number) => {
-    if (!props.onChangePlanWeeks || calendarLocked || saving || publishing.current) throw new Error('CALENDAR_LOCKED')
-    if (!(await saver.current.flush())) throw new Error('SAVE_FAILED')
-    const startDate = currentPlanStart.current
-    if (!startDate) throw new Error('PLAN_DATE_MISSING')
-    setSaving(true)
-    setStatusText(S.editor.updatingCycle)
-    try {
-      await props.onChangePlanWeeks(nextCount)
-      skipNextAutosave.current = true
-      const nextWeeks = resizeWeeksForCount(latestWeeks.current, nextCount, startDate)
-      setWeeks(nextWeeks)
-      const clampedVisibleIndex = Math.min(visibleWeekIndex, Math.max(0, nextWeeks.length - 1))
-      const clampedWeek = nextWeeks[clampedVisibleIndex]
-      if (clampedWeek) {
-        setVisibleWeek(clampedWeek.num)
-        window.requestAnimationFrame(() => {
-          const scroller = scrollerRef.current
-          const slot = weeksRef.current?.querySelector<HTMLElement>(
-            `[data-week-slot][data-wnum="${clampedWeek.num}"]`,
-          )
-          if (scroller) scrollElementLeft(scroller, slot?.offsetLeft ?? 0)
-        })
-      }
-      setSel((current) => current && current.wnum > nextCount ? null : current)
-      setDaySelection((current) => current.anchor && current.anchor.wnum > nextCount
-        ? singleDaySelection(null)
-        : convergeDaySelection(current, nextWeeks))
-      setRowSelection((current) => current.anchor && current.anchor.wnum > nextCount
-        ? singleRowSelection(null)
-        : current)
-      if (findDetailedIssueRows(nextWeeks).length === 0) {
-        markMirrorCovered(mirrorContent(nextWeeks, startDate, nextCount))
-      }
-      setStatusText(S.editor.cycleUpdated(nextCount))
-    } catch (error) {
-      setStatusText(S.editor.cycleUpdateFailed)
-      throw error
-    } finally {
-      setSaving(false)
-    }
-  }, [calendarLocked, markMirrorCovered, props.onChangePlanWeeks, saving, setVisibleWeek, visibleWeekIndex])
 
   // Rows the coach still has to deal with, in grid order:
   //  - unbound: has a name or filled sets but no catalog binding — save reconciliation drops
@@ -2466,18 +2308,12 @@ export function PlanEditor(props: PlanEditorProps) {
           ?? rowEl.querySelector<HTMLInputElement>('input[inputmode="numeric"]')
       window.setTimeout(() => input?.focus(), 60)
     }
-    const targetWeek = latestWeeks.current.find((week) => week.days.some((day) => day.rows.some((row) => row.id === issue.rowId)))
-    if (!targetWeek || rootRef.current?.querySelector(`[data-rowid="${issue.rowId}"]`)) {
-      focusRow()
-      return
-    }
-    setVisibleWeek(targetWeek.num)
-    window.requestAnimationFrame(() => {
-      const sc = scrollerRef.current
-      const slot = weeksRef.current?.querySelector<HTMLElement>(`[data-week-slot][data-wnum="${targetWeek.num}"]`)
-      if (sc && slot) scrollElementLeft(sc, slot.offsetLeft, 'smooth')
-      window.requestAnimationFrame(focusRow)
-    })
+    const targetWeek = latestWeeks.current.find(week => week.days.some(day => day.rows.some(row => row.id === issue.rowId)))
+    const targetDay = targetWeek?.days.find(day => day.rows.some(row => row.id === issue.rowId))
+    if (!targetWeek || !targetDay) return
+    handleSelect(targetWeek.num, targetDay.dow)
+    setEditingDay({ wnum: targetWeek.num, dow: targetDay.dow })
+    window.requestAnimationFrame(focusRow)
   }
 
   // ---- week-tab navigation -------------------------------------------------------------------
@@ -2486,7 +2322,7 @@ export function PlanEditor(props: PlanEditorProps) {
     window.requestAnimationFrame(() => {
       const sc = scrollerRef.current
       const slot = weeksRef.current?.querySelector<HTMLElement>(`[data-week-slot][data-wnum="${num}"]`)
-      if (sc && slot) scrollElementLeft(sc, slot.offsetLeft, 'smooth')
+      if (sc && slot) slot.scrollIntoView?.({ block: 'nearest', inline: 'nearest', behavior: 'smooth' })
     })
   }
 
@@ -2655,7 +2491,6 @@ export function PlanEditor(props: PlanEditorProps) {
       setSel(target)
       setDaySelection(singleDaySelection(target))
       if (targetWeek) {
-        setCurWeekLabel(weekLabel(targetWeek.num))
         window.setTimeout(() => jumpToWeek(targetWeek.num), 80)
       }
       setPop((p) => ({ ...p, visible: false }))
@@ -2773,35 +2608,6 @@ export function PlanEditor(props: PlanEditorProps) {
     }
   }
 
-  const selDayLabel = (() => {
-    if (!sel) return ''
-    const wk = weeks.find((w) => w.num === sel.wnum)
-    const d = wk?.days.find((x) => x.dow === sel.dow)
-    return d && wk ? S.editor.selectedDayInWeek(dayDisplay(wk, d), sel.wnum) : ''
-  })()
-  const copyTargetHasLockedRows = (() => {
-    if (!sel) return false
-    return weeks.find((week) => week.num === sel.wnum)?.days
-      .some((day) => day.rows.some((row) => row.hasLogs)) ?? false
-  })()
-  const selectedRowForBar = selectedRowValue()
-  const selectedCellInfo = useMemo(() => {
-    const resolved = resolvePlanCell(displayWeeks, cellSelection)
-    if (
-      !resolved
-      || !formulaCellDraft
-      || !samePlanCell(resolved.selection, formulaCellDraft.selection)
-    ) return resolved
-    return {
-      ...resolved,
-      value: formulaCellDraft.rawValue === '' ? '/' : S.common.countSets(formulaCellDraft.rawValue),
-    }
-  }, [cellSelection, displayWeeks, formulaCellDraft])
-  const selectedRowLabel = selectedRowForBar
-    ? S.editor.currentRow(
-      fmt.exerciseName({ name: selectedRowForBar.name, name_en: selectedRowForBar.nameEn }).trim()
-        || S.common.unnamedExercise)
-    : ''
   const visibleStatusText = published && publishedDirty
     ? remoteMirrorState.status === 'saved'
       ? S.editor.publishedDirtyStashed(studentName, savedClock(remoteMirrorState.savedAt))
@@ -2871,8 +2677,28 @@ export function PlanEditor(props: PlanEditorProps) {
     }
   }
 
+  const closeBlockEditor = () => {
+    if (document.activeElement instanceof HTMLElement) document.activeElement.blur()
+    setEditingDay(null)
+    setCellSelection(null)
+    setPop(current => ({ ...current, visible: false }))
+  }
+  const fillBlock = (source: BlockAddress, endWeek: number) => {
+    if (readOnly) return
+    const grid = buildBlockGrid(weeks, planStartDate, blockWeekdays)
+    const occupied = grid.rows.filter(row => row.week.num > source.weekNumber && row.week.num <= endWeek)
+      .filter(row => blockTargetDay(grid, { weekNumber: row.week.num, dx: source.dx }, planStartDate)?.rows.length).length
+    if (occupied && !window.confirm(S.editor.overwriteDaysConfirm(occupied))) return
+    setWeeksWithHistory(prev => fillBlockDays(prev, source, endWeek, planStartDate, blockWeekdays))
+  }
+
   return (
-    <div ref={rootRef} className="plan-editor" style={{
+    <div ref={rootRef} onMouseDownCapture={event => {
+      const target = event.target as HTMLElement
+      if (!target.closest('.block-cell,.block-context-menu,.ex-popover,[data-popover],[role="dialog"]')) {
+        closeBlockEditor(); setBlockMenu(null)
+      }
+    }} className="plan-editor" style={{
       position: 'relative', height: '100%', display: 'flex', flexDirection: 'column',
       overflow: 'hidden', background: 'var(--page-bg)', color: 'var(--txt)',
       fontFamily: 'var(--font-sans)', fontSize: 13, WebkitFontSmoothing: 'antialiased',
@@ -2923,128 +2749,68 @@ export function PlanEditor(props: PlanEditorProps) {
           onDiscard={discardDraftMirror}
         />
       )}
-      <Toolbar weeksCount={weeks.length || weeksCount} calendarLocked={calendarLocked} calendarLockedHint={calendarLockedHint}
-        onChangeWeeks={props.onChangePlanWeeks ? handleChangePlanWeeks : undefined}
-        removalSummary={(nextCount) => weeks.filter((week) => week.num > nextCount).reduce((summary, week) => {
-          for (const day of week.days) {
-            if (isRestDay(day)) continue
-            summary.days++
-            summary.exercises += day.rows.length
-          }
-          return summary
-        }, { days: 0, exercises: 0 })}
-        curWeekLabel={curWeekLabel}
-        previousWeekDisabled={visibleWeekIndex <= 0}
-        nextWeekDisabled={visibleWeekIndex >= weeks.length - 1}
-        onPreviousWeek={() => jumpToAdjacentWeek(-1)}
-        onNextWeek={() => jumpToAdjacentWeek(1)} />
-      <nav className="week-tabs" aria-label={S.editor.planWeeksAria}>
-        <div className="week-tab-list">
-          {weeks.map((week, index) => (
-            <button
-              type="button"
-              key={week.num}
-              className={`week-tab${index === visibleWeekIndex ? ' active' : ''}`}
-              aria-current={index === visibleWeekIndex ? 'page' : undefined}
-              onClick={() => jumpToWeek(week.num)}
-            >
-              W{week.num2}
-            </button>
-          ))}
-          <button
-            type="button"
-            className="week-tab-add"
-            disabled={calendarLocked || saving || weeks.length >= 52 || !props.onChangePlanWeeks}
-            title={calendarLocked ? calendarLockedHint : S.editor.addWeek}
-            onClick={() => {
-              const nextCount = weeks.length + 1
-              void handleChangePlanWeeks(nextCount).then(() => {
-                setVisibleWeekIndex(nextCount - 1)
-                window.requestAnimationFrame(() => jumpToWeek(nextCount))
-              }).catch(() => undefined)
-            }}
-          >
-            {S.editor.addWeekButton}
-          </button>
-        </div>
-      </nav>
-      <ContextBar
-        visible={!!sel && !readOnly}
-        dayLabel={selDayLabel}
-        selectedDayCount={daySelection.days.size}
-        canCopyPrev={!!sel && sel.wnum > 1 && !copyTargetHasLockedRows}
-        copyDisabledHint={copyTargetHasLockedRows ? S.editor.copyTargetLogged : undefined}
-        copyLabel={copyDone ? S.editor.copiedLastWeek : COPY_LABEL}
-        copyDone={copyDone}
-        selectedRowLabel={selectedRowLabel}
-        hasRowClipboard={hasRowClipboard}
-        onCopyPrev={handleCopyPrev}
-        onPasteRow={pasteSelectedRows}
-        onClearDay={handleClearDay}
-        onClose={() => {
-          setSel(null)
-          setDaySelection(singleDaySelection(null))
-          setRowSelection(singleRowSelection(null))
-          setCellSelection(null)
-          setPop((p) => ({ ...p, visible: false }))
-        }}
-      />
-      <FormulaBar cell={selectedCellInfo} />
-
-      {/* v1.3 页眉集成试验：ContextRail 与视口钳制实现保留作回滚，编辑器渲染入口暂时下线。 */}
-      <div className="plan-with-rail">
-      <div className="scroller" ref={scrollerRef} aria-readonly={readOnly || undefined} style={{ flex: 1, overflow: 'auto', position: 'relative', background: 'var(--page-bg)', scrollSnapType: 'x mandatory' }}>
-        {readOnly && <div role="status" style={{ position: 'sticky', top: 0, zIndex: 12, padding: '8px 16px', background: 'var(--panel-bg)', borderBottom: '1px solid var(--bd)', color: 'var(--sec)', fontSize: 12 }}>{S.editor.historyReadOnlyBanner}</div>}
-        <div style={{ pointerEvents: readOnly ? 'none' : undefined }}>
-            <div ref={weeksRef} className="week-band-track" style={{ gap: WEEK_BAND_GAP_PX }}>
-              {weeks.map((wk, weekIndex) => (
-                Math.abs(weekIndex - visibleWeekIndex) > 1 ? (
-                  <div
-                    key={wk.num}
-                    className="week-band-slot weekband-spacer"
-                    data-week-slot=""
-                    data-wnum={wk.num}
-                    aria-hidden="true"
-                    style={{ scrollSnapAlign: 'start' }}
-                  />
-                ) : <div key={wk.num} className="weekband week-band-slot" data-week-slot="" data-wnum={wk.num} style={{ scrollSnapAlign: 'start' }}>
-                  <div className="weekband-head">
-                    <kbd>W{wk.num2}</kbd>
-                    <span className="weekband-name">{S.common.weekN(wk.num)}</span>
-                    <span className="weekband-range">{wk.range}</span>
-                    <WeekCapacitySummary weekNumber={wk.num} {...weeklySummaries[weekIndex]} />
-                    {wk.isCurrent && (
-                      <span className="weekband-current">
-                        <span />{S.editor.currentWeek}
-                      </span>
-                    )}
-                  </div>
-                  <div className="weekrow" data-weekrow="">
-                    {wk.days.map((day, dayIndex) => (
+      <div className="plan-with-rail block-layout">
+        <div className="scroller" ref={scrollerRef} aria-readonly={readOnly || undefined}>
+          {readOnly && <div role="status" className="block-readonly">{S.editor.historyReadOnlyBanner}</div>}
+          <div ref={weeksRef}>
+            <BlockGrid weeks={weeks} startDate={planStartDate} weekdays={blockWeekdays} editing={editingDay}
+              selectedDays={daySelection.days} selectedRows={selectedRowIds} readOnly={readOnly}
+              rowTier={rowTier} onClose={closeBlockEditor}
+              renderCapacity={(_week, index) => <WeekCapacitySummary weekNumber={_week.num} {...weeklySummaries[index]} />}
+              onOpen={(week, day, event) => {
+                setBlockMenu(null)
+                handleDayClick(week.num, day.dow, event)
+                if (!event.shiftKey && !event.metaKey && !event.ctrlKey) setEditingDay({ wnum: week.num, dow: day.dow })
+              }}
+              onSelectRow={(week, day, rowId, modifiers) => handleSelectRow(week.num, day.dow, rowId, modifiers)}
+              onSelectRectangle={(days, rows) => {
+                if (!days.length) return
+                setSel(days[0])
+                setDaySelection({ anchor: days[0], days: new Set(days.map(planDayKey)) })
+                setRowSelection(rows.length ? { anchor: { ...days[0], rowId: rows[0] }, rowIds: new Set(rows) } : singleRowSelection(null))
+                setCellSelection(null)
+                if (days.length > 1) setEditingDay(null)
+              }}
+              onFill={fillBlock}
+              onWeekday={(dx, weekday) => {
+                if (!planStartDate || readOnly) return
+                setColumnWeekdays({ ...Object.fromEntries(blockWeekdays.map((value, index) => [index, value])), [dx]: weekday })
+                setWeeksWithHistory(prev => changeBlockWeekday(prev, dx, weekday, planStartDate, blockWeekdays))
+                closeBlockEditor()
+              }}
+              onContext={(event, week, day) => {
+                event.preventDefault(); handleSelect(week.num, day.dow)
+                setBlockMenu({ x: event.clientX, y: event.clientY })
+              }}
+              renderDay={(wk, day, dx) => (
                       <DayColumn
                         key={day.dow}
                         weekNumber={wk.num}
-                        columnLetter={String.fromCharCode(65 + dayIndex)}
+                        blockView={{ dx, date: planStartDate ? recommendedDateForDay(planStartDate, wk.num, day) : '',
+                          minDate: planStartDate ? isoDate(addDays(planStartDate, (wk.num - 1) * 7)) : undefined,
+                          maxDate: planStartDate ? isoDate(addDays(planStartDate, wk.num * 7 - 1)) : undefined,
+                          onClose: closeBlockEditor,
+                          onDate: date => {
+                            if (!planStartDate) return
+                            const next = changeBlockDate(weeks, { weekNumber: wk.num, dx }, date, planStartDate, blockWeekdays)
+                            if (next === weeks) { setStatusText(S.editor.blockDateUnavailable); return }
+                            const moved = next.find(week => week.num === wk.num)?.days.find(candidate => candidate.rows === day.rows)
+                            setColumnWeekdays(Object.fromEntries(blockWeekdays.map((value, index) => [index, value])))
+                            setWeeksWithHistory(next)
+                            if (moved) { setEditingDay({ wnum: wk.num, dow: moved.dow }); handleSelect(wk.num, moved.dow) }
+                          },
+                        }}
                         day={day}
                         colW={colW[day.dow]}
                         selected={daySelection.days.has(planDayKey({ wnum: wk.num, dow: day.dow }))}
                         selectedRowId={selectedRow?.wnum === wk.num && selectedRow.dow === day.dow ? selectedRow.rowId : null}
                         selectedRowIds={selectedRow?.wnum === wk.num && selectedRow.dow === day.dow ? selectedRowIds : undefined}
                         cellSelection={cellSelection}
-                        headerContext={sel?.wnum === wk.num && sel?.dow === day.dow && props.studentId ? (
-                          <DayHeaderContext
-                            studentId={props.studentId}
-                            studentName={studentName}
-                            row={selectedRowForBar}
-                            profile={props.onboardingProfile}
-                          />
-                        ) : undefined}
                         readOnly={readOnly}
                         rowTier={rowTier}
-                        onSelect={(event) => handleDayClick(wk.num, day.dow, event)}
+                        onSelect={() => {}}
                         onSelectRow={(rowId, modifiers) => handleSelectRow(wk.num, day.dow, rowId, modifiers)}
                         onSelectCell={(rowId, field, setIndex) => handleSelectCell(wk.num, day.dow, rowId, field, setIndex)}
-                        onSetsDraftChange={(rowId, draft) => handleSetsDraftChange(wk.num, day.dow, rowId, draft)}
                         dayMoveState={moveStateForDay(wk.num, day.dow)}
                         dayMoveDisabledHint={dayMoveDisabledReason(day, dayMoveLocked)}
                         onDayMoveStart={(e) => handleDayMoveStart(wk.num, day, e)}
@@ -3073,15 +2839,16 @@ export function PlanEditor(props: PlanEditorProps) {
                         e1rmForRow={e1rmForRow}
                         shiftControl={shiftControlForDay(wk, day)}
                       />
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </div>
+              )}
+            />
+          </div>
         </div>
       </div>
-
-      </div>
+      {blockMenu && <div className="block-context-menu" role="menu" style={{ left: blockMenu.x, top: blockMenu.y }}>
+        <button type="button" role="menuitem" onClick={() => { void copySelectedDay(); setBlockMenu(null) }}>{S.editor.blockCopy}</button>
+        <button type="button" role="menuitem" disabled={readOnly} onClick={() => { if (clipboardKindRef.current === 'row') void pasteSelectedRows(); else void pasteSelectedDay(); setBlockMenu(null) }}>{S.editor.blockPaste}</button>
+        <button type="button" role="menuitem" disabled={readOnly} onClick={() => { handleClearDay(); setBlockMenu(null) }}>{S.editor.blockClear}</button>
+      </div>}
 
       <ExercisePopover
         visible={pop.visible} x={pop.x} y={pop.y}

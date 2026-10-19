@@ -2,6 +2,20 @@ import type { Translations } from './types'
 import { countUnit } from './plural'
 
 export const zhEditor = {
+  blockWeekday: '修改 Dx 星期',
+  blockDone: '已练',
+  blockClose: 'Esc 收起',
+  blockNote: '备注',
+  blockDate: '修改本日日期',
+  blockCopy: '复制',
+  blockPaste: '粘贴',
+  blockClear: '清空本日',
+  blockDateUnavailable: '该日期已有训练或超出本周，日期未修改',
+  blockFillHint: '拖动复制到下面几周',
+  blockFillPreview: (from: number, to: number, dx: number, rows: number) => `松开：填到 W${from}–W${to} · D${dx}（${rows} 行） · 各周之后可单独改`,
+  blockRowsSelected: (rows: number) => `已框选 ${rows} 行 · ⌘C 复制，点目标格 ⌘V 粘贴`,
+  blockGestures: '拖框选中几行 · ⌘C 复制 · 到别的格子 ⌘V 粘贴 · Delete 删除',
+
   selectedDays: (count: number, label: string) => `已选 ${count} 天 · ${label}`,
   clearDays: (count: number) => `清空 ${count} 天`,
   copiedDays: (count: number) => `已复制 ${count} 天`,
@@ -301,6 +315,20 @@ export const zhEditor = {
 } as const
 
 export const enEditor = {
+  blockWeekday: 'Change Dx weekday',
+  blockDone: 'Completed',
+  blockClose: 'Esc Collapse',
+  blockNote: 'Notes',
+  blockDate: 'Change this day’s date',
+  blockCopy: 'Copy',
+  blockPaste: 'Paste',
+  blockClear: 'Clear day',
+  blockDateUnavailable: 'That date is occupied or outside this week; no date changed',
+  blockFillHint: 'Drag to copy to later weeks',
+  blockFillPreview: (from: number, to: number, dx: number, rows: number) => `Release: fill W${from}–W${to} · D${dx} (${rows} rows) · edit each week independently`,
+  blockRowsSelected: (rows: number) => `${rows} rows selected · ⌘C Copy, then ⌘V in the target day`,
+  blockGestures: 'Drag to select rows · ⌘C Copy · ⌘V Paste into another day · Delete Remove',
+
   selectedDays: (count, label) => `${countUnit(count, 'day', 'days')} selected · ${label}`,
   clearDays: (count) => `Clear ${countUnit(count, 'day', 'days')}`,
   copiedDays: (count) => `Copied ${countUnit(count, 'day', 'days')}`,

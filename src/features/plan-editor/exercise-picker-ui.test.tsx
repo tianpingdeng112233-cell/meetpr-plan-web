@@ -1,3 +1,4 @@
+import { openBlockDay } from './blockGridTestUtils'
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -65,6 +66,8 @@ describe('PlanEditor exercise picker keyboard binding', () => {
     act(() => root.render(
       <PlanEditor initialWeeks={[week()]} weeksCount={1} studentName="学员" planName="计划" exerciseIndex={index}/>,
     ))
+    openBlockDay(host)
+
     const input = host.querySelector<HTMLInputElement>('[data-c="name"] input')!
     act(() => { input.focus(); setInput(input, '测试推举') })
     expect(host.querySelector('[role="option"][data-active="true"]')?.textContent).toContain('测试推举一')
@@ -84,6 +87,8 @@ describe('PlanEditor exercise picker keyboard binding', () => {
     act(() => root.render(
       <PlanEditor initialWeeks={[week()]} weeksCount={1} studentName="学员" planName="计划" exerciseIndex={index}/>,
     ))
+    openBlockDay(host)
+
     const input = host.querySelector<HTMLInputElement>('[data-c="name"] input')!
     act(() => { input.focus(); setInput(input, '测试推举') })
     expect(host.querySelector('[role="option"][data-active="true"]')).not.toBeNull()
@@ -110,6 +115,8 @@ describe('PlanEditor exercise picker keyboard binding', () => {
     act(() => root.render(
       <PlanEditor initialWeeks={[week()]} weeksCount={1} studentName="学员" planName="计划" exerciseIndex={index}/>,
     ))
+    openBlockDay(host)
+
     const input = host.querySelector<HTMLInputElement>('[data-c="name"] input')!
     act(() => { input.focus(); setInput(input, '低杆深蹲'); input.blur() })
     expect(input.value).toBe('低杆深蹲')
@@ -126,6 +133,8 @@ describe('PlanEditor exercise picker keyboard binding', () => {
     act(() => root.render(
       <PlanEditor initialWeeks={[week()]} weeksCount={1} studentName="学员" planName="计划" exerciseIndex={index}/>,
     ))
+    openBlockDay(host)
+
     const input = host.querySelector<HTMLInputElement>('[data-c="name"] input')!
     act(() => { input.focus(); setInput(input, '二头弯举加停顿'); input.blur() })
 
@@ -142,6 +151,8 @@ describe('PlanEditor exercise picker keyboard binding', () => {
       <PlanEditor initialWeeks={[week()]} weeksCount={1} studentName="学员" planName="计划"
         exerciseIndex={index} onCreateExercise={onCreateExercise}/>,
     ))
+    openBlockDay(host)
+
     const rowInput = host.querySelector<HTMLInputElement>('[data-c="name"] input')!
     act(() => { rowInput.focus(); setInput(rowInput, '平板侧支撑') })
     const createOption = [...host.querySelectorAll<HTMLElement>('[data-popover] [role="option"]')].at(-1)!
@@ -162,6 +173,8 @@ describe('PlanEditor exercise picker keyboard binding', () => {
     act(() => root.render(
       <PlanEditor initialWeeks={[week()]} weeksCount={1} studentName="学员" planName="计划" exerciseIndex={index}/>,
     ))
+    openBlockDay(host)
+
     const input = host.querySelector<HTMLInputElement>('[data-c="name"] input')!
     act(() => { input.focus(); setInput(input, '低杆深蹲'); input.blur() })
     await act(async () => { await vi.advanceTimersByTimeAsync(80) })
@@ -181,6 +194,8 @@ describe('PlanEditor exercise picker keyboard binding', () => {
       <PlanEditor initialWeeks={[week()]} weeksCount={1} studentName="学员" planName="计划"
         exerciseIndex={index} onCreateExercise={onCreateExercise}/>,
     ))
+    openBlockDay(host)
+
     const submitDialog = async () => {
       const nameInput = Array.from(host.querySelectorAll<HTMLInputElement>('form input'))
         .find((el) => el.placeholder.includes('平板侧支撑'))!

@@ -1,3 +1,4 @@
+import { openBlockDay } from './blockGridTestUtils'
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -80,6 +81,8 @@ describe('plan editor actual-set chips (SPEC-038)', () => {
       )
       await Promise.resolve()
     })
+    openBlockDay(host)
+
     await act(async () => { await Promise.resolve() })
 
     expect(api.getStudentSetLogs).toHaveBeenCalledTimes(1)
@@ -112,6 +115,8 @@ describe('plan editor actual-set chips (SPEC-038)', () => {
       )
       await Promise.resolve()
     })
+    openBlockDay(host)
+
 
     expect(api.getStudentSetLogs).not.toHaveBeenCalled()
     expect(host.querySelector('[data-actuals]')).toBeNull()
@@ -136,6 +141,8 @@ describe('plan editor actual-set chips (SPEC-038)', () => {
       )
       await Promise.resolve()
     })
+    openBlockDay(host)
+
 
     expect(api.getStudentSetLogs).toHaveBeenCalledWith('student-1', '2026-08-22', '2026-08-23')
   })
@@ -154,8 +161,10 @@ describe('plan editor actual-set chips (SPEC-038)', () => {
     const onPublish = vi.fn(async () => {})
     await act(async () => root.render(<PlanEditor initialWeeks={[source]} weeksCount={1} studentId="student-1" studentName="学员"
       planName="计划" planStartDate="2026-07-27" onSave={onSave} onPublish={onPublish} />))
+    openBlockDay(host)
     expect(api.getStudentSetLogs).toHaveBeenCalledTimes(1)
     expect(host.querySelector('[data-dow="0"] [data-student-added="curl"]')).not.toBeNull()
+    openBlockDay(host, 1, 1)
     expect(host.querySelector('[data-dow="1"] [data-student-added="press"]')).not.toBeNull()
     expect(host.querySelector('[data-dow="1"] [data-student-added="curl"]')).toBeNull()
     expect(host.querySelector('[data-student-added="unlinked"]')).toBeNull()
@@ -182,6 +191,7 @@ describe('plan editor actual-set chips (SPEC-038)', () => {
       planName="历史" planStartDate="2026-07-27" planStatus="completed" exerciseIndex={index} />)
     api.getStudentSetLogs.mockResolvedValue([log({}), log({ adhoc: true, plan_exercise_id: null, exercise_id: 'curl' })])
     await act(async () => render())
+    openBlockDay(host)
     expect(host.querySelector('[data-student-added]')).toBeNull()
     expect(host.textContent).not.toContain('学员自加')
     expect(host.querySelectorAll('[data-actuals="weight"] .actual-chip')).toHaveLength(1)
@@ -189,6 +199,7 @@ describe('plan editor actual-set chips (SPEC-038)', () => {
     root = createRoot(host)
     api.getStudentSetLogs.mockResolvedValue([log({ adhoc: true, plan_exercise_id: null, plan_day_id: 'day-1', exercise_id: 'curl' })])
     await act(async () => render())
+    openBlockDay(host)
     expect(host.querySelector('[data-student-added="curl"] [data-c="name"]')?.textContent).toBe('哑铃弯举学员自加')
     expect(host.querySelector('[data-student-added="curl"] input')).toBeNull()
   })
@@ -207,8 +218,10 @@ describe('plan editor actual-set chips (SPEC-038)', () => {
     api.getStudentSetLogs.mockImplementation(async (_studentId: string, from: string, to: string) => (
       todaysLogs.filter((entry) => entry.logged_date >= from && entry.logged_date < to)
     ))
+
     await act(async () => root.render(<PlanEditor initialWeeks={[source]} weeksCount={1} studentId="student-1" studentName="学员"
       planName="计划" planStartDate="2026-07-27" />))
+    openBlockDay(host)
     expect(api.getStudentSetLogs).toHaveBeenCalledWith('student-1', '2026-07-27', '2026-08-23')
     expect(host.querySelectorAll('[data-rowid="squat-row"] [data-actuals="weight"] .actual-chip')).toHaveLength(2)
     expect(host.querySelector('[data-rowid="squat-row"] .actual-added-first')).not.toBeNull()
