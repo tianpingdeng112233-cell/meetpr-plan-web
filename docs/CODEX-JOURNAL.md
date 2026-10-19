@@ -875,3 +875,17 @@ npx vitest run src/features/plan-editor/block-grid-ui.test.tsx
 - 保留外部 SPEC §1 的新决定，同步 `specs/012-insert-delete-training-day/SPEC.md` 的表述与验收示例，以及 `CARD-E.md` 的对应要求；历史记录的旧英文文案改为语义描述并注明后续删除，历史测试事实保留。
 - 全量 `npm test` exit 0：98 files / 994 passed（9.65s）；`npx tsc --noEmit` exit 0 无诊断；`npm run build` exit 0（2.21s），仅 chunk >500 kB 提示。日志 `/tmp/meetpr-weekday-{test,tsc,build}.log`。
 - 全仓 `rg --hidden --no-ignore` 搜索旧中英文文案、i18n 键及统计变量（含 docs/specs/dist，仅排除 .git/node_modules），无匹配，rg exit 1；日志 `/tmp/meetpr-weekday-residue.log`。`git diff --check` 通过。未 commit/push，未改锁文件；浏览器验证仍受上一轮本地监听权限限制。
+
+## 2026-10-19 · 012 插入后保持扫视态热修
+
+- 现场：`fix/012-insert-no-autoedit`，开工 HEAD `e737fee`，工作树干净；首条命令在工作树创建临时文件后删除，exit 0，确认可写。已读 CONTEXT、CLAUDE 与 SPEC §2。
+- `src/features/plan-editor/PlanEditor.tsx`：插入成功仍执行原有建日、历史记录与选中，仅将 `setEditingDay({ wnum: weekNumber, dow })` 改为 `setEditingDay(null)`。新日用现有扫视空卡、选中描边与常驻 SVG ＋；点击沿用现有 onOpen。未改插入数据、删除、撤销或保存逻辑。
+- `src/features/plan-editor/block-grid-ui.test.tsx`：替换自动编辑断言，检查无 `.is-editing`、新日日期、`.is-selected`、空卡 SVG ＋及无动作；新增点击新卡才进入编辑的用例。首尾插入用例改读扫视日期；已有删除身份回归用例在操作日期前显式点击新卡，保留其原有保存断言。
+- RED：先只修改既有插入用例，执行 `npx vitest run src/features/plan-editor/block-grid-ui.test.tsx -t 'inserts Thursday'`，1 failed / 52 skipped；`.is-editing` 预期 null，实际存在编辑卡。日志 `/tmp/meetpr-no-autoedit-red.log`。
+- GREEN：随后修改生产代码同一行，执行同一命令，exit 0，1 passed / 52 skipped。日志 `/tmp/meetpr-no-autoedit-green.log`。追加点击回归后，组件全跑暴露另一处旧自动编辑断言（1 failed / 53 passed），已改为首尾插入后的扫视日期；最终全量包含全部 54 个组件用例通过。
+- `npm test`：exit 0，98 files / 995 passed，9.59s；日志 `/tmp/meetpr-no-autoedit-test.log`。
+- `npx tsc --noEmit`：exit 0，无诊断；日志 `/tmp/meetpr-no-autoedit-tsc.log`。
+- `npm run build`：exit 0，Vite 2.74s，仅 >500 kB chunk 提示；日志 `/tmp/meetpr-no-autoedit-build.log`。
+- 浏览器验证受限：`npm run dev -- --host 127.0.0.1 --port 5187` exit 1，原错 `Error: listen EPERM: operation not permitted 127.0.0.1:5187`。未取得截图，不宣称浏览器视觉验收完成。
+- `git diff --check` 通过；未 commit、push 或修改锁文件。
+- 独立只读 review-loop 一轮：Standards 无发现；Spec 无发现，无未决项。两轴都核对了完整代码与测试 diff。仓内缺 `docs/agents/issue-tracker.md`，本轮直接使用用户要求与本地 SPEC；完整 Matt tracker 流程需 David 调用 `$setup-matt-pocock-skills`，未创建配置。审查记录合并保存在本段任务 JOURNAL。
