@@ -414,7 +414,7 @@ it('lets long per-set bricks wrap below a six-character name without losing hove
   } finally { style.remove() }
 })
 
-it('inserts Thursday from the W2 gap, opens its empty editor, and keeps other weeks blank and numbered', async () => {
+it('inserts Thursday from the W2 gap as a selected empty card and keeps other weeks blank and numbered', async () => {
   act(() => root.render(<PlanEditor initialWeeks={fixture()} weeksCount={4} studentName="学员" planName="计划" planStartDate="2026-10-19" />))
   const gap = host.querySelector('[data-insert-week="2"][data-insert-before="2"] button')!
   expect(gap).not.toBeNull()
@@ -423,10 +423,11 @@ it('inserts Thursday from the W2 gap, opens its empty editor, and keeps other we
   expect(choices.map(el => el.getAttribute('data-insert-date'))).toEqual(['2026-10-29'])
   click(choices[0])
   expect(host.querySelectorAll('.block-column')[2].textContent).toBe('周四')
-  expect(cell(2,2).classList.contains('is-editing')).toBe(true)
-  expect(cell(2,2).querySelector('.block-edit-head')?.textContent).toContain('W2 · D3 · 周四 10/29')
+  expect(host.querySelector('.is-editing')).toBeNull()
+  expect(cell(2,2).classList.contains('is-selected')).toBe(true)
+  expect(cell(2,2).querySelector('.block-date')?.textContent).toBe('D3 · 10/29')
+  expect(cell(2,2).querySelector('.block-empty svg')).not.toBeNull()
   expect(cell(2,2).querySelectorAll('.exrow')).toHaveLength(0)
-  await key('Escape')
   expect(cell(2,4).querySelector('.block-date')?.textContent).toBe('D5 · 10/31')
   for (const w of [1,3,4]) {
     expect(cell(w,2).textContent).toBe('')
@@ -434,6 +435,18 @@ it('inserts Thursday from the W2 gap, opens its empty editor, and keeps other we
     expect(cell(w,4).querySelector('.block-date')?.textContent).toMatch(/^D4 · /)
   }
   expect(host.querySelector('[data-insert-week="2"][data-insert-before="4"]')).toBeNull()
+})
+
+it('opens the newly inserted empty card for editing only when clicked', () => {
+  act(() => root.render(<PlanEditor initialWeeks={fixture()} weeksCount={4} studentName="学员" planName="计划" planStartDate="2026-10-19" />))
+  click(host.querySelector('[data-insert-week="2"][data-insert-before="2"] button')!)
+  click(host.querySelector('[data-insert-date="2026-10-29"]')!)
+  expect(host.querySelector('.is-editing')).toBeNull()
+  click(cell(2,2))
+  expect(host.querySelectorAll('.is-editing')).toHaveLength(1)
+  expect(cell(2,2).classList.contains('is-editing')).toBe(true)
+  expect(cell(2,2).querySelector('.block-edit-head')?.textContent).toContain('W2 · D3 · 周四 10/29')
+  expect(cell(2,2).querySelectorAll('.exrow')).toHaveLength(0)
 })
 
 it('confirms whole-day deletion, renumbers, collapses the extra column, and restores it with undo', async () => {
@@ -581,12 +594,12 @@ it('lists only available start/end dates, reuses a pattern column, and hides ins
   expect([...host.querySelectorAll('[data-insert-date]')].map(el => el.getAttribute('data-insert-date'))).toEqual(['2026-10-26','2026-10-27'])
   click(host.querySelector('[data-insert-date="2026-10-26"]')!)
   expect(host.querySelectorAll('.block-column')).toHaveLength(4)
-  expect(cell(2,0).querySelector('.block-edit-head')?.textContent).toContain('W2 · D1 · 周一 10/26')
+  expect(cell(2,0).querySelector('.block-date')?.textContent).toBe('D1 · 10/26')
   await key('Escape')
   click(host.querySelector('[data-insert-week="2"][data-insert-before="5"] button')!)
   expect([...host.querySelectorAll('[data-insert-date]')].map(el => el.getAttribute('data-insert-date'))).toEqual(['2026-11-01'])
   click(host.querySelector('[data-insert-date="2026-11-01"]')!)
-  expect(cell(2,4).querySelector('.block-edit-head')?.textContent).toContain('W2 · D5 · 周日 11/1')
+  expect(cell(2,4).querySelector('.block-date')?.textContent).toBe('D5 · 11/1')
   act(() => root.render(<PlanEditor key="readonly" initialWeeks={weeks} weeksCount={4} studentName="学员" planName="计划" planStartDate="2026-10-19" readOnly />))
   expect(host.querySelector('[data-insert-week]')).toBeNull()
 })
@@ -845,6 +858,7 @@ it.each(['replacement-empty', 'old-empty'])('does not transfer an old Delete act
     click(host.querySelector('[data-insert-week="2"][data-insert-before="2"] button')!)
     click(host.querySelector('[data-insert-date="2026-10-29"]')!)
     await act(async () => { await vi.advanceTimersByTimeAsync(4000) })
+    click(host.querySelector('[data-block-week="2"][data-dow="3"]')!)
     click(host.querySelector('[data-block-week="2"][data-dow="3"] [data-day-calendar-label]')!)
     const date = host.querySelector<HTMLInputElement>('.is-editing input[type="date"]')!
     act(() => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(date, '2026-10-27'); date.dispatchEvent(new Event('input', { bubbles: true })) })

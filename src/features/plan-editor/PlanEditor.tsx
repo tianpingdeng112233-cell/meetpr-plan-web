@@ -2996,7 +2996,7 @@ export function PlanEditor(props: PlanEditorProps) {
                 setWeeksWithHistory(next)
                 const dow = (weekday - (addDays(planStartDate, 0).getDay() + 6) % 7 + 7) % 7
                 handleSelect(weekNumber, dow)
-                setEditingDay({ wnum: weekNumber, dow })
+                setEditingDay(null)
               }}
               onFill={fillBlock}
               onWeekday={(dx, weekday) => {
