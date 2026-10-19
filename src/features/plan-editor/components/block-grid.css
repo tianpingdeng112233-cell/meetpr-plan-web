@@ -11,9 +11,9 @@
 .block-column-row, .block-week { display: grid; grid-template-columns: 48px repeat(var(--block-columns), minmax(205px, 1fr)); gap: 10px; }
 .block-column-row { height: 34px; margin-bottom: 10px; }
 .block-column { display: flex; align-items: center; gap: 7px; position: relative; min-width: 0; }
-.block-column > button { display: flex; align-items: baseline; gap: 8px; border: 0; background: none; color: var(--sec); padding: 0; cursor: pointer; white-space: nowrap; }
+.block-column > button { display: flex; align-items: baseline; gap: 8px; border: 0; background: none; color: var(--sec); padding: 0; cursor: pointer; white-space: nowrap; min-width: 0; max-width: 100%; }
 .block-column b { font: 600 15px var(--font-mono); color: var(--txt); }
-.block-column span { font-size: 13px; }
+.block-column span { font-size: 13px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .block-column small { font-size: 12px; color: var(--mut); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .block-column select { position: absolute; left: 0; top: 28px; z-index: 15; background: white; border: 1px solid var(--txt); border-radius: 6px; padding: 6px; }
 .block-grid .block-week { margin: 0 0 10px; border: 0; width: auto; min-width: 0; align-items: stretch; }
@@ -26,15 +26,16 @@
 .block-cell.is-selected { border-color: #111827; box-shadow: inset 0 0 0 1px #111827; }
 .block-cell.is-editing { z-index: 3; padding: 0; border-radius: 10px; cursor: default; }
 .block-date { display: flex; justify-content: space-between; gap: 4px; margin-bottom: 6px; font: 11px var(--font-mono); color: #5c6371; min-height: 14px; }
-.block-brick { display: flex; align-items: center; justify-content: space-between; gap: 5px; border: 1px solid #eef0f3; border-radius: 6px; padding: 0 8px; margin-bottom: 3px; height: 24px; background: #f5f6f8; font-size: 13px; user-select: none; min-width: 0; }
-.block-brick > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
-.block-brick code { flex-shrink: 0; font: 12px var(--font-mono); }
+.block-brick { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; column-gap: 5px; row-gap: 0; border: 1px solid #eef0f3; border-radius: 6px; padding: 0 8px; margin-bottom: 3px; height: auto; min-height: 24px; box-sizing: border-box; background: #f5f6f8; font-size: 13px; user-select: none; min-width: 0; }
+/* Wrap at intrinsic text widths before either label can squeeze the name. */
+.block-brick > span { flex: 1 1 auto; min-width: min(6em, 100%); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; line-height: 22px; }
+.block-brick code { flex: 0 1 auto; min-width: 0; max-width: 100%; margin-left: auto; text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 12px/22px var(--font-mono); }
 .block-brick.aux > span { font-weight: 400; color: #4b5563; }
 .block-brick.section-start { margin-top: 9px; position: relative; }
 .block-brick.section-start::before { content: ''; position: absolute; height: 1px; background: #e9ebee; top: -6px; left: 0; right: 0; }
 .block-brick.row-sel, .block-cell .exrow.row-sel { background: #fef3c7; border-color: #111827; }
-.block-empty { display: flex; align-items: center; justify-content: center; height: 90px; font-size: 23px; color: #9ca3af; opacity: 0; }
-.block-cell:hover .block-empty, .block-cell:focus .block-empty { opacity: 1; }
+.block-empty { display: flex; align-items: center; justify-content: center; height: 90px; font-size: 23px; color: #9ca3af; opacity: 1; }
+.block-cell:hover .block-empty, .block-cell:focus .block-empty { color: #111827; }
 .block-fill-handle { position: absolute; right: -5px; bottom: -5px; width: 10px; height: 10px; padding: 0; background: #111827; border: 2px solid white; cursor: crosshair; z-index: 8; }
 .block-cell:hover .block-fill-handle { width: 14px; height: 14px; }
 .block-cell.fill-preview { border: 1.5px dashed #6b7280; background: #fef3c7; }
@@ -101,8 +102,8 @@
 .block-grid ::selection { background: #fef3c7; color: #111827; }
 .block-cell.is-blank { background: transparent; border-color: transparent; cursor: default; }
 .block-insert-gap { position: relative; align-self: stretch; z-index: 5; width: 14px; margin-left: -12px; display: flex; align-items: center; }
-.block-insert-gap > button { opacity: 0; border: 1px solid #e5e7eb; background: white; color: #4b5563; border-radius: 50%; padding: 0; width: 20px; height: 20px; flex-shrink: 0; cursor: pointer; }
-.block-insert-gap:hover > button, .block-insert-gap:focus-within > button { opacity: 1; }
+.block-insert-gap > button { opacity: 1; border: 1px solid #9ca3af; background: white; color: #9ca3af; border-radius: 50%; padding: 0; width: 18px; height: 18px; box-sizing: border-box; flex-shrink: 0; cursor: pointer; }
+.block-insert-gap:hover > button, .block-insert-gap:focus-within > button { color: #111827; border-color: #111827; }
 .block-insert-menu { position: absolute; top: 50%; left: 8px; z-index: 20; min-width: 140px; padding: 4px; background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; box-shadow: 0 4px 12px #11182718; }
 .block-insert-menu button { display: block; width: 100%; border: 0; padding: 8px; background: white; color: #111827; text-align: left; white-space: nowrap; cursor: pointer; }
 .block-insert-menu button:hover { background: #f5f6f8; }

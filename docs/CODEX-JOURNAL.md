@@ -804,3 +804,53 @@ Spec：更新后的 §4 门禁/白名单、空日回包和恢复闭环均已定�
 1. 纯空日改日期/规律时，不再推断删除服务端源空日：目标空日可保存，源空日保留并进入待核对；要移除源日需明确 Delete。该行为是“只允许 Delete / 删除这天产生删除 ID”的字面执行。011 的非空处方移动仍使用原 reconcile 路径，全量回归通过。
 2. 明确删除记录只存本机编辑元数据，不新增远端快照字段。跨设备恢复、存储失败或缺少匹配 hash 时，服务端空日保留，教练需再次明确删除；不会把镜像里缺席当作删除授权。同机记录匹配的删除恢复可继续更新。
 3. 本轮新增交互仅有组件证据，真实浏览器复验仍交 Claude；未写线上数据。
+
+## 2026-10-19 · SPEC 012 CARD-E：列头、积木、撤销收列与常驻插入入口
+
+### 范围与现场
+
+工作树 `meetpr-plan-web-wt-011`，分支 `fix/012-headers-bricks`。第一条 shell 命令使用 `mktemp .codex-write-check.XXXXXX` 后立即删除，exit 0，确认可写。开工 HEAD `bdf89c3`、工作树干净；期间外部提交 `d0e5e53` / `7476c3b` 追加卡片第 3/4 项，David 在同一线程明确要求继续，最终 HEAD `7476c3b`。本代理没有 commit / push，也未修改卡片、锁文件、数据结构或 reconcile。
+
+### 改动文件
+
+- `src/features/plan-editor/components/BlockGrid.tsx`：沿用已有 `patternIndex` 区分规律列（包含数据投票推出的列）与额外列；只有额外列在不足一半的周出现才标记。列头 title 使用完整显示文案，积木 title 使用完整动作名与速记；移除名字子元素的单独 title，避免覆盖整块悬停全文。
+- `src/features/plan-editor/components/block-grid.css`：列头宽度受列约束、单行省略；积木按内容宽度换行，名字至少 `min(6em, 100%)`，第二行速记靠右、溢出省略，短行 24px。插入按钮常驻 18px 灰色圆形，hover/focus 加深；空格＋常驻。保留原网格轨道与缝隙定位，未改只读渲染条件。
+- `src/i18n/strings-editor.ts`：只显示前三个周号，超过三个时给出总周数；中文为「等 N 周」，英文为「N weeks total」。N 按卡片示例理解为总数，不是剩余数。
+- `src/features/plan-editor/mapping.ts`：草稿保存回包不再把新建日的 ID/完成态回填进插入前完全缺席的休息日历史；原有真实训练日与发布态日程投影继续保留。
+- `src/features/plan-editor/PlanEditor.tsx`：Undo/Redo 使训练日从当前树消失时，将明确移除的源 ID 纳入现有删除意图；沿用 sourceToken 处理在途保存回包。连续撤销/重做保留目标仍缺席的待删日，恢复日则取消对应当前待删记录。没有修改保存适配器或服务端删除门禁。
+- `src/features/plan-editor/block-grid-ui.test.tsx`：12 周夹具（W1=2026-01-12，每周原有四练，少数周插入第五练，W6/W7 少一练）含长名、逐组重量和逐组 RPE；覆盖稀有列、半数边界、推断规律列、中英文、省略与悬停 CSS/DOM、撤销保存重挂载、在途保存、连续 Undo/Redo 和常驻＋/只读。
+- `docs/CODEX-JOURNAL.md`：本段。
+
+### 实际红 → 绿
+
+所有下表红例均在对应修复前实际执行。统一命令前缀：
+
+```sh
+npx vitest run src/features/plan-editor/block-grid-ui.test.tsx
+```
+
+| 追加参数 | RED 失败摘要 | GREEN |
+| --- | --- | --- |
+| `-t 'labels only rare\|shows only weekdays'` | 4 failed：规律列列出 10 个周号；恰好 6/12 周仍有标记；没有 3 周截断 | 4 passed |
+| `-t 'clips legacy'` | 1 failed：缺 title、宽度上限及 nowrap/ellipsis | 1 passed |
+| `-t 'lets long per-set bricks'` | 1 failed：固定 24px、不换行，速记 flex-shrink=0，缺全文 title | 1 passed |
+| `-t 'removes an inserted extra\|ignores stale extra'` | 2 failed：保存回包带新 serverDayId 后，Undo 与重挂载仍是 5 列而非 4 列 | 2 passed |
+| `-t 'ignores stale extra'` | 加强保存边界后 1 failed：删除 ID 为 `[]`；模拟保存适配器保留服务端空日，休息日又变训练日 | 通过；与前一用例合跑 2 passed |
+| `-t 'shows gap and empty-cell plus'` | 1 failed：两种＋的 opacity=0，插入按钮仍 20px 且颜色不符 | 1 passed |
+| `-t 'retains all pending insertion'` | 1 failed：双插入保存→连续撤销→重做→再撤销遗漏 `inserted-1`；重挂载仍有 5 列 | 全组件文件 52 passed |
+
+表内 `\|` 仅为 Markdown 转义，实际 shell 参数使用普通 `|`。原始日志：`/tmp/meetpr-012-e-{headers,clipping,bricks,undo,undo-save,plus,multiundo}-{red,green}.log`；最后的 `multiundo-green.log` 跑完整组件文件。补充未保存即撤销及在途保存的边界命令为同一前缀加 `-t 'extra column on undo|ignores stale extra|autosave is in flight'`，5 passed，日志 `/tmp/meetpr-012-e-undo-boundaries.log`。
+
+第 3 项最初在“不返回服务端 ID”的简化回包下，插入后立即 Undo 已经通过；不是有效红例。改成接近真实自动保存的回包后才复现。证实根因是历史身份回填与逆操作缺少删除意图，不能仅删除本机 extra-weekdays。已有 `buildBlockGrid` 会忽略树中没有训练日的额外星期，因此保留本机元数据并沿用现有过滤，无需改列模型。保存 stub 进一步模拟了现有适配器“无明确删除 ID 则保留服务端空日”的规则；没有把本地模拟称为真实服务端部署验证。
+
+### 独立审查与最终验证
+
+按 `review-loop` 做独立只读 Standards / Spec 审查。初始两项两轴均无 findings；新增第 3/4 项时两轴都指出连续撤销会覆盖前一次删除意图。已补上真实失败用例并定向修复，两轴复审均关闭该 P1、无新增 findings。本仓缺 `docs/agents/issue-tracker.md`，使用 review-loop 的本地 spec 双轴流程；若启用完整 tracker 工作流需另由 David 调用 `$setup-matt-pocock-skills`，本次未创建配置。
+
+- `npm test`：exit 0，**98 files / 993 passed**，10.87s；`/tmp/meetpr-012-e-complete-test.log`。
+- `npx tsc --noEmit`：exit 0，无诊断；`/tmp/meetpr-012-e-complete-tsc.log`。
+- `npm run build`：exit 0，Vite 2.53s；仅已有 >500 kB chunk 提示；`/tmp/meetpr-012-e-complete-build.log`。
+- `git diff --check`：exit 0。Impeccable 对改动 UI 文件的机械扫描返回 `[]`。
+- 保存、镜像、后移的既有测试在最终全量中全部通过。未改 011/012 的受保护 reconcile、clipboard、selectionModel、dayMove 测试。
+
+浏览器亲验仍按 CARD-E 由 Claude 在沙箱外完成。本轮 DOM/CSS 测试不能证明真实像素尺寸、长行实际换行或按钮无视觉遮挡，不宣称浏览器验收、部署或上线通过。

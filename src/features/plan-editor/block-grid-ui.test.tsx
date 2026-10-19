@@ -7,6 +7,7 @@ import { readFileSync } from 'node:fs'
 import { setLocale } from '../../i18n/locale'
 import type { StudentSetLog } from '../../api/types'
 import type { ExerciseRow, Week } from './types'
+import { installLocalStorageMock } from '../../test/localStorageMock'
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 function fixture(count = 4): Week[] {
@@ -19,6 +20,25 @@ function fixture(count = 4): Week[] {
         reps: '3', mode: 'kg', boxes: [{ val: '120', empty: false }], note: '',
       })) : [] })),
   })), '2026-10-19')
+}
+function hotfixFixture(extraWeeks = [2, 3, 5, 8]): Week[] {
+  const weeks = fixture(12)
+  for (const week of weeks) {
+    if ([6, 7].includes(week.num)) Object.assign(week.days[2], { rest: true, rows: [] })
+    if (extraWeeks.includes(week.num)) Object.assign(week.days[3], { rest: false,
+      rows: [{ ...week.days[0].rows[0], id: `w${week.num}-extra` }] })
+  }
+  Object.assign(weeks[0].days[0].rows[0], {
+    name: '宽握距罗马尼亚硬拉', weightMode: 'per_set',
+    boxes: ['92.5', '82.5', '82.5', '82.5'].map(val => ({ val, empty: false })),
+  })
+  Object.assign(weeks[0].days[0].rows[1], {
+    name: '弹力带辅助引体向上', reps: '12', mode: 'kg',
+    intensity: { mode: 'rpe', value: '6', high: '' }, intensityMode: 'per_set',
+    intensityBoxes: ['6', '7', '8', '8'].map(val => ({ val, empty: false })),
+    boxes: Array.from({ length: 4 }, () => ({ val: '', empty: true })),
+  })
+  return relabelWeeksForStartDate(weeks, '2026-01-12')
 }
 const api = vi.hoisted(() => ({ logs: vi.fn().mockResolvedValue([]) }))
 vi.mock('../../api/coach', () => ({ getStudentSetLogs: api.logs, getExerciseStats: vi.fn().mockResolvedValue({ recent_sessions: [] }) }))
@@ -304,11 +324,94 @@ it('shows only weekdays in column headers and date-ordered Dx on every card and 
   const weeks = fixture()
   weeks[1].days[2].rows = []; weeks[1].days[2].rest = true
   act(() => root.render(<PlanEditor initialWeeks={weeks} weeksCount={4} studentName="学员" planName="计划" planStartDate="2026-10-19" />))
-  expect([...host.querySelectorAll('.block-column button')].map(el => el.textContent)).toEqual(['周一', '周三 · 只在 W1、W3、W4', '周五', '周六'])
+  expect([...host.querySelectorAll('.block-column button')].map(el => el.textContent)).toEqual(['周一', '周三', '周五', '周六'])
   expect(cell(2,2).querySelector('.block-date')?.textContent).toBe('D2 · 10/30')
   expect(cell(2,3).querySelector('.block-date')?.textContent).toBe('D3 · 10/31')
   click(cell(2,2))
   expect(cell(2,2).querySelector('.block-edit-head')?.textContent).toContain('W2 · D2 · 周五 10/30')
+})
+
+it.each([
+  [[2, 3, 5, 8], '周四 · 只在 W2、W3、W5 等 4 周'],
+  [[2, 3, 5], '周四 · 只在 W2、W3、W5'],
+  [[2, 3, 5, 8, 10, 12], '周四'],
+] as const)('labels only rare extra columns in a legacy 12-week plan (%s)', (extraWeeks, thursday) => {
+  const weeks = hotfixFixture([...extraWeeks])
+  act(() => root.render(<PlanEditor initialWeeks={weeks} weeksCount={12} studentName="学员" planName="01-12" planStartDate="2026-01-12" />))
+  expect([...host.querySelectorAll('.block-column button')].map(el => el.textContent))
+    .toEqual(['周一', '周三', thursday, '周五', '周六'])
+})
+
+it('clips legacy 12-week column headers to one line and exposes their full labels on hover', () => {
+  const style = document.createElement('style')
+  style.textContent = readFileSync('src/features/plan-editor/components/block-grid.css', 'utf8')
+  document.head.append(style)
+  try {
+    act(() => root.render(<PlanEditor initialWeeks={hotfixFixture()} weeksCount={12} studentName="学员" planName="01-12" planStartDate="2026-01-12" />))
+    for (const button of host.querySelectorAll<HTMLButtonElement>('.block-column button')) {
+      expect.soft(button.title).toBe(button.textContent)
+      expect.soft(getComputedStyle(button).minWidth).toBe('0')
+      expect.soft(getComputedStyle(button).maxWidth).toBe('100%')
+      const label = getComputedStyle(button.querySelector('span')!)
+      expect.soft(label.whiteSpace).toBe('nowrap')
+      expect.soft(label.overflow).toBe('hidden')
+      expect.soft(label.textOverflow).toBe('ellipsis')
+    }
+  } finally { style.remove() }
+})
+
+it('keeps a data-inferred regular column plain even when fewer than half the weeks train there', () => {
+  const weeks = hotfixFixture([])
+  for (const week of weeks.slice(4)) Object.assign(week.days[5], { rest: true, rows: [] })
+  act(() => root.render(<PlanEditor initialWeeks={weeks} weeksCount={12} studentName="学员" planName="01-12" planStartDate="2026-01-12" />))
+  expect([...host.querySelectorAll('.block-column button')].map(el => el.textContent))
+    .toEqual(['周一', '周三', '周五', '周六'])
+})
+
+it('caps the rare-week list in English and keeps the full displayed label on hover', () => {
+  setLocale('en')
+  act(() => root.render(<PlanEditor initialWeeks={hotfixFixture()} weeksCount={12} studentName="Student" planName="01-12" planStartDate="2026-01-12" />))
+  const button = host.querySelectorAll<HTMLButtonElement>('.block-column button')[2]
+  expect(button.textContent).toBe('Thu · Only in W2, W3, W5 (4 weeks total)')
+  expect(button.title).toBe(button.textContent)
+})
+
+it('lets long per-set bricks wrap below a six-character name without losing hover text', () => {
+  const style = document.createElement('style')
+  style.textContent = readFileSync('src/features/plan-editor/components/block-grid.css', 'utf8')
+  document.head.append(style)
+  try {
+    act(() => root.render(<PlanEditor initialWeeks={hotfixFixture()} weeksCount={12} studentName="学员" planName="01-12" planStartDate="2026-01-12" />))
+    for (const [id, name, shorthand] of [
+      ['w1-0-0', '宽握距罗马尼亚硬拉', '4×3 · 92.5/82.5/82.5/82.5'],
+      ['w1-0-1', '弹力带辅助引体向上', '4×12 @6/7/8/8'],
+      ['w1-0-2', '动作3', '1×3 · 120'],
+    ]) {
+      const brick = host.querySelector<HTMLElement>(`.block-brick[data-rowid="${id}"]`)!
+      expect.soft(brick.title).toBe(`${name} ${shorthand}`)
+      expect.soft(brick.querySelector('span')?.textContent).toBe(name)
+      expect.soft(brick.querySelector('span')?.hasAttribute('title')).toBe(false)
+      expect.soft(brick.querySelector('code')?.textContent).toBe(shorthand)
+      const layout = getComputedStyle(brick)
+      expect.soft(layout.flexWrap).toBe('wrap')
+      expect.soft(layout.height).toBe('auto')
+      expect.soft(layout.minHeight).toBe('24px')
+      expect.soft(layout.rowGap).toBe('0')
+      const nameStyle = getComputedStyle(brick.querySelector('span')!)
+      expect.soft(nameStyle.minWidth).toBe('min(6em, 100%)')
+      expect.soft(nameStyle.flexGrow).toBe('1')
+      const shorthandStyle = getComputedStyle(brick.querySelector('code')!)
+      expect.soft(shorthandStyle.flexShrink).toBe('1')
+      expect.soft(shorthandStyle.marginLeft).toBe('auto')
+      expect.soft(shorthandStyle.textAlign).toBe('right')
+      for (const textStyle of [nameStyle, shorthandStyle]) {
+        expect.soft(textStyle.maxWidth).toBe('100%')
+        expect.soft(textStyle.whiteSpace).toBe('nowrap')
+        expect.soft(textStyle.overflow).toBe('hidden')
+        expect.soft(textStyle.textOverflow).toBe('ellipsis')
+      }
+    }
+  } finally { style.remove() }
 })
 
 it('inserts Thursday from the W2 gap, opens its empty editor, and keeps other weeks blank and numbered', async () => {
@@ -348,6 +451,101 @@ it('confirms whole-day deletion, renumbers, collapses the extra column, and rest
   await key('z', true)
   expect(host.querySelectorAll('.block-column')).toHaveLength(5)
   expect(cell(2,2).querySelector('.block-date')?.textContent).toBe('D3 · 10/29')
+})
+
+it.each([false, true])('removes an inserted extra column on undo and restores it only on redo (saved=%s)', async savedFirst => {
+  vi.useFakeTimers()
+  try {
+    const onSave = vi.fn(async (weeks: Week[]) => {
+      const saved = structuredClone(weeks)
+      saved[1].days[3].serverDayId = 'inserted-thursday'
+      return { changedDays: 1, skippedRows: 0, degradedRows: 0, weeks: saved }
+    })
+    act(() => root.render(<PlanEditor initialWeeks={fixture()} weeksCount={4} studentName="学员" planName="计划" planStartDate="2026-10-19" onSave={onSave} />))
+    click(host.querySelector('[data-insert-week="2"][data-insert-before="2"] button')!)
+    click(host.querySelector('[data-insert-date="2026-10-29"]')!)
+    expect(host.querySelectorAll('.block-column')).toHaveLength(5)
+    if (savedFirst) await act(async () => { await vi.advanceTimersByTimeAsync(4000) })
+    expect(onSave).toHaveBeenCalledTimes(savedFirst ? 1 : 0)
+    await key('Escape')
+    await key('z', true)
+    expect(host.querySelectorAll('.block-column')).toHaveLength(4)
+    await key('y', true)
+    expect(host.querySelectorAll('.block-column')).toHaveLength(5)
+    expect(cell(2,2).querySelector('.block-date')?.textContent).toBe('D3 · 10/29')
+  } finally { vi.useRealTimers() }
+})
+
+it('ignores stale extra weekdays after saving an insertion, undoing it, and remounting', async () => {
+  const storage = installLocalStorageMock()
+  vi.useFakeTimers()
+  try {
+    let saved = fixture()
+    const onSave = vi.fn(async (weeks: Week[], _start?: string | null, _past?: boolean, _progress?: unknown, deleted?: readonly string[]) => {
+      saved = structuredClone(weeks)
+      if (!saved[1].days[3].rest) saved[1].days[3].serverDayId = 'inserted-thursday'
+      // The save adapter retains a server empty day without explicit deletion.
+      else if (!deleted?.includes('inserted-thursday')) Object.assign(saved[1].days[3], { rest: false, serverDayId: 'inserted-thursday' })
+      return { changedDays: 1, skippedRows: 0, degradedRows: 0, weeks: saved }
+    })
+    const render = (key: string) => root.render(<PlanEditor key={key} currentPlanId="card-e-undo" initialWeeks={saved} weeksCount={4} studentName="学员" planName="计划" planStartDate="2026-10-19" onSave={onSave} />)
+    act(() => render('original'))
+    click(host.querySelector('[data-insert-week="2"][data-insert-before="2"] button')!)
+    click(host.querySelector('[data-insert-date="2026-10-29"]')!)
+    await act(async () => { await vi.advanceTimersByTimeAsync(4000) })
+    expect(onSave).toHaveBeenCalledTimes(1)
+    expect(saved[1].days[3].rest).toBe(false)
+    await key('Escape'); await key('z', true)
+    expect.soft(host.querySelectorAll('.block-column')).toHaveLength(4)
+    await act(async () => { await vi.advanceTimersByTimeAsync(4000) })
+    expect(onSave).toHaveBeenCalledTimes(2)
+    expect.soft(onSave.mock.calls[1][4]).toEqual(['inserted-thursday'])
+    expect(saved[1].days[3].rest).toBe(true)
+    act(() => render('reopened'))
+    expect(host.querySelectorAll('.block-column')).toHaveLength(4)
+  } finally {
+    storage.clear()
+    vi.useRealTimers()
+  }
+})
+
+it('retains all pending insertion removals across consecutive undo and redo before saving', async () => {
+  vi.useFakeTimers()
+  try {
+    let saved = fixture()
+    const live = new Set<number>()
+    const onSave = vi.fn(async (weeks: Week[], _start?: string | null, _past?: boolean, _progress?: unknown, deleted?: readonly string[]) => {
+      saved = structuredClone(weeks)
+      for (const dow of [1, 3]) {
+        const day = saved[1].days[dow]
+        if (!day.rest) live.add(dow)
+        else if (deleted?.includes(`inserted-${dow}`)) live.delete(dow)
+        if (live.has(dow)) Object.assign(day, { rest: false, serverDayId: `inserted-${dow}` })
+      }
+      return { changedDays: 1, skippedRows: 0, degradedRows: 0, weeks: saved }
+    })
+    const render = (key: string) => root.render(<PlanEditor key={key} initialWeeks={saved} weeksCount={4} studentName="学员" planName="计划" planStartDate="2026-10-19" onSave={onSave} />)
+    act(() => render('original'))
+    click(host.querySelector('[data-insert-week="2"][data-insert-before="2"] button')!)
+    click(host.querySelector('[data-insert-date="2026-10-29"]')!)
+    await key('Escape')
+    click(host.querySelector('[data-insert-week="2"][data-insert-before="0"] button')!)
+    click(host.querySelector('[data-insert-date="2026-10-27"]')!)
+    await key('Escape')
+    await act(async () => { await vi.advanceTimersByTimeAsync(4000) })
+    expect(onSave).toHaveBeenCalledTimes(1)
+    expect(host.querySelectorAll('.block-column')).toHaveLength(6)
+    await key('z', true); await key('z', true)
+    expect(host.querySelectorAll('.block-column')).toHaveLength(4)
+    await key('y', true)
+    expect(host.querySelectorAll('.block-column')).toHaveLength(5)
+    await key('z', true)
+    await act(async () => { await vi.advanceTimersByTimeAsync(4000) })
+    expect.soft([...onSave.mock.calls[1][4] ?? []].sort()).toEqual(['inserted-1', 'inserted-3'])
+    expect.soft([...live]).toEqual([])
+    act(() => render('reopened'))
+    expect(host.querySelectorAll('.block-column')).toHaveLength(4)
+  } finally { vi.useRealTimers() }
 })
 
 it('disables whole-day deletion with logs but keeps clear-day and brick deletion separate', async () => {
@@ -391,6 +589,43 @@ it('lists only available start/end dates, reuses a pattern column, and hides ins
   expect(cell(2,4).querySelector('.block-edit-head')?.textContent).toContain('W2 · D5 · 周日 11/1')
   act(() => root.render(<PlanEditor key="readonly" initialWeeks={weeks} weeksCount={4} studentName="学员" planName="计划" planStartDate="2026-10-19" readOnly />))
   expect(host.querySelector('[data-insert-week]')).toBeNull()
+})
+
+it('shows gap and empty-cell plus signs without hover, but hides both in read-only plans', () => {
+  const style = document.createElement('style')
+  style.textContent = readFileSync('src/features/plan-editor/components/block-grid.css', 'utf8')
+  document.head.append(style)
+  try {
+    const weeks = fixture()
+    Object.assign(weeks[1].days[0], { rest: true, rows: [] })
+    act(() => root.render(<PlanEditor initialWeeks={weeks} weeksCount={4} studentName="学员" planName="计划" planStartDate="2026-10-19" />))
+    const gaps = host.querySelectorAll<HTMLElement>('.block-insert-gap > button')
+    expect(gaps.length).toBeGreaterThan(0)
+    const empty = cell(2,0).querySelector<HTMLElement>('.block-empty')!
+    expect(empty).not.toBeNull()
+    for (const plus of [...gaps, empty]) {
+      const css = getComputedStyle(plus)
+      expect.soft(css.opacity).toBe('1')
+      expect.soft(css.display).not.toBe('none')
+      expect.soft(css.visibility).not.toBe('hidden')
+      expect.soft(css.color).toBe('rgb(156, 163, 175)')
+    }
+    for (const button of gaps) {
+      const css = getComputedStyle(button)
+      expect.soft(css.width).toBe('18px')
+      expect.soft(css.height).toBe('18px')
+      expect.soft(css.boxSizing).toBe('border-box')
+      expect.soft(css.borderRadius).toBe('50%')
+      expect.soft(css.borderColor).toBe('rgb(156, 163, 175)')
+      // The button stays in the existing gutter; the card's 11px padding
+      // keeps its small edge overlap clear of the content.
+      const gutter = getComputedStyle(button.parentElement!)
+      expect.soft(gutter.width).toBe('14px')
+      expect.soft(gutter.marginLeft).toBe('-12px')
+    }
+    act(() => root.render(<PlanEditor key="readonly-plus" initialWeeks={weeks} weeksCount={4} studentName="学员" planName="计划" planStartDate="2026-10-19" readOnly />))
+    expect(host.querySelector('.block-insert-gap,.block-empty')).toBeNull()
+  } finally { style.remove() }
 })
 
 it('labels insertion, limited columns, delete confirmation and locked deletion in English', async () => {
@@ -542,7 +777,7 @@ it('keeps explicit deletion intent through save, undo/save with a new server ID,
   } finally { vi.useRealTimers() }
 })
 
-it('binds a new server ID to an explicit deletion made while the empty-day autosave is in flight', async () => {
+it.each(['Delete', 'undo'])('binds a new server ID to an explicit %s made while the empty-day autosave is in flight', async gesture => {
   vi.useFakeTimers()
   try {
     vi.spyOn(window, 'confirm').mockReturnValue(true)
@@ -556,7 +791,8 @@ it('binds a new server ID to an explicit deletion made while the empty-day autos
     click(host.querySelector('[data-insert-date="2026-10-29"]')!)
     await act(async () => { await vi.advanceTimersByTimeAsync(1600) })
     expect(onSave).toHaveBeenCalledTimes(1)
-    await key('Delete')
+    if (gesture === 'Delete') await key('Delete')
+    else { await key('Escape'); await key('z', true) }
     const saved = structuredClone(onSave.mock.calls[0][0])
     saved[1].days[3].serverDayId = 'new-empty-id'
     await act(async () => { finish({ changedDays: 1, skippedRows: 0, degradedRows: 0, weeks: saved }); await vi.advanceTimersByTimeAsync(4000) })

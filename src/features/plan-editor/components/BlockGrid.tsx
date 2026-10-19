@@ -108,9 +108,10 @@ export function BlockGrid(props: Props) {
     onMouseDown={startRectangle} onClickCapture={event => { if (suppressClick.current) { event.stopPropagation(); event.preventDefault() } }}>
     <div className="block-column-row"><span />{grid.columns.map(column => {
       const activeWeeks = grid.rows.filter(row => row.cells[column.dx]?.day).map(row => row.week.num)
+      const label = `${DOW_LABELS[column.weekday]}${column.patternIndex === null && activeWeeks.length > 0 && activeWeeks.length < grid.rows.length / 2 ? ` · ${S.editor.blockOnlyWeeks(activeWeeks)}` : ''}`
       return <div className="block-column" key={column.dx}>
-        <button type="button" disabled={props.readOnly || !props.startDate} onClick={() => setColumnEditor(columnEditor === column.dx ? null : column.dx)}>
-          <span>{DOW_LABELS[column.weekday]}{activeWeeks.length > 0 && activeWeeks.length < grid.rows.length ? ` · ${S.editor.blockOnlyWeeks(activeWeeks)}` : ''}</span>
+        <button type="button" title={label} disabled={props.readOnly || !props.startDate} onClick={() => setColumnEditor(columnEditor === column.dx ? null : column.dx)}>
+          <span>{label}</span>
         </button>
 
         {columnEditor === column.dx && <select autoFocus aria-label={S.editor.blockWeekday} value={column.weekday}
@@ -153,12 +154,15 @@ export function BlockGrid(props: Props) {
             {editing && day ? props.renderDay(week, day, cell.dx, cell.dayNumber ?? cells.filter(c => c.day && c.day.dow < day.dow).length + 1) : <>
               <div className="block-date"><span>{cell.dayNumber ? `D${cell.dayNumber} · ${day?.dateLabel}` : day?.dateLabel}</span>{day?.shiftBadge && <span data-shift-badge="">{S.editor.shifted}</span>}{(day?.completedAt || (rows.length > 0 && rows.every(row => row.hasLogs))) && <span>✓ {S.editor.blockDone}</span>}</div>
               {day && rows.length === 0 && !props.readOnly && <span className="block-empty">＋</span>}
-              {rows.map((row, i) => <div key={row.id} className={`block-brick${props.selectedRows.has(row.id) ? ' row-sel' : ''}${props.rowTier(row) === 'aux' ? ' aux' : ''}${i > 0 && props.rowTier(rows[i - 1]) !== props.rowTier(row) ? ' section-start' : ''}`}
-                data-rowid={row.id} data-locked={row.hasLogs} role="button" tabIndex={0}
+              {rows.map((row, i) => {
+                const name = fmt.exerciseName({ name: row.name, name_en: row.nameEn }) || S.common.unnamed
+                const summary = `${shorthand(row)}${row.hasLogs ? ' ✓' : ''}`
+                return <div key={row.id} className={`block-brick${props.selectedRows.has(row.id) ? ' row-sel' : ''}${props.rowTier(row) === 'aux' ? ' aux' : ''}${i > 0 && props.rowTier(rows[i - 1]) !== props.rowTier(row) ? ' section-start' : ''}`}
+                data-rowid={row.id} data-locked={row.hasLogs} role="button" tabIndex={0} title={`${name} ${summary}`}
                 onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); event.stopPropagation(); event.currentTarget.click() } }}
                 onClick={event => { event.stopPropagation(); if (day) props.onSelectRow(week, day, row.id, { toggle: event.metaKey || event.ctrlKey, range: event.shiftKey }) }}>
-                <span title={fmt.exerciseName({ name: row.name, name_en: row.nameEn })}>{fmt.exerciseName({ name: row.name, name_en: row.nameEn }) || S.common.unnamed}</span><code>{shorthand(row)}{row.hasLogs ? ' ✓' : ''}</code>
-              </div>)}
+                <span>{name}</span><code>{summary}</code>
+              </div>})}
             </>}
             {selected && !props.readOnly && <button type="button" className="block-fill-handle" aria-label={S.editor.blockFillHint} title={S.editor.blockFillHint}
               onMouseDown={event => startFill(event, cell)} onClick={event => event.stopPropagation()} />}

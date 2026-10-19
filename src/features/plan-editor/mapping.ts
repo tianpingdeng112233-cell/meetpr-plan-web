@@ -209,6 +209,9 @@ export function projectWeekSchedule(
       days: week.days.map((day) => {
         const schedule = authoritative.days.find((candidate) => candidate.dow === day.dow)
         if (!schedule) return day
+        // A draft history slot from before an insertion must stay absent. Giving
+        // it the newly saved ID would resurrect the day when the coach undoes.
+        if (preserveDraftCalendar && day.rest && !day.rows.length && !day.serverDayId && !day.completedAt) return day
         const identified = { ...day, serverDayId: schedule.serverDayId, completedAt: schedule.completedAt }
         if (preserveDraftCalendar) return identified
         return {
