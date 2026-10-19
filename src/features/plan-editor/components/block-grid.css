@@ -61,6 +61,8 @@
 .block-cell .tierhead { width: 100% !important; }
 .block-cell .note-cell { display: flex; align-items: center; padding: 3px; position: relative; }
 .block-cell .rowdel { display: none; }
+.plan-editor .block-cell .exrow .rowdrag { visibility:hidden; color:#9ca3af; background:transparent; border-right:0; }
+.plan-editor .block-cell .exrow:hover .rowdrag { visibility:visible; }
 .block-cell .note-cell:hover .rowdel { display: block; }
 .block-cell .week-band-section-add { padding: 7px 12px; color: #5c6371; }
 .block-cell .week-band-frozen { position: static; background: transparent; }

@@ -1,6 +1,6 @@
 import type { Translations } from './types'
 export const zhBlock = {
-  retrySave: '重试保存',
+  retrySave: '重试保存', previousFrame: '‹ 帧', nextFrame: '帧 ›',
   history: '历史', collapse: '收起历史', expand: '展开历史',
   historyHint: '点开一天、选中一个动作，这里显示它的近 5 次记录；填了组数、次数会继续收窄。',
   recent: '近 5 次', top: '顶组', reps: (n: number) => `${n} 次`,
@@ -16,7 +16,7 @@ export const zhBlock = {
   patternLocal: '星期规律保存在本机', patternFailed: '无法在本机保存星期规律，请检查浏览器存储权限后重试',
 } as const
 export const enBlock: Translations<typeof zhBlock> = {
-  retrySave: 'Retry save',
+  retrySave: 'Retry save', previousFrame: '‹ Frame', nextFrame: 'Frame ›',
   history: 'History', collapse: 'Collapse history', expand: 'Expand history',
   historyHint: 'Open a day and select an exercise to see its last 5 sessions. Enter sets and reps to narrow the history.',
   recent: 'Last 5 sessions', top: 'Top set', reps: n => `${n} reps`,

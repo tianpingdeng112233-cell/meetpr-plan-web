@@ -609,3 +609,52 @@ Error: listen EPERM: operation not permitted 127.0.0.1:5180
 - code-review 的 Standards / Spec 两个只读定向审查均无具体缺陷；审查者未独立重跑测试。
 
 用户转述 Claude 已在沙箱外完成此前卡 B 的三项命令与 1440×900 浏览器收货，并裁决接受本机星期规律存储和拒删有内容 Dx；本次未改这两项。上述浏览器证据属于 Claude，不是本轮重试按钮的浏览器验收；该按钮本轮以 jsdom 最高层交互验证，未绕过此前 dev server 的 EPERM 限制。无新产品疑问或已知 SPEC 偏离；未 commit、push 或改锁文件。
+
+## 2026-10-19 · 011 卡 C：视频大窗与拖动把手（基线 ee2de70）
+
+已核实分支 `feat/011-block-editor`、HEAD `ee2de70`，开工工作树干净，仓根临时文件写入/删除成功。重读 CONTEXT、CLAUDE、完整 SPEC（含新版 §2、§3.3、验收 4 与「⑤ 看视频」转写）及 CARD-C。本轮只交开发、自测和代码审查，浏览器收货依卡交 Claude。
+
+### 本轮实现与改动文件
+
+- `src/features/plan-editor/components/BlockHistory.tsx`：移除历史栏内播放器，在栏外浮动同一个视频窗；以栏位置定位右侧 8px 间距、顶部 10px 间距，标准画面 405×720，按可用高度/宽度等比缩小；原比例 contain、横屏黑边。标题包含日期、动作、组序、重量×次与 RPE；Esc/关闭、进度、时间、播放暂停、倍速、逐帧均在窗内。按 video_id 高亮记录及组，切换沿用窗节点；旧后端仍跳视频页。恢复编辑光标后再关闭动作搜索浮层，保证第二次 Esc 收起编辑卡。
+- `src/features/plan-editor/PlanEditor.tsx`：只新增视频可见性与动作名输入框的 Esc 协调；保存、模型、网格、复制及更新路径未改。
+- `src/features/plan-editor/components/block-history.css`：浮层定位/外观、9:16 contain 画面、播放控件、记录 #FFFBEB 与组 #FEF3C7 高亮。历史栏宽度和列表布局不变。
+- `src/features/plan-editor/components/block-grid.css`：编辑行把手非悬停隐藏、悬停浅灰，选中/悬停都不再深色背景；排序实现未动。
+- `src/features/workspace/VideoTransport.tsx`：继续复用视频页控件；compact 模式补 0.25× 和逐帧短标签，视频页默认模式不变。
+- `src/i18n/strings-block.ts`：中英文逐帧短标签；标题/关闭/播放/进度沿用已有双语字符串。
+- `src/features/plan-editor/block-history-ui.test.tsx`：新增 7 条最高层 PlanEditor 用例；既有 8 条断言保留。
+- `src/features/plan-editor/week-band-ui.test.tsx`：新增 1 条把手计算样式回归；既有排序测试保留。
+- `docs/CODEX-JOURNAL.md`：本条证据。
+
+### 先红后绿（均实际运行）
+
+以下每轮均先新增失败用例、执行红灯，再改实现：
+
+| 命令 | 红灯 | 转绿 |
+| --- | --- | --- |
+| `npx vitest run src/features/plan-editor/block-history-ui.test.tsx`：浮窗/历史/切换/两次 Esc | 1 failed / 8 passed：找不到浮窗 | 9 passed |
+| 同上：中英文控件、1440×900 / 1024×600 尺寸与 resize | 2 failed / 9 passed：缺 0.25× | 11 passed |
+| `npx vitest run src/features/plan-editor/week-band-ui.test.tsx`：把手 | 1 failed / 4 passed：visibility 实为 visible | 5 passed |
+| `npx vitest run src/features/plan-editor/block-history-ui.test.tsx`：动作名输入框 Esc | 1 failed / 11 passed：Esc 后视频仍在 | 12 passed |
+| 同上：同日两条处方不同视频 | 1 failed / 12 passed：两条记录同时高亮 | 13 passed |
+| 同上：播放后再聚焦动作名 | 1 failed / 13 passed：Esc 后视频仍在 | 14 passed |
+| 同上：进度条真实获得焦点后关闭 | 1 failed / 14 passed：第二次 Esc 后编辑卡仍在 | 15 passed |
+
+最终定向命令 `npx vitest run src/features/plan-editor/block-history-ui.test.tsx src/features/plan-editor/week-band-ui.test.tsx`：**2 files / 20 passed**，exit 0。计算样式使用现有 block-grid-ui 的 readFileSync 加载真实 CSS 做法；未改 Vitest 配置或测试基础设施，也未遇到测试沙箱权限失败。
+
+### 审查与最终三项检查
+
+按 code-review 执行独立只读 Standards / Spec 审查 `git diff ee2de70`。两轴发现的同日记录串高亮已修复并补红绿证据；Standards 复核发现的进度条焦点恢复顺序问题也补红绿证据修复。最终 Standards 与 Spec 均无未关闭问题；审查者未独立重跑测试。
+
+最后一次三项命令（最后语义改动之后）：
+
+- `npm test`：exit 0，**98 files / 936 passed**，8.98s；日志 `/tmp/meetpr-card-c-test-final.log`。
+- `npx tsc --noEmit`：exit 0，无诊断。
+- `npm run build`：exit 0，Vite 2.26s；保留已有 >500 kB chunk 提示；日志 `/tmp/meetpr-card-c-build-final.log`。
+- `git diff --check`：exit 0。
+
+`block-grid-ui`、`blockGridModel`、`block-date-save`、`saveFailure-ui`、`reconcile` 等受保护测试与锁文件均无改动，全量通过。卡 A/B 的原有 block-history 与 week-band 用例保留。未 commit、push、开 PR 或写线上数据。
+
+### 验收边界
+
+无已知 SPEC 偏离或新增产品决策。jsdom 证据覆盖浮窗 DOM 位置、真实 CSS 的宽度/比例/颜色、已给定浏览器几何边界下的定位和缩放、视频 API/控件与焦点行为；不等于浏览器渲染或真实媒体播放验收。按 CARD-C，浏览器尺寸/视频播放/横屏黑边/悬停效果交 Claude 在沙箱外亲验；本轮未启动服务或绕过此前 EPERM 限制。

@@ -1448,12 +1448,15 @@ export function PlanEditor(props: PlanEditorProps) {
     setCreateExerciseError('')
   }
 
+  const historyVideoOpen = useRef(false)
   const handleNameKeyDown = (
     wnum: number,
     dow: number,
     rowId: string,
     event: React.KeyboardEvent<HTMLInputElement>,
   ) => {
+    // The video layer owns Escape before the name picker while it is open.
+    if (event.key === 'Escape' && historyVideoOpen.current) return
     if (event.nativeEvent.isComposing || event.keyCode === 229 || nameComposingRef.current) return
     if (!pop.visible || pop.wnum !== wnum || pop.dow !== dow || pop.rowId !== rowId || !pop.query.trim()) return
     const hits = props.exerciseIndex?.search(pop.query) ?? []
@@ -2915,7 +2918,11 @@ export function PlanEditor(props: PlanEditorProps) {
             const row = editingDay && cellSelection ? resolvePlanCell(displayWeeks, cellSelection)?.row ?? null : null
             return row && setsDraft?.rowId === row.id && setsDraft.value === '' ? { ...row, boxes: [] } : row
           })()}
-          profile={props.onboardingProfile} overview={props.exerciseStatsOverview} onVideos={props.onOpenVideos} />
+          profile={props.onboardingProfile} overview={props.exerciseStatsOverview} onVideos={props.onOpenVideos}
+          onVideoVisibilityChange={open => {
+            historyVideoOpen.current = open
+            setPop(current => ({ ...current, visible: false }))
+          }} />
       </div>
       {blockMenu && <div className="block-context-menu" role="menu" style={{ left: blockMenu.x, top: blockMenu.y }}>
         <button type="button" role="menuitem" onClick={() => { void copySelectedDay(); setBlockMenu(null) }}>{S.editor.blockCopy}</button>

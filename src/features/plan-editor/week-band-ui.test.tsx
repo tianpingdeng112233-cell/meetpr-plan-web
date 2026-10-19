@@ -3,10 +3,26 @@ import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { PlanEditor } from './PlanEditor'
 import { blockWeeks, openBlockDay, blockCell, blockKey } from './blockGridTestUtils'
+import { readFileSync } from 'node:fs'
 
 let host: HTMLDivElement, root: Root
 beforeEach(() => { host = document.createElement('div'); document.body.append(host); root = createRoot(host) })
 afterEach(() => { act(() => root.unmount()); host.remove(); vi.restoreAllMocks() })
+
+it('keeps edit-row drag handles hidden without hover and transparent even when selected', () => {
+  act(() => root.render(<PlanEditor initialWeeks={blockWeeks([[0]], 2)} weeksCount={1} studentName="学员" planName="计划" />))
+  const style = document.createElement('style')
+  style.textContent = readFileSync('src/index.css', 'utf8') + readFileSync('src/features/plan-editor/components/block-grid.css', 'utf8')
+  host.append(style)
+  openBlockDay(host)
+  const handle = host.querySelector<HTMLElement>('.rowdrag')!
+  expect(getComputedStyle(handle).visibility).toBe('hidden')
+  act(() => handle.click())
+  expect(handle.closest('.exrow')?.classList.contains('row-sel')).toBe(true)
+  expect(getComputedStyle(handle).visibility).toBe('hidden')
+  expect(getComputedStyle(handle).backgroundColor).toBe('rgba(0, 0, 0, 0)')
+  expect(getComputedStyle(handle).color).toBe('rgb(156, 163, 175)')
+})
 
 it('renders every imported week vertically with no pagination, virtualization, formula bar or cycle toolbar', () => {
   act(() => root.render(<PlanEditor initialWeeks={blockWeeks(Array.from({ length: 12 }, () => [0, 2, 4, 5]))} weeksCount={12} studentName="学员" planName="导入" />))
