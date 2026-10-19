@@ -71,6 +71,9 @@
   min-width: 0; max-width: 100%; width: 100%; margin: 0; overflow-x: auto; scrollbar-width: thin;
 }
 .block-cell .intensity-controls > *, .block-cell .weight-controls > * { flex-shrink: 0; }
+.block-cell .intensity-controls.is-per-set, .block-cell .weight-controls.is-per-set {
+  flex-wrap: wrap; overflow-x: visible; overflow-y: visible;
+}
 .block-cell .weight-controls select { width: 64px; }
 .block-cell .intensity-controls select { width: 54px; }
 .block-cell .intensity-controls .pct-anchor-select { width: 48px; }
