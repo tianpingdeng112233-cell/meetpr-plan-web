@@ -7,6 +7,9 @@ import type { Week } from '../plan-editor/types'
 import { setRefFirstLine } from '../chat/setRef'
 
 const api = vi.hoisted(() => ({
+  realEditor: false,
+  getStudentSetLogs: vi.fn(),
+  markVideoViewed: vi.fn(),
   getCoachStudents: vi.fn(),
   getStudentPlans: vi.fn(),
   getPlan: vi.fn(),
@@ -63,6 +66,7 @@ vi.mock('../../api/exercises', () => ({
   deleteCustomExercise: api.deleteCustomExercise,
 }))
 vi.mock('../../api/coach', () => ({
+  getStudentSetLogs: api.getStudentSetLogs,
   getBindRequests: api.getBindRequests,
   getStudentVideos: api.getStudentVideos,
   getExerciseStatsOverview: api.getExerciseStatsOverview,
@@ -75,6 +79,7 @@ vi.mock('../../api/coach', () => ({
   rejectBindRequest: vi.fn(),
 }))
 vi.mock('../../api/markers', () => ({
+  markVideoViewed: api.markVideoViewed,
   getVideoMarkers: api.getVideoMarkers,
   createVideoMarker: api.createVideoMarker,
   deleteVideoMarker: api.deleteVideoMarker,
@@ -86,12 +91,15 @@ vi.mock('../../api/chat', () => ({
   sendTextMessage: api.sendTextMessage,
   openConversation: api.openConversation,
 }))
-vi.mock('../plan-editor/reconcile', () => ({
+vi.mock('../plan-editor/reconcile', async importOriginal => ({
+  ...await importOriginal<typeof import('../plan-editor/reconcile')>(),
   reconcilePlan: api.reconcilePlan,
   reconcileImportedPlan: api.reconcileImportedPlan,
   resizeServerPlanWeeks: api.resizeServerPlanWeeks,
 }))
-vi.mock('../plan-editor/PlanEditor', () => ({
+vi.mock('../plan-editor/PlanEditor', async importOriginal => {
+  const real = await importOriginal<typeof import('../plan-editor/PlanEditor')>()
+  return ({
   PlanEditor: (props: {
     initialWeeks: Week[]
     readOnly?: boolean
@@ -105,6 +113,7 @@ vi.mock('../plan-editor/PlanEditor', () => ({
     onPublish?: () => Promise<void>
     onChangeStartDate?: (startDate: string) => Promise<void>
   }) => {
+    if (api.realEditor) return <real.PlanEditor {...props as import('../plan-editor/PlanEditor').PlanEditorProps} />
     const { initialWeeks, onLeaveGuardChange, students, currentStudentId, plans, onPublish } = props
     api.captureEditorProps(props)
     useEffect(() => {
@@ -125,7 +134,7 @@ vi.mock('../plan-editor/PlanEditor', () => ({
       </div>
     )
   },
-}))
+})})
 vi.mock('../catalog/CatalogPage', () => ({
   CatalogPage: ({
     onUseExercise,
@@ -265,11 +274,261 @@ async function settle(): Promise<void> {
   for (let index = 0; index < 24; index++) await Promise.resolve()
 }
 
+async function playback(host: HTMLElement, seconds = 10) {
+  const media = host.querySelector('video')!
+  await act(async () => {
+    Object.defineProperty(media, 'duration', { configurable: true, value: 20 })
+    media.currentTime = seconds
+    media.dispatchEvent(new Event('timeupdate'))
+    await settle()
+  })
+}
+
 describe('PlanWorkspace editor remount', () => {
   let host: HTMLDivElement
   let root: Root
 
+  it('013 retries failed video loads, expands a collapsed rail temporarily, and keeps confirmed viewed state through stale refreshes', async () => {
+    api.realEditor = true
+    api.getPlan.mockResolvedValue(plan('safe'))
+    api.getStudentVideos.mockRejectedValueOnce(new Error('offline'))
+    await act(async () => { root.render(<PlanWorkspace onLogout={() => {}} me={me} />); await settle() })
+    expect(host.querySelector('[data-video-marker]')).toBeNull()
+    expect(host.querySelector('[data-block-week]')).not.toBeNull()
+    api.getStudentVideos.mockResolvedValue([video('v1', '深蹲')])
+    await act(async () => { clickButton(host, '待看加载失败'); await settle() })
+    expect(host.querySelector('[data-video-marker]')).not.toBeNull()
+    await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="收起历史"]')!.click())
+    await act(async () => { host.querySelector<HTMLButtonElement>('[data-video-marker]')!.click(); await settle() })
+    expect(host.querySelector('[data-block-history]')?.classList.contains('collapsed')).toBe(false)
+    expect(api.markVideoViewed).not.toHaveBeenCalled()
+    await playback(host)
+    const reply = host.querySelector<HTMLTextAreaElement>('.video-feedback textarea')!
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!.call(reply, '反馈')
+      reply.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+    await act(async () => { reply.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', metaKey: true, bubbles: true, cancelable: true })); await settle() })
+    expect(host.querySelector('[data-video-marker]')?.classList.contains('viewed')).toBe(true)
+    expect(host.querySelector('[data-feedback-video="v1"]')).toBeNull()
+    await act(async () => { clickButton(host, '← 历史'); await settle() })
+    expect(host.querySelector('[data-block-history]')?.classList.contains('collapsed')).toBe(true)
+    await act(async () => { host.querySelector<HTMLButtonElement>('[data-video-marker]')!.click(); await settle() })
+    expect(api.markVideoViewed).toHaveBeenCalledTimes(1)
+    expect(api.reconcilePlan).not.toHaveBeenCalled()
+  })
+
+  it('013 repair 1 keeps the player and unsent reply when marking viewed succeeds without a list reload', async () => {
+    api.realEditor = true
+    api.getPlan.mockResolvedValue(plan('reply survives'))
+    api.getStudentVideos.mockResolvedValue([video('v1', '深蹲')])
+    await act(async () => { root.render(<PlanWorkspace onLogout={() => {}} me={me} />); await settle() })
+    await act(async () => { host.querySelector<HTMLButtonElement>('[data-video-marker]')!.click(); await settle() })
+    const reply = host.querySelector<HTMLTextAreaElement>('.video-feedback textarea')!
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!.call(reply, '尚未发送的反馈')
+      reply.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+    api.getStudentVideos.mockRejectedValue(new Error('list unavailable'))
+    await playback(host)
+    expect(host.querySelector('video')).not.toBeNull()
+    expect(host.querySelector<HTMLTextAreaElement>('.video-feedback textarea')?.value).toBe('尚未发送的反馈')
+    expect(host.querySelector('[data-video-marker]')?.classList.contains('viewed')).toBe(true)
+    expect(host.querySelector('[data-feedback-video="v1"]')).toBeNull()
+  })
+
+  it('013 repair 1 historical play waits until halfway and updates the brick once', async () => {
+    api.realEditor = true
+    api.getPlan.mockResolvedValue(plan('history'))
+    api.getStudentVideos.mockResolvedValue([video('v1', '深蹲')])
+    const session = { date: '2026-01-05', prescribed: { sets: 1, reps: 5 }, sets: [{ set_index: 0, weight_kg: '100', reps: 5, rpe: '8', completed: true, failed: false, assumed: false, has_video: true, video_id: 'v1' }] }
+    api.getExerciseStats.mockResolvedValue({ recent_sessions: [session], filtered_sessions: [session], rep_prs: [], by_set_count: {} })
+    await act(async () => { root.render(<PlanWorkspace onLogout={() => {}} me={me} />); await settle() })
+    await act(async () => { host.querySelector<HTMLElement>('[data-block-week]')!.click(); await settle() })
+    await act(async () => { host.querySelector<HTMLInputElement>('[data-c="reps"] input')!.focus(); await settle() })
+    await act(async () => { host.querySelector<HTMLButtonElement>('.history-session summary button')!.click(); await settle() })
+    expect(host.querySelector('[data-feedback-mode]')).toBeNull()
+    expect(host.querySelector('.video-rpe-calibration')).toBeNull()
+    expect(api.markVideoViewed).not.toHaveBeenCalled()
+    await playback(host, 9.99)
+    expect(api.markVideoViewed).not.toHaveBeenCalled()
+    await playback(host)
+    await playback(host, 15)
+    expect(api.markVideoViewed).toHaveBeenCalledTimes(1)
+    expect(api.markVideoViewed).toHaveBeenCalledWith('v1')
+    expect(host.querySelector('[data-video-marker]')?.classList.contains('viewed')).toBe(true)
+  })
+
+  it('013 keeps feedback across plans, resets it across students, and preserves queue focus after opening', async () => {
+    api.realEditor = true
+    const first = { ...plan('first'), name: 'First plan' }
+    const second = { ...plan('second'), id: 'second', name: 'Second plan', days: [] }
+    const other = { ...plan('other'), id: 'other', name: 'Other plan', trainee_id: 'other-student', days: [] }
+    api.getCoachStudents.mockResolvedValue([{ id: 'student', display_name: '甲', status: 'active', evaluation: null }, { id: 'other-student', display_name: '乙', status: 'active', evaluation: null }])
+    api.getStudentPlans.mockImplementation((id: string) => Promise.resolve(id === 'student' ? [first, second] : [other]))
+    api.getPlan.mockImplementation((id: string) => Promise.resolve(id === 'second' ? second : id === 'other' ? other : first))
+    api.getStudentVideos.mockResolvedValue([video('v1', '深蹲'), video('v2', '深蹲'), video('v3', '深蹲')])
+    await act(async () => { root.render(<PlanWorkspace onLogout={() => {}} me={me} />); await settle() })
+    await act(async () => { clickButton(host, '待看 3'); await settle() })
+    expect(api.markVideoViewed).not.toHaveBeenCalled()
+    await playback(host)
+    const item = host.querySelector<HTMLElement>('[data-feedback-video="v2"]')!
+    await act(async () => { item.focus(); item.click(); await settle() })
+    expect(host.querySelector('[data-block-history]')?.contains(document.activeElement)).toBe(true)
+    expect(api.markVideoViewed).toHaveBeenCalledTimes(1)
+    await playback(host)
+    await act(async () => { document.activeElement!.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true, cancelable: true })); await settle() })
+    expect(api.markVideoViewed).toHaveBeenCalledTimes(2)
+    await playback(host)
+    expect(api.markVideoViewed.mock.calls.map(call => call[0])).toEqual(['v1', 'v2', 'v3'])
+    await act(async () => { document.activeElement!.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true, cancelable: true })); await settle() })
+    expect(host.querySelector('video')).not.toBeNull()
+    const switchPlan = async (name: string) => {
+      await act(async () => host.querySelector<HTMLElement>('[data-plan-menu-trigger]')!.click())
+      await act(async () => { clickButton(document.body, name); await settle() })
+    }
+    await switchPlan('Second plan')
+    expect(host.querySelector('[data-feedback-mode]')).not.toBeNull()
+    await act(async () => host.querySelector<HTMLInputElement>('.feedback-head input')!.click())
+    expect(host.querySelector('.feedback-queue')?.textContent).toContain('不在本计划')
+    expect(host.querySelector('[data-feedback-video="v1"]')?.textContent).not.toContain('W1')
+    const switchStudent = async (name: string) => {
+      await act(async () => { const button = [...host.querySelectorAll<HTMLButtonElement>('.block-topbar button')].find(el => el.textContent?.startsWith('学员'))!; button.click() })
+      await act(async () => { clickButton(document.body, name); await settle() })
+    }
+    await switchStudent('乙')
+    expect(host.querySelector('[data-feedback-mode]')).toBeNull()
+    expect(host.querySelector('.history-breadcrumbs')).toBeNull()
+    await switchStudent('甲')
+    expect(host.querySelector('[data-feedback-mode]')).toBeNull()
+  })
+
+  it('013 repair 1 numbers the floating player against the currently visible queue', async () => {
+    api.realEditor = true
+    api.getPlan.mockResolvedValue(plan('positions'))
+    api.getStudentVideos.mockResolvedValue([
+      { ...video('seen', '深蹲', '2026-01-05'), set_index: 0 },
+      { ...video('v1', '深蹲'), set_index: 1 },
+      { ...video('v2', '深蹲'), set_index: 2 },
+    ])
+    await act(async () => { root.render(<PlanWorkspace onLogout={() => {}} me={me} />); await settle() })
+    await act(async () => { clickButton(host, '待看 2'); await settle() })
+    const position = () => host.querySelector('.history-player > header > small')?.textContent
+    const includeViewed = async () => act(async () => { host.querySelector<HTMLInputElement>('.feedback-head input')!.click(); await settle() })
+    expect(position()).toBe('1 / 2')
+    await includeViewed()
+    expect(position()).toBe('2 / 3')
+    await includeViewed()
+    expect(position()).toBe('1 / 2')
+    await playback(host)
+    expect(host.querySelector('[data-feedback-video="v1"]')).toBeNull()
+    expect(position()).toBe('— / 1')
+    await includeViewed()
+    expect(position()).toBe('2 / 3')
+    await includeViewed()
+    await act(async () => { host.querySelector<HTMLButtonElement>('[data-feedback-video="v2"]')!.click(); await settle() })
+    expect(position()).toBe('1 / 1')
+    await playback(host)
+    expect(position()).toBe('— / 0')
+  })
+
+  it('013 show actuals persists per coach, leaves unlogged prescriptions gray, keeps student additions read-only and copies prescriptions', async () => {
+    api.realEditor = true
+    const loaded = plan('prescribed')
+    loaded.days[0].exercises[0].has_logs = true
+    loaded.days[0].exercises.push({ ...loaded.days[0].exercises[0], id: 'future', has_logs: false })
+    api.getPlan.mockResolvedValue(loaded)
+    api.getStudentSetLogs.mockResolvedValue([
+      { id: 'set-log', student_id: 'student', plan_exercise_id: 'plan-exercise', plan_day_id: 'day', exercise_id: 'exercise', set_index: 0, weight_kg: '123', reps: 3, rpe: '8.5', coach_rpe: null, completed: true, failed: false, assumed: false, adhoc: false, logged_at: '2026-01-05', logged_date: '2026-01-05' },
+      { id: 'extra', student_id: 'student', plan_exercise_id: 'plan-exercise', plan_day_id: 'day', exercise_id: 'exercise', set_index: 1, weight_kg: '125', reps: 2, rpe: null, coach_rpe: null, completed: false, failed: true, assumed: false, adhoc: false, logged_at: '2026-01-05', logged_date: '2026-01-05' },
+      { id: 'added', student_id: 'student', plan_exercise_id: null, plan_day_id: 'day', exercise_id: 'curl', set_index: 0, weight_kg: '20', reps: 12, rpe: '7', coach_rpe: null, completed: true, failed: false, assumed: false, adhoc: true, logged_at: '2026-01-05', logged_date: '2026-01-05' },
+    ])
+    api.getStudentVideos.mockResolvedValue([{ ...video('added-video', '弯举'), plan_exercise_id: null, set_log_id: 'added' }])
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } })
+    await act(async () => { root.render(<PlanWorkspace onLogout={() => {}} me={me} />); await settle() })
+    const toggle = host.querySelector<HTMLButtonElement>('[role="switch"][aria-label="显示实际"]')!
+    expect(toggle).not.toBeNull()
+    expect(toggle.getAttribute('aria-checked')).toBe('false')
+    expect(host.querySelector('.block-brick')?.textContent).toContain('1×5 · 100')
+    expect(host.querySelector('.block-date [data-video-marker]')).not.toBeNull()
+    await act(async () => toggle.click())
+    const actual = host.querySelector<HTMLElement>('[data-rowid="plan-exercise"]')!
+    expect(actual.textContent).toContain('2×3/2 @8.5/— · 123/125')
+    expect(actual.title).toContain('处方 1×5 · 100')
+    expect(host.querySelector('[data-rowid="future"]')?.classList.contains('prescribed-muted')).toBe(true)
+    const added = host.querySelector<HTMLElement>('.block-brick[data-student-added="curl"]')!
+    expect(added.textContent).toContain('1×12 @7 · 20')
+    expect(added.hasAttribute('data-rowid')).toBe(false)
+    expect(added.hasAttribute('tabindex')).toBe(false)
+    expect(added.querySelector('[data-video-marker]')).not.toBeNull()
+    expect(host.querySelector('.block-date [data-video-marker]')).toBeNull()
+    await act(async () => actual.click())
+    await act(async () => { window.dispatchEvent(new KeyboardEvent('keydown', { key: 'c', metaKey: true, bubbles: true })); await settle() })
+    expect(writeText).toHaveBeenCalledTimes(1)
+    expect(writeText.mock.calls[0][0]).toContain('100')
+    expect(writeText.mock.calls[0][0]).not.toContain('123')
+    await act(async () => host.querySelector<HTMLElement>('[data-block-week]')!.click())
+    const actualLine = host.querySelector('[data-actuals="weight"]')?.textContent
+    await act(async () => { toggle.dispatchEvent(new MouseEvent('mousedown', { bubbles: true })); toggle.click() })
+    expect(host.querySelector('.daygrid')).not.toBeNull()
+    expect(host.querySelector('[data-actuals="weight"]')?.textContent).toBe(actualLine)
+    await act(async () => toggle.click())
+    expect(localStorage.getItem('meetpr:show-actuals:coach')).toBe('true')
+    await act(async () => { root.render(<PlanWorkspace key="reload" onLogout={() => {}} me={me} />); await settle() })
+    expect(host.querySelector('[role="switch"]')?.getAttribute('aria-checked')).toBe('true')
+    expect(api.reconcilePlan).not.toHaveBeenCalled()
+  })
+
+  it('013 opens feedback from a brick, marks viewed only at halfway with retry, and Escape leaves reply then player then feedback then edit card', async () => {
+    api.realEditor = true
+    api.getPlan.mockResolvedValue(plan('keep this note'))
+    api.getStudentVideos.mockResolvedValue([video('v1', '深蹲'), video('v2', '深蹲')])
+    await act(async () => { root.render(<PlanWorkspace onLogout={() => {}} me={me} />); await settle() })
+    const marker = host.querySelector<HTMLButtonElement>('[data-video-marker]')
+    expect(marker).not.toBeNull()
+    await act(async () => { host.querySelector<HTMLElement>('[data-block-week]')!.click(); await settle() })
+    await act(async () => { host.querySelector<HTMLButtonElement>('[data-video-marker]')!.click(); await settle() })
+    expect(host.querySelector('[data-feedback-mode]')).not.toBeNull()
+    expect(host.querySelector('[role="dialog"][aria-label="训练视频"]')).not.toBeNull()
+    expect(host.querySelector('.daygrid')).not.toBeNull()
+    expect(api.markVideoViewed).not.toHaveBeenCalled()
+    expect(host.querySelector('[data-feedback-video="v1"]')).not.toBeNull()
+    await playback(host, 9.99)
+    expect(api.markVideoViewed).not.toHaveBeenCalled()
+    api.markVideoViewed.mockRejectedValueOnce(new Error('offline'))
+    await playback(host)
+    expect(api.markVideoViewed).toHaveBeenCalledTimes(1)
+    expect(host.querySelector('[data-feedback-video="v1"]')).not.toBeNull()
+    await playback(host)
+    await playback(host, 15)
+    expect(api.markVideoViewed).toHaveBeenCalledTimes(2)
+    expect(api.markVideoViewed).toHaveBeenCalledWith('v1')
+    expect(host.querySelector('[data-video-marker]')?.textContent).toContain('1')
+    expect(host.querySelector('[data-feedback-video="v1"]')).toBeNull()
+    await act(async () => { host.querySelector<HTMLElement>('[data-feedback-mode]')!.focus(); document.activeElement!.dispatchEvent(new KeyboardEvent('keydown', { code: 'Digit1', key: '1', altKey: true, bubbles: true, cancelable: true })); await settle() })
+    expect(host.querySelector<HTMLTextAreaElement>('.video-feedback textarea')?.value).toContain('按计划完成')
+    const reply = host.querySelector<HTMLTextAreaElement>('.video-feedback textarea')!
+    await act(async () => reply.focus())
+    const escape = async () => act(async () => { document.activeElement!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })); await settle() })
+    await escape()
+    expect(document.activeElement).not.toBe(reply)
+    expect(host.querySelector('video')).not.toBeNull()
+    await act(async () => host.querySelector<HTMLElement>('[data-video-marker]')!.focus())
+    await escape()
+    expect(host.querySelector('video')).toBeNull()
+    expect(host.querySelector('[data-feedback-mode]')).not.toBeNull()
+    await escape()
+    expect(host.querySelector('[data-feedback-mode]')).toBeNull()
+    expect(host.querySelector('.daygrid')).not.toBeNull()
+    await escape()
+    expect(host.querySelector('.daygrid')).toBeNull()
+  })
+
   beforeEach(() => {
+    api.realEditor = false
+    api.getStudentSetLogs.mockResolvedValue([])
+    api.markVideoViewed.mockResolvedValue(undefined)
     host = document.createElement('div')
     document.body.appendChild(host)
     root = createRoot(host)

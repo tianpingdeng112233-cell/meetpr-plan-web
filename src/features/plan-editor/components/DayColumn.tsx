@@ -1,4 +1,5 @@
 import { useLayoutEffect, useRef, useState } from 'react'
+import type { FeedbackEntry } from '../feedbackModel'
 import { createPortal } from 'react-dom'
 import type { DayCol, ColWidths, ColKey, ExerciseRow } from '../types'
 import { COLS, hasOpaqueSetSettings, isRestDay } from '../types'
@@ -48,6 +49,9 @@ export interface WeekBandDayView {
 }
 
 interface Props {
+  videoMarker?: (row: ExerciseRow) => React.ReactNode
+  addedVideoMarker?: (exerciseId: string) => React.ReactNode
+  highlightedVideo?: FeedbackEntry | null
   blockView?: { dx: number; date: string; minDate?: string; maxDate?: string; onDate: (date: string) => void; onClose: () => void }
   weekNumber?: number
   columnLetter?: string
@@ -796,6 +800,7 @@ function EditableWeight({ row, width, edit, selectedCell, selectCell, cellKey, r
 }
 
 export function DayColumn({
+  videoMarker, addedVideoMarker, highlightedVideo,
   blockView,
   weekNumber = 0,
   columnLetter,
@@ -1049,8 +1054,9 @@ export function DayColumn({
               data-rowid={row.id}
               data-locked={row.hasLogs ? 'true' : 'false'}
               data-drag-disabled={dragDisabled ? 'true' : 'false'}
-              className={`exrow${resolveTier(row) === 'aux' ? ' aux' : ''}${row.hasLogs ? ' locked' : ''}${(actualsForRow?.(row)?.length ?? 0) > 0 ? ' has-actuals' : ''}${isSelectedRow ? ' row-sel' : ''}${dragRowId === row.id ? ' row-dragging' : ''}${dropPosition ? ` row-drop-${dropPosition}` : ''}`}
+              className={`exrow${highlightedVideo?.rowId === row.id ? ' video-highlight' : ''}${resolveTier(row) === 'aux' ? ' aux' : ''}${row.hasLogs ? ' locked' : ''}${(actualsForRow?.(row)?.length ?? 0) > 0 ? ' has-actuals' : ''}${isSelectedRow ? ' row-sel' : ''}${dragRowId === row.id ? ' row-dragging' : ''}${dropPosition ? ` row-drop-${dropPosition}` : ''}`}
               onMouseDownCapture={(e) => {
+                if ((e.target as HTMLElement).closest('[data-video-marker]')) return
                 if (blockView && (e.target as HTMLElement).closest('input,select')) return
                 if (e.button === 0) onSelectRow?.(row.id, rowSelectionModifiers(e))
               }}
@@ -1106,6 +1112,7 @@ export function DayColumn({
                   {row.hasLogs && (
                     <span className="row-mark locked" title={row.conflictMessage ?? S.editor.rowLocked}>{S.editor.lockedMark}</span>
                   )}
+                  {videoMarker?.(row)}
                   {row.conflictMessage && <span className="row-mark conflict" title={row.conflictMessage}>!</span>}
                 </div>
 
@@ -1249,12 +1256,12 @@ export function DayColumn({
         })()}
 
         {studentAdded?.map(({ exerciseId, sets }) => (
-          <div key={exerciseId} className="student-added-row" data-student-added={exerciseId}
+          <div key={exerciseId} className={`student-added-row${highlightedVideo?.dayId === day.serverDayId && highlightedVideo?.addedExerciseId === exerciseId ? ' video-highlight' : ''}`} data-student-added={exerciseId}
             onMouseDown={stop} onClick={stop}>
             {weekBand && <div className="gcell week-band-frozen week-band-index" data-c="index" style={{ width: 28 }} />}
             <div className={`gcell student-added-name${weekBand ? ' week-band-frozen' : ''}`} data-c="name" style={{ width: colW.name }}>
               <span>{exerciseName?.(exerciseId) ?? exerciseId}</span>
-              <small className="actual-tag">{S.editor.addedByAthlete}</small>
+              <small className="actual-tag">{S.editor.addedByAthlete}</small>{addedVideoMarker?.(exerciseId)}
             </div>
             <div className="gcell numeric-cell" data-c="sets" style={{ width: colW.sets }}>–</div>
             <div className="gcell numeric-cell" data-c="reps" style={{ width: colW.reps }}>–</div>

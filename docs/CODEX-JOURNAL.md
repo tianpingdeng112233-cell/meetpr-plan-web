@@ -889,3 +889,138 @@ npx vitest run src/features/plan-editor/block-grid-ui.test.tsx
 - 浏览器验证受限：`npm run dev -- --host 127.0.0.1 --port 5187` exit 1，原错 `Error: listen EPERM: operation not permitted 127.0.0.1:5187`。未取得截图，不宣称浏览器视觉验收完成。
 - `git diff --check` 通过；未 commit、push 或修改锁文件。
 - 独立只读 review-loop 一轮：Standards 无发现；Spec 无发现，无未决项。两轴都核对了完整代码与测试 diff。仓内缺 `docs/agents/issue-tracker.md`，本轮直接使用用户要求与本地 SPEC；完整 Matt tracker 流程需 David 调用 `$setup-matt-pocock-skills`，未创建配置。审查记录合并保存在本段任务 JOURNAL。
+
+## 2026-10-19 · 013 卡 A：编辑器视频反馈与显示实际
+
+- 现场：`/Users/david/Projects/apps/meetpr-plan-web-wt-013-impl`，分支 `feat/013-feedback-in-editor`，开工 HEAD `104397e`、工作区干净。第一条 shell 命令在本目录 `mktemp .codex-write-probe.XXXXXX` 后删除，exit 0；没有切换检出目录。已读 CONTEXT、CLAUDE、CARD-A、完整 SPEC 013、011 §1/§3、012 §1 与工程规约。
+- 范围：只实现卡 A。未删反馈工作区导航，未做聊天浮窗或总览列；未改后端、API、持久化数据模型、reconcile、锁文件。未 commit、push、开 PR。
+
+### 改动文件
+
+- `src/features/plan-editor/feedbackModel.ts`、`feedbackModel.test.ts`：按持久化动作 id 分组；自加视频通过 `set_log_id → StudentSetLog → plan_day_id/exercise_id` 精确关联。输出总数/待看数、计划内排序和计划外分组；Dx 计入未保存空训练日并按推荐日期排序。调用方传 `displayWeeks`，动作顺序与网格主辅显示一致。
+- `src/features/plan-editor/actualShorthand.ts`、`actualShorthand.test.ts`：实际组次/RPE/重量，含额外组与失败尝试、逐组 `/`、缺学员 RPE 显示 `—`，不拿教练 RPE 代填；自重处方的实际非零负重仍显示实际值。
+- `src/features/plan-editor/feedbackSession.ts`：公开 `FeedbackSession`、`EditorFeedbackHandle`。
+- `src/features/plan-editor/PlanEditor.tsx`：视频与记录接线、反馈入口、本机按教练保存“显示实际”、只读自加积木数据；显示实际不进入快照或保存路径，开关点击保持编辑卡打开。
+- `src/features/plan-editor/components/BlockGrid.tsx`、`DayColumn.tsx`、`VideoMarker.tsx`：扫视/编辑视频标记、自加动作头部/积木标记、实际显示与处方提示、淡黄高亮和滚入可见；自加积木无行选择身份，复制和填充仍用原处方路径。
+- `src/features/plan-editor/components/BlockHistory.tsx`、`PortraitVideoWindow.tsx`：历史/反馈模式切换、含已看、计划外列表、左右切段、分层 Esc；历史回看与反馈共用一个竖屏窗。关闭窗保留反馈栏和回复草稿；临时展开历史栏不改本机收起偏好。
+- `src/features/plan-editor/components/TopBar.tsx`、`block-grid.css`、`block-history.css`：开关、标记、反馈栏与浮窗样式。处方扫视态保留 011 的长行省略行为，实际速记允许换行。
+- `src/features/workspace/VideoWorkbench.tsx`、`VideosPage.tsx`：抽出同一套播放、逐帧、倍速、打点、画线、图片发送及反馈逻辑；VideosPage 保留兼容入口。编辑器画线为 `#FACC15`，按显示比例对应 3px，横屏画面与标注层保持原比例；同一视频关窗重开恢复所选倍速。快捷回复复用现有 `S.chat.quickReplies`，支持 ⌥1–5 和 ⌘↵ 发送反馈。
+- `src/features/workspace/annotationDrawing.ts`：允许调用方传画线颜色；旧视频页默认颜色不变，编辑器明确传黄色。
+- `src/features/workspace/PlanWorkspace.tsx`：传当前学员已有视频缓存；打开即请求已看、成功后即时更新标记；去重请求并保护成功状态不被较旧 GET 回包覆盖。切同学员计划保留反馈 session，切学员清空。
+- `src/features/workspace/PlanWorkspace.test.tsx`、`VideosPage-ui.test.tsx`：新增真实编辑器集成分支与共享工作台回归，旧业务断言保留。
+- `src/i18n/strings-block.ts`：新增中英文文案。
+
+### 红 → 绿证据
+
+命令路径均相对本 worktree，使用卡 A 约定的纯函数/最高层/工作台 seam。
+
+| 命令 | 红 | 绿 |
+| --- | --- | --- |
+| `npx vitest run src/features/plan-editor/feedbackModel.test.ts` | 首次模块尚未实现：1 suite failed、0 tests；追加空日/后移编号用例：1 failed / 1 passed | 最终 2 passed |
+| `npx vitest run src/features/plan-editor/actualShorthand.test.ts` | 首次模块尚未实现：1 suite failed、0 tests；追加自重实际负重用例：1 failed / 1 passed | 最终 2 passed |
+| `npx vitest run src/features/workspace/PlanWorkspace.test.tsx -t '013 opens'` | 1 failed / 25 skipped，缺视频标记 | 1 passed；最终文件共 29 tests |
+| `npx vitest run src/features/workspace/PlanWorkspace.test.tsx -t '013 show actuals'` | 1 failed / 26 skipped，缺开关；后补真实 mousedown 再红 1 failed / 28 skipped，开关误收起编辑卡 | 1 passed / 28 skipped，含显示/处方复制/本机记忆/编辑态保持 |
+| `npx vitest run src/features/workspace/PlanWorkspace.test.tsx -t '013 keeps feedback'` | 1 failed / 27 skipped，已看条目移除后焦点落 body | 1 passed / 27 skipped，含切计划、切学员、键盘边界 |
+| `npx vitest run src/features/workspace/PlanWorkspace.test.tsx -t '013 retries'` | 1 failed / 28 skipped，反馈刷新旧回包回退已看标记 | 1 passed / 28 skipped，含加载失败重试与临时展开 |
+| `npx vitest run src/features/workspace/VideosPage-ui.test.tsx -t '013 shared'` | 1 failed / 42 skipped，同段重开实际倍速 1、期望 2 | 1 passed，回复草稿、快捷回复、反馈发送和打点共用原接口 |
+| `npx vitest run src/features/workspace/VideosPage-ui.test.tsx -t '013 portrait'` | 1 failed / 43 skipped，画线仍为旧页橙色 | 1 passed / 43 skipped，黄色与原比例标注层 |
+
+- 受影响五文件回归：`npx vitest run src/features/workspace/VideosPage-ui.test.tsx src/features/workspace/VideosPage.test.ts src/features/plan-editor/block-history-ui.test.tsx src/features/plan-editor/block-grid-ui.test.tsx src/features/workspace/PlanWorkspace.test.tsx`，5 files / 145 passed。中途原 block-grid 长行断言抓到全局 CSS 覆盖，已改为只覆盖实际显示态，没有删旧断言。
+- 最终 `npm test`：exit 0，100 files / **1005 passed**，9.70s；日志 `/private/tmp/013-final-test.log`。jsdom 对历史播放器的 pause/load 有未实现方法提示，但无失败用例。
+- 最终 `npx tsc --noEmit`：exit 0，无诊断；日志 `/private/tmp/013-final-tsc.log`。
+- 最终 `npm run build`：exit 0，Vite 2.92s；仅 chunk >500 kB 提示；日志 `/private/tmp/013-final-build.log`。
+- `git diff --check` 通过。没有为 dev server 修改配置；按卡约定，本轮未启动浏览器验收。
+
+### 卡 B 入口
+
+- 类型：`EditorFeedbackHandle`，位于 `src/features/plan-editor/feedbackSession.ts`。
+- `PlanEditor` 接收 `feedbackRef: Ref<EditorFeedbackHandle>`；方法 **`openFeedbackVideo(videoId?: string)`**。传 id 打开该段；不传则按当前计划内优先、计划顺序选择第一段待看。
+- 工作区已经持有 **`editorFeedbackRef`** 并接给当前 PlanEditor。卡 B 在目标学员/计划及视频列表加载、编辑器挂载后调用 `editorFeedbackRef.current?.openFeedbackVideo(videoId)`；总览入口不传 id。视频列表沿用 `videosByStudent`，不另发列表请求。
+- `feedbackSession` / `onFeedbackSessionChange` 是工作区控制的模式状态，使 keyed PlanEditor 在同学员换计划后保持反馈模式。卡 B 不需要改编辑器保存逻辑。
+
+### 自审与待外部验收
+
+- 独立只读 review-loop 两轴各两轮。Standards 初轮 2 项（队列焦点、箭头越界丢草稿）已修复，复审 0 未解决阻塞。Spec 初轮涉及切学员旧模式、箭头边界、空日/后移 Dx、自重实际负重、重开倍速，均补测修复；复审 0 新阻塞。末尾另自测并修复开关 mousedown、标记焦点 Esc、反馈栏焦点快捷回复。未把开发自测写成验收放行。
+- 仓内没有 `docs/agents/issue-tracker.md`，本次独立审查以用户指定本地 SPEC 为源，未私建配置；完整 Matt tracker 流程需另由 David 调用 `$setup-matt-pocock-skills`。
+- SPEC 差异/解释：§3.1/§3.2 写 280px，但定稿屏幕转写写 296px，现有 011 实装也是 296px。本次按“宽度不变”和定稿转写保留 **296px**，没有让网格额外让位。
+- 现有 VideosPage 实码在播放过半标已看，并非 013 所述“现有打开即已看”。卡 A 的编辑器按 013 改为打开即已看；仍待卡 B 删除的旧 VideosPage 保持原行为与测试。
+- 缺 RPE 时遵循 §7 的 `@—` 要求；屏幕例子中省略强度的写法未用于覆盖明确规则。快捷回复复用现有聊天预设内容，未把屏幕示例文字当新预设。
+- **浏览器验收未执行**：1440×900、中英两种语言、10 组长行与真实视频/自加记录夹具的视觉验收按卡交给 Claude 在沙箱外完成。除此之外没有已知未解决的卡 A 代码阻塞。
+
+## 2026-10-19 · 卡 A 返修 1
+
+基于 `490a3cd` 重读 SPEC / CONTEXT；启动首先在本 worktree 成功创建并删除临时文件。保留原有工作区改动，没有 reset、commit、push、PR 或锁文件变更。本段替代上一段关于“打开即已看”和全缺 RPE 写 `@—` 的旧实现说明；未改 spec 正典。
+
+### 改动文件与行为
+
+- `src/features/workspace/VideoWorkbench.tsx`：将旧页 RPE 校准 JSX 作为共享片段，反馈栏放在打点列表前；复用 `saveCoachRpe`、保存中/失败回滚/清除与原接口。无 `set_log_id` 不显示校准控件，历史回看不显示校准行。embedded 专用短文案用 `S.block`，旧页文案保留。
+- `src/features/plan-editor/components/block-history.css`、`src/i18n/strings-block.ts`：校准行在窄栏允许换行；学员 RPE / 教练 RPE / 校准 / 清除配齐中英。
+- `src/features/plan-editor/PlanEditor.tsx`、`components/BlockHistory.tsx`：移除入口、队列点击、历史 ▶ 的直接已看请求，向共享大窗传递异步已看回调；标题序号与总数取当前可见列表。
+- `src/features/workspace/PlanWorkspace.tsx`、`VideoWorkbench.tsx`：大窗在有效时长的 `currentTime >= duration / 2` 首次请求；打开不算已看。同段在途 Promise 复用、成功保留去重、失败释放以便重试。成功即时更新共享视频缓存，保留旧 GET 防回退。编辑器回调已经更新缓存时不再重复 GET，避免额外请求失败卸载播放器、丢失回复草稿；原页 fallback 仍沿用刷新行为。
+- `src/features/plan-editor/actualShorthand.ts`：全缺 RPE / 重量省略相应段，部分缺仍按组位置写 `—`，原自重规则保留。
+- 对应回归：`src/features/workspace/PlanWorkspace.test.tsx`、`VideosPage-ui.test.tsx`、`src/features/plan-editor/actualShorthand.test.ts`；原有业务断言保留，已看断言按更正 SPEC 改为过半才变化。
+- 临时验收文件：`mock-feedback.html`、`src/mock/feedbackMock.tsx`（未跟踪，收货后删除，不进提交）。
+
+### 红 → 绿证据
+
+| 返修项 | 命令 | 红 | 绿 |
+| --- | --- | --- | --- |
+| 反馈栏 RPE 校准 | `npm test -- src/features/workspace/VideosPage-ui.test.tsx` | 1 failed / 44 passed，缺校准区 | 45 passed；补短文案断言后再次 1 failed / 46 passed → 47 passed |
+| 过半已看 | `npm test -- src/features/workspace/PlanWorkspace.test.tsx src/features/workspace/VideosPage-ui.test.tsx` | 首轮 5 failed / 71 passed：3 个最高层入口过早标记、两种大窗未触发过半 | 补历史 ▶ 集成用例后 77 passed。该用例首次另遇未聚焦动作导致的夹具失败，补真实输入焦点后通过 |
+| 实际速记缺段 | `npm test -- src/features/plan-editor/actualShorthand.test.ts` | 2 failed / 1 passed | 3 passed |
+| 可见列表 N / M | `npm test -- src/features/workspace/PlanWorkspace.test.tsx` | 1 failed / 30 passed，期望 `1 / 2`，实际 `2 / 3` | 31 passed；含切换开关、已看移出、零条目边界 |
+| 审查补回归：成功标已看后冗余刷新失败丢草稿 | `npm test -- src/features/workspace/PlanWorkspace.test.tsx` | 1 failed / 31 passed，播放器消失 | 连同工作台文件重跑 2 files / 79 passed |
+
+分项日志：`/private/tmp/013-r1-{rpe,viewed,actual,position}-{red,green}.log`；短文案补测 `/private/tmp/013-r1-rpe-label-{red,green}.log`；草稿回归 `/private/tmp/013-r1-viewed-refresh-{red,green}.log`。`viewed-red.log` 为补入历史用例后的第二次红，记录 6 failed / 71 passed（其中 1 条为上述夹具焦点问题）；首轮 5 个行为失败见执行记录。
+
+### 最终三条命令
+
+- `npm test`：exit 0，**100 files / 1012 passed**，9.57s；`/private/tmp/013-r1-final-test.log`。
+- `npx tsc --noEmit`：exit 0，无诊断；`/private/tmp/013-r1-final-tsc.log`。
+- `npm run build`：exit 0，Vite 2.54s；仅既有 chunk >500 kB 提示；`/private/tmp/013-r1-final-build.log`。
+- `git diff --check` 通过。没有启动 dev server 或改配置。
+
+### 临时浏览器夹具
+
+- Claude 在本 worktree 外部启动既有 dev server 后访问：`http://localhost:5180/mock-feedback.html?lang=zh`；英文：`http://localhost:5180/mock-feedback.html?lang=en`（若实际端口不同，替换端口）。
+- 渲染真实 `PlanEditor`；4 周 × 4 Dx，W1 全打卡、W2 前两练打卡。含逐组重量 / RPE、10 组长行、部分/全部缺 RPE、缺重量行；多个待看/已看，同动作同组多角度，自加弯举视频、上个 block 视频、无计划关联且无 set log 视频。
+- `window.fetch` 拦截返回内存数据，已看、校准、打点增删和文字反馈也由内存模拟；未知路由返回模拟 404，不转发后端。媒体地址使用 MDN 公开小 MP4，播放是否可用由外部网络决定；刷新页面重置模拟数据。此夹具不证明服务端持久化。
+- 临时 jsdom 冒烟脚本渲染真实夹具，验证 16 个训练格、8 条待看、校准行、自加/上个 block/无关联条目：1 passed，日志 `/private/tmp/013-r1-fixture-smoke.log`；脚本已删除，仅保留用户要求的两份临时文件。
+
+### 卡 B 入口与未明确边界
+
+- 入口仍为 `EditorFeedbackHandle.openFeedbackVideo(videoId?: string)`；工作区调用 `editorFeedbackRef.current?.openFeedbackVideo(videoId)`。此入口只打开，不再直接标已看；播放器回调在过半成功后更新状态。
+- 当前段过半后会移出默认待看列表，但播放器按 SPEC 保持播放。由于该段已无可见序号，标题用 **`— / 剩余可见条数`**，空列表为 `— / 0`；打开“含已看”恢复正常序号。SPEC 未明确此时序号的占位形式，已记录供 Claude 收货确认，不自动跳段。
+- `CARD-A.md` 仍有“打开即已看”的旧文字，本轮遵循更正后的 SPEC 唯一口径，没有改卡片。
+- Standards 独立初审发现上述冗余刷新问题，补红绿并定向复审后 0 未解决；Spec 独立审查 0 新增阻塞（含双语短文案复核）。开发自测不代表浏览器验收；后者按用户要求由 Claude 在沙箱外执行。
+
+## 2026-10-19 · 卡 A 返修 2
+
+启动首先在 `/Users/david/Projects/apps/meetpr-plan-web-wt-013-impl` 成功创建并删除临时文件；HEAD 仍为 `490a3cd`，保留全部原有工作区改动。本轮仅修改用户指定三项；未 reset、commit、push、开 PR 或改锁文件，两份临时浏览器夹具保持原样。
+
+### 改动与文件
+
+1. **长行积木的 ✓ / 视频标记**：`src/features/plan-editor/components/BlockGrid.tsx`、`block-grid.css` 将速记文字与状态组放进同一 `.block-brick-summary`；该容器不换行，状态组不收缩且与末行底部对齐。✓ 从速记文字移到状态组，避免参与文字省略。处方速记空间不足仍 ellipsis，实际速记保留换行，状态留在最后一行右侧；自加动作采用同样结构。短行仍为动作名、速记、状态同行，原完整 title 保留。
+2. **英文竖屏大窗控制条**：`src/features/workspace/VideoWorkbench.tsx`、`src/features/plan-editor/components/block-history.css`、`src/i18n/strings-block.ts` 使用英文笔形 `✎`、`＋Mark`、逐帧 `‹ / ›`，补完整 aria-label/title，继续使用原事件处理。仅英文嵌入大窗设置单行和紧凑间距；窄于正常窗宽时可横向滚动访问按钮。中文文案/布局及旧视频页保持原样。
+3. **已看悬停文案**：`src/i18n/strings-block.ts` 的 `videoHint` 在 pending=0 时返回「N 段视频 · 都看过了」/「N video(s) · all watched」；英文复用 `countUnit`，同时修正单段待看提示的单数。title、data-hint 和 aria-label 共用同一提示。
+
+测试文件：`src/features/plan-editor/block-grid-ui.test.tsx`、`src/features/workspace/VideosPage-ui.test.tsx`。本轮生产代码差异快照：`/private/tmp/013-r2.patch`；改前副本：`/private/tmp/013-r2-before/`，仅用于本地定向审查。
+
+### 红 → 绿证据
+
+| 项目 | 命令 | 红 | 绿 |
+| --- | --- | --- | --- |
+| 长行状态位置 | `npm test -- src/features/plan-editor/block-grid-ui.test.tsx` | 1 failed / 54 passed，缺少共同容器 | 55 passed；验证处方长行、实际长行、自加积木的 DOM / CSS，保留短行及旧长行断言 |
+| 英文控制条 | `npm test -- src/features/workspace/VideosPage-ui.test.tsx` | 2 failed / 47 passed，英文仍为 Draw 且缺标签 | 49 passed；覆盖 405px 大窗、英文短标签与不换行 CSS、中文原文案、完整标签与打点按钮行为 |
+| 已看提示 | `npm test -- src/features/plan-editor/block-grid-ui.test.tsx` | 5 failed / 57 passed，四种已看提示及英文单数错误 | 62 passed；新增 7 种中英/单复数/待看与已看组合，检查 title、data-hint、aria-label 和状态类 |
+
+日志：`/private/tmp/013-r2-brick-{red,green}.log`、`/private/tmp/013-r2-controls-{red,green}.log`、`/private/tmp/013-r2-hint-{red,green}.log`。
+
+### 全量检查与审查
+
+- `npm test`：exit 0，**100 files / 1022 passed**，9.68s；日志 `/private/tmp/013-r2-final-test.log`。
+- `npx tsc --noEmit`：exit 0，无诊断；日志 `/private/tmp/013-r2-final-tsc.log`。
+- `npm run build`：exit 0，Vite 2.88s；仅既有 chunk >500 kB 提示；日志 `/private/tmp/013-r2-final-build.log`。
+- `git diff --check` 通过。
+- Standards 独立只读审查：0 项实质问题。Spec 独立只读审查：三项范围内 0 项缺做/多做/做错。
+- 以上属于开发自测与代码/CSS审查，DOM 结构与计算样式不能证明浏览器实际像素布局。未启动 dev server 或更改配置；外部浏览器复验仍使用保留的 `/mock-feedback.html?lang=zh`、`/mock-feedback.html?lang=en`，重点看 W1·D1 长行、W2·D1 显示实际的末行状态，以及 405px 英文控制条。

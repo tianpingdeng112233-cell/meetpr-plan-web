@@ -1,3 +1,5 @@
+import { markVideoViewed } from '../../api/markers'
+import type { FeedbackSession, EditorFeedbackHandle } from '../plan-editor/feedbackSession'
 import { saveBlockWeekdays } from './blockPlanSettings'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { AuthUser, ChatConversation, ChatReadState, CoachBindRequest, CoachStudent, ExerciseResponse, ExerciseStatsOverview, PlanResponse, PlanWithChildren, StudentOnboardingProfile, StudentVideo } from '../../api/types'
@@ -73,6 +75,13 @@ export function PlanWorkspace({ onLogout, me }: Props) {
   const [index, setIndex] = useState<ExerciseIndex | null>(null)
   const [students, setStudents] = useState<CoachStudent[]>([])
   const [studentId, setStudentId] = useState<string>('')
+  const [editorFeedback, setEditorFeedback] = useState<{ studentId: string; session: FeedbackSession | null } | null>(null)
+  // Card B can call editorFeedbackRef.current.openFeedbackVideo(id), or omit id for first pending.
+  const editorFeedbackRef = useRef<EditorFeedbackHandle>(null)
+  const viewedRequests = useRef(new Map<string, Promise<void>>())
+  const confirmedViews = useRef(new Map<string, string>())
+  useEffect(() => { setEditorFeedback(current => current?.studentId === studentId ? current : null) }, [studentId])
+
   const [onboarding, setOnboarding] = useState<StudentOnboardingProfile | null | undefined>(undefined)
   const [view, setView] = useState<CoachView>('editor')
   const [bindRequests, setBindRequests] = useState<CoachBindRequest[]>([])
@@ -185,6 +194,20 @@ export function PlanWorkspace({ onLogout, me }: Props) {
     }
   }, [updateRosterData])
 
+  const markEditorVideoViewed = useCallback((id: string) => {
+    const existing = viewedRequests.current.get(id)
+    if (existing) return existing
+    if (videosByStudent[studentId]?.find(video => video.id === id)?.viewed_at != null) return Promise.resolve()
+    const owner = studentId
+    const request = markVideoViewed(id).then(result => {
+      const viewedAt = result?.viewed_at ?? new Date().toISOString()
+      confirmedViews.current.set(id, viewedAt)
+      setVideosByStudent(current => ({ ...current, [owner]: current[owner]?.map(video => video.id === id ? { ...video, viewed_at: viewedAt } : video) }))
+    }).catch(error => { viewedRequests.current.delete(id); throw error })
+    viewedRequests.current.set(id, request)
+    return request
+  }, [studentId, videosByStudent])
+
   const refreshStudentVideos = useCallback(async (id: string, canApply: () => boolean = () => true) => {
     const version = videoRequestVersions.current.issue(id)
     // Keep a successful list mounted during an in-place refresh (feedback,
@@ -196,7 +219,7 @@ export function PlanWorkspace({ onLogout, me }: Props) {
     try {
       const rows = await getStudentVideos(id)
       if (!canApply() || !videoRequestVersions.current.isLatest(id, version)) return
-      setVideosByStudent((prev) => ({ ...prev, [id]: rows }))
+      setVideosByStudent((prev) => ({ ...prev, [id]: rows.map(video => confirmedViews.current.has(video.id) ? { ...video, viewed_at: confirmedViews.current.get(video.id)! } : video) }))
     } catch {
       if (!canApply() || !videoRequestVersions.current.isLatest(id, version)) return
       setVideosByStudent((prev) => ({ ...prev, [id]: null }))
@@ -907,6 +930,9 @@ export function PlanWorkspace({ onLogout, me }: Props) {
     {view === 'editor' && hasStudents && <div ref={editorShellRef} style={{ position: 'relative', height: '100%' }}>
       <PlanEditor
         key={planId || `empty-${studentId}`}
+        coachId={me.id} videos={videosByStudent[studentId]} onRefreshVideos={refreshStudentVideos} onVideoViewed={markEditorVideoViewed}
+        feedbackRef={editorFeedbackRef} feedbackSession={editorFeedback?.studentId === studentId ? editorFeedback.session : null}
+        onFeedbackSessionChange={session => setEditorFeedback({ studentId, session })}
         initialWeeks={loaded?.weeks ?? []}
         weeksCount={loaded?.weeksCount ?? 0}
         studentName={studentName}

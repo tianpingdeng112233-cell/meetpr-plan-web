@@ -8,6 +8,8 @@ import { S } from '../../../i18n/strings'
 interface Option { id: string; label: string; tag?: string; sub?: string }
 
 interface Props {
+  showActuals?: boolean
+  onToggleActuals?: () => void
   studentName: string
   planName: string
   published: boolean
@@ -82,6 +84,7 @@ export function TopBar(p: Props) {
       <button ref={planAnchor} data-plan-menu-trigger="" aria-expanded={menu === 'plan'} aria-haspopup="menu" onClick={() => setMenu(menu === 'plan' ? null : 'plan')}><small>{S.block.plan}</small> {p.planName}{p.planStartDate ? ` · ${mmdd(p.planStartDate)}` : ''}{p.weeksCount ? ` · ${S.common.countWeeks(p.weeksCount)}` : ''} ▾</button>
       <span className="plan-context-spacer" />
       {(p.issueCount ?? 0) > 0 && <button title={p.issueHint} onClick={p.onJumpIssue}>{S.editor.issuesToReview(p.issueCount!)}</button>}
+      <button type="button" className="show-actuals" role="switch" aria-label={S.block.showActuals} aria-checked={p.showActuals ?? false} onClick={p.onToggleActuals}>{S.block.showActuals}<i aria-hidden="true" /></button>
       <span className={`plan-autosave-status${p.publishedDirty ? ' published-dirty' : ''}`} data-testid="plan-save-status" role="status"><span className={p.published ? 'published' : ''} aria-hidden="true" />{p.statusText}</span>
       {!p.published && !p.readOnly && p.draftSaveFailed && p.onSave && <button type="button" disabled={p.saving} onClick={p.onSave}>{S.block.retrySave}</button>}
       <button className="block-primary" disabled={p.readOnly || p.saving || (p.published && !p.onSave)} onClick={p.published ? p.onSave : p.onPublish} title={p.readOnly ? S.editor.historicalReadOnlyHint : undefined}>

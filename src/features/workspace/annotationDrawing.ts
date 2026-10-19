@@ -60,9 +60,10 @@ export function drawAnnotationStrokes(
   context: CanvasRenderingContext2D,
   strokes: readonly AnnotationStroke[],
   lineWidth: number,
+  color = '#F59E0B',
 ) {
   context.save()
-  context.strokeStyle = '#F59E0B'
+  context.strokeStyle = color
   context.lineWidth = lineWidth
   context.lineCap = 'round'
   context.lineJoin = 'round'

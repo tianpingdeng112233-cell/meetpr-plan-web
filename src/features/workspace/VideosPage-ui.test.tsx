@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs'
+import { setLocale } from '../../i18n/locale'
 import { act, useCallback, useRef, useState } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -209,6 +211,7 @@ describe('VideosPage master-detail interactions', () => {
     host.remove()
     vi.clearAllMocks()
     vi.restoreAllMocks()
+    setLocale(undefined)
   })
 
   const renderHarness = async (studentId = 'student-1') => {
@@ -787,6 +790,151 @@ describe('VideosPage master-detail interactions', () => {
     })
     expect(feedback.value).toBe('不要丢掉这段反馈')
     expect(host.querySelector('.video-feedback footer span')?.textContent).toBe('反馈发送失败，请稍后重试')
+  })
+
+  it.each(['en', 'zh'] as const)('013 repair 2 keeps compact accessible portrait controls in %s', async locale => {
+    setLocale(locale)
+    const style = document.createElement('style')
+    style.textContent = readFileSync('src/index.css', 'utf8') + readFileSync('src/features/plan-editor/components/block-history.css', 'utf8')
+    document.head.append(style)
+    try {
+      vi.spyOn(host, 'getBoundingClientRect').mockReturnValue({ left: 1144, top: 56 } as DOMRect)
+      Object.defineProperty(window, 'innerHeight', { configurable: true, value: 900 })
+      Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1440 })
+      await act(async () => {
+        root.render(<VideosPage studentId="student-1" videos={videos} onRefreshVideos={async () => {}}
+          embedded={{ video: videos[0], title: 'W1 · D1', anchor: { current: host }, onClose: () => {} }} />)
+        mounted = true; await settle()
+      })
+      expect(host.querySelector<HTMLElement>('.history-player')?.style.width).toBe('405px')
+      const transport = host.querySelector<HTMLElement>('.history-transport')!
+      const draw = transport.querySelector<HTMLButtonElement>('.video-annotate')!
+      const marker = transport.querySelector<HTMLButtonElement>('.video-add-marker')!
+      expect(draw.textContent).toBe(locale === 'en' ? '✎' : '画线')
+      expect(draw.getAttribute('aria-label')).toBe(locale === 'en' ? 'Draw' : '画线')
+      expect(draw.title).toBe(locale === 'en' ? 'Draw' : '画线')
+      expect(marker.textContent).toBe(locale === 'en' ? '＋Mark' : '＋打点')
+      expect(marker.getAttribute('aria-label')).toBe(locale === 'en' ? 'Add marker here' : '在此处打点')
+      expect([...transport.querySelectorAll('.video-frame-step')].map(button => button.textContent)).toEqual(locale === 'en' ? ['‹', '›'] : ['‹ 帧', '帧 ›'])
+      expect(getComputedStyle(transport).flexWrap).toBe(locale === 'en' ? 'nowrap' : 'wrap')
+      if (locale === 'en') {
+        expect(getComputedStyle(transport.querySelector('.video-frame-step')!).width).toBe('24px')
+        expect(getComputedStyle(transport.querySelector('.video-speeds button')!).paddingLeft).toBe('4px')
+      }
+      click(marker)
+      expect(host.querySelector('.video-marker-editor')).not.toBeNull()
+    } finally { style.remove() }
+  })
+
+  it.each([false, true])('013 repair 1 marks portrait playback halfway, retries failure and deduplicates (feedback=%s)', async feedback => {
+    const sidebar = feedback ? document.createElement('div') : null
+    await act(async () => {
+      root.render(<VideosPage studentId="student-1" videos={videos} onRefreshVideos={async () => {}}
+        embedded={{ video: videos[0], title: 'W1 · D1', anchor: { current: host }, sidebar, onClose: () => {} }} />)
+      mounted = true; await settle()
+    })
+    expect(api.markVideoViewed).not.toHaveBeenCalled()
+    const media = host.querySelector('video')!
+    const update = async (time: number, duration = 20) => act(async () => {
+      Object.defineProperty(media, 'duration', { configurable: true, value: duration })
+      media.currentTime = time
+      media.dispatchEvent(new Event('timeupdate'))
+      await settle()
+    })
+    await update(10, NaN)
+    await update(9.99)
+    expect(api.markVideoViewed).not.toHaveBeenCalled()
+    api.markVideoViewed.mockRejectedValueOnce(new Error('offline'))
+    await update(10)
+    expect(api.markVideoViewed).toHaveBeenCalledTimes(1)
+    await update(11)
+    expect(api.markVideoViewed).toHaveBeenCalledTimes(2)
+    expect(api.markVideoViewed).toHaveBeenLastCalledWith('video-1')
+    await update(15)
+    expect(api.markVideoViewed).toHaveBeenCalledTimes(2)
+  })
+
+  it('013 repair 1 exposes the existing RPE calibration in the feedback rail only', async () => {
+    const sidebar = document.createElement('div')
+    const render = async (video = videos[0], feedback = true) => act(async () => {
+      root.render(<VideosPage studentId="student-1" videos={videos} onRefreshVideos={async () => {}}
+        embedded={{ video, title: 'W1 · D1', anchor: { current: host }, sidebar: feedback ? sidebar : null, onClose: () => {} }} />)
+      mounted = true; await settle()
+    })
+    await render()
+    const calibration = sidebar.querySelector('.video-rpe-calibration')!
+    expect(calibration).not.toBeNull()
+    expect(calibration.compareDocumentPosition(sidebar.querySelector('.video-markers-card')!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(calibration.textContent).toContain('学员 RPE')
+    let release = (_value: { set_log_id: string; coach_rpe: string | null }) => {}
+    api.patchCoachRpe.mockImplementationOnce(() => new Promise(resolve => { release = resolve }))
+    setSelect(sidebar.querySelector<HTMLSelectElement>('select')!, '9')
+    expect(api.patchCoachRpe).toHaveBeenLastCalledWith('log-1', 9)
+    expect(sidebar.querySelector('.video-rpe-saving')).not.toBeNull()
+    expect(sidebar.querySelector<HTMLSelectElement>('select')?.disabled).toBe(true)
+    await act(async () => { release({ set_log_id: 'log-1', coach_rpe: '9' }); await settle() })
+    expect(sidebar.querySelector('.video-coach-rpe')?.textContent).toContain('@9')
+    api.patchCoachRpe.mockRejectedValueOnce(new Error('unavailable'))
+    setSelect(sidebar.querySelector<HTMLSelectElement>('select')!, '8')
+    await act(settle)
+    expect(sidebar.querySelector('.video-rpe-error')?.textContent).toBe('RPE 校准失败，已恢复原值')
+    expect(sidebar.querySelector('.video-coach-rpe')?.textContent).toContain('@9')
+    click(buttonWithText(sidebar, '清除'))
+    await act(settle)
+    expect(api.patchCoachRpe).toHaveBeenLastCalledWith('log-1', null)
+    expect(sidebar.querySelector('.video-coach-rpe')).toBeNull()
+    await render(videos[2])
+    expect(sidebar.querySelector('select')).toBeNull()
+    expect(buttonWithText(sidebar, '清除')).toBeNull()
+    await render(videos[0], false)
+    expect(host.querySelector('.video-rpe-calibration')).toBeNull()
+    expect(sidebar.querySelector('.video-rpe-calibration')).toBeNull()
+  })
+
+  it('013 portrait annotations use the approved yellow and keep the original frame aspect ratio', async () => {
+    const context = { clearRect: vi.fn(), save: vi.fn(), restore: vi.fn(), beginPath: vi.fn(), moveTo: vi.fn(), lineTo: vi.fn(), stroke: vi.fn(), strokeStyle: '', lineWidth: 0 }
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(context as unknown as CanvasRenderingContext2D)
+    await act(async () => {
+      root.render(<VideosPage studentId="student-1" videos={videos} onRefreshVideos={async () => {}}
+        embedded={{ video: videos[0], title: 'W1 · D1', anchor: { current: host }, onClose: () => {} }} />)
+      mounted = true; await settle()
+    })
+    const media = host.querySelector('video')!
+    Object.defineProperties(media, { videoWidth: { value: 1920 }, videoHeight: { value: 1080 }, duration: { value: 6 } })
+    act(() => media.dispatchEvent(new Event('loadedmetadata')))
+    click(host.querySelector('.video-annotate'))
+    expect(context.strokeStyle).toBe('#FACC15')
+    const frame = host.querySelector<HTMLElement>('.video-annotation-frame')!
+    expect(frame.style.aspectRatio).toBe('1920 / 1080')
+  })
+
+  it('013 shared portrait workbench preserves reply and speed when the same video window reopens', async () => {
+    const sidebar = document.createElement('div'); host.append(sidebar)
+    const render = async (playerOpen: boolean) => act(async () => {
+      root.render(<VideosPage studentId="student-1" videos={videos} onRefreshVideos={async () => {}}
+        embedded={{ video: videos[0], title: 'W1 · D1', anchor: { current: sidebar }, sidebar, playerOpen, onClose: () => {} }} />)
+      mounted = true; await settle()
+    })
+    await render(true)
+    click(buttonWithText(host, '2×'))
+    setTextarea(sidebar.querySelector<HTMLTextAreaElement>('textarea')!, '保留反馈')
+    await render(false)
+    expect(host.querySelector('video')).toBeNull()
+    expect(sidebar.querySelector<HTMLTextAreaElement>('textarea')?.value).toBe('保留反馈')
+    await render(true)
+    const media = host.querySelector('video')!
+    act(() => { Object.defineProperty(media, 'duration', { value: 6 }); media.dispatchEvent(new Event('loadedmetadata')) })
+    expect(media.playbackRate).toBe(2)
+    click(sidebar.querySelector('.feedback-quick-replies button'))
+    const reply = sidebar.querySelector<HTMLTextAreaElement>('textarea')!
+    expect(reply.value).toContain('按计划完成')
+    await act(async () => { reply.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', metaKey: true, bubbles: true, cancelable: true })); await settle() })
+    expect(api.postCoachFeedback).toHaveBeenCalledWith(expect.objectContaining({ video_id: 'video-1', plan_exercise_id: 'exercise-1', student_id: 'student-1', text: expect.stringContaining('按计划完成') }))
+    click(host.querySelector('.video-add-marker'))
+    setInput(host.querySelector<HTMLInputElement>('.video-marker-editor input')!, '控制下放')
+    click(host.querySelector('.video-marker-save'))
+    await act(settle)
+    expect(api.createVideoMarker).toHaveBeenCalledWith('video-1', { time_ms: 0, note: '控制下放' })
   })
 
   it('captures a native frame, blocks global shortcuts, opens a conversation, and publishes the image', async () => {

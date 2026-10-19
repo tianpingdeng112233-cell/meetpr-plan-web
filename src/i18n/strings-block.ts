@@ -1,5 +1,15 @@
 import type { Translations } from './types'
+import { countUnit } from './plural'
 export const zhBlock = {
+  athleteRpe: '学员 RPE', coachRpe: '教练 RPE', calibrateRpe: '校准', clearCalibration: '清除',
+  drawLine: '画线', drawLineCompact: '画线', addMarker: '打点',
+  showActuals: '显示实际', prescription: (value: string) => `处方 ${value}`,
+  videoHint: (total: number, pending: number) => pending === 0 ? `${total} 段视频 · 都看过了` : `${total} 段视频 · ${pending} 段待看 · 点开看`,
+  pendingVideos: (n: number) => `待看 ${n}`, includeViewed: '含已看', backHistory: '← 历史',
+  outsidePlan: '不在本计划', previousBlock: '上个 block', added: '自加', videosFailed: '待看加载失败',
+  replyTo: (name: string) => `回复${name}`, feedbackPlaceholder: (name: string) => `写给${name}的反馈…`,
+  markerLevel: { info: '提示', warn: '注意', bad: '问题' },
+
   retrySave: '重试保存', previousFrame: '‹ 帧', nextFrame: '帧 ›',
   history: '历史', collapse: '收起历史', expand: '展开历史',
   historyHint: '点开一天、选中一个动作，这里显示它的近 5 次记录；填了组数、次数会继续收窄。',
@@ -16,7 +26,16 @@ export const zhBlock = {
   patternLocal: '星期规律保存在本机', patternFailed: '无法在本机保存星期规律，请检查浏览器存储权限后重试',
 } as const
 export const enBlock: Translations<typeof zhBlock> = {
-  retrySave: 'Retry save', previousFrame: '‹ Frame', nextFrame: 'Frame ›',
+  athleteRpe: 'Athlete RPE', coachRpe: 'Coach RPE', calibrateRpe: 'Calibrate', clearCalibration: 'Clear',
+  drawLine: 'Draw', drawLineCompact: '✎', addMarker: 'Mark',
+  showActuals: 'Show actuals', prescription: value => `Prescribed ${value}`,
+  videoHint: (total, pending) => `${countUnit(total, 'video', 'videos')} · ${pending === 0 ? 'all watched' : `${pending} to watch · Open`}`,
+  pendingVideos: n => `To watch ${n}`, includeViewed: 'Include viewed', backHistory: '← History',
+  outsidePlan: 'Outside this plan', previousBlock: 'Previous block', added: 'Added', videosFailed: 'Videos failed to load',
+  replyTo: name => `Reply to ${name}`, feedbackPlaceholder: name => `Feedback for ${name}…`,
+  markerLevel: { info: 'Tip', warn: 'Caution', bad: 'Issue' },
+
+  retrySave: 'Retry save', previousFrame: '‹', nextFrame: '›',
   history: 'History', collapse: 'Collapse history', expand: 'Expand history',
   historyHint: 'Open a day and select an exercise to see its last 5 sessions. Enter sets and reps to narrow the history.',
   recent: 'Last 5 sessions', top: 'Top set', reps: n => `${n} reps`,

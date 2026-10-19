@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, useImperativeHandle, type Ref } from 'react'
 import type { ColKey, ColWidths, Week, DayCol, ExerciseRow } from './types'
 import { COL_DEFAULTS, COL_MIN, isContentfulUnbound, isRestDay } from './types'
 import { getBoundRowInputIssue, type BoundRowInputIssue } from './inputGuard'
@@ -14,6 +14,9 @@ import { BlockGrid } from './components/BlockGrid'
 import { insertBlockDay, deleteBlockDay, blockDayDeletionLocked, isBlockTrainingDay, buildBlockGrid, changeBlockPattern, blockTargetDay, fillBlockDays, changeBlockDate, changeBlockWeekday, type BlockAddress } from './blockGridModel'
 import { NewPlanDialog } from '../workspace/PlanDialogs'
 import { loadBlockExtraWeekdays, saveBlockExtraWeekdays, loadBlockWeekdays, saveBlockWeekdays } from '../workspace/blockPlanSettings'
+import { deriveVideoFeedback, type FeedbackEntry } from './feedbackModel'
+import type { EditorFeedbackHandle, FeedbackSession } from './feedbackSession'
+import { VideoMarker } from './components/VideoMarker'
 import { BlockHistory } from './components/BlockHistory'
 import './components/block-history.css'
 import { TopBar } from './components/TopBar'
@@ -28,7 +31,7 @@ import type {
   PlanShiftSummary,
   PlanStatus,
   PlanWithChildren,
-  StudentOnboardingProfile,
+  StudentOnboardingProfile, StudentVideo, StudentSetLog,
 } from '../../api/types'
 import type { ParsedWeek } from './import'
 import {
@@ -110,6 +113,14 @@ interface Switcher { id: string; label: string; tag?: string }
 interface RecoveryMirror { mirror: DraftMirror; source: 'local' | 'remote' }
 
 export interface PlanEditorProps {
+  coachId?: string
+  videos?: StudentVideo[] | null
+  onRefreshVideos?: (studentId: string) => Promise<void>
+  onVideoViewed?: (id: string) => Promise<void>
+  feedbackRef?: Ref<EditorFeedbackHandle>
+  feedbackSession?: FeedbackSession | null
+  onFeedbackSessionChange?: (session: FeedbackSession | null) => void
+
   initialWeeks: Week[]
   weeksCount: number
   studentName: string
@@ -568,6 +579,7 @@ export function PlanEditor(props: PlanEditorProps) {
   const [blockMenu, setBlockMenu] = useState<{ x: number; y: number } | null>(null)
   const [sel, setSel] = useState<Sel | null>(null)
   // SPEC-038:学员实际完成组,serverRowId → sets。失败静默(编排主流程不受影响)。
+  const [setLogs, setSetLogs] = useState<StudentSetLog[]>([])
   const [actualsByExercise, setActualsByExercise] = useState<Map<string, ActualSet[]>>(() => new Map())
   const [studentAddedByDay, setStudentAddedByDay] = useState<Map<string, StudentAddedExercise[]>>(() => new Map())
   const hasServerDay = weeks.some((week) => week.days.some((day) => !!day.serverDayId))
@@ -581,12 +593,32 @@ export function PlanEditor(props: PlanEditorProps) {
     void getStudentSetLogs(studentId, from, isoDate(addDays(today, 1)))
       .then((logs) => {
         if (cancelled) return
+        setSetLogs(logs)
         setActualsByExercise(groupActualsByExercise(logs))
         setStudentAddedByDay(groupStudentAddedByDay(logs))
       })
       .catch(() => {})
     return () => { cancelled = true }
   }, [props.studentId, planStartDate, anyRowHasLogs, hasServerDay])
+  const actualsPreferenceKey = `meetpr:show-actuals:${props.coachId ?? 'local'}`
+  const [showActuals, setShowActuals] = useState(() => { try { return localStorage.getItem(actualsPreferenceKey) === 'true' } catch { return false } })
+  const toggleActuals = () => {
+    const next = !showActuals
+    setShowActuals(next)
+    try { localStorage.setItem(actualsPreferenceKey, String(next)) } catch { /* Session preference still works. */ }
+  }
+  const videoFeedback = useMemo(() => deriveVideoFeedback(displayWeeks, props.videos ?? [], setLogs, planStartDate), [displayWeeks, props.videos, setLogs, planStartDate])
+  const [localFeedback, setLocalFeedback] = useState<FeedbackSession | null>(null)
+  const feedback = props.feedbackSession === undefined ? localFeedback : props.feedbackSession
+  const changeFeedback = (next: FeedbackSession | null) => { setLocalFeedback(next); props.onFeedbackSessionChange?.(next) }
+  const [highlightedVideo, setHighlightedVideo] = useState<FeedbackEntry | null>(null)
+  const openFeedbackVideo = (videoId?: string) => {
+    const id = videoId ?? videoFeedback.entries.find(entry => entry.video.viewed_at == null)?.video.id ?? null
+    changeFeedback({ videoId: id, playerOpen: !!id, includeViewed: feedback?.includeViewed ?? false })
+  }
+  useImperativeHandle(props.feedbackRef, () => ({ openFeedbackVideo }))
+  const rowVideoMarker = (row: ExerciseRow) => <VideoMarker group={videoFeedback.rows.get(row.id)} onOpen={openFeedbackVideo} />
+  const addedVideoMarker = (dayId: string | null | undefined, exerciseId: string) => <VideoMarker group={dayId ? videoFeedback.studentAdded.get(dayId)?.get(exerciseId) : undefined} onOpen={openFeedbackVideo} />
   const actualsForRow = useCallback((row: ExerciseRow): ActualSet[] | null => (
     row.serverRowId ? actualsByExercise.get(row.serverRowId) ?? null : null
   ), [actualsByExercise])
@@ -2897,7 +2929,7 @@ export function PlanEditor(props: PlanEditorProps) {
   return (
     <div ref={rootRef} onMouseDownCapture={event => {
       const target = event.target as HTMLElement
-      if (!target.closest('.block-history,.block-cell,.block-context-menu,.ex-popover,[data-popover],[role="dialog"]')) {
+      if (!target.closest('.show-actuals,.block-history,.block-cell,.block-context-menu,.ex-popover,[data-popover],[role="dialog"]')) {
         closeBlockEditor(); setBlockMenu(null)
       }
     }} className="plan-editor" style={{
@@ -2905,7 +2937,7 @@ export function PlanEditor(props: PlanEditorProps) {
       overflow: 'hidden', background: 'var(--page-bg)', color: 'var(--txt)',
       fontFamily: 'var(--font-sans)', fontSize: 13, WebkitFontSmoothing: 'antialiased',
     }}>
-      <TopBar
+      <TopBar showActuals={showActuals} onToggleActuals={toggleActuals}
         studentName={studentName} planName={planName} published={published} publishedDirty={publishedDirty}
         readOnly={readOnly} statusText={visibleStatusText} onPublish={handlePublish}
         students={props.students} currentStudentId={props.currentStudentId} onSwitchStudent={guardLeaveId(props.onSwitchStudent)}
@@ -2967,6 +2999,11 @@ export function PlanEditor(props: PlanEditorProps) {
             <BlockGrid weeks={weeks} startDate={planStartDate} weekdays={blockWeekdays} extraWeekdays={extraWeekdays} editing={editingDay}
               selectedDays={daySelection.days} selectedRows={selectedRowIds} readOnly={readOnly}
               rowTier={rowTier} onClose={closeBlockEditor}
+              showActuals={showActuals} actualsForRow={actualsForRow} studentAddedByDay={studentAddedByDay}
+              exerciseName={id => { const names = props.exerciseIndex?.namesById(id); return names ? fmt.exerciseName(names) : id }}
+              addedVideoMarker={addedVideoMarker}
+              videoMarker={rowVideoMarker} highlightedVideo={highlightedVideo}
+              addedDayMarkers={day => day.serverDayId && [...(videoFeedback.studentAdded.get(day.serverDayId) ?? [])].map(([id, group]) => <span className="added-video-marker" key={id}>{S.block.added} <VideoMarker group={group} onOpen={openFeedbackVideo} /></span>)}
               renderCapacity={(_week, index) => <WeekCapacitySummary weekNumber={_week.num} {...weeklySummaries[index]} />}
               onOpen={(week, day, event) => {
                 setBlockMenu(null)
@@ -3070,6 +3107,7 @@ export function PlanEditor(props: PlanEditorProps) {
                           trainingDayOrdinal: trainingDayOrdinal(wk, day.dow),
                           weekdayLabel: day.dowLabel,
                         }}
+                        videoMarker={rowVideoMarker} addedVideoMarker={id => addedVideoMarker(day.serverDayId, id)} highlightedVideo={highlightedVideo}
                         studentAdded={day.serverDayId ? studentAddedByDay.get(day.serverDayId) : undefined}
                         exerciseName={(id) => {
                           const names = props.exerciseIndex?.namesById(id)
@@ -3083,7 +3121,8 @@ export function PlanEditor(props: PlanEditorProps) {
             />
           </div>
         </div>
-        <BlockHistory studentId={props.studentId} studentName={studentName}
+        <BlockHistory videos={props.videos} entries={videoFeedback.entries} feedback={feedback} onFeedbackChange={changeFeedback}
+          onVideoViewed={props.onVideoViewed} onRefreshVideos={props.onRefreshVideos} onHighlight={setHighlightedVideo} studentId={props.studentId} studentName={studentName}
           row={(() => {
             const row = editingDay && cellSelection ? resolvePlanCell(displayWeeks, cellSelection)?.row ?? null : null
             return row && setsDraft?.rowId === row.id && setsDraft.value === '' ? { ...row, boxes: [] } : row

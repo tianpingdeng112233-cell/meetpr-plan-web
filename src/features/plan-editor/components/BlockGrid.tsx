@@ -1,3 +1,5 @@
+import { actualShorthand } from '../actualShorthand'
+import type { ActualSet, StudentAddedExercise } from '../actuals'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { buildBlockGrid, blockTargetDay, blockInsertDates, type BlockAddress } from '../blockGridModel'
 import type { DayCol, ExerciseRow, Week } from '../types'
@@ -6,8 +8,17 @@ import { addDays, DOW_LABELS, mdLabel } from '../mapping'
 import { fmt, S } from '../../../i18n/strings'
 import { orderRowsForDisplay, planDayKey, type PlanDayTarget } from '../selectionModel'
 import './block-grid.css'
+import type { FeedbackEntry } from '../feedbackModel'
 
 interface Props {
+  showActuals?: boolean
+  actualsForRow?: (row: ExerciseRow) => ActualSet[] | null
+  studentAddedByDay?: Map<string, StudentAddedExercise[]>
+  exerciseName?: (id: string) => string
+  addedVideoMarker?: (dayId: string | null | undefined, exerciseId: string) => ReactNode
+  videoMarker?: (row: ExerciseRow) => ReactNode
+  addedDayMarkers?: (day: DayCol) => ReactNode
+  highlightedVideo?: FeedbackEntry | null
   weeks: Week[]
   startDate: string | null
   weekdays: readonly number[]
@@ -58,6 +69,14 @@ export function BlockGrid(props: Props) {
     if (!props.editing) return
     ref.current?.querySelector<HTMLElement>('.block-cell.is-editing')?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' })
   }, [props.editing?.wnum, props.editing?.dow])
+
+  useEffect(() => {
+    const entry = props.highlightedVideo
+    if (!entry?.inPlan) return
+    const target = entry.rowId ? [...(ref.current?.querySelectorAll<HTMLElement>('[data-rowid]') ?? [])].find(el => el.dataset.rowid === entry.rowId)
+      : [...(ref.current?.querySelectorAll<HTMLElement>('[data-block-day-id]') ?? [])].find(el => el.dataset.blockDayId === entry.dayId)
+    target?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' })
+  }, [props.highlightedVideo])
 
   const startFill = (event: React.MouseEvent, source: BlockAddress) => {
     if (event.button !== 0 || props.readOnly) return
@@ -143,7 +162,7 @@ export function BlockGrid(props: Props) {
           const selectedCount = rows.filter(row => props.selectedRows.has(row.id)).length
           const fillRows = preview ? grid.rows.find(row => row.week.num === fill.source.weekNumber)?.cells[cell.dx]?.day?.rows ?? [] : []
           return <div key={cell.dx} className={`block-cell${!day ? ' is-blank' : ''}${selected ? ' is-selected' : ''}${editing ? ' is-editing' : ''}${preview ? ' fill-preview' : ''}`}
-            data-block-week={week.num} data-dx={cell.dx} data-dow={day?.dow} tabIndex={day ? 0 : -1}
+            data-block-day-id={day?.serverDayId ?? undefined} data-block-week={week.num} data-dx={cell.dx} data-dow={day?.dow} tabIndex={day ? 0 : -1}
             aria-label={cell.dayNumber ? `W${week.num} D${cell.dayNumber}` : `W${week.num} ${DOW_LABELS[grid.columns[cell.dx].weekday]}`}
             style={{ gridColumn: editing ? `${(editStart < 0 ? Math.min(cell.dx, Math.max(0, grid.columns.length - 3)) : editStart) + 2} / -1` : cell.dx + 2, gridRow: 1,
               visibility: editingDx >= 0 && cell.dx >= editStart && cell.dx !== editingDx ? 'hidden' : undefined }}
@@ -151,7 +170,7 @@ export function BlockGrid(props: Props) {
             onContextMenu={event => { if (day) props.onContext(event, week, day) }}
             onKeyDown={event => { if (event.target === event.currentTarget && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); event.stopPropagation(); event.currentTarget.click() } }}>
             {editing && day ? props.renderDay(week, day, cell.dx, cell.dayNumber ?? cells.filter(c => c.day && c.day.dow < day.dow).length + 1) : <>
-              <div className="block-date"><span>{cell.dayNumber ? `D${cell.dayNumber} · ${day?.dateLabel}` : day?.dateLabel}</span>{day?.shiftBadge && <span data-shift-badge="">{S.editor.shifted}</span>}{(day?.completedAt || (rows.length > 0 && rows.every(row => row.hasLogs))) && <span>✓ {S.editor.blockDone}</span>}</div>
+              <div className="block-date"><span>{cell.dayNumber ? `D${cell.dayNumber} · ${day?.dateLabel}` : day?.dateLabel}</span>{day?.shiftBadge && <span data-shift-badge="">{S.editor.shifted}</span>}{(day?.completedAt || (rows.length > 0 && rows.every(row => row.hasLogs))) && <span>✓ {S.editor.blockDone}</span>}{day && !props.showActuals && props.addedDayMarkers?.(day)}</div>
               {day && rows.length === 0 && !props.readOnly && <span className="block-empty">
                 <svg width="23" height="23" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
                   <path d="M5 1v8M1 5h8" />
@@ -159,13 +178,20 @@ export function BlockGrid(props: Props) {
               </span>}
               {rows.map((row, i) => {
                 const name = fmt.exerciseName({ name: row.name, name_en: row.nameEn }) || S.common.unnamed
-                const summary = `${shorthand(row)}${row.hasLogs ? ' ✓' : ''}`
-                return <div key={row.id} className={`block-brick${props.selectedRows.has(row.id) ? ' row-sel' : ''}${props.rowTier(row) === 'aux' ? ' aux' : ''}${i > 0 && props.rowTier(rows[i - 1]) !== props.rowTier(row) ? ' section-start' : ''}`}
-                data-rowid={row.id} data-locked={row.hasLogs} role="button" tabIndex={0} title={`${name} ${summary}`}
+                const actuals = props.actualsForRow?.(row)
+                const actual = props.showActuals && !!actuals?.length
+                const summary = actual ? actualShorthand(row, actuals!) : shorthand(row)
+                return <div key={row.id} className={`block-brick${actual ? ' actual-display' : ''}${props.showActuals && !actual ? ' prescribed-muted' : ''}${props.highlightedVideo?.rowId === row.id ? ' video-highlight' : ''}${props.selectedRows.has(row.id) ? ' row-sel' : ''}${props.rowTier(row) === 'aux' ? ' aux' : ''}${i > 0 && props.rowTier(rows[i - 1]) !== props.rowTier(row) ? ' section-start' : ''}`}
+                data-rowid={row.id} data-locked={row.hasLogs} role="button" tabIndex={0} title={actual ? S.block.prescription(shorthand(row)) : `${name} ${summary}${row.hasLogs ? ' ✓' : ''}`} data-hint={actual ? S.block.prescription(shorthand(row)) : undefined}
                 onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); event.stopPropagation(); event.currentTarget.click() } }}
                 onClick={event => { event.stopPropagation(); if (day) props.onSelectRow(week, day, row.id, { toggle: event.metaKey || event.ctrlKey, range: event.shiftKey }) }}>
-                <span>{name}</span><code>{summary}</code>
+                <span>{name}</span><div className="block-brick-summary"><code>{summary}</code><span className="block-brick-status">{row.hasLogs && <span>✓</span>}{props.videoMarker?.(row)}</span></div>
               </div>})}
+              {props.showActuals && day?.serverDayId && props.studentAddedByDay?.get(day.serverDayId)?.map(added => <div key={added.exerciseId}
+                className={`block-brick student-added-brick${props.highlightedVideo?.dayId === day.serverDayId && props.highlightedVideo?.addedExerciseId === added.exerciseId ? ' video-highlight' : ''}`}
+                data-student-added={added.exerciseId} onMouseDown={event => event.stopPropagation()} onClick={event => event.stopPropagation()}>
+                <span>{props.exerciseName?.(added.exerciseId) ?? added.exerciseId} <small>{S.block.added}</small></span><div className="block-brick-summary"><code>{actualShorthand(null, added.sets)}</code><span className="block-brick-status"><span>✓</span>{props.addedVideoMarker?.(day.serverDayId, added.exerciseId)}</span></div>
+              </div>)}
             </>}
             {selected && !props.readOnly && <button type="button" className="block-fill-handle" aria-label={S.editor.blockFillHint} title={S.editor.blockFillHint}
               onMouseDown={event => startFill(event, cell)} onClick={event => event.stopPropagation()} />}
