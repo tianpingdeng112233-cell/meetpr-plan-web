@@ -5,8 +5,15 @@ export const getExerciseStatsOverview = (studentId: string) =>
   api.get<ExerciseStatsOverview>(`/coach/students/${studentId}/exercise-stats`)
 export const getStudentSetLogs = (studentId: string, from: string, to: string) =>
   api.get<{ logs: StudentSetLog[] }>(`/students/${studentId}/sets?from=${from}&to=${to}&scope=all`).then((r) => r.logs)
-export const getExerciseStats = (studentId: string, exerciseId: string) =>
-  api.get<ExerciseStatsDetail>(`/coach/students/${studentId}/exercise-stats?exercise_id=${encodeURIComponent(exerciseId)}`)
+export interface ExerciseHistoryFilter { sets?: number; reps?: number }
+export const getExerciseStats = (studentId: string, exerciseId: string, filter: ExerciseHistoryFilter = {}) => {
+  let query = `exercise_id=${encodeURIComponent(exerciseId)}`
+  if (Number.isInteger(filter.sets) && filter.sets! > 0) {
+    query += `&sets=${filter.sets}`
+    if (Number.isInteger(filter.reps) && filter.reps! > 0) query += `&reps=${filter.reps}`
+  }
+  return api.get<ExerciseStatsDetail>(`/coach/students/${studentId}/exercise-stats?${query}`)
+}
 export const getBindRequests = () =>
   api.get<{ bind_requests: CoachBindRequest[] }>('/coach/bind-requests').then((r) => r.bind_requests)
 export const acceptBindRequest = (id: string) =>

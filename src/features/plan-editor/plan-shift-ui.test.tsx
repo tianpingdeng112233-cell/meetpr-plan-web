@@ -1,3 +1,4 @@
+import { openBlockDay } from './blockGridTestUtils'
 import { act, useState } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -144,6 +145,8 @@ describe('coach plan shift UI', () => {
         studentName="学员" planName="计划" currentPlanId="plan" planStatus="published"
         initialPublished />,
     ))
+    openBlockDay(host)
+
 
     const monday = host.querySelector<HTMLElement>('.day[data-dow="0"]')!
     act(() => click(monday))
@@ -168,6 +171,7 @@ describe('coach plan shift UI', () => {
         onSave={onSave} onPublish={async () => setStatus('published')} />
     }
     await act(async () => root.render(<EditorSession />))
+    openBlockDay(host)
     const monday = host.querySelector<HTMLElement>('.day[data-dow="0"]')!
     const note = monday.querySelector<HTMLInputElement>('[data-c="note"] input')!
     act(() => setInput(note, 'draft edit'))
@@ -192,6 +196,7 @@ describe('coach plan shift UI', () => {
       ],
       skipped_completed_day_ids: ['day-2'], total_shift_days: 2,
     })
+
     planApi.getPlan.mockResolvedValue(plan(true))
 
     const onSave = vi.fn(async (saved: Week[]) => ({
@@ -203,6 +208,8 @@ describe('coach plan shift UI', () => {
         initialPublished totalShiftDays={0} latestShift={null}
         onSave={onSave} />,
     ))
+    openBlockDay(host)
+
 
     const monday = host.querySelector<HTMLElement>('.day[data-dow="0"]')!
     act(() => click(monday))
@@ -250,6 +257,8 @@ describe('coach plan shift UI', () => {
         studentName="学员" planName="计划" currentPlanId="plan" planStatus="published"
         initialPublished totalShiftDays={0} latestShift={null} />,
     ))
+    openBlockDay(host)
+
     const monday = host.querySelector<HTMLElement>('.day[data-dow="0"]')!
     const note = monday.querySelector<HTMLInputElement>('[data-c="note"] input')!
     act(() => setInput(note, 'first edit'))
@@ -284,6 +293,8 @@ describe('coach plan shift UI', () => {
         studentName="学员" planName="计划" currentPlanId="plan" planStatus="published"
         initialPublished totalShiftDays={2} latestShift={plan(true).latest_shift} />,
     ))
+    openBlockDay(host)
+
     const monday = host.querySelector<HTMLElement>('.day[data-dow="0"]')!
     const note = monday.querySelector<HTMLInputElement>('[data-c="note"] input')!
     act(() => setInput(note, 'first edit'))
@@ -314,6 +325,8 @@ describe('coach plan shift UI', () => {
         studentName="学员" planName="计划" currentPlanId="plan" planStatus="published"
         initialPublished onSave={onSave} />,
     ))
+    openBlockDay(host)
+
     const monday = host.querySelector<HTMLElement>('.day[data-dow="0"]')!
     const note = monday.querySelector<HTMLInputElement>('[data-c="note"] input')!
     act(() => setInput(note, 'first edit'))
@@ -362,6 +375,8 @@ describe('coach plan shift UI', () => {
         studentName="学员" planName="计划" currentPlanId="plan" planStatus="published"
         initialPublished onSave={onSave} />,
     ))
+    openBlockDay(host)
+
     const monday = host.querySelector<HTMLElement>('.day[data-dow="0"]')!
     const note = monday.querySelector<HTMLInputElement>('[data-c="note"] input')!
     act(() => setInput(note, 'first edit'))
@@ -397,6 +412,8 @@ describe('coach plan shift UI', () => {
       )
       await Promise.resolve()
     })
+    openBlockDay(host)
+
 
     const monday = host.querySelector<HTMLElement>('.day[data-dow="0"]')!
     act(() => click(monday))
@@ -417,6 +434,8 @@ describe('coach plan shift UI', () => {
         studentName="学员" planName="计划" currentPlanId="plan" planStatus="published"
         initialPublished totalShiftDays={2} latestShift={latestShift} />,
     ))
+    openBlockDay(host)
+
 
     await act(async () => { click(button(host, '撤销')); await Promise.resolve() })
 
@@ -437,6 +456,8 @@ describe('coach plan shift UI', () => {
         studentName="学员" planName="计划" currentPlanId="plan" planStatus="published"
         initialPublished totalShiftDays={2} latestShift={plan(true).latest_shift} />,
     ))
+    openBlockDay(host)
+
 
     const undo = button(host, '撤销')
     act(() => { click(undo); click(undo) })
@@ -455,6 +476,8 @@ describe('coach plan shift UI', () => {
         studentName="学员" planName="计划" currentPlanId="plan" planStatus="published"
         initialPublished totalShiftDays={2} latestShift={plan(true).latest_shift} />,
     ))
+    openBlockDay(host)
+
 
     await act(async () => { click(button(host, '撤销')); await Promise.resolve() })
     expect(host.querySelector('[data-plan-shift-notice]')).not.toBeNull()
@@ -470,6 +493,8 @@ describe('coach plan shift UI', () => {
         studentName="学员" planName="已完成计划" currentPlanId="plan" planStatus="completed"
         readOnly totalShiftDays={2} latestShift={plan(true).latest_shift} />,
     ))
+    openBlockDay(host)
+
 
     expect(host.querySelector('[data-plan-shift-notice]')?.textContent).toContain('已后移 2 天')
     expect(host.querySelector('[data-plan-shift-undo]')).toBeNull()
@@ -481,6 +506,8 @@ describe('coach plan shift UI', () => {
         studentName="学员" planName="草稿" currentPlanId="plan" planStatus="draft"
         totalShiftDays={0} latestShift={null} />,
     ))
+    openBlockDay(host)
+
 
     const monday = host.querySelector<HTMLElement>('.day[data-dow="0"]')!
     act(() => click(monday))
@@ -497,6 +524,8 @@ describe('coach plan shift UI', () => {
       )
       await Promise.resolve()
     })
+    openBlockDay(host)
+
 
     const monday = host.querySelector<HTMLElement>('.day[data-dow="0"]')!
     act(() => click(monday))
@@ -517,6 +546,8 @@ describe('coach plan shift UI', () => {
         studentName="学员" planName="计划" currentPlanId="plan" planStatus="published"
         initialPublished totalShiftDays={0} latestShift={null} />,
     ))
+    openBlockDay(host)
+
     const monday = host.querySelector<HTMLElement>('.day[data-dow="0"]')!
     act(() => click(monday))
     act(() => click(button(monday, '后移…')))
@@ -534,6 +565,8 @@ describe('coach plan shift UI', () => {
         studentName="学员" planName="计划" currentPlanId="plan-undo" planStatus="published"
         initialPublished totalShiftDays={2} latestShift={plan(true).latest_shift} />,
     ))
+    openBlockDay(host)
+
 
     await act(async () => { click(button(host, '撤销')); await Promise.resolve() })
     expect(confirm).toHaveBeenCalledOnce()

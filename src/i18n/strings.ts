@@ -1,3 +1,4 @@
+import { enBlock, zhBlock } from './strings-block'
 import { resolveLocale } from './locale'
 import { enApp, zhApp } from './strings-app'
 import { enAuth, zhAuth } from './strings-auth'
@@ -13,6 +14,7 @@ import { enStates, zhStates } from './strings-states'
 import type { Translations } from './types'
 
 const zh = {
+  block: zhBlock,
   app: zhApp,
   common: zhCommon,
   auth: zhAuth,
@@ -27,6 +29,7 @@ const zh = {
 } as const
 
 const en = {
+  block: enBlock,
   app: enApp,
   common: enCommon,
   auth: enAuth,

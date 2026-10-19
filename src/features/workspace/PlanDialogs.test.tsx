@@ -19,6 +19,7 @@ describe('PlanDialogs', () => {
   afterEach(() => {
     act(() => root.unmount())
     host.remove()
+    vi.useRealTimers()
   })
 
   it('requires an explicit irreversible completion confirmation', () => {
@@ -37,16 +38,25 @@ describe('PlanDialogs', () => {
     expect(onComplete).toHaveBeenCalledOnce()
   })
 
-  it('keeps the Day 1 weekday selector in the new-plan dialog', () => {
-    act(() => root.render(
-      <NewPlanDialog open studentName="学员" onClose={() => {}} onCreate={vi.fn()} />,
-    ))
-
+  it('creates a four-week block with explicit training weekdays, D1 and a matching first date', async () => {
+    vi.useFakeTimers(); vi.setSystemTime(new Date(2026, 9, 19, 12))
+    const onCreate = vi.fn().mockResolvedValue(undefined)
+    act(() => root.render(<NewPlanDialog open studentName="学员" onClose={() => {}} onCreate={onCreate} />))
     expect(isReloadBlocked()).toBe(true)
-    expect(host.textContent).toContain('Day 1 从周几开始')
-    expect(host.querySelector<HTMLInputElement>('[aria-label="开始日期"]')).not.toBeNull()
-    expect([...host.querySelectorAll<HTMLButtonElement>('button')]
-      .filter((button) => ['周一', '周二', '周三', '周四', '周五', '周六', '周日'].includes(button.textContent ?? '')))
-      .toHaveLength(7)
+    const date = host.querySelector<HTMLInputElement>('input[type="date"]')!
+    expect(date.value).toBe('2026-10-19')
+    const click = (el: Element) => act(() => { el.dispatchEvent(new MouseEvent('click', { bubbles: true })) })
+    for (const day of [0, 1, 2, 3, 4, 5, 6]) {
+      const el = host.querySelector(`[data-training-weekday="${day}"]`)!
+      const wanted = [1, 3, 4, 6].includes(day)
+      if ((el.getAttribute('aria-pressed') === 'true') !== wanted) click(el)
+    }
+    click(host.querySelector('[data-d1="6"]')!)
+    expect(date.value).toBe('2026-10-25')
+    expect(host.querySelector('[data-training-weekday="6"]')?.textContent).toContain('D1')
+    expect(host.querySelector('[data-training-weekday="1"]')?.textContent).toContain('D2')
+    await act(async () => host.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })))
+    expect(onCreate).toHaveBeenCalledWith('新计划', 4, '2026-10-25', 7, [6, 1, 3, 4])
+    vi.useRealTimers()
   })
 })

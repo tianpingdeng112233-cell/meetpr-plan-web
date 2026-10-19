@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  historyQuery, historySessions, historyTopSet,
   RAIL_MODE_KEY,
   RAIL_MIN_GRID_WIDTH,
   RAIL_WIDTH,
@@ -177,5 +178,17 @@ describe('recentSessionSummary', () => {
 describe('rail mode storage key', () => {
   it('is namespaced so it cannot collide with other editor preferences', () => {
     expect(RAIL_MODE_KEY).toBe('meetpr.plan-editor.rail-mode')
+  })
+})
+
+describe('block history query', () => {
+  it('narrows by sets before reps and falls back honestly on an older backend', () => {
+    expect(historyQuery(row({ boxes: [], reps: '3' }))).toEqual({ exerciseId: 'sumo-dl' })
+    expect(historyQuery(row({ reps: '' }))).toEqual({ exerciseId: 'sumo-dl', sets: 1 })
+    expect(historyQuery(row())).toEqual({ exerciseId: 'sumo-dl', sets: 1, reps: 3 })
+    expect(historySessions(detail(), { sets: 4, reps: 3 })).toEqual({ sessions: detail().recent_sessions, degraded: true })
+    expect(historySessions(detail({ filtered_sessions: [] }), { sets: 4 })).toEqual({ sessions: [], degraded: false })
+    const sets = detail().recent_sessions[0].sets
+    expect(historyTopSet([{ ...sets[0], set_index: 4 }, { ...sets[0], set_index: 2 }])?.set_index).toBe(2)
   })
 })

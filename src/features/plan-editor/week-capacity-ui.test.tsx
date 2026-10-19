@@ -51,7 +51,7 @@ describe('week-band capacity UI', () => {
     vi.restoreAllMocks()
   })
 
-  it('renders the plain summary beside the week title and keeps detail trends in the tooltip', () => {
+  it('renders the plain summary inside the week hover panel and keeps detail trends in the tooltip', () => {
     act(() => root?.render(
       <PlanEditor
         initialWeeks={[
@@ -72,8 +72,7 @@ describe('week-band capacity UI', () => {
     expect(summaries[1].querySelector('[role="tooltip"]')?.textContent).toContain('总组数：3组 （较上周 ↑50.0%）')
     expect(summaries[1].querySelector('[role="tooltip"]')?.textContent).toContain('吨位：1,500 kg （较上周 ↑50.0%）')
     expect(summaries[1].querySelector('[role="tooltip"]')?.textContent).toContain('吨位仅计入「kg 模式 + 重量可解析 + reps 可解析」的组')
-    const weekHeader = summaries[0].parentElement!
-    expect([...weekHeader.children].indexOf(summaries[0])).toBe(3)
+    expect(summaries[0].closest('.block-capacity')).not.toBeNull()
     expect(host.textContent).not.toContain('LEGACY-WEEK-VOL')
     expect(host.textContent).not.toContain('OTHER-FAKE-VOL')
     expect(host.querySelectorAll('[data-week-summary] select')).toHaveLength(0)

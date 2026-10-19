@@ -3,6 +3,7 @@ import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ExerciseStatsDetail, StudentOnboardingProfile } from '../../api/types'
 import { PlanEditor } from './PlanEditor'
+import { DayHeaderContext } from './components/ContextRail'
 import type { DayCol, ExerciseRow, Week } from './types'
 
 const api = vi.hoisted(() => ({ getExerciseStats: vi.fn() }))
@@ -65,9 +66,9 @@ function detail(recent = true): ExerciseStatsDetail {
   }
 }
 
-// v1.3 页眉集成试验：原 rail 交互测试改为生产入口与页眉上下文口径；
-// ContextRail 的纯视图/定位测试保留，方便试验回滚。
-describe('plan editor day-header context experiment', () => {
+// Retain the standalone legacy view coverage while card B owns its replacement.
+// PlanEditor no longer mounts this view inside the block edit card (SPEC 011 §2).
+describe('retained day-header context view', () => {
   let host: HTMLDivElement
   let root: Root
 
@@ -86,7 +87,9 @@ describe('plan editor day-header context experiment', () => {
     vi.restoreAllMocks()
   })
 
+  let contextRows: ExerciseRow[]
   function renderEditor(weeks: Week[] = [week()]) {
+    contextRows = weeks[0].days[0].rows
     act(() => root.render(
       <PlanEditor initialWeeks={weeks} weeksCount={1} studentId="student-1" studentName="吕子豪"
         planName="Monster" onboardingProfile={profile} />,
@@ -94,16 +97,11 @@ describe('plan editor day-header context experiment', () => {
   }
 
   function selectDay() {
-    const day = host.querySelector<HTMLElement>('.day[data-dow]')!
-    act(() => day.dispatchEvent(new MouseEvent('click', { bubbles: true })))
+    act(() => root.render(<DayHeaderContext studentId="student-1" studentName="吕子豪" row={null} profile={profile} />))
   }
 
   async function selectRow(id = 'squat') {
-    const exerciseRow = host.querySelector<HTMLElement>(`[data-rowid="${id}"]`)!
-    await act(async () => {
-      exerciseRow.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, button: 0 }))
-      await Promise.resolve()
-    })
+    await act(async () => root.render(<DayHeaderContext studentId="student-1" studentName="吕子豪" row={contextRows.find(row => row.id === id)!} profile={profile} />))
   }
 
   it('shows the full student profile inline in the day header when no row is selected', () => {

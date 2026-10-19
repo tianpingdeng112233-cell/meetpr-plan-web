@@ -348,7 +348,7 @@ describe('PlanWorkspace editor remount', () => {
       await settle()
     })
     await act(async () => clickButton(host, '新建计划'))
-    const startDate = host.querySelector<HTMLInputElement>('[aria-label="开始日期"]')!
+    const startDate = host.querySelector<HTMLInputElement>('input[type="date"]')!
     await act(async () => {
       Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(startDate, '2026-08-10')
       startDate.dispatchEvent(new Event('change', { bubbles: true }))
@@ -370,9 +370,11 @@ describe('PlanWorkspace editor remount', () => {
     expect(api.createPlan).toHaveBeenCalledTimes(1)
     expect(api.createPlan).toHaveBeenCalledWith(expect.objectContaining({
       start_date: '2026-08-10',
+      plan_weeks: 4,
       anchor_weekday: 1,
     }))
     expect(api.patchPlan).not.toHaveBeenCalled()
+    expect(JSON.parse(window.localStorage.getItem('meetpr.plan-editor.weekdays.new-plan')!)).toEqual([0, 2, 4, 5])
   }, 15_000)
 
   it('falls back to legacy create then patches the weekday when create validation rejects anchor_weekday', async () => {

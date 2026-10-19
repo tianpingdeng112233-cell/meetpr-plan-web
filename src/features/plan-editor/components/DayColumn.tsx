@@ -48,6 +48,7 @@ export interface WeekBandDayView {
 }
 
 interface Props {
+  blockView?: { dx: number; date: string; minDate?: string; maxDate?: string; onDate: (date: string) => void; onClose: () => void }
   weekNumber?: number
   columnLetter?: string
   day: DayCol
@@ -164,7 +165,7 @@ function PlanShiftControl({ control, dayName }: {
   useLayoutEffect(() => {
     if (!open) return
     const updatePosition = () => {
-      const rect = buttonRef.current?.closest('.dayhead')?.getBoundingClientRect()
+      const rect = buttonRef.current?.closest('.dayhead,.block-edit-footer')?.getBoundingClientRect()
       if (!rect) return
       setPanelPosition({
         top: rect.bottom + 6,
@@ -402,13 +403,13 @@ const INTENSITY_OPTIONS: { mode: LoadMode; label: string }[] = [
   { mode: 'pct', label: '%' },
   { mode: 'rpe', label: 'RPE' },
   { mode: 'rir', label: 'RIR' },
-  { mode: 'rpe_range', label: S.editor.rpeRange },
+  { mode: 'rpe_range', get label() { return S.editor.rpeRange } },
 ]
 
 const PCT_ANCHOR_OPTIONS = [
   { value: 'one_rm', label: '1RM' },
   { value: 'e1rm', label: 'e1RM' },
-  { value: 'top_set', label: S.editor.topSetToday },
+  { value: 'top_set', get label() { return S.editor.topSetToday } },
 ] as const
 
 function intensityPlaceholder(intensity: RowIntensity): string {
@@ -540,7 +541,7 @@ function EditableIntensity({ row, width, edit, selectedCell, selectCell, cellKey
       onClick={(event) => { stop(event); selectCell(singleValue ? 0 : undefined) }}
       style={{ width, padding: '4px 4px', gap: 3, display: 'flex', flexWrap: 'wrap', alignItems: 'center' }}
     >
-      {row.mode === 'bodyweight' ? (
+      <div className="intensity-controls">{row.mode === 'bodyweight' ? (
         <span className="mode-badge bodyweight" title={row.hasLogs ? S.editor.rowLocked : S.editor.bodyweightNoIntensity}>{S.common.bodyweight}</span>
       ) : (
         <>
@@ -651,6 +652,7 @@ function EditableIntensity({ row, width, edit, selectedCell, selectCell, cellKey
           )}
         </>
       )}
+      </div>
       {actualLine}
     </div>
   )
@@ -740,7 +742,6 @@ function EditableWeight({ row, width, edit, selectedCell, selectCell, cellKey, r
           <option value="weight_range">{S.editor.weightRange}</option>
           <option value="bodyweight">{S.common.bodyweight}</option>
         </select>
-      </span>
       {displayMode === 'bodyweight' && <span className="bodyweight-summary">{S.editor.eachSetBodyweight}</span>}
       {displayMode === 'weight_range' && range && (
         <span className="weight-range-inputs">
@@ -788,12 +789,14 @@ function EditableWeight({ row, width, edit, selectedCell, selectCell, cellKey, r
         )
       })}
       {row.boxes.length === 0 && <span style={{ color: 'var(--mut)', fontSize: 10 }}>{S.editor.enterSets}</span>}
+      </span>
       {actualLine}
     </div>
   )
 }
 
 export function DayColumn({
+  blockView,
   weekNumber = 0,
   columnLetter,
   day,
@@ -830,6 +833,7 @@ export function DayColumn({
   e1rmForRow,
   shiftControl,
 }: Props) {
+  const [dateOpen, setDateOpen] = useState(false)
   const [dragRowId, setDragRowId] = useState<string | null>(null)
   const [dropTarget, setDropTarget] = useState<{ rowId: string; position: 'before' | 'after' } | null>(null)
   const dragDisabled = day.rows.some((row) => row.hasLogs)
@@ -951,7 +955,7 @@ export function DayColumn({
   // In the week-band view, rest is presentation derived solely from whether
   // the day has action rows. The stored flag remains readable for legacy data,
   // but cannot hide rows or force a populated day into a rest presentation.
-  if (weekBand && isRestDay(day)) {
+  if (weekBand && isRestDay(day) && !blockView) {
     return (
       <div className={`day restday week-band-rest-card${selected ? ' sel' : ''}${dayMoveClass}`}
         data-dow={day.dow} data-derived-rest="true" onClick={onSelect}>
@@ -984,6 +988,25 @@ export function DayColumn({
 
   return (
     <div className={`day${selected ? ' sel' : ''}${dayMoveClass}${weekBand ? ' week-band-day' : ''}`} data-dow={day.dow} onClick={onSelect}>
+      {blockView ? <>
+        <div className="block-edit-head">
+          <div><strong>W{weekNumber} · D{blockView.dx + 1} {dayTheme}</strong>
+            <span className="block-edit-date">
+              <button type="button" aria-label={S.editor.blockDate} aria-expanded={dateOpen}
+                disabled={readOnly || !!day.completedAt || day.rows.some(row => row.hasLogs)}
+                onClick={event => { stop(event); setDateOpen(open => !open) }}>
+                <span data-day-calendar-label="">{day.dowLabel} {day.dateLabel}</span>
+              </button>
+              <ShiftBadge day={day} />
+              {dateOpen && <input autoFocus type="date" aria-label={S.editor.blockDate} value={blockView.date}
+                min={blockView.minDate} max={blockView.maxDate} onClick={stop}
+                onBlur={() => setDateOpen(false)}
+                onChange={event => { blockView.onDate(event.target.value); setDateOpen(false) }} />}
+            </span>
+          </div>
+          <button type="button" onClick={event => { stop(event); blockView.onClose() }}>{S.editor.blockClose}</button>
+        </div>
+      </> : <>
       <div className="dayhead" data-day-move-handle="" title={dayMoveTitle} onMouseDown={onDayMoveStart}
         style={{ cursor: dayMoveCursor }}>
         <span className="dayhead-line">
@@ -999,6 +1022,8 @@ export function DayColumn({
         <span className="dayhead-meta">{dayMeta}</span>
         {headerContext}
       </div>
+      </>}
+
 
       <div className="daygrid" style={{ width: total, fontVariantNumeric: 'tabular-nums' }}>
         <div className="gridhead" style={{ display: 'flex', alignItems: 'stretch', background: 'var(--card-bg)', borderBottom: '1px solid var(--line)' }}>
@@ -1017,7 +1042,7 @@ export function DayColumn({
           const inputIssue = getBoundRowInputIssue(row)
           const isSelectedRow = selectedRowIds?.has(row.id) ?? selectedRowId === row.id
           const dropPosition = dropTarget?.rowId === row.id ? dropTarget.position : null
-          const badge = weekBand ? weekBand.badgeFor(row) : null
+          const badge = weekBand && !blockView ? weekBand.badgeFor(row) : null
           return (
             <div
               key={row.id}
@@ -1026,6 +1051,7 @@ export function DayColumn({
               data-drag-disabled={dragDisabled ? 'true' : 'false'}
               className={`exrow${resolveTier(row) === 'aux' ? ' aux' : ''}${row.hasLogs ? ' locked' : ''}${(actualsForRow?.(row)?.length ?? 0) > 0 ? ' has-actuals' : ''}${isSelectedRow ? ' row-sel' : ''}${dragRowId === row.id ? ' row-dragging' : ''}${dropPosition ? ` row-drop-${dropPosition}` : ''}`}
               onMouseDownCapture={(e) => {
+                if (blockView && (e.target as HTMLElement).closest('input,select')) return
                 if (e.button === 0) onSelectRow?.(row.id, rowSelectionModifiers(e))
               }}
               onClick={(e) => e.stopPropagation()}
@@ -1152,7 +1178,7 @@ export function DayColumn({
                 />
 
                 <div className="gcell note-cell" data-c="note" style={{ width: colW.note }}>
-                  <input value={row.note} inputMode="text" onClick={stop} placeholder=""
+                  <input value={row.note} inputMode="text" onClick={stop} placeholder={blockView ? S.editor.blockNote : ""}
                     disabled={readOnly || row.hasLogs}
                     onChange={(e) => edit((r) => ({ ...r, note: e.target.value }))}
                     style={{ ...baseInput, width: '100%', fontSize: 10, color: 'var(--txt)', paddingRight: 14 }} />
@@ -1238,11 +1264,12 @@ export function DayColumn({
           </div>
         ))}
 
-        {dividers.map((d) => (
+        {!blockView && dividers.map((d) => (
           <div key={d.col} className="coldiv" style={{ left: d.left }}
             onMouseDown={(e) => onResizeStart(d.col, e)} onClick={(e) => e.stopPropagation()} />
         ))}
       </div>
+      {blockView && <div className="block-edit-footer"><span>{S.editor.blockGestures}</span>{shiftAction}</div>}
     </div>
   )
 }

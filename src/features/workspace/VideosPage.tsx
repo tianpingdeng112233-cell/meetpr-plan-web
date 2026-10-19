@@ -1,3 +1,4 @@
+import { VideoFrameButtons, VideoSpeedButtons } from './VideoTransport'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { ApiException } from '../../api/client'
 import { openConversation } from '../../api/chat'
@@ -23,7 +24,7 @@ import {
 } from './annotationDrawing'
 import { usePersistentCollapse } from './usePersistentCollapse'
 import { useGlobalKeyboardHandler } from './globalKeyboard'
-import { frameStepTime, precisionScrubTime, PRECISION_SCRUB_THRESHOLD_PX, VIDEO_SPEEDS } from './videoPlayback'
+import { frameStepTime, precisionScrubTime, PRECISION_SCRUB_THRESHOLD_PX } from './videoPlayback'
 import { fmt, S } from '../../i18n/strings'
 import { registerReloadBlocker } from '../../reloadSafety'
 
@@ -1180,20 +1181,7 @@ export function VideosPage({
                   aria-label={playing ? S.video.pause : S.video.play}
                   onClick={togglePlayback}
                 >{playing ? 'Ⅱ' : '▶'}</button>
-                <button
-                  type="button"
-                  className="video-frame-step"
-                  aria-label={S.video.previousFrame}
-                  disabled={duration <= 0}
-                  onClick={() => stepFrame(-1)}
-                >⏮ᶠ</button>
-                <button
-                  type="button"
-                  className="video-frame-step"
-                  aria-label={S.video.nextFrame}
-                  disabled={duration <= 0}
-                  onClick={() => stepFrame(1)}
-                >⏭ᶠ</button>
+                <VideoFrameButtons duration={duration} onStep={stepFrame} />
                 <span className="video-time">
                   {timeLabel(currentTime)} / {timeLabel(duration)}
                   {scrubFine
@@ -1229,16 +1217,7 @@ export function VideosPage({
                   title={fullscreen ? `${S.video.exitFullscreen} (Esc)` : S.video.watchFullscreen}
                   onClick={toggleFullscreen}
                 >{fullscreen ? '⤡' : '⤢'}</button>}
-                <span className="video-speeds" aria-label={S.video.playbackSpeed}>
-                  {VIDEO_SPEEDS.map((speed) => (
-                    <button
-                      type="button"
-                      className={rate === speed ? 'active' : ''}
-                      onClick={() => setRate(speed)}
-                      key={speed}
-                    >{speed}×</button>
-                  ))}
-                </span>
+                <VideoSpeedButtons rate={rate} onRate={setRate} />
               </div>
               {markerServiceVisible && markerOpen && (
                 <div className="video-marker-editor">

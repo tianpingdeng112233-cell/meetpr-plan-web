@@ -27,7 +27,7 @@ describe('plan editor context bar', () => {
     host.remove()
   })
 
-  it('renders every context control in one horizontally scrollable 38px row', async () => {
+  it('shows only the approved 56px top bar and puts secondary actions in the plan menu', async () => {
     await act(async () => {
       root.render(
         <TopBar
@@ -61,21 +61,26 @@ describe('plan editor context bar', () => {
 
     const bar = host.querySelector<HTMLElement>('[data-plan-context-bar]')!
     expect(bar.classList.contains('plan-context-bar')).toBe(true)
-    expect(bar.style.height).toBe('38px')
+    expect(bar.style.height).toBe('56px')
     expect(bar.style.whiteSpace).toBe('nowrap')
     expect(bar.style.flexWrap).toBe('nowrap')
     expect(bar.style.overflowX).toBe('auto')
     expect(bar.querySelector('br')).toBeNull()
-    expect(bar.textContent).not.toContain('MeetPR')
+    expect(bar.textContent).toContain('MeetPR')
     expect(bar.textContent).not.toContain('COACH / 计划编排')
 
-    const labels = ['← 总览', '王学员', '进行至 W2D3', '滞后 4 天', '力量计划', '学员曾顺延 3 天', '＋ 动作', '导入 .xlsx', '起始 07-27', '2 处待核对', '保存草稿', '发布给学员', '已自动保存']
+    const labels = ['王学员', '力量计划', '2 处待核对', '已自动保存', '发布给学员']
     let previous = -1
     for (const label of labels) {
       const position = bar.textContent!.indexOf(label)
-      expect(position, `missing or out-of-order label: ${label}; bar text: ${bar.textContent}`).toBeGreaterThan(previous)
+      expect(position).toBeGreaterThan(previous)
       previous = position
     }
+    for (const label of ['← 总览', '＋ 动作', '导入 .xlsx', '保存草稿', '学员曾顺延 3 天']) expect(bar.textContent).not.toContain(label)
+    expect(bar.querySelector('img')?.getAttribute('src')).toContain('meetpr-icon')
+    await act(async () => host.querySelector<HTMLButtonElement>('[data-plan-menu-trigger]')!.click())
+    expect(document.querySelector('[role="menu"]')?.textContent).toContain('导入 .xlsx')
+
   })
 
   it('preserves save, publish, and published-state button behavior', async () => {
@@ -94,9 +99,8 @@ describe('plan editor context bar', () => {
       )
     })
 
-    await act(async () => { buttonByText(host, '保存草稿').click() })
     await act(async () => { buttonByText(host, '发布给学员').click() })
-    expect(onSave).toHaveBeenCalledTimes(1)
+    expect(onSave).not.toHaveBeenCalled()
     expect(onPublish).toHaveBeenCalledTimes(1)
 
     await act(async () => {
@@ -112,8 +116,7 @@ describe('plan editor context bar', () => {
       )
     })
     await act(async () => { buttonByText(host, '更新计划').click() })
-    expect(onSave).toHaveBeenCalledTimes(2)
-    expect(buttonByText(host, '已发布 · 不可撤回').disabled).toBe(true)
-    expect(host.querySelector('.plan-published-badge')?.textContent).toBe('已发布')
+    expect(onSave).toHaveBeenCalledTimes(1)
+    expect(host.textContent).not.toContain('不可撤回')
   })
 })

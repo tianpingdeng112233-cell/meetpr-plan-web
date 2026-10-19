@@ -1,3 +1,4 @@
+import { openBlockDay } from './blockGridTestUtils'
 import { StrictMode, act, useState } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -123,6 +124,8 @@ describe('PlanEditor local draft recovery', () => {
       )
       await Promise.resolve()
     })
+    openBlockDay(host)
+
 
     expect(host.querySelector('[data-testid="draft-mirror-banner"]')?.textContent)
       .toContain('未保存本地草稿')
@@ -164,6 +167,8 @@ describe('PlanEditor local draft recovery', () => {
       )
       await Promise.resolve()
     })
+    openBlockDay(host)
+
 
     act(() => click(host, '恢复'))
     expect(host.querySelector<HTMLInputElement>('[data-c="note"] input')?.value).toBe('recovered prescription')
@@ -201,6 +206,7 @@ describe('PlanEditor local draft recovery', () => {
         onSave={onSave} onPublish={async () => setStatus('published')} />
     }
     await act(async () => root.render(<EditorSession />))
+    openBlockDay(host)
     const undo = () => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', metaKey: true, bubbles: true }))
     const redo = () => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', metaKey: true, shiftKey: true, bubbles: true }))
     const calendar = () => host.querySelector('.day[data-dow="0"] [data-day-calendar-label]')?.textContent
@@ -249,6 +255,8 @@ describe('PlanEditor local draft recovery', () => {
       <PlanEditor initialWeeks={weeks('server')} weeksCount={1} planStartDate="2026-01-01"
         studentName="学员" planName="计划" currentPlanId="plan" />,
     ))
+    openBlockDay(host)
+
 
     act(() => click(host, '丢弃'))
     expect(host.querySelector<HTMLInputElement>('[data-c="note"] input')?.value).toBe('server')
@@ -268,6 +276,8 @@ describe('PlanEditor local draft recovery', () => {
       <PlanEditor initialWeeks={mappedWeeks} weeksCount={1} planStartDate="2026-01-01"
         studentName="学员" planName="计划" currentPlanId="plan" />,
     ))
+    openBlockDay(host)
+
 
     expect(host.querySelector('[data-testid="draft-mirror-banner"]')).toBeNull()
   })
@@ -283,6 +293,8 @@ describe('PlanEditor local draft recovery', () => {
       )
       await Promise.resolve()
     })
+    openBlockDay(host)
+
 
     act(() => setInput(host.querySelector<HTMLInputElement>('[data-c="note"] input')!, 'saved edit'))
     await act(async () => { await vi.advanceTimersByTimeAsync(800) })
@@ -304,6 +316,8 @@ describe('PlanEditor local draft recovery', () => {
       <PlanEditor initialWeeks={weeks('server')} weeksCount={1} planStartDate="2026-01-01"
         studentName="学员" planName="计划" currentPlanId="plan" />,
     ))
+    openBlockDay(host)
+
     act(() => setInput(host.querySelector<HTMLInputElement>('[data-c="note"] input')!, 'edited'))
     await act(async () => { await vi.advanceTimersByTimeAsync(1000) })
     expect(loadDraftMirror('plan')?.content.weeks[0].days[0].rows[0].note).toBe('edited')
@@ -334,6 +348,8 @@ describe('PlanEditor local draft recovery', () => {
       )
       await Promise.resolve()
     })
+    openBlockDay(host)
+
 
     act(() => setInput(host.querySelector<HTMLInputElement>('[data-c="note"] input')!, '半填内容'))
     await act(async () => { await vi.advanceTimersByTimeAsync(3000) })
@@ -363,6 +379,8 @@ describe('PlanEditor local draft recovery', () => {
       )
       await Promise.resolve()
     })
+    openBlockDay(host)
+
 
     act(() => setInput(host.querySelector<HTMLInputElement>('[data-c="note"] input')!, '本地半填内容'))
     await act(async () => { await vi.advanceTimersByTimeAsync(3000) })
@@ -383,6 +401,8 @@ describe('PlanEditor local draft recovery', () => {
       )
       await Promise.resolve()
     })
+    openBlockDay(host)
+
 
     act(() => setInput(host.querySelector<HTMLInputElement>('[data-c="note"] input')!, '完整修改'))
     await act(async () => { await vi.advanceTimersByTimeAsync(1500) })
@@ -408,6 +428,8 @@ describe('PlanEditor local draft recovery', () => {
       )
       await Promise.resolve()
     })
+    openBlockDay(host)
+
 
     act(() => click(host, '恢复'))
     expect(host.querySelector<HTMLInputElement>('[data-c="note"] input')?.value).toBe('draft-era edit')
@@ -435,6 +457,8 @@ describe('PlanEditor local draft recovery', () => {
       )
       await Promise.resolve()
     })
+    openBlockDay(host)
+
 
     const note = host.querySelector<HTMLInputElement>('[data-c="note"] input')!
     act(() => setInput(note, 'save snapshot'))
@@ -472,6 +496,8 @@ describe('PlanEditor local draft recovery', () => {
       )
       await Promise.resolve()
     })
+    openBlockDay(host)
+
 
     expect(host.querySelector('[data-testid="draft-mirror-banner"]')?.textContent).toContain('云端暂存')
     act(() => click(host, '恢复'))
@@ -496,6 +522,8 @@ describe('PlanEditor local draft recovery', () => {
       )
       await Promise.resolve()
     })
+    openBlockDay(host)
+
 
     expect(host.querySelector<HTMLInputElement>('[data-c="note"] input')?.value).toBe('远端半填内容')
     expect(host.querySelector('[data-testid="draft-mirror-banner"]')).toBeNull()
@@ -519,6 +547,8 @@ describe('PlanEditor local draft recovery', () => {
       )
       await Promise.resolve()
     })
+    openBlockDay(host)
+
 
     expect(host.querySelector<HTMLInputElement>('[data-c="note"] input')?.value).toBe('较新的计划树')
     expect(host.querySelector('[data-testid="draft-mirror-banner"]')).toBeNull()
@@ -539,6 +569,8 @@ describe('PlanEditor local draft recovery', () => {
       )
       await Promise.resolve()
     })
+    openBlockDay(host)
+
 
     expect(host.querySelector('[data-testid="draft-mirror-banner"]')).toBeNull()
     expect(host.querySelector<HTMLInputElement>('[data-c="note"] input')?.value).toBe('较新的计划树')
@@ -565,6 +597,8 @@ describe('PlanEditor local draft recovery', () => {
       )
       await Promise.resolve()
     })
+    openBlockDay(host)
+
 
     act(() => setInput(host.querySelector<HTMLInputElement>('[data-c="note"] input')!, '半填第一版'))
     await act(async () => { await vi.advanceTimersByTimeAsync(1500) })
@@ -597,6 +631,8 @@ describe('PlanEditor local draft recovery', () => {
       )
       await Promise.resolve()
     })
+    openBlockDay(host)
+
 
     expect(host.querySelector('[data-testid="draft-mirror-banner"]')).toBeNull()
     expect(pendingApi.deletePendingRevision).toHaveBeenCalledWith('plan')
@@ -621,6 +657,8 @@ describe('PlanEditor local draft recovery', () => {
       )
       await Promise.resolve()
     })
+    openBlockDay(host)
+
 
     expect(host.querySelector('[data-testid="draft-mirror-banner"]')?.textContent).toContain('本地草稿')
     act(() => click(host, '恢复'))
@@ -644,6 +682,8 @@ describe('PlanEditor local draft recovery', () => {
       )
       await Promise.resolve()
     })
+    openBlockDay(host)
+
     expect(host.querySelector('[data-testid="draft-mirror-banner"]')).toBeNull()
     expect(loadDraftMirror('plan')).toBeNull()
     expect(pendingApi.deletePendingRevision).toHaveBeenCalledWith('plan')
@@ -664,6 +704,8 @@ describe('PlanEditor local draft recovery', () => {
       )
       await Promise.resolve()
     })
+    openBlockDay(host)
+
     expect(host.querySelector('[data-testid="draft-mirror-banner"]')).toBeNull()
     expect(pendingApi.deletePendingRevision).toHaveBeenCalledWith('plan')
   })
@@ -679,15 +721,16 @@ describe('PlanEditor local draft recovery', () => {
       )
       await Promise.resolve()
     })
+    openBlockDay(host)
+
 
     act(() => setInput(host.querySelector<HTMLInputElement>('[data-c="note"] input')!, 'cloud edit'))
     expect(host.querySelector('[data-testid="plan-save-status"]')?.textContent).toContain('暂存中')
     await act(async () => { await vi.advanceTimersByTimeAsync(3000) })
     const status = host.querySelector<HTMLElement>('[data-testid="plan-save-status"]')!
     expect(status.textContent).toContain('已暂存 11:15')
-    expect(status.style.background).toBe('var(--warn-soft)')
-    expect([...host.querySelectorAll('button')].find((button) => button.textContent === '更新计划')?.style.border)
-      .toContain('var(--warn)')
+    expect(status.classList.contains('published-dirty')).toBe(true)
+    expect([...host.querySelectorAll('button')].find((button) => button.textContent === '更新计划')?.classList.contains('block-primary')).toBe(true)
 
     pendingApi.deletePendingRevision.mockClear()
     await act(async () => {
@@ -712,6 +755,8 @@ describe('PlanEditor local draft recovery', () => {
       )
       await Promise.resolve()
     })
+    openBlockDay(host)
+
 
     act(() => setInput(host.querySelector<HTMLInputElement>('[data-c="note"] input')!, 'strict edit'))
     await act(async () => { await vi.advanceTimersByTimeAsync(3000) })
@@ -735,6 +780,8 @@ describe('PlanEditor local draft recovery', () => {
       )
       await Promise.resolve()
     })
+    openBlockDay(host)
+
     pendingApi.deletePendingRevision.mockClear()
 
     await act(async () => {
@@ -764,6 +811,8 @@ describe('PlanEditor local draft recovery', () => {
       )
       await Promise.resolve()
     })
+    openBlockDay(host)
+
     pendingApi.deletePendingRevision.mockClear()
 
     await act(async () => {
@@ -790,6 +839,8 @@ describe('PlanEditor local draft recovery', () => {
       <PlanEditor initialWeeks={weeks('server')} weeksCount={1} planStartDate="2026-01-01"
         studentName="学员" planName="计划" currentPlanId="plan" initialPublished onSave={onSave} />,
     ))
+    openBlockDay(host)
+
     act(() => click(host, '更新计划'))
 
     expect(alert).toHaveBeenCalledWith(expect.stringContaining('正在检查云端暂存'))
@@ -809,6 +860,8 @@ describe('PlanEditor local draft recovery', () => {
       <PlanEditor initialWeeks={weeks('server')} weeksCount={1} planStartDate="2026-01-01"
         studentName="学员" planName="计划" currentPlanId="plan" initialPublished onSave={vi.fn()} />,
     ))
+    openBlockDay(host)
+
 
     act(() => setInput(host.querySelector<HTMLInputElement>('[data-c="note"] input')!, 'edit during GET'))
     await act(async () => { await vi.advanceTimersByTimeAsync(800) })
@@ -853,6 +906,7 @@ describe('PlanEditor local draft recovery', () => {
         )
         await Promise.resolve()
       })
+    openBlockDay(host)
 
       act(() => setInput(host.querySelector<HTMLInputElement>('[data-c="note"] input')!, 'PUT in flight'))
       await act(async () => { await vi.advanceTimersByTimeAsync(3000) })
@@ -890,6 +944,8 @@ describe('PlanEditor local draft recovery', () => {
       )
       await Promise.resolve()
     })
+    openBlockDay(host)
+
 
     act(() => setInput(host.querySelector<HTMLInputElement>('[data-c="note"] input')!, 'covered update'))
     await act(async () => { await vi.advanceTimersByTimeAsync(3000) })
@@ -932,6 +988,8 @@ describe('PlanEditor local draft recovery', () => {
       )
       await Promise.resolve()
     })
+    openBlockDay(host)
+
     act(() => setInput(host.querySelector<HTMLInputElement>('[data-c="note"] input')!, state))
     if (advance > 0) await act(async () => { await vi.advanceTimersByTimeAsync(advance) })
 

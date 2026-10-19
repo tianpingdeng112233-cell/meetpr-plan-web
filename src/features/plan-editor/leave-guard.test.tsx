@@ -1,3 +1,4 @@
+import { openBlockDay } from './blockGridTestUtils'
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -59,6 +60,8 @@ describe('PlanEditor external leave guard', () => {
         onLeaveGuardChange={(guard) => { leaveGuard = guard }}
       />,
     ))
+    openBlockDay(host)
+
     act(() => setInput(host.querySelector<HTMLInputElement>('[data-c="note"] input')!, '写到一半'))
 
     let allowed = false
@@ -83,6 +86,8 @@ describe('PlanEditor external leave guard', () => {
         onLeaveGuardChange={(guard) => { leaveGuard = guard }}
       />,
     ))
+    openBlockDay(host)
+
 
     await expect(leaveGuard!()).resolves.toBe(false)
     expect(confirm).toHaveBeenCalledWith(expect.stringContaining('无法保存，离开这个计划后会丢失'))
@@ -104,6 +109,8 @@ describe('PlanEditor external leave guard', () => {
         onLeaveGuardChange={(guard) => { leaveGuard = guard }}
       />,
     ))
+    openBlockDay(host)
+
     act(() => setInput(host.querySelector<HTMLInputElement>('[data-c="note"] input')!, '尚未更新'))
 
     await expect(leaveGuard!()).resolves.toBe(false)

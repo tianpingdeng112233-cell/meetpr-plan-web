@@ -1,3 +1,4 @@
+import { openBlockDay } from './blockGridTestUtils'
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -78,6 +79,8 @@ describe('published plan update: automatic retry + modal error', () => {
       )
       await Promise.resolve()
     })
+    openBlockDay(host)
+
     // let the remote-recovery GET settle so「更新计划」is not gated
     await act(async () => { await vi.advanceTimersByTimeAsync(0) })
   }

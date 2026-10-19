@@ -1,3 +1,4 @@
+import { openBlockDay } from './blockGridTestUtils'
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -67,6 +68,8 @@ describe('pct anchor secondary selector', () => {
     act(() => root.render(
       <PlanEditor initialWeeks={[week([row('深蹲', 'e1rm')])]} weeksCount={1} studentName="学员" planName="计划" />,
     ))
+    openBlockDay(host)
+
 
     const intensityType = host.querySelector<HTMLSelectElement>('[aria-label="强度类型"]')!
     expect([...intensityType.options].map((option) => option.textContent)).toEqual([
@@ -91,6 +94,8 @@ describe('pct anchor secondary selector', () => {
         readOnly
       />,
     ))
+    openBlockDay(host)
+
 
     expect(host.querySelector('[aria-label="百分比锚点"]')).toBeNull()
     expect([...host.querySelectorAll<HTMLElement>('.pct-anchor-label')].map((item) => item.textContent))
@@ -103,6 +108,8 @@ describe('pct anchor secondary selector', () => {
     act(() => root.render(
       <PlanEditor initialWeeks={[week([locked])]} weeksCount={1} studentName="学员" planName="计划" />,
     ))
+    openBlockDay(host)
+
 
     expect(host.querySelector('[data-rowid="锁定"] [aria-label="百分比锚点"]')).toBeNull()
     expect(host.querySelector('[data-rowid="锁定"] .pct-anchor-label')?.textContent).toBe('×e1RM')
@@ -116,6 +123,8 @@ describe('pct anchor secondary selector', () => {
       <PlanEditor initialWeeks={[week([row('深蹲', 'top_set')])]} weeksCount={1}
         studentName="学员" planName="计划" currentPlanId={`plan-${weightMode}`} />,
     ))
+    openBlockDay(host)
+
 
     act(() => changeSelect(host.querySelector<HTMLSelectElement>('[aria-label="重量模式"]')!, weightMode))
     await act(async () => { await vi.advanceTimersByTimeAsync(800) })

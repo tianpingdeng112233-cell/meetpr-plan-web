@@ -1,3 +1,4 @@
+import { openBlockDay } from './blockGridTestUtils'
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -65,6 +66,8 @@ describe('PlanEditor exercise picker keyboard binding', () => {
     act(() => root.render(
       <PlanEditor initialWeeks={[week()]} weeksCount={1} studentName="学员" planName="计划" exerciseIndex={index}/>,
     ))
+    openBlockDay(host)
+
     const input = host.querySelector<HTMLInputElement>('[data-c="name"] input')!
     act(() => { input.focus(); setInput(input, '测试推举') })
     expect(host.querySelector('[role="option"][data-active="true"]')?.textContent).toContain('测试推举一')
@@ -84,6 +87,8 @@ describe('PlanEditor exercise picker keyboard binding', () => {
     act(() => root.render(
       <PlanEditor initialWeeks={[week()]} weeksCount={1} studentName="学员" planName="计划" exerciseIndex={index}/>,
     ))
+    openBlockDay(host)
+
     const input = host.querySelector<HTMLInputElement>('[data-c="name"] input')!
     act(() => { input.focus(); setInput(input, '测试推举') })
     expect(host.querySelector('[role="option"][data-active="true"]')).not.toBeNull()
@@ -110,6 +115,8 @@ describe('PlanEditor exercise picker keyboard binding', () => {
     act(() => root.render(
       <PlanEditor initialWeeks={[week()]} weeksCount={1} studentName="学员" planName="计划" exerciseIndex={index}/>,
     ))
+    openBlockDay(host)
+
     const input = host.querySelector<HTMLInputElement>('[data-c="name"] input')!
     act(() => { input.focus(); setInput(input, '低杆深蹲'); input.blur() })
     expect(input.value).toBe('低杆深蹲')
@@ -126,6 +133,8 @@ describe('PlanEditor exercise picker keyboard binding', () => {
     act(() => root.render(
       <PlanEditor initialWeeks={[week()]} weeksCount={1} studentName="学员" planName="计划" exerciseIndex={index}/>,
     ))
+    openBlockDay(host)
+
     const input = host.querySelector<HTMLInputElement>('[data-c="name"] input')!
     act(() => { input.focus(); setInput(input, '二头弯举加停顿'); input.blur() })
 
@@ -142,6 +151,8 @@ describe('PlanEditor exercise picker keyboard binding', () => {
       <PlanEditor initialWeeks={[week()]} weeksCount={1} studentName="学员" planName="计划"
         exerciseIndex={index} onCreateExercise={onCreateExercise}/>,
     ))
+    openBlockDay(host)
+
     const rowInput = host.querySelector<HTMLInputElement>('[data-c="name"] input')!
     act(() => { rowInput.focus(); setInput(rowInput, '平板侧支撑') })
     const createOption = [...host.querySelectorAll<HTMLElement>('[data-popover] [role="option"]')].at(-1)!
@@ -162,6 +173,8 @@ describe('PlanEditor exercise picker keyboard binding', () => {
     act(() => root.render(
       <PlanEditor initialWeeks={[week()]} weeksCount={1} studentName="学员" planName="计划" exerciseIndex={index}/>,
     ))
+    openBlockDay(host)
+
     const input = host.querySelector<HTMLInputElement>('[data-c="name"] input')!
     act(() => { input.focus(); setInput(input, '低杆深蹲'); input.blur() })
     await act(async () => { await vi.advanceTimersByTimeAsync(80) })
@@ -173,7 +186,7 @@ describe('PlanEditor exercise picker keyboard binding', () => {
     expect(host.querySelector('[data-popover]')).not.toBeNull()
   })
 
-  it('bumps usage only when a created exercise binds into a plan row', async () => {
+  it('bumps usage when a custom exercise created through the picker binds into a plan row', async () => {
     const index = new ExerciseIndex([])
     const bumpSpy = vi.spyOn(index, 'bump')
     const onCreateExercise = vi.fn(async () => ({ id: 'custom-1', name: '自定义动作' }))
@@ -181,6 +194,8 @@ describe('PlanEditor exercise picker keyboard binding', () => {
       <PlanEditor initialWeeks={[week()]} weeksCount={1} studentName="学员" planName="计划"
         exerciseIndex={index} onCreateExercise={onCreateExercise}/>,
     ))
+    openBlockDay(host)
+
     const submitDialog = async () => {
       const nameInput = Array.from(host.querySelectorAll<HTMLInputElement>('form input'))
         .find((el) => el.placeholder.includes('平板侧支撑'))!
@@ -188,22 +203,12 @@ describe('PlanEditor exercise picker keyboard binding', () => {
       await act(async () => { form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })) })
     }
 
-    // Toolbar「＋ 动作」only adds to the catalog — must not count as usage.
-    const toolbarBtn = Array.from(host.querySelectorAll('button')).find((b) => b.textContent?.trim() === '＋ 动作')!
-    act(() => toolbarBtn.click())
-    const dialogInput = Array.from(host.querySelectorAll<HTMLInputElement>('form input'))
-      .find((el) => el.placeholder.includes('平板侧支撑'))!
-    act(() => setInput(dialogInput, '自定义动作'))
-    await submitDialog()
-    expect(onCreateExercise).toHaveBeenCalledTimes(1)
-    expect(bumpSpy).not.toHaveBeenCalled()
-
     // Creating through the picker binds the row — this one counts.
     const rowInput = host.querySelector<HTMLInputElement>('[data-c="name"] input')!
     act(() => { rowInput.focus(); setInput(rowInput, '自定义动作二') })
     act(() => rowInput.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })))
     await submitDialog()
-    expect(onCreateExercise).toHaveBeenCalledTimes(2)
+    expect(onCreateExercise).toHaveBeenCalledTimes(1)
     expect(bumpSpy).toHaveBeenCalledTimes(1)
     expect(bumpSpy).toHaveBeenCalledWith('custom-1')
   })

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useState, type CSSProperties } from 'react'
-import { getExerciseStats } from '../../../api/coach'
-import type { ExerciseStatsDetail, ExerciseStatsOverview, StudentOnboardingProfile } from '../../../api/types'
+import { getExerciseStats, type ExerciseHistoryFilter } from '../../../api/coach'
+import type { ExerciseHistorySet, ExerciseStatsDetail, ExerciseStatsOverview, StudentOnboardingProfile } from '../../../api/types'
 import type { DayCol, ExerciseRow } from '../types'
 import { rowWeightBoxes } from '../intensityModel'
 import { getBoundRowInputIssue } from '../inputGuard'
@@ -13,7 +13,7 @@ import { fmt, resolveLocale, S } from '../../../i18n/strings'
  */
 export function contextRailLevel(row: ExerciseRow | null): 1 | 2 | 3 | 4 {
   if (!row?.exerciseId) return 1
-  if (Number.parseInt(row.reps, 10) > 0) return 4
+  if (row.boxes.length > 0 && /^[1-9]\d*$/.test(row.reps)) return 4
   return row.boxes.length > 0 ? 3 : 2
 }
 
@@ -534,7 +534,7 @@ function Sessions({ sessions }: { sessions: ExerciseStatsDetail['recent_sessions
   )
 }
 
-function Profile({ profile, compact = false }: { profile: StudentOnboardingProfile | null | undefined; compact?: boolean }) {
+export function Profile({ profile, compact = false }: { profile: StudentOnboardingProfile | null | undefined; compact?: boolean }) {
   if (profile == null) return <div className="empty-state">{profileEmptyMessage(profile)}</div>
   return (
     <div className={`panel-profile${compact ? ' compact' : ''}`}>
@@ -550,4 +550,22 @@ function Profile({ profile, compact = false }: { profile: StudentOnboardingProfi
       {profile.note_to_coach && <blockquote>“{profile.note_to_coach}”</blockquote>}
     </div>
   )
+}
+
+/** The existing ladder is 1-based; the block history labels it as levels 0–3. */
+export function historyQuery(row: ExerciseRow | null, ceiling = 4): ({ exerciseId: string } & ExerciseHistoryFilter) | null {
+  if (!row?.exerciseId) return null
+  const level = Math.min(contextRailLevel(row), ceiling)
+  return { exerciseId: row.exerciseId, ...(level >= 3 ? { sets: row.boxes.length } : {}),
+    ...(level >= 4 ? { reps: Number(row.reps) } : {}) }
+}
+
+export function historySessions(detail: ExerciseStatsDetail, filter: ExerciseHistoryFilter) {
+  const degraded = !!filter.sets && !Array.isArray(detail.filtered_sessions)
+  return { sessions: (filter.sets && !degraded ? detail.filtered_sessions! : detail.recent_sessions).slice(0, 5), degraded }
+}
+
+export function historyTopSet(sets: ExerciseHistorySet[]): ExerciseHistorySet | null {
+  return sets.reduce<ExerciseHistorySet | null>((top, set) => !top || Number(set.weight_kg) > Number(top.weight_kg)
+    || (Number(set.weight_kg) === Number(top.weight_kg) && set.set_index < top.set_index) ? set : top, null)
 }

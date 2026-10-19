@@ -1,3 +1,4 @@
+import { openBlockDay } from './blockGridTestUtils'
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -94,16 +95,16 @@ describe('plan editor cell selection UI', () => {
     vi.restoreAllMocks()
   })
 
-  it('selects one independent cell, reports A1 · W31, and clears it with Escape', () => {
+  it('selects one independent cell, and collapses editing with Escape', () => {
     act(() => root.render(
       <PlanEditor initialWeeks={[week()]} weeksCount={1} studentName="学员" planName="计划" />,
     ))
+    openBlockDay(host, 31)
 
     const nameInput = host.querySelector<HTMLInputElement>('[data-plan-cell="name"] input')!
     act(() => nameInput.dispatchEvent(new MouseEvent('click', { bubbles: true })))
 
     expect(host.querySelector('[data-plan-cell="name"]')?.className).toContain('plan-cell-selected')
-    expect(host.querySelector('[data-cell-reference]')?.textContent).toBe('A1 · W31')
     expect(host.querySelector('.day.sel')).not.toBeNull()
     expect(host.querySelector('.exrow.row-sel')).not.toBeNull()
 
@@ -113,63 +114,45 @@ describe('plan editor cell selection UI', () => {
       ['intensity', '强度'],
       ['weight', '固定重量'],
     ] as const
-    for (const [field, label] of cases) {
+    for (const [field] of cases) {
       const cell = host.querySelector<HTMLElement>(`[data-plan-cell="${field}"]`)!
       const input = cell.matches('input,select') ? cell : cell.querySelector<HTMLElement>('input,select')!
       act(() => input.dispatchEvent(new MouseEvent('click', { bubbles: true })))
       expect(host.querySelectorAll('.plan-cell-selected')).toHaveLength(1)
       expect(host.querySelector(`[data-plan-cell="${field}"]`)?.className).toContain('plan-cell-selected')
-      expect(host.querySelector('.plan-formula-label')?.textContent).toContain(label)
-      expect(host.querySelector('[data-cell-reference]')?.textContent).toBe('A1 · W31')
     }
 
     act(() => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })))
     expect(host.querySelector('.plan-cell-selected')).toBeNull()
-    expect(host.querySelector('[data-cell-reference]')?.textContent).toBe('—')
-    expect(host.querySelector('.plan-formula-bar output')?.textContent).toBe('/')
   })
 
-  it('clears old-week selections when a week tab activates another week', () => {
-    act(() => root.render(
-      <PlanEditor initialWeeks={[week(31), week(32)]} weeksCount={2} studentName="学员" planName="计划" />,
-    ))
-
-    const week31Name = host.querySelector<HTMLInputElement>('.weekband[data-wnum="31"] [data-plan-cell="name"] input')!
-    act(() => week31Name.dispatchEvent(new MouseEvent('click', { bubbles: true })))
-    expect(host.querySelector('[data-cell-reference]')?.textContent).toBe('A1 · W31')
-
-    const week32Tab = [...host.querySelectorAll<HTMLButtonElement>('.week-tabs button')]
-      .find((element) => element.textContent === 'W32')!
-    act(() => week32Tab.dispatchEvent(new MouseEvent('click', { bubbles: true })))
-
-    expect(host.querySelector('.day.sel')).toBeNull()
-    expect(host.querySelector('.exrow.row-sel')).toBeNull()
-    expect(host.querySelector('.plan-cell-selected')).toBeNull()
-    expect(host.querySelector('[data-cell-reference]')?.textContent).toBe('—')
-    expect(host.textContent).toContain('W32 · 第 32 周')
+  it('switches the one editing cell to another week', () => {
+    act(() => root.render(<PlanEditor initialWeeks={[week(31), week(32)]} weeksCount={2} studentName="学员" planName="计划" />))
+    openBlockDay(host, 31)
+    openBlockDay(host, 32)
+    expect(host.querySelectorAll('.daygrid')).toHaveLength(1)
+    expect(host.querySelector('.is-editing')?.getAttribute('data-block-week')).toBe('32')
   })
 
-  it('selects the sets cell on focus and mirrors its local draft in the formula bar', () => {
+  it('selects the sets cell on focus and retains its local draft', () => {
     act(() => root.render(
       <PlanEditor initialWeeks={[week()]} weeksCount={1} studentName="学员" planName="计划" />,
     ))
+    openBlockDay(host, 31)
 
     const setsInput = host.querySelector<HTMLInputElement>('[data-plan-cell="sets"] input')!
     act(() => setsInput.focus())
-    expect(host.querySelector('[data-cell-reference]')?.textContent).toBe('A1 · W31')
-    expect(host.querySelector('.plan-formula-label')?.textContent).toContain('组数')
 
     act(() => setInput(setsInput, ''))
-    expect(host.querySelector('.plan-formula-bar output')?.textContent).toBe('/')
 
     act(() => setInput(setsInput, '4'))
-    expect(host.querySelector('.plan-formula-bar output')?.textContent).toBe('4 组')
   })
 
-  it('a blurred sets edit lands as one undo record and the formula bar follows the undo', () => {
+  it('a blurred sets edit lands as one undo record without restoring the retired formula bar', () => {
     act(() => root.render(
       <PlanEditor initialWeeks={[week()]} weeksCount={1} studentName="学员" planName="计划" />,
     ))
+    openBlockDay(host, 31)
 
     const setsInput = host.querySelector<HTMLInputElement>('[data-plan-cell="sets"] input')!
     const initialCount = setsInput.value
@@ -182,8 +165,7 @@ describe('plan editor cell selection UI', () => {
       window.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', metaKey: true, bubbles: true }))
     })
     expect(host.querySelector<HTMLInputElement>('[data-plan-cell="sets"] input')!.value).toBe(initialCount)
-    const formulaValue = host.querySelector('.plan-formula-bar output')?.textContent ?? ''
-    expect(formulaValue.startsWith(initialCount)).toBe(true)
+    expect(host.querySelector('.plan-formula-bar')).toBeNull()
   })
 
   it('moves through the Tab chain, wraps to the next row, and keeps Enter in the same column', async () => {
@@ -192,6 +174,7 @@ describe('plan editor cell selection UI', () => {
         <PlanEditor key="mutable" initialWeeks={[keyboardWeek()]} weeksCount={1} studentName="学员" planName="计划" />,
       )
     })
+    openBlockDay(host, 31)
     const firstName = host.querySelector<HTMLInputElement>('[data-rowid="squat-first"] [data-plan-cell="name"] input')!
     await act(async () => { firstName.focus() })
 
@@ -236,6 +219,7 @@ describe('plan editor cell selection UI', () => {
         <PlanEditor initialWeeks={[keyboardWeek()]} weeksCount={1} studentName="学员" planName="计划" />,
       )
     })
+    openBlockDay(host, 31)
     const setsInput = host.querySelector<HTMLInputElement>('[data-rowid="squat-first"] [data-plan-cell="sets"] input')!
     await act(async () => { setsInput.focus() })
     act(() => setInput(setsInput, ''))
@@ -248,12 +232,13 @@ describe('plan editor cell selection UI', () => {
     expect(host.querySelector('.plan-cell-selected')?.getAttribute('data-plan-cell')).toBe('reps')
   })
 
-  it('fills the selected intensity downward with ⌘D and refuses the mutation in read-only plans', async () => {
+  it('fills per-set weights with ⌘D and refuses mutation in read-only plans', async () => {
     await act(async () => {
       root.render(
         <PlanEditor initialWeeks={[keyboardWeek()]} weeksCount={1} studentName="学员" planName="计划" />,
       )
     })
+    openBlockDay(host, 31)
     const firstStrength = host.querySelector<HTMLInputElement>('[data-rowid="squat-first"] [data-set-index="0"]')!
     await act(async () => { firstStrength.focus() })
     await act(async () => {
@@ -279,6 +264,7 @@ describe('plan editor cell selection UI', () => {
         />,
       )
     })
+    openBlockDay(host, 31)
     const readOnlyFirst = host.querySelector<HTMLInputElement>('[data-rowid="squat-first"] [data-set-index="0"]')!
     expect([...host.querySelectorAll<HTMLInputElement>('[data-rowid] input')].every((input) => input.disabled)).toBe(true)
     const shortcut = new KeyboardEvent('keydown', {
@@ -295,7 +281,7 @@ describe('plan editor cell selection UI', () => {
       .toEqual(['150', '145', '140'])
   })
 
-  it('selects and fills per-set strength values inside the intensity column', async () => {
+  it('fills per-set intensity with the retained Cmd+D shortcut', async () => {
     const source = keyboardWeek()
     const first = source.days[0].rows[0]
     first.intensity = { mode: 'rpe', value: '7', high: '' }
@@ -311,6 +297,7 @@ describe('plan editor cell selection UI', () => {
         <PlanEditor initialWeeks={[source]} weeksCount={1} studentName="学员" planName="计划" />,
       )
     })
+    openBlockDay(host, 31)
     const firstIntensity = host.querySelector<HTMLInputElement>(
       '[data-rowid="squat-first"] [data-plan-cell="intensity"][data-set-index="0"]',
     )!
@@ -324,6 +311,5 @@ describe('plan editor cell selection UI', () => {
     expect([...host.querySelectorAll<HTMLInputElement>(
       '[data-rowid="squat-first"] [data-plan-cell="intensity"][data-set-index]',
     )].map((input) => input.value)).toEqual(['7', '7', '7'])
-    expect(host.querySelector('.plan-formula-label')?.textContent).toContain('第 1 组强度')
   })
 })
