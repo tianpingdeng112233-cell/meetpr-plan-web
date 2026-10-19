@@ -777,11 +777,11 @@ describe('Feedback history rail and shared portrait workbench', () => {
     const media = host.querySelector('video')!
     act(() => { Object.defineProperty(media, 'duration', { value: 6 }); media.dispatchEvent(new Event('loadedmetadata')) })
     expect(media.playbackRate).toBe(2)
-    click(sidebar.querySelector('.feedback-quick-replies button'))
+    expect(sidebar.querySelector('.feedback-quick-replies')).toBeNull()
     const reply = sidebar.querySelector<HTMLTextAreaElement>('textarea')!
-    expect(reply.value).toContain('按计划完成')
+    setTextarea(reply, '下放再控一点')
     await act(async () => { reply.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', metaKey: true, bubbles: true, cancelable: true })); await settle() })
-    expect(api.postCoachFeedback).toHaveBeenCalledWith(expect.objectContaining({ video_id: 'video-1', plan_exercise_id: 'exercise-1', student_id: 'student-1', text: expect.stringContaining('按计划完成') }))
+    expect(api.postCoachFeedback).toHaveBeenCalledWith(expect.objectContaining({ video_id: 'video-1', plan_exercise_id: 'exercise-1', student_id: 'student-1', text: expect.stringContaining('下放再控一点') }))
     click(host.querySelector('.video-add-marker'))
     setInput(host.querySelector<HTMLInputElement>('.video-marker-editor input')!, '控制下放')
     click(host.querySelector('.video-marker-save'))

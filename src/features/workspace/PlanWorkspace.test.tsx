@@ -594,7 +594,9 @@ describe('PlanWorkspace editor remount', () => {
     expect(host.querySelector('[data-video-marker]')?.textContent).toContain('1')
     expect(host.querySelector('[data-feedback-video="v1"]')).toBeNull()
     await act(async () => { host.querySelector<HTMLElement>('[data-feedback-mode]')!.focus(); document.activeElement!.dispatchEvent(new KeyboardEvent('keydown', { code: 'Digit1', key: '1', altKey: true, bubbles: true, cancelable: true })); await settle() })
-    expect(host.querySelector<HTMLTextAreaElement>('.video-feedback textarea')?.value).toContain('按计划完成')
+    // Quick replies are off in the feedback rail for now (David, 2026-10-19): ⌥1 writes nothing.
+    expect(host.querySelector('.feedback-quick-replies')).toBeNull()
+    expect(host.querySelector<HTMLTextAreaElement>('.video-feedback textarea')?.value).toBe('')
     const reply = host.querySelector<HTMLTextAreaElement>('.video-feedback textarea')!
     await act(async () => reply.focus())
     const escape = async () => act(async () => { document.activeElement!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })); await settle() })
