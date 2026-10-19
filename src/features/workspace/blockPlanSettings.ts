@@ -21,3 +21,17 @@ export function saveBlockWeekdays(planId: string | undefined, days: readonly num
   if (!planId) return true
   try { localStorage.setItem(key(planId), JSON.stringify(days)); return true } catch { return false }
 }
+
+
+// Extra columns are view metadata, separate from the fixed weekly pattern.
+export function loadBlockExtraWeekdays(planId?: string): number[] {
+  if (!planId) return []
+  try {
+    const value: unknown = JSON.parse(localStorage.getItem(`meetpr.plan-editor.extra-weekdays.${planId}`) ?? '[]')
+    return Array.isArray(value) && value.length <= 7 && value.every(day => Number.isInteger(day) && day >= 0 && day < 7) ? value : []
+  } catch { return [] }
+}
+export function saveBlockExtraWeekdays(planId: string | undefined, days: readonly number[]): boolean {
+  if (!planId) return true
+  try { localStorage.setItem(`meetpr.plan-editor.extra-weekdays.${planId}`, JSON.stringify(days)); return true } catch { return false }
+}

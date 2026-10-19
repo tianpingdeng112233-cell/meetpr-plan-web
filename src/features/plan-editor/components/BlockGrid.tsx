@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
-import { buildBlockGrid, blockTargetDay, type BlockAddress } from '../blockGridModel'
+import { buildBlockGrid, blockTargetDay, blockInsertDates, type BlockAddress } from '../blockGridModel'
 import type { DayCol, ExerciseRow, Week } from '../types'
 import { displayedRowIntensity, rowIntensityBoxes, rowWeightBoxes } from '../intensityModel'
 import { addDays, DOW_LABELS, mdLabel } from '../mapping'
@@ -11,17 +11,19 @@ interface Props {
   weeks: Week[]
   startDate: string | null
   weekdays: readonly number[]
+  extraWeekdays: readonly number[]
   editing: PlanDayTarget | null
   selectedDays: ReadonlySet<string>
   selectedRows: ReadonlySet<string>
   readOnly: boolean
   rowTier: (row: ExerciseRow) => 'main' | 'aux'
-  renderDay: (week: Week, day: DayCol, dx: number) => ReactNode
+  renderDay: (week: Week, day: DayCol, dx: number, dayNumber: number) => ReactNode
   renderCapacity: (week: Week, index: number) => ReactNode
   onOpen: (week: Week, day: DayCol, event: React.MouseEvent) => void
   onClose: () => void
   onSelectRow: (week: Week, day: DayCol, rowId: string, modifiers: { toggle: boolean; range: boolean }) => void
   onSelectRectangle: (days: PlanDayTarget[], rows: string[]) => void
+  onInsert: (weekNumber: number, date: string) => void
   onFill: (source: BlockAddress, endWeek: number) => void
   onWeekday: (dx: number, weekday: number) => void
   onContext: (event: React.MouseEvent, week: Week, day: DayCol) => void
@@ -43,12 +45,13 @@ function shorthand(row: ExerciseRow): string {
 }
 
 export function BlockGrid(props: Props) {
-  const grid = buildBlockGrid(props.weeks, props.startDate, props.weekdays)
+  const grid = buildBlockGrid(props.weeks, props.startDate, props.weekdays, props.extraWeekdays)
   const ref = useRef<HTMLDivElement>(null)
   const cleanup = useRef<(() => void) | null>(null)
   const suppressClick = useRef(false)
   const [fill, setFill] = useState<{ source: BlockAddress; endWeek: number } | null>(null)
   const [rectangle, setRectangle] = useState<{ left: number; top: number; width: number; height: number } | null>(null)
+  const [insertMenu, setInsertMenu] = useState<string | null>(null)
   const [columnEditor, setColumnEditor] = useState<number | null>(null)
   useEffect(() => () => cleanup.current?.(), [])
   useEffect(() => {
@@ -104,13 +107,12 @@ export function BlockGrid(props: Props) {
   return <div className="block-grid" ref={ref} style={{ '--block-columns': grid.columns.length } as React.CSSProperties}
     onMouseDown={startRectangle} onClickCapture={event => { if (suppressClick.current) { event.stopPropagation(); event.preventDefault() } }}>
     <div className="block-column-row"><span />{grid.columns.map(column => {
-      const titleDay = grid.rows.map(row => row.cells[column.dx]?.day).find(day => day?.rows.some(row => props.rowTier(row) === 'main'))
-      const title = titleDay?.rows.find(row => props.rowTier(row) === 'main')
+      const activeWeeks = grid.rows.filter(row => row.cells[column.dx]?.day).map(row => row.week.num)
       return <div className="block-column" key={column.dx}>
         <button type="button" disabled={props.readOnly || !props.startDate} onClick={() => setColumnEditor(columnEditor === column.dx ? null : column.dx)}>
-          <b>D{column.dx + 1}</b><span>{DOW_LABELS[column.weekday]}</span>
+          <span>{DOW_LABELS[column.weekday]}{activeWeeks.length > 0 && activeWeeks.length < grid.rows.length ? ` · ${S.editor.blockOnlyWeeks(activeWeeks)}` : ''}</span>
         </button>
-        {title && <small title={fmt.exerciseName({ name: title.name, name_en: title.nameEn })}>{fmt.exerciseName({ name: title.name, name_en: title.nameEn })}</small>}
+
         {columnEditor === column.dx && <select autoFocus aria-label={S.editor.blockWeekday} value={column.weekday}
           onChange={event => { props.onWeekday(column.dx, Number(event.target.value)); setColumnEditor(null) }} onBlur={() => setColumnEditor(null)}>
           {Array.from({ length: 7 }, (_, weekday) => <option value={weekday} key={weekday}>{DOW_LABELS[weekday]}</option>)}
@@ -118,9 +120,14 @@ export function BlockGrid(props: Props) {
       </div>
     })}</div>
     {grid.rows.map(({ week, cells }, index) => {
-      const editingDx = cells.findIndex(cell => (cell.day ?? blockTargetDay(grid, cell, props.startDate))?.dow === props.editing?.dow && week.num === props.editing?.wnum)
+      const editingDx = cells.findIndex(cell => (cell.day ?? (grid.columns[cell.dx].patternIndex !== null ? blockTargetDay(grid, cell, props.startDate) : null))?.dow === props.editing?.dow && week.num === props.editing?.wnum)
       // At the right edge the card extends left enough to retain usable input widths.
       const editStart = editingDx < 0 ? -1 : Math.min(editingDx, Math.max(0, grid.columns.length - 3))
+      const ordered = cells.filter(cell => cell.day).sort((a, b) => a.dayNumber! - b.dayNumber!)
+      const insertGaps = props.readOnly || !props.startDate ? [] : Array.from({ length: ordered.length + 1 }, (_, i) => {
+        const before = ordered[i - 1], after = ordered[i]
+        return { before, after, dates: blockInsertDates(week, props.startDate!, before?.day?.dow ?? null, after?.day?.dow ?? null) }
+      }).filter(gap => gap.dates.length > 0)
       return <div key={week.num} className="block-week weekband" data-week-slot="" data-wnum={week.num}>
         <div className="block-week-label" tabIndex={0}>
           <b>W{week.num}</b><span>{props.startDate ? mdLabel(addDays(props.startDate, (week.num - 1) * 7)) : week.range.split(/[–—~]/)[0]}</span>
@@ -128,24 +135,24 @@ export function BlockGrid(props: Props) {
           <div className="block-capacity">{props.renderCapacity(week, index)}</div>
         </div>
         {cells.map(cell => {
-          const day = cell.day ?? blockTargetDay(grid, cell, props.startDate)
+          const day = cell.day ?? (grid.columns[cell.dx].patternIndex !== null ? blockTargetDay(grid, cell, props.startDate) : null)
           const editing = editingDx === cell.dx || (!cell.day && props.editing?.wnum === week.num && props.editing?.dow === day?.dow)
           const selected = !!day && props.selectedDays.has(planDayKey({ wnum: week.num, dow: day.dow }))
           const preview = fill && fill.source.dx === cell.dx && week.num > fill.source.weekNumber && week.num <= fill.endWeek
           const rows = day ? orderRowsForDisplay(day.rows, props.rowTier) : []
           const selectedCount = rows.filter(row => props.selectedRows.has(row.id)).length
           const fillRows = preview ? grid.rows.find(row => row.week.num === fill.source.weekNumber)?.cells[cell.dx]?.day?.rows ?? [] : []
-          return <div key={cell.dx} className={`block-cell${selected ? ' is-selected' : ''}${editing ? ' is-editing' : ''}${preview ? ' fill-preview' : ''}`}
-            data-block-week={week.num} data-dx={cell.dx} data-dow={day?.dow} tabIndex={0}
-            aria-label={`W${week.num} D${cell.dx + 1}`}
+          return <div key={cell.dx} className={`block-cell${!day ? ' is-blank' : ''}${selected ? ' is-selected' : ''}${editing ? ' is-editing' : ''}${preview ? ' fill-preview' : ''}`}
+            data-block-week={week.num} data-dx={cell.dx} data-dow={day?.dow} tabIndex={day ? 0 : -1}
+            aria-label={cell.dayNumber ? `W${week.num} D${cell.dayNumber}` : `W${week.num} ${DOW_LABELS[grid.columns[cell.dx].weekday]}`}
             style={{ gridColumn: editing ? `${(editStart < 0 ? Math.min(cell.dx, Math.max(0, grid.columns.length - 3)) : editStart) + 2} / -1` : cell.dx + 2, gridRow: 1,
               visibility: editingDx >= 0 && cell.dx >= editStart && cell.dx !== editingDx ? 'hidden' : undefined }}
             onClick={event => { if (day) props.onOpen(week, day, event) }}
             onContextMenu={event => { if (day) props.onContext(event, week, day) }}
             onKeyDown={event => { if (event.target === event.currentTarget && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); event.stopPropagation(); event.currentTarget.click() } }}>
-            {editing && day ? props.renderDay(week, day, cell.dx) : <>
-              <div className="block-date"><span>{day?.dateLabel}</span>{day?.shiftBadge && <span data-shift-badge="">{S.editor.shifted}</span>}{(day?.completedAt || (rows.length > 0 && rows.every(row => row.hasLogs))) && <span>✓ {S.editor.blockDone}</span>}</div>
-              {rows.length === 0 && <span className="block-empty">＋</span>}
+            {editing && day ? props.renderDay(week, day, cell.dx, cell.dayNumber ?? cells.filter(c => c.day && c.day.dow < day.dow).length + 1) : <>
+              <div className="block-date"><span>{cell.dayNumber ? `D${cell.dayNumber} · ${day?.dateLabel}` : day?.dateLabel}</span>{day?.shiftBadge && <span data-shift-badge="">{S.editor.shifted}</span>}{(day?.completedAt || (rows.length > 0 && rows.every(row => row.hasLogs))) && <span>✓ {S.editor.blockDone}</span>}</div>
+              {day && rows.length === 0 && !props.readOnly && <span className="block-empty">＋</span>}
               {rows.map((row, i) => <div key={row.id} className={`block-brick${props.selectedRows.has(row.id) ? ' row-sel' : ''}${props.rowTier(row) === 'aux' ? ' aux' : ''}${i > 0 && props.rowTier(rows[i - 1]) !== props.rowTier(row) ? ' section-start' : ''}`}
                 data-rowid={row.id} data-locked={row.hasLogs} role="button" tabIndex={0}
                 onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); event.stopPropagation(); event.currentTarget.click() } }}
@@ -157,6 +164,19 @@ export function BlockGrid(props: Props) {
               onMouseDown={event => startFill(event, cell)} onClick={event => event.stopPropagation()} />}
             {selectedCount > 1 && <div className="block-selection-hint">{S.editor.blockRowsSelected(selectedCount)}</div>}
             {preview && <div className="block-fill-ghost" aria-hidden="true">{fillRows.map(row => <div key={row.id} className="block-brick">{fmt.exerciseName({ name: row.name, name_en: row.nameEn })} <code>{shorthand(row)}</code></div>)}<small>{S.editor.blockFillPreview(fill.source.weekNumber + 1, fill.endWeek, cell.dx + 1, fillRows.length)}</small></div>}
+          </div>
+        })}
+        {insertGaps.map(({ before, after, dates }) => {
+          const id = `${week.num}:${before?.day?.dow ?? 'start'}`
+          const edge = before ? before.dx + 3 : (after?.dx ?? 0) + 2
+          return <div key={id} className="block-insert-gap" data-insert-week={week.num} data-insert-before={before?.day?.dow ?? 'start'}
+            style={{ gridColumn: Math.min(edge, grid.columns.length + 1), gridRow: 1, justifySelf: edge > grid.columns.length + 1 ? 'end' : 'start' }}>
+            <button type="button" aria-label={S.editor.blockInsertDay} aria-expanded={insertMenu === id}
+              onClick={() => setInsertMenu(insertMenu === id ? null : id)}>＋</button>
+            {insertMenu === id && <div className="block-insert-menu" role="menu" onKeyDown={event => { if (event.key === 'Escape') { event.stopPropagation(); setInsertMenu(null) } }}>
+              {dates.map(date => <button type="button" role="menuitem" data-insert-date={date} key={date}
+                onClick={() => { props.onInsert(week.num, date); setInsertMenu(null) }}>{DOW_LABELS[(addDays(date, 0).getDay() + 6) % 7]} {mdLabel(addDays(date, 0))}</button>)}
+            </div>}
           </div>
         })}
       </div>

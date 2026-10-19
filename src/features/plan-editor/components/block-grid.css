@@ -99,3 +99,10 @@
 .block-readonly { padding: 8px 16px; color: #4b5563; font-size: 12px; }
 .block-grid :focus-visible { outline: 2px solid #111827; outline-offset: 2px; }
 .block-grid ::selection { background: #fef3c7; color: #111827; }
+.block-cell.is-blank { background: transparent; border-color: transparent; cursor: default; }
+.block-insert-gap { position: relative; align-self: stretch; z-index: 5; width: 14px; margin-left: -12px; display: flex; align-items: center; }
+.block-insert-gap > button { opacity: 0; border: 1px solid #e5e7eb; background: white; color: #4b5563; border-radius: 50%; padding: 0; width: 20px; height: 20px; flex-shrink: 0; cursor: pointer; }
+.block-insert-gap:hover > button, .block-insert-gap:focus-within > button { opacity: 1; }
+.block-insert-menu { position: absolute; top: 50%; left: 8px; z-index: 20; min-width: 140px; padding: 4px; background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; box-shadow: 0 4px 12px #11182718; }
+.block-insert-menu button { display: block; width: 100%; border: 0; padding: 8px; background: white; color: #111827; text-align: left; white-space: nowrap; cursor: pointer; }
+.block-insert-menu button:hover { background: #f5f6f8; }

@@ -104,7 +104,7 @@ function isContent(value: unknown): value is DraftMirrorContent {
  * lock/order bookkeeping; those changes must not make fully-covered content
  * look different from the local snapshot that produced it.
  */
-function canonicalContent(content: DraftMirrorContent): unknown {
+function canonicalContent(content: DraftMirrorContent, preserveEmptyDays = true): unknown {
   return {
     planStartDate: content.planStartDate,
     weeksCount: content.weeksCount,
@@ -112,7 +112,7 @@ function canonicalContent(content: DraftMirrorContent): unknown {
       num: week.num,
       days: week.days.map((day) => ({
         dow: day.dow,
-        rest: isRestDay(day),
+        rest: preserveEmptyDays && !day.rest ? false : isRestDay(day),
         rows: day.rows.map((row) => {
           const explicitPctAnchor = row.mode !== 'bodyweight'
             && row.intensity?.mode === 'pct'
@@ -240,14 +240,14 @@ function removeQuietly(storage: Pick<Storage, 'removeItem'>, key: string): void 
   try { storage.removeItem(key) } catch { /* localStorage is optional safety only */ }
 }
 
-function normalizeContent(content: DraftMirrorContent): DraftMirrorContent {
+function normalizeContent(content: DraftMirrorContent, preserveEmptyDays = true): DraftMirrorContent {
   return {
     ...content,
     weeks: content.weeks.map((week) => ({
       ...week,
       days: week.days.map((day) => ({
         ...day,
-        rest: isRestDay(day),
+        rest: preserveEmptyDays && !day.rest ? false : isRestDay(day),
         rows: day.rows.map((row) => {
           const { target: _retiredTarget, ...normalized } = row as ExerciseRowWithLegacyTarget
           return normalized
@@ -281,8 +281,13 @@ function parseMirror(raw: string, expectedPlanId?: string): ParsedMirror | null 
       : parsed.version === 2
         ? contentHash(legacyV2CanonicalContent(rawContent))
         : draftContentHash(rawContent)
-    if (expectedHash !== parsed.contentHash) return null
-    const content = normalizeContent(rawContent)
+    // Earlier v3 writers derived rest from rows. Accept their exact hash and
+    // normalize their legacy flags; new v3 snapshots retain explicit empty cards
+    // using the existing rest field, without changing the snapshot shape/version.
+    const legacyV3 = parsed.version === 3 && expectedHash !== parsed.contentHash
+      && contentHash(canonicalContent(rawContent, false)) === parsed.contentHash
+    if (expectedHash !== parsed.contentHash && !legacyV3) return null
+    const content = normalizeContent(rawContent, parsed.version === 3 && !legacyV3)
     const mirror: DraftMirror = {
       version: DRAFT_MIRROR_VERSION,
       planId: parsed.planId,

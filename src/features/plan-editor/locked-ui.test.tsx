@@ -202,7 +202,7 @@ describe('exercise history lock UI', () => {
     expect(document.activeElement).toBe(host.querySelector('[data-guard-field="reps"]'))
   })
 
-  it('clears a mixed day with Delete while retaining logged rows', () => {
+  it('clears a mixed day from the context menu while retaining logged rows', () => {
     const locked = row('locked', { serverRowId: 'pe-lock', serverSortOrder: 0, hasLogs: true })
     const editable = row('editable', { serverRowId: 'pe-edit', serverSortOrder: 1 })
     act(() => root?.render(
@@ -212,7 +212,8 @@ describe('exercise history lock UI', () => {
     openBlockDay(host)
     openBlockDay(host, 2, 0)
     expect(host.textContent).not.toContain('复制上周计划到本周')
-    act(() => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Delete', bubbles: true })))
+    act(() => host.querySelector('[data-block-week="2"]')!.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true })))
+    act(() => buttonByText(host, '清空本日').click())
     const remaining = host.querySelectorAll('.weekband[data-wnum="2"] [data-rowid]')
     expect(remaining).toHaveLength(1)
     expect((remaining[0] as HTMLElement).dataset.rowid).toBe('locked')

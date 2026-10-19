@@ -203,7 +203,7 @@ it('reopens a four-by-four empty skeleton and persists settings and column weekd
   const render = async (key: string, count = 4) => act(async () => root.render(<PlanEditor key={key} currentPlanId="empty" initialWeeks={empty.slice(0,count)} weeksCount={count} studentName="学员" planName="Block" planStartDate="2026-10-25" onChangePlanWeeks={onChangePlanWeeks} />))
   await render('first')
   expect(host.querySelectorAll('[data-block-week]')).toHaveLength(16)
-  expect([...host.querySelectorAll('.block-column')].map(el => el.textContent)).toEqual(['D1周日', 'D2周二', 'D3周四', 'D4周五'])
+  expect([...host.querySelectorAll('.block-column')].map(el => el.textContent)).toEqual(['周日', '周二', '周四', '周五'])
   await click(host.querySelector('[data-plan-menu-trigger]')!)
   await click([...document.querySelectorAll('[role="menuitem"]')].find(el => el.textContent === '计划设置（第一练日期 · 周数 · 星期）')!)
   const count = host.querySelector<HTMLInputElement>('input[aria-label="周数"]')!
@@ -218,7 +218,7 @@ it('reopens a four-by-four empty skeleton and persists settings and column weekd
   act(() => { select.value = '2'; select.dispatchEvent(new Event('change', {bubbles:true})) })
   await render('reopened', 3)
   expect(host.querySelectorAll('[data-block-week]')).toHaveLength(12)
-  expect(host.querySelectorAll('.block-column')[1].textContent).toBe('D2周三')
+  expect(host.querySelectorAll('.block-column')[1].textContent).toBe('周三')
 })
 
 it('uses the unfiltered list and video-page fallback on an old backend without 051', async () => {
@@ -315,6 +315,6 @@ it('applies a first-date change and weekday change together without retaining ol
   await click(host.querySelector('[data-training-weekday="3"]')!)
   await act(async () => host.querySelector('form')!.dispatchEvent(new Event('submit', {bubbles:true,cancelable:true})))
   expect(onChangeStartDate).toHaveBeenCalledWith('2026-10-26')
-  expect(host.querySelector('[data-dx="0"] .block-date')?.textContent).toBe('10/26')
-  expect(host.querySelector('[data-dx="1"] .block-date')?.textContent).toBe('10/29')
+  expect(host.querySelector('[data-dx="0"] .block-date')?.textContent).toBe('D1 · 10/26')
+  expect(host.querySelector('[data-dx="1"] .block-date')?.textContent).toBe('D2 · 10/29')
 })

@@ -9,10 +9,11 @@ import {
   materializeIntensityRow, isSingleValueIntensity, rowIntensity, rowIntensityBoxes, rowWeightBoxes,
 } from './intensityModel'
 import { ApiException } from '../../api/client'
+import { clearDayDeletionIntent, loadDayDeletionIntent, saveDayDeletionIntent, type ExplicitDayDeletion } from './dayDeletionIntent'
 import { BlockGrid } from './components/BlockGrid'
-import { buildBlockGrid, changeBlockPattern, blockTargetDay, fillBlockDays, changeBlockDate, changeBlockWeekday, type BlockAddress } from './blockGridModel'
+import { insertBlockDay, deleteBlockDay, blockDayDeletionLocked, isBlockTrainingDay, buildBlockGrid, changeBlockPattern, blockTargetDay, fillBlockDays, changeBlockDate, changeBlockWeekday, type BlockAddress } from './blockGridModel'
 import { NewPlanDialog } from '../workspace/PlanDialogs'
-import { loadBlockWeekdays, saveBlockWeekdays } from '../workspace/blockPlanSettings'
+import { loadBlockExtraWeekdays, saveBlockExtraWeekdays, loadBlockWeekdays, saveBlockWeekdays } from '../workspace/blockPlanSettings'
 import { BlockHistory } from './components/BlockHistory'
 import './components/block-history.css'
 import { TopBar } from './components/TopBar'
@@ -82,6 +83,9 @@ import {
 } from './weekBandModel'
 import type { WeekBandBadge } from './components/DayColumn'
 
+// Runtime identity follows snapshots and save clones; a replacement day gets
+// its own identity. It is never serialized into the plan or pending revision.
+type TrackedDayDeletion = ExplicitDayDeletion & { sourceToken?: object }
 type Sel = PlanDayTarget
 interface PopState { visible: boolean; x: number; y: number; wnum: number; dow: number; rowId: string; query: string }
 interface RowTarget { wnum: number; dow: number; rowId: string }
@@ -133,6 +137,7 @@ export interface PlanEditorProps {
     /** Coach explicitly chose to mark past imported sessions as assumed completion. */
     markPastAsAssumedComplete?: boolean,
     onProgress?: (done: number, total: number) => void,
+    deletedDayIds?: readonly string[],
   ) => Promise<SaveResult>
   /** Rename the current plan (backend PATCH); parent also refreshes its plan list. */
   onRename?: (name: string) => Promise<void> | void
@@ -174,8 +179,15 @@ function hasGridContent(weeks: Week[]): boolean {
   return weeks.some((week) => week.days.some((day) => day.rows.length > 0))
 }
 
+function emptyTrainingDays(weeks: Week[], start: string | null) {
+  return buildBlockGrid(weeks, start).rows.flatMap(row => row.cells)
+    .filter(cell => cell.day && !cell.day.rest && cell.day.rows.length === 0)
+}
+
 function mirrorContent(weeks: Week[], planStartDate: string | null, weeksCount = weeks.length): DraftMirrorContent {
-  return { weeks, planStartDate, weeksCount }
+  return { weeks: weeks.map(week => ({ ...week, days: week.days.map(day => (
+    day.rest && !day.rows.length ? { ...day, serverDayId: null } : day
+  )) })), planStartDate, weeksCount }
 }
 
 function pendingResponseMirror(planId: string, response: PendingRevisionResponse): DraftMirror | null {
@@ -535,16 +547,18 @@ export function PlanEditor(props: PlanEditorProps) {
   const pendingPlanStart = useRef<string | null>(null)
   const [planStartDate, setPlanStartDate] = useState<string | null>(props.planStartDate ?? null)
   // Presentation-only fallback keeps cleared Dx targets available during this edit session.
-  const lastBlockWeekdays = useRef(buildBlockGrid(initialWeeks, props.planStartDate).columns.map(column => column.weekday))
+  const lastBlockWeekdays = useRef(buildBlockGrid(initialWeeks, props.planStartDate).columns.filter(column => column.patternIndex !== null).map(column => column.weekday))
   const [columnWeekdays, setColumnWeekdays] = useState<Record<number, number>>(() => Object.fromEntries((loadBlockWeekdays(props.currentPlanId) ?? []).map((day, dx) => [dx, day])))
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [setsDraft, setSetsDraft] = useState<{ rowId: string; value: string | null } | null>(null)
-  const observedBlock = buildBlockGrid(weeks, planStartDate)
-  const blockWeekdays = Array.from({ length: Math.max(Object.keys(columnWeekdays).length, lastBlockWeekdays.current.length, observedBlock.columns.length) }, (_, dx) => (
-    columnWeekdays[dx] ?? (observedBlock.rows.some(row => row.cells[dx]?.day)
-      ? observedBlock.columns[dx].weekday : lastBlockWeekdays.current[dx] ?? observedBlock.columns[dx]?.weekday ?? 0)
+  const [extraWeekdays, setExtraWeekdays] = useState<number[]>(() => [...new Set([...loadBlockExtraWeekdays(props.currentPlanId),
+    ...buildBlockGrid(initialWeeks, props.planStartDate).columns.filter(column => column.patternIndex === null).map(column => column.weekday)])])
+  const observedColumns = buildBlockGrid(weeks, planStartDate, [], extraWeekdays).columns.filter(column => column.patternIndex !== null)
+  const blockWeekdays = Array.from({ length: Math.max(Object.keys(columnWeekdays).length, lastBlockWeekdays.current.length, observedColumns.length) }, (_, dx) => (
+    columnWeekdays[dx] ?? observedColumns[dx]?.weekday ?? lastBlockWeekdays.current[dx] ?? 0
   ))
   lastBlockWeekdays.current = blockWeekdays
+
 
   // Kept with the import token so an autosave retry reuses the coach's explicit
   // answer rather than prompting again or silently changing historical data.
@@ -634,6 +648,20 @@ export function PlanEditor(props: PlanEditorProps) {
   const redoRef = useRef<Week[][]>([])
   const historyStartRef = useRef<(string | null)[]>([])
   const redoStartRef = useRef<(string | null)[]>([])
+  // Session-only edit intent follows the same undo/redo boundary as content.
+  const daySourceTokens = useRef(new WeakMap<ExerciseRow[], object>())
+  const daySourceToken = useCallback((rows: ExerciseRow[]) => {
+    let token = daySourceTokens.current.get(rows)
+    if (!token) { token = {}; daySourceTokens.current.set(rows, token) }
+    return token
+  }, [])
+  const deletedDaysRef = useRef<TrackedDayDeletion[]>([])
+  const historyDeletedDaysRef = useRef<TrackedDayDeletion[][]>([])
+  const redoDeletedDaysRef = useRef<TrackedDayDeletion[][]>([])
+  const requestedDeletedDayIds = (snapshot: Week[]) => deletedDaysRef.current.filter(deleted => {
+    const day = snapshot.find(week => week.num === deleted.weekNumber)?.days.find(day => day.dow === deleted.dow)
+    return !day || (day.rest && !day.rows.length)
+  }).flatMap(deleted => deleted.id ? [deleted.id] : [])
   const dayClipboardRef = useRef<DayClipboard | null>(null)
   const daysClipboardRef = useRef<DaysClipboard | null>(null)
   const rowClipboardRef = useRef<ExerciseRow[] | null>(null)
@@ -756,7 +784,7 @@ export function PlanEditor(props: PlanEditorProps) {
     }
   }, [latestShift, props.currentPlanId, props.planStatus, readOnly, refreshShiftPlan, undoNeedsRefresh])
 
-  const setWeeksWithHistory = useCallback((update: WeeksUpdate) => {
+  const setWeeksWithHistory = useCallback((update: WeeksUpdate, deleted: TrackedDayDeletion[] = []) => {
     if (readOnly) return
     const startSnapshot = currentPlanStart.current
     setWeeks((prev) => {
@@ -764,6 +792,12 @@ export function PlanEditor(props: PlanEditorProps) {
       if (next === prev) return prev
       historyRef.current = [...historyRef.current.slice(-49), prev]
       historyStartRef.current = [...historyStartRef.current.slice(-49), startSnapshot]
+      historyDeletedDaysRef.current = [...historyDeletedDaysRef.current.slice(-49), deletedDaysRef.current]
+      deletedDaysRef.current = [...deletedDaysRef.current, ...deleted].filter(removal => {
+        const day = next.find(week => week.num === removal.weekNumber)?.days.find(day => day.dow === removal.dow)
+        return !day || (day.rest && !day.rows.length)
+      })
+      redoDeletedDaysRef.current = []
       redoRef.current = []
       redoStartRef.current = []
       return next
@@ -775,6 +809,7 @@ export function PlanEditor(props: PlanEditorProps) {
     serverMirrorHash.current = hash
     mirrorWriter.current.dropPendingIfHash(hash)
     clearDraftMirrorIfHash(mirrorPlanId, hash)
+    clearDayDeletionIntent(mirrorPlanId, hash)
     remoteWriter.current?.markCovered(hash)
     pendingRevisionChangeRef.current?.(null)
     if (published) {
@@ -800,6 +835,9 @@ export function PlanEditor(props: PlanEditorProps) {
       weeks.length || props.weeksCount,
     )
     const hash = draftContentHash(content)
+    if (mirrorPlanId && hash !== serverMirrorHash.current) {
+      saveDayDeletionIntent(mirrorPlanId, hash, deletedDaysRef.current)
+    }
     if (waitsForRemoteRecovery && !recoveryReady) {
       // Do not overwrite/delete an unread remote candidate. Fresh edits still
       // reach the fast local mirror while the GET is in flight.
@@ -819,6 +857,7 @@ export function PlanEditor(props: PlanEditorProps) {
       mirrorWriter.current.cancel()
       if (!recoveryMirror) {
         clearDraftMirror(mirrorPlanId)
+        clearDayDeletionIntent(mirrorPlanId)
         if (remoteHasDirtyContent.current) {
           remoteWriter.current?.clear()
           remoteHasDirtyContent.current = false
@@ -844,6 +883,11 @@ export function PlanEditor(props: PlanEditorProps) {
   const restoreDraftMirror = useCallback(() => {
     if (!recoveryMirror || readOnly) return
     const { content } = recoveryMirror.mirror
+    const restoredDeletions: TrackedDayDeletion[] = (mirrorPlanId ? loadDayDeletionIntent(mirrorPlanId, recoveryMirror.mirror.contentHash) : [])
+      .map(deleted => {
+        const day = latestWeeks.current.find(week => week.num === deleted.weekNumber)?.days.find(day => day.dow === deleted.dow && day.serverDayId === deleted.id)
+        return { ...deleted, sourceToken: day ? daySourceToken(day.rows) : undefined }
+      })
     clearDraftMirror(mirrorPlanId)
     remoteWriter.current?.clear()
     remoteHasDirtyContent.current = false
@@ -866,16 +910,29 @@ export function PlanEditor(props: PlanEditorProps) {
           days: wk.days.map((day) => {
             const mirroredDay = mirroredWeek.days.find((candidate) => candidate.dow === day.dow)
             if (!mirroredDay) return day
+            const locked = blockDayDeletionLocked(day) || !!(day.serverDayId && studentAddedByDay.get(day.serverDayId)?.length)
+            // Old v3 snapshots normalized existing empty days to rest:true but
+            // retained their identity. New explicit deletions have no identity.
+            const keepLegacyEmpty = !day.rows.length && !!day.serverDayId && !!mirroredDay.serverDayId
+            const removing = mirroredDay.rest && !mirroredDay.rows.length
+            if (removing && locked) return day
+            // A mirror alone is not proof of an explicit Delete action. Without
+            // this device's matching intent, keep a server empty day for review.
+            if (removing && !day.rows.length && day.serverDayId
+              && !restoredDeletions.some(deleted => deleted.id === day.serverDayId)) return day
             return {
               ...day,
               rows: mirroredDay.rows,
               releasedSortOrders: mirroredDay.releasedSortOrders,
-              rest: isRestDay(mirroredDay),
+              rest: keepLegacyEmpty && removing ? false : mirroredDay.rest,
+              // An empty/rest snapshot explicitly removes this day. Live history
+              // remains authoritative and cannot be deleted by restoring a mirror.
+              serverDayId: removing && !keepLegacyEmpty ? null : day.serverDayId,
             }
           }),
         }
       })
-      setWeeksWithHistory(merged)
+      setWeeksWithHistory(merged, restoredDeletions)
       saveDraftMirror(mirrorPlanId, mirrorContent(
         merged, currentPlanStart.current, merged.length || props.weeksCount,
       ))
@@ -884,7 +941,7 @@ export function PlanEditor(props: PlanEditorProps) {
     }
     // History first: setWeeksWithHistory snapshots currentPlanStart at call
     // time, so undo must capture the pre-restore date, not the mirror's.
-    setWeeksWithHistory(content.weeks)
+    setWeeksWithHistory(content.weeks, restoredDeletions)
     const metadataChanged = content.planStartDate !== persistedPlanStart.current
       || content.weeksCount !== initialServerMirrorContent.current.weeksCount
     currentPlanStart.current = content.planStartDate
@@ -892,10 +949,11 @@ export function PlanEditor(props: PlanEditorProps) {
     pendingPlanStart.current = metadataChanged ? content.planStartDate : null
     saveDraftMirror(mirrorPlanId, content)
     setRecoveryMirror(null)
-  }, [mirrorPlanId, props.weeksCount, published, readOnly, recoveryMirror, setWeeksWithHistory])
+  }, [mirrorPlanId, props.weeksCount, published, readOnly, recoveryMirror, setWeeksWithHistory, studentAddedByDay, daySourceToken])
 
   const discardDraftMirror = useCallback(() => {
     clearDraftMirror(mirrorPlanId)
+    clearDayDeletionIntent(mirrorPlanId)
     remoteWriter.current?.clear()
     remoteHasDirtyContent.current = false
     pendingRevisionChangeRef.current?.(null)
@@ -1676,6 +1734,8 @@ export function PlanEditor(props: PlanEditorProps) {
       setStatusText(S.editor.nothingToUndo)
       return
     }
+    redoDeletedDaysRef.current = [...redoDeletedDaysRef.current.slice(-49), deletedDaysRef.current]
+    deletedDaysRef.current = historyDeletedDaysRef.current.pop() ?? []
     const prevStart = historyStartRef.current.pop() ?? null
     const currentStart = currentPlanStart.current
     currentPlanStart.current = prevStart
@@ -1692,6 +1752,8 @@ export function PlanEditor(props: PlanEditorProps) {
   const redoWeeks = useCallback(() => {
     const next = redoRef.current.pop()
     if (!next) return
+    historyDeletedDaysRef.current = [...historyDeletedDaysRef.current.slice(-49), deletedDaysRef.current]
+    deletedDaysRef.current = redoDeletedDaysRef.current.pop() ?? []
     const nextStart = redoStartRef.current.pop() ?? null
     const currentStart = currentPlanStart.current
     currentPlanStart.current = nextStart
@@ -1876,7 +1938,8 @@ export function PlanEditor(props: PlanEditorProps) {
           }),
         }))
         setRowSelection(singleRowSelection(null))
-      } else handleClearDay()
+      } else if (daySelection.days.size > 1) handleClearDay()
+      else handleDeleteDay()
       return true
     }
     if (readOnly || !mod) return false
@@ -1943,6 +2006,26 @@ export function PlanEditor(props: PlanEditorProps) {
     setRowSelection(singleRowSelection({ wnum, dow, rowId: row.id }))
     setCellSelection({ weekNumber: wnum, dow, rowId: row.id, field: 'name' })
   }
+
+  const handleDeleteDay = () => {
+    if (readOnly || !sel) return
+    const grid = buildBlockGrid(weeks, planStartDate, blockWeekdays, extraWeekdays)
+    const targets = daySelection.days.size > 1 ? daySelection.days : new Set([planDayKey(sel)])
+    const cells = grid.rows.flatMap(row => row.cells).filter(cell => cell.day && targets.has(planDayKey({ wnum: cell.weekNumber, dow: cell.day.dow })))
+    if (!cells.length) return
+    if (cells.some(cell => blockDayDeletionLocked(cell.day!) || (cell.day!.serverDayId && studentAddedByDay.get(cell.day!.serverDayId!)?.length))) {
+      setStatusText(S.editor.blockDeleteLocked); return
+    }
+    const message = cells.map(cell => S.editor.blockDeleteConfirm(cell.weekNumber, cell.dayNumber!, `${cell.day!.dowLabel} ${cell.day!.dateLabel}`, cell.day!.rows.length)).join('\n')
+    if (!window.confirm(message)) return
+    setWeeksWithHistory(prev => cells.reduce((result, cell) => deleteBlockDay(result, cell.weekNumber, cell.day!.dow), prev),
+      cells.map(cell => ({ id: cell.day!.serverDayId ?? null, weekNumber: cell.weekNumber, dow: cell.day!.dow, sourceToken: daySourceToken(cell.day!.rows) })))
+    setEditingDay(null); setSel(null)
+    setDaySelection(singleDaySelection(null)); setRowSelection(singleRowSelection(null)); setCellSelection(null)
+  }
+  const selectedBlockDay = sel ? weeks.find(week => week.num === sel.wnum)?.days.find(day => day.dow === sel.dow) : null
+  const deleteBlockLocked = !!selectedBlockDay && (blockDayDeletionLocked(selectedBlockDay)
+    || !!(selectedBlockDay.serverDayId && studentAddedByDay.get(selectedBlockDay.serverDayId)?.length))
 
   const handleClearDay = () => {
     if (daySelection.days.size > 1) {
@@ -2061,7 +2144,7 @@ export function PlanEditor(props: PlanEditorProps) {
     const startDelta = currentPlanStart.current ? ((addDays(start, 0).getDay() - addDays(currentPlanStart.current, 0).getDay()) + 7) % 7 : 0
     const previousPattern = blockWeekdays.map(day => (day + startDelta) % 7)
     const preview = resizeWeeksForCount(relabelWeeksForStartDate(latestWeeks.current, start), count, start)
-    if (JSON.stringify(pattern) !== JSON.stringify(previousPattern) && !changeBlockPattern(preview, pattern, start, previousPattern)) throw new Error('PATTERN_CONFLICT')
+    if (JSON.stringify(pattern) !== JSON.stringify(previousPattern) && !changeBlockPattern(preview, pattern, start, previousPattern, extraWeekdays)) throw new Error('PATTERN_CONFLICT')
     if (start !== currentPlanStart.current) await handleChangeStartDate(start)
     if (count !== latestWeeks.current.length) {
       if (calendarLocked || !props.onChangePlanWeeks) throw new Error('CALENDAR_LOCKED')
@@ -2074,13 +2157,14 @@ export function PlanEditor(props: PlanEditorProps) {
         skipNextAutosave.current = true
         setWeeks(resized)
         historyRef.current = []; historyStartRef.current = []; redoRef.current = []; redoStartRef.current = []
+        historyDeletedDaysRef.current = []; redoDeletedDaysRef.current = []
         if (!unsavedRef.current) markMirrorCovered(mirrorContent(resized, start, count))
         setStatusText(S.editor.cycleUpdated(count))
       } finally { setSaving(false) }
     }
     if (!saveBlockWeekdays(props.currentPlanId, pattern)) throw new Error('PATTERN_STORAGE_FAILED')
     if (JSON.stringify(pattern) !== JSON.stringify(previousPattern)) {
-      const next = changeBlockPattern(latestWeeks.current, pattern, start, previousPattern)
+      const next = changeBlockPattern(latestWeeks.current, pattern, start, previousPattern, extraWeekdays)
       if (!next) throw new Error('PATTERN_CONFLICT')
       if (next !== latestWeeks.current) { skipNextAutosave.current = false; setWeeksWithHistory(next) }
     }
@@ -2124,6 +2208,22 @@ export function PlanEditor(props: PlanEditorProps) {
     }
   }
   const applySuccessfulSave = (res: SaveResult, savedWeeks: Week[]) => {
+    for (const week of savedWeeks) for (const source of week.days) {
+      if (source.rest) continue
+      const saved = res.weeks.find(candidate => candidate.num === week.num)?.days.find(day => day.dow === source.dow)
+      if (saved && !saved.rest) daySourceTokens.current.set(saved.rows, daySourceToken(source.rows))
+    }
+    // Undo can restore and save a deleted day under a fresh ID. Redo must refer
+    // to that restored identity, rather than the ID consumed by the first save.
+    const rebind = (deletions: TrackedDayDeletion[]) => deletions.map(deleted => {
+      const source = savedWeeks.find(week => week.num === deleted.weekNumber)?.days.find(day => day.dow === deleted.dow)
+      if (!source || source.rest || daySourceToken(source.rows) !== deleted.sourceToken) return deleted
+      const day = res.weeks.find(week => week.num === deleted.weekNumber)?.days.find(day => day.dow === deleted.dow)
+      return day?.serverDayId ? { ...deleted, id: day.serverDayId } : deleted
+    })
+    deletedDaysRef.current = rebind(deletedDaysRef.current)
+    historyDeletedDaysRef.current = historyDeletedDaysRef.current.map(rebind)
+    redoDeletedDaysRef.current = redoDeletedDaysRef.current.map(rebind)
     const sameContent = latestWeeks.current === savedWeeks
     if (sameContent) {
       applyingSavedWeeks.current = true
@@ -2163,8 +2263,9 @@ export function PlanEditor(props: PlanEditorProps) {
         if (total > 3) setStatusText(S.editor.progressDays(verb, done, total))
       }
       const savedWeeks = latestWeeks.current
+      const savedDeletedIds = requestedDeletedDayIds(savedWeeks)
       const savedPlanStart = importStart ?? currentPlanStart.current
-      const res = await props.onSave(savedWeeks, importStart, markPastAsAssumedComplete, onProgress)
+      const res = await props.onSave(savedWeeks, importStart, markPastAsAssumedComplete, onProgress, savedDeletedIds)
       lastSaveFailureAlert.current = null
       // Clear only the token this save consumed: an import landing mid-flight writes a fresh
       // token, and the drain loop's next pass must still deliver it via reconcileImportedPlan —
@@ -2336,6 +2437,7 @@ export function PlanEditor(props: PlanEditorProps) {
   // ---- ⚠ 待核对 chip: cycle through problem rows --------------------------------------------
   const issueCursor = useRef(0)
   const issues = findDetailedIssueRows(weeks)
+  const emptyDays = emptyTrainingDays(weeks, planStartDate)
   const issueHint = (() => {
     const unbound = issues.filter((i) => i.kind === 'unbound').length
     const inputIssues = issues.filter((i) => i.inputIssue != null)
@@ -2343,6 +2445,7 @@ export function PlanEditor(props: PlanEditorProps) {
     const invalid = inputIssues.filter((i) => (i.inputIssue?.reasons.length ?? 0) > 0).length
     const reasons = [...new Set(inputIssues.flatMap((i) => i.inputIssue?.reasons ?? []))]
     const parts = []
+    if (emptyDays.length) parts.push(S.editor.emptyDaysIssue(emptyDays.length))
     if (unbound) parts.push(S.editor.unboundIssue(unbound))
     if (incomplete) parts.push(S.editor.incompleteIssue(incomplete, published))
     if (invalid) parts.push(S.editor.invalidIssue(invalid, reasons.join(' / ')))
@@ -2350,9 +2453,18 @@ export function PlanEditor(props: PlanEditorProps) {
   })()
   const jumpToNextIssue = () => {
     const cur = findIssueRows(latestWeeks.current)
-    if (cur.length === 0) return
-    const issue = cur[issueCursor.current % cur.length]
-    issueCursor.current++
+    const empty = emptyTrainingDays(latestWeeks.current, currentPlanStart.current)
+    const count = cur.length + empty.length
+    if (count === 0) return
+    const index = issueCursor.current++ % count
+    if (index >= cur.length) {
+      const cell = empty[index - cur.length]
+      handleSelect(cell.weekNumber, cell.day!.dow)
+      setEditingDay({ wnum: cell.weekNumber, dow: cell.day!.dow })
+      window.requestAnimationFrame(() => rootRef.current?.querySelector(`[data-block-week="${cell.weekNumber}"][data-dow="${cell.day!.dow}"]`)?.scrollIntoView?.({ block: 'center', inline: 'center' }))
+      return
+    }
+    const issue = cur[index]
     const focusRow = () => {
       const rowEl = rootRef.current?.querySelector<HTMLElement>(`[data-rowid="${issue.rowId}"]`)
       if (!rowEl) return
@@ -2390,9 +2502,17 @@ export function PlanEditor(props: PlanEditorProps) {
     if (target) jumpToWeek(target.num)
   }
 
+  const blockEmptyDayDelivery = () => {
+    const first = emptyTrainingDays(latestWeeks.current, currentPlanStart.current)[0]
+    if (!first) return false
+    window.alert(S.editor.emptyDayDelivery(first.weekNumber, first.dayNumber!, `${first.day!.dowLabel} ${first.day!.dateLabel}`))
+    return true
+  }
+
   const handleSave = async () => {
     if (!props.onSave || readOnly || saving || publishing.current) return
     if (published) {
+      if (blockEmptyDayDelivery()) return
       if (!recoveryReady) {
         window.alert(S.editor.checkingRemoteBeforeUpdate)
         return
@@ -2413,13 +2533,14 @@ export function PlanEditor(props: PlanEditorProps) {
       // safe. Anything still failing is surfaced in a modal, not just the status
       // line — a coach who misses the status line is exactly how W7 went missing.
       const savedWeeks = latestWeeks.current
+      const savedDeletedIds = requestedDeletedDayIds(savedWeeks)
       const onProgress = (done: number, total: number) => {
         if (total > 3) setStatusText(S.editor.progressDays(S.editor.updating, done, total))
       }
       try {
         for (let attempt = 1; ; attempt++) {
           try {
-            const res = await props.onSave(savedWeeks, null, false, onProgress)
+            const res = await props.onSave(savedWeeks, null, false, onProgress, savedDeletedIds)
             // Edits typed during the round-trip aren't in what was pushed — keep the guards armed.
             // A published update never writes calendar metadata, so the covered
             // hash must use the server-persisted date/weeks, not local values.
@@ -2585,6 +2706,7 @@ export function PlanEditor(props: PlanEditorProps) {
     // 发布后不可撤回，且当前编辑器不就地覆盖已发布树，避免破坏历史 set log。
     // saving 时也不发布:避免在后台 reconcile 半途翻页发布,发布按钮已 disabled,这里再兜底。
     if (readOnly || published || publishing.current || saving) return
+    if (blockEmptyDayDelivery()) return
     // Pre-flight: rows the publish would lose or that the backend will refuse. Zero-set bound
     // rows make the server reject with PLAN_PUBLISH_INCOMPLETE — block up front with a pointer
     // to the ⚠ chip instead of letting the coach discover it as an opaque failure.
@@ -2743,11 +2865,11 @@ export function PlanEditor(props: PlanEditorProps) {
   }
   const fillBlock = (source: BlockAddress, endWeek: number) => {
     if (readOnly) return
-    const grid = buildBlockGrid(weeks, planStartDate, blockWeekdays)
+    const grid = buildBlockGrid(weeks, planStartDate, blockWeekdays, extraWeekdays)
     const occupied = grid.rows.filter(row => row.week.num > source.weekNumber && row.week.num <= endWeek)
       .filter(row => blockTargetDay(grid, { weekNumber: row.week.num, dx: source.dx }, planStartDate)?.rows.length).length
     if (occupied && !window.confirm(S.editor.overwriteDaysConfirm(occupied))) return
-    setWeeksWithHistory(prev => fillBlockDays(prev, source, endWeek, planStartDate, blockWeekdays))
+    setWeeksWithHistory(prev => fillBlockDays(prev, source, endWeek, planStartDate, blockWeekdays, extraWeekdays))
   }
 
   return (
@@ -2791,7 +2913,7 @@ export function PlanEditor(props: PlanEditorProps) {
         calendarLockedHint={calendarLocked ? calendarLockedHint : S.editor.calendarUnavailable}
         onChangeStartDate={planStartDate ? (props.onChangeStartDate ? handleChangeStartDate : async () => {}) : undefined}
         onNewExercise={!readOnly && props.onCreateExercise ? () => openCreateExercise() : undefined}
-        issueCount={readOnly ? 0 : issues.length} issueHint={issueHint} onJumpIssue={jumpToNextIssue}
+        issueCount={readOnly ? 0 : issues.length + emptyDays.length} issueHint={issueHint} onJumpIssue={jumpToNextIssue}
         totalShiftDays={totalShiftDays}
         latestShift={latestShift}
         undoingShift={undoingShift}
@@ -2820,7 +2942,7 @@ export function PlanEditor(props: PlanEditorProps) {
         <div className="scroller" ref={scrollerRef} aria-readonly={readOnly || undefined}>
           {readOnly && <div role="status" className="block-readonly">{S.editor.historyReadOnlyBanner}</div>}
           <div ref={weeksRef}>
-            <BlockGrid weeks={weeks} startDate={planStartDate} weekdays={blockWeekdays} editing={editingDay}
+            <BlockGrid weeks={weeks} startDate={planStartDate} weekdays={blockWeekdays} extraWeekdays={extraWeekdays} editing={editingDay}
               selectedDays={daySelection.days} selectedRows={selectedRowIds} readOnly={readOnly}
               rowTier={rowTier} onClose={closeBlockEditor}
               renderCapacity={(_week, index) => <WeekCapacitySummary weekNumber={_week.num} {...weeklySummaries[index]} />}
@@ -2838,32 +2960,58 @@ export function PlanEditor(props: PlanEditorProps) {
                 setCellSelection(null)
                 if (days.length > 1) setEditingDay(null)
               }}
+              onInsert={(weekNumber, date) => {
+                if (readOnly || !planStartDate) return
+                const next = insertBlockDay(weeks, weekNumber, date, planStartDate)
+                if (next === weeks) return
+                const weekday = (addDays(date, 0).getDay() + 6) % 7
+                const extras = [...new Set([...extraWeekdays, weekday])].filter(day => !blockWeekdays.includes(day))
+                if (!saveBlockWeekdays(props.currentPlanId, blockWeekdays) || !saveBlockExtraWeekdays(props.currentPlanId, extras)) {
+                  window.alert(S.block.patternFailed); return
+                }
+                setColumnWeekdays(Object.fromEntries(blockWeekdays.map((value, index) => [index, value])))
+                setExtraWeekdays(extras)
+                setWeeksWithHistory(next)
+                const dow = (weekday - (addDays(planStartDate, 0).getDay() + 6) % 7 + 7) % 7
+                handleSelect(weekNumber, dow)
+                setEditingDay({ wnum: weekNumber, dow })
+              }}
               onFill={fillBlock}
               onWeekday={(dx, weekday) => {
                 if (!planStartDate || readOnly) return
-                const nextPattern = blockWeekdays.map((value, index) => index === dx ? weekday : value)
-                if (!saveBlockWeekdays(props.currentPlanId, nextPattern)) { window.alert(S.block.patternFailed); return }
+                const column = buildBlockGrid(weeks, planStartDate, blockWeekdays, extraWeekdays).columns[dx]
+                const nextPattern = blockWeekdays.map((value, index) => index === column.patternIndex ? weekday : value)
+                const extras = column.patternIndex === null ? [...new Set([...extraWeekdays, weekday])].filter(day => !nextPattern.includes(day)) : extraWeekdays
+                if (!saveBlockWeekdays(props.currentPlanId, nextPattern) || !saveBlockExtraWeekdays(props.currentPlanId, extras)) { window.alert(S.block.patternFailed); return }
                 setColumnWeekdays(Object.fromEntries(nextPattern.map((value, index) => [index, value])))
-                setWeeksWithHistory(prev => changeBlockWeekday(prev, dx, weekday, planStartDate, blockWeekdays))
+                setExtraWeekdays(extras)
+                setWeeksWithHistory(prev => changeBlockWeekday(prev, dx, weekday, planStartDate, blockWeekdays, extraWeekdays))
                 closeBlockEditor()
               }}
               onContext={(event, week, day) => {
                 event.preventDefault(); handleSelect(week.num, day.dow)
                 setBlockMenu({ x: event.clientX, y: event.clientY })
               }}
-              renderDay={(wk, day, dx) => (
+              renderDay={(wk, day, dx, dayNumber) => (
                       <DayColumn
                         key={day.dow}
                         weekNumber={wk.num}
-                        blockView={{ dx, date: planStartDate ? recommendedDateForDay(planStartDate, wk.num, day) : '',
+                        blockView={{ dx: dayNumber - 1, date: planStartDate ? recommendedDateForDay(planStartDate, wk.num, day) : '',
                           minDate: planStartDate ? isoDate(addDays(planStartDate, (wk.num - 1) * 7)) : undefined,
                           maxDate: planStartDate ? isoDate(addDays(planStartDate, wk.num * 7 - 1)) : undefined,
                           onClose: closeBlockEditor,
                           onDate: date => {
                             if (!planStartDate) return
-                            const next = changeBlockDate(weeks, { weekNumber: wk.num, dx }, date, planStartDate, blockWeekdays)
+                            const next = changeBlockDate(weeks, { weekNumber: wk.num, dx }, date, planStartDate, blockWeekdays, extraWeekdays)
                             if (next === weeks) { setStatusText(S.editor.blockDateUnavailable); return }
                             const moved = next.find(week => week.num === wk.num)?.days.find(candidate => candidate.rows === day.rows)
+                            const column = buildBlockGrid(weeks, planStartDate, blockWeekdays, extraWeekdays).columns[dx]
+                            if (column.patternIndex === null) {
+                              const weekday = (addDays(date, 0).getDay() + 6) % 7
+                              const extras = [...new Set([...extraWeekdays, weekday])].filter(value => !blockWeekdays.includes(value))
+                              if (!saveBlockExtraWeekdays(props.currentPlanId, extras)) { window.alert(S.block.patternFailed); return }
+                              setExtraWeekdays(extras)
+                            }
                             setColumnWeekdays(Object.fromEntries(blockWeekdays.map((value, index) => [index, value])))
                             setWeeksWithHistory(next)
                             if (moved) { setEditingDay({ wnum: wk.num, dow: moved.dow }); handleSelect(wk.num, moved.dow) }
@@ -2928,6 +3076,9 @@ export function PlanEditor(props: PlanEditorProps) {
         <button type="button" role="menuitem" onClick={() => { void copySelectedDay(); setBlockMenu(null) }}>{S.editor.blockCopy}</button>
         <button type="button" role="menuitem" disabled={readOnly} onClick={() => { if (clipboardKindRef.current === 'row') void pasteSelectedRows(); else void pasteSelectedDay(); setBlockMenu(null) }}>{S.editor.blockPaste}</button>
         <button type="button" role="menuitem" disabled={readOnly} onClick={() => { handleClearDay(); setBlockMenu(null) }}>{S.editor.blockClear}</button>
+        <button type="button" role="menuitem" disabled={readOnly || !selectedBlockDay || !isBlockTrainingDay(selectedBlockDay) || deleteBlockLocked}
+          title={deleteBlockLocked ? S.editor.blockDeleteLocked : undefined}
+          onClick={() => { handleDeleteDay(); setBlockMenu(null) }}>{S.editor.blockDeleteDay}</button>
       </div>}
 
       <ExercisePopover
