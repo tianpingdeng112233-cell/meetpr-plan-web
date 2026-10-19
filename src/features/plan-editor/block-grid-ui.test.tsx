@@ -376,6 +376,76 @@ it('shows only the weekday in English extra-column headers and hover titles', ()
   expect(button.title).toBe(button.textContent)
 })
 
+it.each([
+  ['zh', 1, 0, '1 段视频 · 都看过了'],
+  ['zh', 3, 0, '3 段视频 · 都看过了'],
+  ['en', 1, 0, '1 video · all watched'],
+  ['en', 3, 0, '3 videos · all watched'],
+  ['zh', 3, 2, '3 段视频 · 2 段待看 · 点开看'],
+  ['en', 1, 1, '1 video · 1 to watch · Open'],
+  ['en', 3, 2, '3 videos · 2 to watch · Open'],
+] as const)('013 repair 2 labels %s video markers with total=%s pending=%s', (locale, total, pending, hint) => {
+  setLocale(locale)
+  const weeks = fixture(1)
+  const row = weeks[0].days[0].rows[0]
+  row.serverRowId = row.id
+  const videos = Array.from({ length: total }, (_, i) => ({ id: `video-${i}`, set_log_id: null, plan_exercise_id: row.id,
+    content_type: 'video/mp4', size_bytes: 1, filename: 'squat.mp4', created_at: '2026-01-05', logged_at: '2026-01-05',
+    viewed_at: i < pending ? null : '2026-01-06',
+  }))
+  act(() => root.render(<PlanEditor initialWeeks={weeks} weeksCount={1} studentName="学员" planName="Block" videos={videos} />))
+  const marker = host.querySelector<HTMLElement>(`[data-rowid="${row.id}"] [data-video-marker]`)!
+  expect(marker.title).toBe(hint)
+  expect(marker.getAttribute('data-hint')).toBe(hint)
+  expect(marker.getAttribute('aria-label')).toBe(hint)
+  expect(marker.classList.contains(pending ? 'pending' : 'viewed')).toBe(true)
+})
+
+it('013 repair 2 keeps completion and video markers beside the final shorthand line', async () => {
+  installLocalStorageMock()
+  const weeks = fixture(1)
+  const day = weeks[0].days[0]
+  day.serverDayId = 'logged-day'
+  const row = day.rows[0]
+  Object.assign(row, { serverRowId: row.id, hasLogs: true, weightMode: 'per_set',
+    boxes: Array.from({ length: 10 }, (_, i) => ({ val: String(120 + i * 2.5), empty: false })) })
+  const log = { id: 'log', student_id: 'student', plan_exercise_id: row.id, plan_day_id: 'logged-day', exercise_id: 'sq', set_index: 0, weight_kg: '120', reps: 3, rpe: '8', coach_rpe: null, completed: true, failed: false, assumed: false, adhoc: false, logged_date: '2026-01-05', logged_at: '2026-01-05' }
+  api.logs.mockResolvedValue([
+    ...Array.from({ length: 10 }, (_, i) => ({ ...log, id: `log-${i}`, set_index: i, weight_kg: String(120 + i * 2.5) })),
+    { ...log, id: 'added-log', plan_exercise_id: null, exercise_id: 'curl', adhoc: true },
+  ])
+  const video = { id: 'video', set_log_id: 'log-0', plan_exercise_id: row.id, content_type: 'video/mp4', size_bytes: 1, filename: 'squat.mp4', created_at: '2026-01-05', logged_at: '2026-01-05', viewed_at: null }
+  const style = document.createElement('style')
+  style.textContent = readFileSync('src/features/plan-editor/components/block-grid.css', 'utf8')
+  document.head.append(style)
+  try {
+    await act(async () => root.render(<PlanEditor initialWeeks={weeks} weeksCount={1} studentId="student" studentName="学员" planName="Block" planStartDate="2026-01-05"
+      videos={[video, { ...video, id: 'added-video', set_log_id: 'added-log', plan_exercise_id: null }]} />))
+    const checkLayout = (brick: Element, actual: boolean) => {
+      const summary = brick.querySelector('.block-brick-summary')
+      expect(summary).not.toBeNull()
+      const code = summary!.querySelector('code')!
+      const status = summary!.querySelector('.block-brick-status')!
+      expect(status.textContent).toContain('✓')
+      expect(status.querySelector('[data-video-marker]')).not.toBeNull()
+      expect(code.textContent).not.toContain('✓')
+      expect(getComputedStyle(summary!).display).toBe('flex')
+      expect(getComputedStyle(summary!).flexWrap).toBe('nowrap')
+      expect(getComputedStyle(summary!).alignItems).toBe('flex-end')
+      expect(getComputedStyle(summary!).minWidth).toBe('0')
+      expect(getComputedStyle(status).flexShrink).toBe('0')
+      expect(getComputedStyle(status).whiteSpace).toBe('nowrap')
+      expect(getComputedStyle(code).whiteSpace).toBe(actual ? 'normal' : 'nowrap')
+      if (!actual) expect(getComputedStyle(code).textOverflow).toBe('ellipsis')
+    }
+    checkLayout(host.querySelector(`[data-rowid="${row.id}"]`)!, false)
+    expect(host.querySelector('[data-rowid="w1-0-2"] code')?.textContent).toBe('1×3 · 120')
+    click(host.querySelector('[role="switch"][aria-label="显示实际"]')!)
+    checkLayout(host.querySelector(`[data-rowid="${row.id}"]`)!, true)
+    checkLayout(host.querySelector('[data-student-added="curl"]')!, true)
+  } finally { style.remove() }
+})
+
 it('lets long per-set bricks wrap below a six-character name without losing hover text', () => {
   const style = document.createElement('style')
   style.textContent = readFileSync('src/features/plan-editor/components/block-grid.css', 'utf8')

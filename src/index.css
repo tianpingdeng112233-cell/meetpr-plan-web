@@ -3546,3 +3546,38 @@ textarea {
 .student-added-row > .numeric-cell { justify-content: center; }
 .student-added-row > .student-added-name { flex-direction: column; align-items: flex-start; justify-content: center; gap: 3px; font-size: 11px; }
 .student-added-row .actual-line { border-top: 0; margin-top: 0; padding-top: 0; }
+
+/* SPEC 013 overview counts */
+.roster-count { display:flex; align-items:center; justify-content:flex-end; }
+.roster-count button { height:24px; border:1px solid #D1D5DB; border-radius:12px; padding:0 9px; background:white; color:#111827; font:600 12px var(--font-mono); cursor:pointer; }
+.roster-count .roster-video-count { background:#111827; border-color:#111827; color:white; }
+.roster-count-sort { text-align:right; border:0; border-radius:4px; background:transparent; color:inherit; font:inherit; padding:4px; cursor:pointer; }
+.roster-count-sort.active { background:#FEF3C7; color:#111827; }
+
+/* SPEC 013: current athlete conversation alongside the editor. */
+.editor-chat { position:fixed; bottom:44px; z-index:65; }
+.editor-chat-toggle { width:52px; height:52px; border-radius:50%; border:0; background:#111827; color:white; display:grid; place-items:center; cursor:pointer; position:relative; }
+.editor-chat-toggle>span { position:absolute; right:-4px; top:-4px; min-width:20px; height:20px; box-sizing:content-box; border:2px solid var(--bg); border-radius:12px; background:#B91C1C; font:11px/20px var(--font-mono); }
+.editor-chat-window { width:360px; height:520px; max-height:calc(100vh - 110px); border:1px solid #E5E7EB; border-radius:12px; background:white; box-shadow:0 12px 36px #11182726; overflow:hidden; display:flex; flex-direction:column; }
+.editor-chat-head { height:48px; flex:0 0 48px; display:flex; align-items:center; gap:8px; padding:0 14px; border-bottom:1px solid #E5E7EB; }
+.editor-chat-head b { font-size:15px; }
+.editor-chat-head span { font-size:12px; color:#6B7280; }
+.editor-chat-head button { width:30px; height:30px; margin-left:auto; border:0; background:transparent; color:#6B7280; cursor:pointer; }
+.editor-chat .chat-page { flex:1; min-height:0; padding:0; gap:0; overflow:hidden; }
+.editor-chat .chat-main-panel { width:100%; min-width:0; border:0; border-radius:0; }
+.editor-chat .chat-thread { background:#FAFAFB; padding:14px; gap:10px; }
+.editor-chat .chat-bubble { max-width:100%; background:white; border:1px solid #E5E7EB; border-radius:10px 10px 10px 3px; }
+.editor-chat .chat-message { max-width:76%; }
+.editor-chat .chat-message.mine { align-self:flex-end; }
+.editor-chat .chat-bubble.mine { background:#111827; color:white; border-color:#111827; border-radius:10px 10px 3px 10px; }
+.editor-chat .chat-composer { padding:10px; }
+.editor-chat .chat-composer textarea { min-width:0; min-height:38px; font-family:inherit; }
+.editor-chat .chat-composer-row>button { min-height:38px; }
+
+.editor-chat .set-ref-bubble { padding:0; }
+.chat-video-capsule { width:100%; display:flex; align-items:center; gap:8px; padding:8px; border:0; border-radius:10px; background:white; color:#111827; text-align:left; cursor:pointer; }
+.chat-video-thumbnail { width:36px; height:48px; flex:0 0 36px; display:grid; place-items:center; background:#111827; color:white; border-radius:4px; }
+.chat-video-caption { min-width:0; display:flex; flex-direction:column; gap:4px; }
+.chat-video-caption b { font-size:13px; font-weight:600; }
+.chat-video-caption small { font-size:12px; color:#6B7280; }
+.chat-video-capsule em { margin-left:auto; flex-shrink:0; padding:2px 4px; font-size:10px; font-style:normal; background:#FEF3C7; color:#713F12; border-radius:4px; }

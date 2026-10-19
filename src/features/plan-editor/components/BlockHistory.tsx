@@ -1,88 +1,33 @@
-import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react'
-import { getExerciseStats, getUploadUrl } from '../../../api/coach'
-import type { ExerciseHistorySession, ExerciseHistorySet, ExerciseStatsDetail, ExerciseStatsOverview, StudentOnboardingProfile } from '../../../api/types'
+import { useEffect, useRef, useState } from 'react'
+import { getExerciseStats } from '../../../api/coach'
+import type { ExerciseHistorySession, ExerciseHistorySet, ExerciseStatsDetail, ExerciseStatsOverview, StudentOnboardingProfile, StudentVideo } from '../../../api/types'
 import { fmt, S } from '../../../i18n/strings'
 import type { ExerciseRow } from '../types'
 import { contextRailLevel, historyQuery, historySessions, historyTopSet, metricCells, Profile, RAIL_MODE_KEY } from './ContextRail'
 import { kg, shortDate } from '../../workspace/WorkspaceCommon'
-import { VideoFrameButtons, VideoSpeedButtons } from '../../workspace/VideoTransport'
+import { VideoWorkbench } from '../../workspace/VideoWorkbench'
+import type { FeedbackEntry } from '../feedbackModel'
+import type { FeedbackSession } from '../feedbackSession'
 import { useGlobalKeyboardHandler } from '../../workspace/globalKeyboard'
-import { frameStepTime } from '../../workspace/videoPlayback'
+const noRefresh = async () => {}
 
 const setLabel = (set: ExerciseHistorySet) => `${kg(set.weight_kg)}×${set.reps}${set.rpe ? ` @${Number(set.rpe)}` : ''}`
 
-const timeLabel = (seconds: number) => {
-  const safe = Number.isFinite(seconds) && seconds > 0 ? Math.floor(seconds) : 0
-  return `${Math.floor(safe / 60)}:${String(safe % 60).padStart(2, '0')}`
-}
-
-function HistoryPlayer({ id, title, anchor, onClose }: { id: string; title: string; anchor: RefObject<HTMLElement>; onClose: () => void }) {
-  const video = useRef<HTMLVideoElement>(null)
-  const [url, setUrl] = useState('')
-  const [error, setError] = useState(false)
-  const [rate, setRate] = useState(1)
-  const [duration, setDuration] = useState(0)
-  const [currentTime, setCurrentTime] = useState(0)
-  const [paused, setPaused] = useState(false)
-  const [position, setPosition] = useState({ top: 66, left: 8, width: 405 })
-  useLayoutEffect(() => {
-    const place = () => {
-      const rect = anchor.current?.getBoundingClientRect()
-      const top = Math.max(8, Math.min((rect?.top ?? 56) + 10, window.innerHeight - 120))
-      const right = Math.max(16, Math.min((rect?.left ?? window.innerWidth) - 8, window.innerWidth - 8))
-      const width = Math.max(1, Math.min(405, right - 8, (window.innerHeight - top - 112) * 9 / 16))
-      setPosition({ top, left: right - width, width })
-    }
-    place()
-    window.addEventListener('resize', place)
-    window.addEventListener('scroll', place, true)
-    return () => { window.removeEventListener('resize', place); window.removeEventListener('scroll', place, true) }
-  }, [anchor])
-  useGlobalKeyboardHandler(({ event }) => {
-    if (event.key !== 'Escape') return false
-    event.preventDefault()
-    onClose()
-    return true
-  }, 100)
-
-  useEffect(() => {
-    let cancelled = false
-    setUrl(''); setError(false); setDuration(0); setRate(1); setCurrentTime(0); setPaused(false)
-    void getUploadUrl(id).then(result => { if (!cancelled) setUrl(result.url) }).catch(() => { if (!cancelled) setError(true) })
-    return () => { cancelled = true }
-  }, [id])
-  return <div className="history-player" role="dialog" aria-label={S.video.trainingVideo} style={position}
-    onMouseDown={event => {
-      if ((event.target as HTMLElement).closest('button')) event.preventDefault()
-      event.stopPropagation()
-    }}>
-    <header><b>{title}</b><button onClick={onClose} aria-label={S.video.closePlayer}><kbd>Esc</kbd> ×</button></header>
-    {url ? <video ref={video} src={url} autoPlay playsInline onPlay={() => setPaused(false)} onPause={() => setPaused(true)} onTimeUpdate={() => setCurrentTime(video.current?.currentTime ?? 0)} onError={() => setError(true)} onLoadedMetadata={() => { const duration = video.current?.duration ?? 0; setDuration(Number.isFinite(duration) ? duration : 0); if (video.current) video.current.playbackRate = rate }} /> : <p>{error ? S.video.loadFailed : S.video.gettingLink}</p>}
-    {url && error && <p role="alert">{S.video.loadFailed}</p>}
-    <input className="history-progress" type="range" aria-label={S.video.progress} min={0} max={duration} step="any" value={currentTime} disabled={!duration}
-      onChange={event => { const time = Number(event.target.value); if (video.current) { video.current.currentTime = time; setCurrentTime(time) } }} />
-    <div className="history-transport">
-      <button type="button" aria-label={paused ? S.video.play : S.video.pause} disabled={!url} onClick={() => {
-        if (!video.current) return
-        if (video.current.paused) void video.current.play().catch(() => setError(true))
-        else video.current.pause()
-      }}>{paused ? '▶' : 'Ⅱ'}</button>
-      <VideoSpeedButtons compact rate={rate} onRate={value => { setRate(value); if (video.current) video.current.playbackRate = value }} />
-      <VideoFrameButtons compact duration={duration} onStep={direction => {
-        if (!video.current) return
-        const time = frameStepTime(video.current.currentTime, direction, duration)
-        if (time != null) { video.current.pause(); video.current.currentTime = time; setCurrentTime(time) }
-      }} /><time>{timeLabel(currentTime)} / {timeLabel(duration)}</time></div>
-  </div>
-}
-
-export function BlockHistory({ studentId, studentName, row, profile, overview, onVideos, onVideoVisibilityChange }: {
+export function BlockHistory({ studentId, studentName, row, profile, overview, onVideos, onVideoVisibilityChange, videos, entries = [], feedback = null, onFeedbackChange, onHighlight, onVideoViewed, onRefreshVideos }: {
   studentId?: string; studentName: string; row: ExerciseRow | null
   profile?: StudentOnboardingProfile | null; overview?: ExerciseStatsOverview | null
+  videos?: StudentVideo[] | null
+  entries?: FeedbackEntry[]
+  feedback?: FeedbackSession | null
+  onFeedbackChange?: (session: FeedbackSession | null) => void
+  onHighlight?: (entry: FeedbackEntry | null) => void
+  onVideoViewed?: (id: string) => Promise<void>
+  onRefreshVideos?: (studentId: string) => Promise<void>
   onVideos?: () => void
   onVideoVisibilityChange?: (open: boolean) => void
 }) {
   const rail = useRef<HTMLElement>(null)
+  const [sidebar, setSidebar] = useState<HTMLDivElement | null>(null)
   const [collapsed, setCollapsed] = useState(() => { try { return localStorage.getItem(RAIL_MODE_KEY) === 'collapsed' } catch { return false } })
   const [ceiling, setCeiling] = useState(4)
   const signature = `${row?.id}:${row?.exerciseId}:${row?.boxes.length}:${row?.reps}`
@@ -94,7 +39,7 @@ export function BlockHistory({ studentId, studentName, row, profile, overview, o
   const cache = useRef(new Map<string, Promise<ExerciseStatsDetail>>())
   const [result, setResult] = useState<{ key: string; detail?: ExerciseStatsDetail; failed?: boolean }>({ key: '' })
   const [retry, setRetry] = useState(0)
-  const [playing, setPlaying] = useState<{ id: string; title: string } | null>(null)
+  const [playing, setPlaying] = useState<{ id: string; title: string; video: StudentVideo } | null>(null)
   const editorFocus = useRef<HTMLElement | null>(null)
   const detail = result.key === key ? result.detail : undefined
   useEffect(() => {
@@ -121,6 +66,7 @@ export function BlockHistory({ studentId, studentName, row, profile, overview, o
     const active = document.activeElement
     const focus = active instanceof HTMLElement && active.closest('.block-cell') ? active : editorFocus.current
     setPlaying(null)
+    if (feedback) onFeedbackChange?.({ ...feedback, playerOpen: false })
     if (focus?.isConnected) focus.focus({ preventScroll: true })
     // Restoring a name input can open its picker; dismiss that after focus so the
     // next Escape reaches the edit card instead of being consumed by the picker.
@@ -129,16 +75,71 @@ export function BlockHistory({ studentId, studentName, row, profile, overview, o
   const videoButton = (set: ExerciseHistorySet, session: ExerciseHistorySession) => set.has_video || set.video_id ? <button className={isPlaying(set) ? 'playing' : ''} aria-label={set.video_id ? S.block.play : S.block.videos} onClick={() => {
     if (!set.video_id) { onVideos?.(); return }
     onVideoVisibilityChange?.(true)
-    setPlaying({ id: set.video_id, title: `${shortDate(session.date)} · ${fmt.exerciseName({ name: row!.name, name_en: row!.nameEn })} · ${S.video.setNumber(set.set_index + 1)} · ${setLabel(set)}` })
+    setPlaying({ id: set.video_id, video: videos?.find(video => video.id === set.video_id) ?? { id: set.video_id, set_log_id: null, plan_exercise_id: row?.serverRowId ?? null, content_type: 'video/mp4', size_bytes: 0, filename: '', created_at: session.date, logged_at: session.date, exercise_name: row?.name, set_index: set.set_index, weight_kg: set.weight_kg, reps: set.reps, rpe: set.rpe }, title: `${shortDate(session.date)} · ${fmt.exerciseName({ name: row!.name, name_en: row!.nameEn })} · ${S.video.setNumber(set.set_index + 1)} · ${setLabel(set)}` })
   }}>▶</button> : null
-  return <><aside ref={rail} data-block-history="" className={`block-history${collapsed ? ' collapsed' : ''}`} onMouseDown={event => {
+  const activeEntry = entries.find(entry => entry.video.id === feedback?.videoId)
+  const activeVideo = activeEntry?.video
+  const visibleEntries = entries.filter(entry => feedback?.includeViewed || entry.video.viewed_at == null)
+  const visibleIndex = visibleEntries.findIndex(entry => entry.video.id === feedback?.videoId)
+  const pending = entries.filter(entry => entry.video.viewed_at == null).length
+  const openEntry = (entry?: FeedbackEntry) => {
+    if (document.activeElement && rail.current?.contains(document.activeElement)) rail.current.focus({ preventScroll: true })
+    onFeedbackChange?.({ videoId: entry?.video.id ?? null, playerOpen: !!entry, includeViewed: feedback?.includeViewed ?? false })
+  }
+  const exitFeedback = () => {
+    onFeedbackChange?.(null); onHighlight?.(null)
+    if (document.activeElement instanceof HTMLElement && rail.current?.contains(document.activeElement)) document.activeElement.blur()
+    if (editorFocus.current?.isConnected) editorFocus.current.focus({ preventScroll: true })
+    onVideoVisibilityChange?.(false)
+  }
+  useEffect(() => { if (feedback) setPlaying(null) }, [!!feedback])
+  useEffect(() => { onHighlight?.(feedback ? activeEntry ?? null : null) }, [feedback?.videoId, activeEntry?.rowId, activeEntry?.dayId])
+  useEffect(() => { onVideoVisibilityChange?.(!!(feedback?.playerOpen && activeVideo) || !!playing) }, [feedback?.playerOpen, activeVideo?.id, playing?.id])
+  useGlobalKeyboardHandler(({ event, editable }) => {
+    if (event.key === 'Escape') {
+      if (feedback && editable && event.target instanceof HTMLElement && event.target.closest('.feedback-workbench,.history-player')) {
+        event.preventDefault(); event.target.blur(); rail.current?.focus({ preventScroll: true }); return true
+      }
+      if ((feedback?.playerOpen && activeVideo) || playing) { event.preventDefault(); closePlayer(); return true }
+      if (feedback) { event.preventDefault(); exitFeedback(); return true }
+      return false
+    }
+    if (!feedback || editable || event.metaKey || event.ctrlKey || event.altKey || !(event.target instanceof Node && rail.current?.contains(event.target))) return false
+    if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return false
+    event.preventDefault()
+    const index = entries.findIndex(entry => entry.video.id === feedback.videoId)
+    const candidates = event.key === 'ArrowLeft' ? entries.slice(0, index < 0 ? entries.length : index).reverse() : entries.slice(index + 1)
+    const next = candidates.find(entry => feedback.includeViewed || entry.video.viewed_at == null)
+    if (next) openEntry(next)
+    return true
+  }, 100)
+  const entryName = (entry: FeedbackEntry) => fmt.exerciseName({ name: entry.video.exercise_name || entry.video.filename || S.video.trainingVideo, name_en: entry.video.name_en })
+  const entryPlace = (entry: FeedbackEntry) => entry.inPlan ? `W${entry.week} · D${entry.day}` : shortDate(entry.video.logged_at ?? entry.video.created_at)
+  const title = activeEntry ? `${entryPlace(activeEntry)} · ${entryName(activeEntry)} · ${S.video.setNumber((activeVideo?.set_index ?? 0) + 1)} ${activeVideo?.weight_kg != null ? kg(activeVideo.weight_kg) : '—'}×${activeVideo?.reps ?? '—'}${activeVideo?.rpe ? ` @${Number(activeVideo.rpe)}` : ''}` : ''
+  const currentPlayer = feedback ? activeVideo ? { video: activeVideo, title } : null : playing
+  return <><aside ref={rail} data-block-history="" data-feedback-mode={feedback ? "" : undefined} tabIndex={-1} className={`block-history${collapsed && !feedback ? ' collapsed' : ''}`} onMouseDown={event => {
     const active = document.activeElement
     if (active instanceof HTMLElement && active.closest('.block-cell')) editorFocus.current = active
     // History controls never move the edit caret or invoke block-selection gestures.
-    if (!(event.target instanceof HTMLVideoElement)) event.preventDefault()
+    if (!feedback && !(event.target instanceof HTMLVideoElement)) event.preventDefault()
     event.stopPropagation()
   }}>
-    <header><span>{S.block.history}</span><button aria-label={collapsed ? S.block.expand : S.block.collapse} onClick={toggle}>{collapsed ? '‹' : '›'}</button></header>
+    {feedback ? <>
+      <header className="feedback-head"><button onClick={exitFeedback}>{S.block.backHistory}</button><b>{S.block.pendingVideos(pending)}</b><label><input type="checkbox" checked={feedback.includeViewed} onChange={event => onFeedbackChange?.({ ...feedback, includeViewed: event.target.checked })} />{S.block.includeViewed}</label></header>
+      {videos === null ? <p>{S.block.videosFailed} <button onClick={() => { if (studentId) void onRefreshVideos?.(studentId) }}>{S.common.retry}</button></p> : <div className="feedback-queue" tabIndex={0}>
+        {[true, false].map(inPlan => <section key={String(inPlan)}>
+          {!inPlan && visibleEntries.some(entry => !entry.inPlan) && <h4>{S.block.outsidePlan}</h4>}
+          {visibleEntries.filter(entry => entry.inPlan === inPlan).map(entry => <button key={entry.video.id} data-feedback-video={entry.video.id}
+            className={`${entry.video.id === feedback.videoId ? 'selected' : ''}${entry.video.viewed_at != null ? ' viewed' : ''}`}
+            onMouseEnter={() => onHighlight?.(entry)} onMouseLeave={() => onHighlight?.(activeEntry ?? null)}
+            onFocus={() => onHighlight?.(entry)} onClick={() => openEntry(entry)}>
+            <time>{entryPlace(entry)}</time><span>{entryName(entry)}{entry.addedExerciseId && <small> · {S.block.added}</small>}{!inPlan && entry.video.plan_exercise_id && <small> · {S.block.previousBlock}</small>}</span><small>{S.video.setNumber((entry.video.set_index ?? 0) + 1)}</small>
+          </button>)}
+        </section>)}
+      </div>}
+      <div ref={setSidebar} className="feedback-sidebar" />
+    </> : <>
+    <header><span>{S.block.history}</span>{!collapsed && onFeedbackChange && (videos === null ? <button className="pending-entry" onClick={() => { if (studentId) void onRefreshVideos?.(studentId) }}>{S.block.videosFailed} · {S.common.retry}</button> : <button className="pending-entry" onClick={() => openEntry(entries.find(entry => entry.video.viewed_at == null))}>▶ {S.block.pendingVideos(pending)}</button>)}<button aria-label={collapsed ? S.block.expand : S.block.collapse} onClick={toggle}>{collapsed ? '‹' : '›'}</button></header>
     {!collapsed && <div className="block-history-body">
       {!query ? <><h3>{studentName}</h3><Profile profile={profile} compact />
         <div className="history-metrics">{metricCells({ level: 1, profile, detail: null, overview, reps: 0, weight: null }).map(cell => <div key={cell.label}><b>{cell.value}</b><small>{cell.label}</small></div>)}</div>
@@ -162,7 +163,10 @@ export function BlockHistory({ studentId, studentName, row, profile, overview, o
         })}
       </>}
     </div>}
+    </>}
   </aside>
-    {playing && !collapsed && <HistoryPlayer {...playing} anchor={rail} onClose={closePlayer} />}
+    {currentPlayer && (!collapsed || feedback) && <VideoWorkbench studentId={studentId ?? ''} videos={videos} onRefreshVideos={onRefreshVideos ?? noRefresh}
+      embedded={{ ...currentPlayer, playerOpen: feedback ? feedback.playerOpen : true, anchor: rail, onClose: closePlayer, onVideoViewed, sidebar: feedback ? sidebar : null, studentName,
+        positionLabel: feedback && visibleIndex >= 0 ? `${visibleIndex + 1} / ${visibleEntries.length}` : undefined }} /> }
   </>
 }

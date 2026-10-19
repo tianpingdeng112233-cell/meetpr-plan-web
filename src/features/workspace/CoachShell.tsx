@@ -11,14 +11,13 @@ import { usePersistentCollapse } from './usePersistentCollapse'
 import { useGlobalKeyboardHandler } from './globalKeyboard'
 import { fmt, S } from '../../i18n/strings'
 
-export type CoachView = 'board' | 'editor' | 'messages' | 'catalog' | 'requests' | 'tracking'
+export type CoachView = 'board' | 'editor' | 'catalog' | 'requests' | 'tracking'
 
 type Badge = { count: number; tone: 'danger' | 'muted'; label: string }
 
 const navItems = (): { id: CoachView; label: string; short: string }[] => [
   { id: 'board', label: S.workspace.nav.overview, short: S.workspace.nav.overviewShort },
   { id: 'editor', label: S.workspace.nav.editor, short: S.workspace.nav.editorShort },
-  { id: 'messages', label: S.workspace.nav.feedback, short: S.workspace.nav.feedbackShort },
   { id: 'catalog', label: S.workspace.nav.catalog, short: S.workspace.nav.catalogShort },
   { id: 'requests', label: S.workspace.nav.requests, short: S.workspace.nav.requestsShort },
   { id: 'tracking', label: S.workspace.nav.tracking, short: S.workspace.nav.trackingShort },
@@ -27,14 +26,13 @@ const navItems = (): { id: CoachView; label: string; short: string }[] => [
 const viewShortcuts = (): Record<CoachView, string> => ({
   board: S.workspace.shortcuts.board,
   editor: S.workspace.shortcuts.editor,
-  messages: S.workspace.shortcuts.feedback,
   catalog: S.workspace.shortcuts.catalog,
   requests: '',
   tracking: '',
 })
 
 const viewCrumbs = (): Record<CoachView, string> => ({
-  board: S.workspace.nav.overview, editor: S.workspace.nav.editor, messages: S.workspace.nav.feedback,
+  board: S.workspace.nav.overview, editor: S.workspace.nav.editor,
   catalog: S.workspace.nav.catalog, requests: S.workspace.nav.requests, tracking: S.workspace.nav.tracking,
 })
 
@@ -80,9 +78,9 @@ export function CoachShell({
   onCommandExercise = () => {},
 }: CoachShellProps) {
   const badges = useMemo<Partial<Record<CoachView, Badge>>>(() => ({
-    messages: {
+    editor: {
       count: unreadCount + (videoCount ?? 0),
-      tone: unreadCount > 0 ? 'danger' : 'muted',
+      tone: 'danger',
       label: videoCount == null
         ? S.workspace.unreadBadge(unreadCount)
         : S.workspace.unreadVideoBadge(unreadCount, videoCount),

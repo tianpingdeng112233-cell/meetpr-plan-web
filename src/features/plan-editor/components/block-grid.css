@@ -30,6 +30,11 @@
 /* Wrap at intrinsic text widths before either label can squeeze the name. */
 .block-brick > span { flex: 1 1 auto; min-width: min(6em, 100%); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; line-height: 22px; }
 .block-brick code { flex: 0 1 auto; min-width: 0; max-width: 100%; margin-left: auto; text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 12px/22px var(--font-mono); }
+/* Wrap the whole summary below the name; only its text may shrink or wrap.
+   End alignment keeps the status beside the last line of actual shorthand. */
+.block-brick-summary { display: flex; flex: 0 1 auto; flex-wrap: nowrap; align-items: flex-end; gap: 5px; min-width: 0; max-width: 100%; margin-left: auto; }
+.block-brick-status { display: inline-flex; flex: 0 0 auto; align-items: center; gap: 5px; height: 22px; white-space: nowrap; font: 12px/22px var(--font-mono); }
+.block-brick-status:empty { display: none; }
 .block-brick.aux > span { font-weight: 400; color: #4b5563; }
 .block-brick.section-start { margin-top: 9px; position: relative; }
 .block-brick.section-start::before { content: ''; position: absolute; height: 1px; background: #e9ebee; top: -6px; left: 0; right: 0; }
@@ -107,3 +112,23 @@
 .block-insert-menu { position: absolute; top: 50%; left: 8px; z-index: 20; min-width: 140px; padding: 4px; background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; box-shadow: 0 4px 12px #11182718; }
 .block-insert-menu button { display: block; width: 100%; border: 0; padding: 8px; background: white; color: #111827; text-align: left; white-space: nowrap; cursor: pointer; }
 .block-insert-menu button:hover { background: #f5f6f8; }
+
+/* Feedback markers remain independent of brick selection and prescription data. */
+.block-video-marker { display:inline-flex; align-items:center; justify-content:center; gap:3px; height:16px; min-width:16px; flex:0 0 auto; padding:0 5px; border-radius:8px; border:0; font:10px/1 var(--font-mono); cursor:pointer; }
+.block-video-marker.pending { background:#111827; color:#fff; }
+.block-video-marker.viewed { width:16px; padding:0; background:white; border:1px solid #c4c8cf; color:#9ca3af; }
+.block-video-marker > span:first-child { font-size:8px; }
+.added-video-marker { display:inline-flex; align-items:center; gap:4px; font:11px var(--font-sans); color:#6b7280; }
+.block-brick.video-highlight,.block-cell .exrow.video-highlight,.block-cell .student-added-row.video-highlight { background:#fef3c7; outline:1.5px solid #111827; outline-offset:-1px; }
+.block-brick.prescribed-muted > span,.block-brick.prescribed-muted code { color:#9ca3af; }
+.block-brick.student-added-brick { background:#fafafb; border:1px dashed #d1d5db; cursor:default; }
+.block-brick.student-added-brick small { color:#6b7280; font:11px var(--font-sans); }
+.block-brick.actual-display code,.block-brick.student-added-brick code { white-space:normal; overflow-wrap:anywhere; overflow:visible; }
+.block-topbar .show-actuals { display:inline-flex; align-items:center; gap:7px; height:32px; border-radius:16px; font-size:12px; font-weight:400; color:#6b7280; }
+.block-topbar .show-actuals i { width:30px; height:18px; border-radius:9px; background:#d1d5db; position:relative; }
+.block-topbar .show-actuals i::after { content:''; position:absolute; width:14px; height:14px; top:2px; left:2px; background:#fff; border-radius:50%; }
+.block-topbar .show-actuals[aria-checked="true"] { background:#fef3c7; border-color:#111827; color:#111827; font-weight:600; }
+.block-topbar .show-actuals[aria-checked="true"] i { background:#111827; }
+.block-topbar .show-actuals[aria-checked="true"] i::after { left:14px; }
+.block-brick[data-hint],.block-video-marker[data-hint] { position:relative; }
+.block-brick[data-hint]:hover::after,.block-video-marker[data-hint]:hover::after { content:attr(data-hint); position:absolute; bottom:calc(100% + 5px); right:0; z-index:35; width:max-content; max-width:320px; border-radius:6px; background:#111827; color:white; padding:6px 8px; font:12px/1.5 var(--font-mono); white-space:normal; pointer-events:none; }

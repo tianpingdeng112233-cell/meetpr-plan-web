@@ -113,8 +113,10 @@ describe('CoachShell', () => {
     expect(host.querySelectorAll('.coach-nav-item.active')).toHaveLength(1)
     expect(host.querySelector('.coach-nav-item.active')?.firstElementChild?.textContent).toBe('动作库')
     expect(host.querySelector('[data-testid="content"]')?.textContent).toBe('catalog')
-    expect(host.querySelectorAll('.coach-nav-item')).toHaveLength(6)
+    expect(host.querySelectorAll('.coach-nav-item')).toHaveLength(5)
     expect(navButton(host, '追踪')).not.toBeNull()
+    await act(async () => { host.querySelector<HTMLButtonElement>('.coach-search-shell')?.click() })
+    expect(host.querySelector('[role="listbox"]')?.textContent).not.toContain('反馈工作区')
   })
 
   it('derives danger and muted badges from the supplied data counts', async () => {
@@ -122,9 +124,9 @@ describe('CoachShell', () => {
       root.render(<ShellHarness unreadCount={5} requestCount={2} videoCount={3} exerciseCount={1} />)
     })
 
-    expect(navButton(host, '反馈工作区').querySelector('.coach-nav-badge.danger')?.textContent).toBe('8')
-    expect(navButton(host, '反馈工作区').querySelector('.coach-nav-badge')?.getAttribute('aria-label'))
-      .toBe('5 条未读，3 条视频待审')
+    expect(navButton(host, '计划编排').querySelector('.coach-nav-badge.danger')?.textContent).toBe('8')
+    expect(navButton(host, '计划编排').querySelector('.coach-nav-badge')?.getAttribute('aria-label'))
+      .toBe('5 条未读，3 段待看视频')
     expect(navButton(host, '学员申请').querySelector('.coach-nav-badge.danger')?.textContent).toBe('2')
     expect(navButton(host, '动作库').querySelector('.coach-nav-badge.muted')?.textContent).toBe('1')
   })
@@ -147,12 +149,12 @@ describe('CoachShell', () => {
     expect(navigation.classList.contains('collapsed')).toBe(true)
     expect(toggle.getAttribute('aria-expanded')).toBe('false')
     expect(window.localStorage.getItem('meetpr:sidebar:coach-shell')).toBe('true')
-    const messages = navigation.querySelector<HTMLButtonElement>('[title="反馈工作区"]')!
-    expect(messages.textContent).toContain('反')
-    expect(messages.getAttribute('aria-label')).toBe('反馈工作区，5 条未读，0 条视频待审')
+    const messages = navigation.querySelector<HTMLButtonElement>('[title="计划编排"]')!
+    expect(messages.textContent).toContain('编')
+    expect(messages.getAttribute('aria-label')).toBe('计划编排，5 条未读，0 段待看视频')
     expect(messages.querySelector('.coach-nav-badge.danger')?.textContent).toBe('5')
     expect(messages.querySelector('.coach-nav-badge.danger')?.getAttribute('aria-hidden')).toBe('true')
-    expect(navigation.querySelector<HTMLButtonElement>('[title="计划编排"]')?.getAttribute('aria-label')).toBe('计划编排')
+
 
     act(() => root.unmount())
     root = createRoot(host)

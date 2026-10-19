@@ -2,6 +2,7 @@ import type { Translations } from './types'
 import { countUnit } from './plural'
 
 export const zhChat = {
+  messagePlaceholder: '发消息…', unwatchedVideo: '待看',
   quickReplies: ['按计划完成，很好，下周继续加。', '这组速度掉得太多，下周降 5% 重量。', '视频收到了，我今晚逐组给你反馈。', '这周先别硬顶，睡够再练。', '距比赛还有 5 周，注意控体重。'],
   unnamedStudent: '未命名学员', bindLost: '该学员已不在你的名下', startFailed: '发起对话失败，请重试',
   unbound: '已解除绑定', unboundParenthesized: '（已解除绑定）', assessment: '评估期', activeStudent: '在训学员',
@@ -22,6 +23,7 @@ export const zhChat = {
 } as const
 
 export const enChat = {
+  messagePlaceholder: 'Message…', unwatchedVideo: 'Unwatched',
   quickReplies: ['Completed as planned. Great work—add more next week.', 'Speed dropped too much on this set. Reduce the weight by 5% next week.', 'I received the video. I’ll send set-by-set feedback tonight.', 'Do not grind this week. Get enough sleep before training.', 'Five weeks until the meet. Keep an eye on bodyweight.'],
   unnamedStudent: 'Unnamed athlete', bindLost: 'This athlete is no longer linked to you', startFailed: 'Could not start the conversation. Try again.',
   unbound: 'Unlinked', unboundParenthesized: '(Unlinked)', assessment: 'Assessment', activeStudent: 'Active athlete', noUnread: 'No unread messages',

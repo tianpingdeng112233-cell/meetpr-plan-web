@@ -10,6 +10,7 @@ import type {
   LiftFamily,
   PlanResponse,
   StudentOnboardingProfile,
+  StudentVideo,
 } from '../../api/types'
 import type { ExerciseIndex } from '../plan-editor/exerciseIndex'
 import type { Catalog } from '../plan-editor/mapping'
@@ -44,7 +45,7 @@ export function SessionDetail({ detail, limit = 6 }: { detail: ExerciseStatsDeta
 }
 
 // ── 总览（mock 1:1 扫视表）──────────────────────────────────────
-export const ROSTER_GRID_COLUMNS = '290px 104px 116px 84px 78px 156px 80px 1fr'
+export const ROSTER_GRID_COLUMNS = '290px 104px 116px 84px 78px 156px 80px 1fr 88px 88px'
 
 // ── 花名册 e1RM 徽章(拍板 A,2026-08-09:一列紧凑三项;↑绿 ↓红 →灰,红仅点缀不大面积)──
 const E1RM_FAMILIES: LiftFamily[] = ['squat', 'bench', 'deadlift']
@@ -98,6 +99,9 @@ export interface RosterBoardProps {
   dataByStudent: RosterDataByStudent
   plansByStudent: Record<string, PlanResponse[]>
   conversations: ChatConversation[] | null
+  videosByStudent?: Readonly<Record<string, StudentVideo[] | null | undefined>>
+  onOpenVideos?: (studentId: string) => void
+  onOpenChat?: (studentId: string) => void
   rows?: readonly RosterOverviewRow[]
   counts?: RosterCounts
   onSelect: (studentId: string) => void
@@ -139,6 +143,9 @@ export function RosterBoard({
   dataByStudent,
   plansByStudent,
   conversations,
+  videosByStudent,
+  onOpenVideos,
+  onOpenChat,
   rows: suppliedRows,
   counts: suppliedCounts,
   onSelect,
@@ -148,17 +155,27 @@ export function RosterBoard({
   onRetryWeekTonnage,
   onRetryPlans,
 }: RosterBoardProps) {
+  const [sort, setSort] = useState<{ key: 'pendingVideoCount' | 'unreadCount'; descending: boolean } | null>(null)
   const [tab, setTab] = useState<RosterTab>('all')
   const derivedRows = useMemo(() => deriveRosterRows({
     students,
     dataByStudent,
     plansByStudent,
     conversations,
-  }), [conversations, dataByStudent, plansByStudent, students])
+    videosByStudent,
+  }), [conversations, dataByStudent, plansByStudent, students, videosByStudent])
   const rows = suppliedRows ?? derivedRows
   const derivedCounts = useMemo(() => deriveRosterCounts(rows), [rows])
   const counts = suppliedCounts ?? derivedCounts
-  const visibleRows = useMemo(() => filterRosterRows(rows, tab), [rows, tab])
+  const visibleRows = useMemo(() => {
+    const filtered = filterRosterRows(rows, tab)
+    return sort ? [...filtered].sort((a, b) => {
+      const left = a[sort.key], right = b[sort.key]
+      if (left == null) return right == null ? 0 : 1
+      if (right == null) return -1
+      return (left - right) * (sort.descending ? -1 : 1)
+    }) : filtered
+  }, [rows, tab, sort])
   const tabs: { id: RosterTab; label: string; count: number }[] = [
     { id: 'all', label: S.stats.board.allStudents, count: counts.all },
     { id: 'pending', label: S.stats.board.pending, count: counts.pending },
@@ -223,6 +240,13 @@ export function RosterBoard({
         <span>{S.stats.board.e1rm}</span>
         <span>{S.stats.board.meetDistance}</span>
         <span>{S.stats.board.nextWeekPlan}</span>
+        {(['pendingVideoCount', 'unreadCount'] as const).map(key => <button type="button" key={key}
+          className={`roster-count-sort${sort?.key === key ? ' active' : ''}`}
+          aria-label={key === 'pendingVideoCount' ? S.stats.board.pendingVideos : S.stats.board.unreadMessages}
+          onClick={() => setSort(current => ({ key, descending: current?.key === key ? !current.descending : true }))}>
+          {key === 'pendingVideoCount' ? S.stats.board.pendingVideos : S.stats.board.unreadMessages}
+          {sort?.key === key && (sort.descending ? ' ⌄' : ' ⌃')}
+        </button>)}
       </div>
       <div className="roster-overview-scroll">
         {visibleRows.map((row) => {
@@ -253,7 +277,6 @@ export function RosterBoard({
               <span className="roster-overview-student">
                 <kbd>{row.ordinal}</kbd>
                 <b>{row.student.display_name}</b>
-                {row.unreadCount > 0 && <i aria-label={S.stats.board.unread(row.unreadCount)} />}
                 <StudentPlanCursorBadges cursor={row.data.planCursor} compact />
               </span>
               <span className="roster-overview-profile">{profileMetric(row.data.profile)}</span>
@@ -308,6 +331,18 @@ export function RosterBoard({
                     )}
                   </span>}
               </RosterCellState>
+              <span className="roster-count" data-count="videos">
+                {row.pendingVideoCount == null ? <span aria-label={S.common.loadingEllipsis}>…</span> : row.pendingVideoCount > 0
+                  ? <button type="button" className="roster-video-count" title={S.stats.board.openPendingVideos(row.student.display_name)}
+                      onDoubleClick={event => event.stopPropagation()}
+                      onClick={event => { event.stopPropagation(); onOpenVideos?.(row.student.id) }}>▶ {row.pendingVideoCount}</button>
+                  : <MissingValue />}
+              </span>
+              <span className="roster-count" data-count="messages">
+                {row.unreadCount > 0 ? <button type="button" title={S.stats.board.openUnreadMessages(row.student.display_name)}
+                  onDoubleClick={event => event.stopPropagation()}
+                  onClick={event => { event.stopPropagation(); onOpenChat?.(row.student.id) }}>{row.unreadCount}</button> : <MissingValue />}
+              </span>
             </div>
           )
         })}

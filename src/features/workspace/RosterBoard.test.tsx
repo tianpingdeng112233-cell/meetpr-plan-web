@@ -7,6 +7,7 @@ import type {
   ExerciseStatsOverview,
   PlanResponse,
   StudentOnboardingProfile,
+  StudentVideo,
 } from '../../api/types'
 import { RosterBoard, RosterE1rmBadges, ROSTER_GRID_COLUMNS } from './StatsViews'
 import { competitionDistance, FAILED_ROSTER_DATUM, type RosterDataByStudent } from './rosterOverview'
@@ -123,6 +124,34 @@ describe('RosterBoard overview', () => {
       )
     })
   }
+
+  it('013 shows actionable counts, removes name dots, and sorts each count descending on first click', async () => {
+    const onOpenVideos = vi.fn(), onOpenChat = vi.fn()
+    await act(async () => root.render(<RosterBoard students={students} selectedStudentId="a"
+      dataByStudent={dataByStudent} plansByStudent={{ a: [], b: [], c: [] }}
+      conversations={[conversation, { ...conversation, id: 'cb', other_party: { id: 'b', display_name: '乙' }, unread_count: 5 }]}
+      videosByStudent={{ a: [{ id: 'va', viewed_at: null } as StudentVideo], b: [], c: [
+        { id: 'vc', viewed_at: null } as StudentVideo,
+        { id: 'vd', viewed_at: null } as StudentVideo,
+        { id: 've', viewed_at: 'seen' } as StudentVideo,
+      ] }} onSelect={onSelect} onOpen={onOpen} onOpenVideos={onOpenVideos} onOpenChat={onOpenChat} />))
+    const names = () => [...host.querySelectorAll('.roster-overview-student b')].map(n => n.textContent)
+    expect(names()).toEqual(['甲', '乙', '丙'])
+    expect(host.querySelector('.roster-overview-student i')).toBeNull()
+    expect(host.querySelector('[data-student-id="b"] [data-count="videos"]')?.textContent).toBe('—')
+    expect(host.querySelector('[data-student-id="c"] [data-count="videos"] button')?.textContent).toBe('▶ 2')
+    const sort = (label: string) => [...host.querySelectorAll<HTMLButtonElement>('.roster-overview-head button')].find(b => b.textContent?.includes(label))!
+    await act(async () => sort('待看视频').click())
+    expect(names()).toEqual(['丙', '甲', '乙'])
+    await act(async () => sort('未读消息').click())
+    expect(names()).toEqual(['乙', '甲', '丙'])
+    await act(async () => host.querySelector<HTMLButtonElement>('[data-student-id="a"] [data-count="videos"] button')!.click())
+    await act(async () => host.querySelector<HTMLButtonElement>('[data-student-id="b"] [data-count="messages"] button')!.click())
+    expect(onOpenVideos).toHaveBeenCalledWith('a')
+    expect(onOpenChat).toHaveBeenCalledWith('b')
+    expect(onSelect).not.toHaveBeenCalled()
+    expect(onOpen).not.toHaveBeenCalled()
+  })
 
   it('derives tab counts and filters the actual rows', async () => {
     await renderBoard()

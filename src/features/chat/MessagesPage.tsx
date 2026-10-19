@@ -32,13 +32,15 @@ import { parseSetRefMessage, SetRefCard } from './setRef'
 import { useClockTick, useVisiblePolling } from './useVisiblePolling'
 import { usePersistentCollapse } from '../workspace/usePersistentCollapse'
 import { useGlobalKeyboardHandler } from '../workspace/globalKeyboard'
-import type { VideoTarget } from '../workspace/VideosPage'
+import type { ChatVideoTarget } from './setRef'
 import { resolveLocale, S } from '../../i18n/strings'
 import { registerReloadBlocker } from '../../reloadSafety'
 
 const INTERACTION_WINDOW_MS = 120_000
 const MAX_MESSAGE_CHARS = 4000
 export interface MessagesPageProps {
+  floating?: boolean
+  renderVideoCapsule?: (message: ChatMessage) => React.ReactNode
   me: AuthUser
   students: CoachStudent[]
   selectedStudentId: string
@@ -56,7 +58,7 @@ export interface MessagesPageProps {
   onReadStateApplied: (conversationId: string, state: ChatReadState) => void
   onBindLost: (conversationId: string) => void
   onSessionExpired: () => void
-  onPlayVideo?: (studentId: string, target: Omit<VideoTarget, 'requestId'>) => void
+  onPlayVideo?: (studentId: string, target: ChatVideoTarget) => void
 }
 
 const newerCursor = (left: ChatReadCursor | null, right: ChatReadCursor | null) => {
@@ -66,6 +68,8 @@ const newerCursor = (left: ChatReadCursor | null, right: ChatReadCursor | null) 
 }
 
 export default function MessagesPage({
+  floating = false,
+  renderVideoCapsule,
   me,
   students,
   selectedStudentId,
@@ -86,7 +90,8 @@ export default function MessagesPage({
   onPlayVideo,
 }: MessagesPageProps) {
   const now = useClockTick(60_000)
-  const [threadCollapsed, toggleThread] = usePersistentCollapse('meetpr:column:student-hub:chat')
+  const [savedThreadCollapsed, toggleThread] = usePersistentCollapse('meetpr:column:student-hub:chat')
+  const threadCollapsed = !floating && savedThreadCollapsed
   const localSelection = useRef<{ conversationId: string; selectedStudentId: string } | null>(null)
   const selectedStudentRef = useRef(selectedStudentId)
   selectedStudentRef.current = selectedStudentId
@@ -188,7 +193,8 @@ export default function MessagesPage({
   }
 
   return <main className={`chat-page${threadCollapsed ? ' thread-collapsed' : ''}`}>
-    <aside className="chat-sidebar" aria-label={S.chat.studentList}>
+    {floating && openError && <div className="chat-open-error">{openError}</div>}
+    {!floating && <aside className="chat-sidebar" aria-label={S.chat.studentList}>
       <header className="chat-panel-head chat-list-head">
         <b>{S.common.student}</b>
         <button type="button" className="chat-next-unread" onClick={nextUnread}>
@@ -211,9 +217,9 @@ export default function MessagesPage({
             onOpen={selectConversation}
             onStart={(studentId) => { onStudentChange(studentId) }}
           />}
-    </aside>
+    </aside>}
     <section className={`chat-main-panel${threadCollapsed ? ' collapsed' : ''}`} aria-label={S.chat.messages}>
-      <header className="chat-panel-head chat-thread-head">
+      {!floating && <header className="chat-panel-head chat-thread-head">
         {active && <>
           <span className="chat-thread-avatar">{active.other_party.display_name.slice(0, 1) || '?'}</span>
           <b>{active.other_party.display_name || S.chat.unnamedStudent}</b>
@@ -238,7 +244,7 @@ export default function MessagesPage({
         >
           {threadCollapsed ? '›' : '‹'}
         </button>
-      </header>
+      </header>}
       {conversations === null
         ? <div className="empty-state">{S.common.loadingEllipsis}</div>
         : synchronizedActiveId == null
@@ -257,6 +263,8 @@ export default function MessagesPage({
           : active
             ? <ConversationThread
                 key={active.id}
+                renderVideoCapsule={renderVideoCapsule}
+                compact={floating}
                 me={me}
                 conversation={active}
                 studentName={active.other_party.display_name || S.chat.unnamedStudent}
@@ -367,6 +375,8 @@ function ConversationList({
 }
 
 function ConversationThread({
+  renderVideoCapsule,
+  compact,
   me,
   conversation,
   studentName,
@@ -382,6 +392,8 @@ function ConversationThread({
   onSessionExpired,
   onPlayVideo,
 }: {
+  compact?: boolean
+  renderVideoCapsule?: (message: ChatMessage) => React.ReactNode
   me: AuthUser
   conversation: ChatConversation
   studentName: string
@@ -395,7 +407,7 @@ function ConversationThread({
   onMissing: () => void
   onBindLost: () => void
   onSessionExpired: () => void
-  onPlayVideo: (target: Omit<VideoTarget, 'requestId'>) => void
+  onPlayVideo: (target: ChatVideoTarget) => void
 }) {
   const [snapshot, setSnapshot] = useState(conversation)
   const snapshotRef = useRef(conversation)
@@ -733,6 +745,7 @@ function ConversationThread({
         <div className="chat-day-label">{group.label}</div>
         {group.messages.map((message) => <ChatBubble
           key={message.id}
+          videoCapsule={renderVideoCapsule?.(message)}
           message={message}
           mine={message.sender_id === me.id}
           senderLabel={studentName}
@@ -760,6 +773,7 @@ function ConversationThread({
         </section>}
     </div>
     <ChatComposer
+      compact={compact}
       conversationId={conversation.id}
       initialDraft={initialDraft}
       disabled={sessionDead || bindLost}
@@ -781,7 +795,8 @@ function PendingBubble({ item }: { item: OutboxItem }) {
   </div>
 }
 
-function ChatComposer({ conversationId, initialDraft, disabled, onDraftChange }: {
+function ChatComposer({ conversationId, initialDraft, disabled, onDraftChange, compact }: {
+  compact?: boolean
   conversationId: string
   initialDraft: string
   disabled: boolean
@@ -806,7 +821,8 @@ function ChatComposer({ conversationId, initialDraft, disabled, onDraftChange }:
   }
   useGlobalKeyboardHandler(({ event, editable }) => {
     if (
-      disabled
+      compact
+      || disabled
       || editable
       || !event.altKey
       || event.metaKey
@@ -841,7 +857,7 @@ function ChatComposer({ conversationId, initialDraft, disabled, onDraftChange }:
   }
 
   return <form className="chat-composer" onSubmit={submit}>
-    <div className="chat-quick-replies" aria-label={S.chat.quickRepliesAria}>
+    {!compact && <div className="chat-quick-replies" aria-label={S.chat.quickRepliesAria}>
       {quickReplies.map((reply, index) => <button
         type="button"
         className="chat-quick-reply"
@@ -852,7 +868,7 @@ function ChatComposer({ conversationId, initialDraft, disabled, onDraftChange }:
         <span>{reply}</span>
         <kbd>⌥{index + 1}</kbd>
       </button>)}
-    </div>
+    </div>}
     <div className="chat-composer-row">
       <textarea
         aria-label={S.chat.inputMessage}
@@ -860,7 +876,7 @@ function ChatComposer({ conversationId, initialDraft, disabled, onDraftChange }:
         maxLength={MAX_MESSAGE_CHARS}
         rows={1}
         disabled={disabled}
-        placeholder={disabled ? S.chat.cannotSend : S.chat.inputMessage}
+        placeholder={disabled ? S.chat.cannotSend : compact ? S.chat.messagePlaceholder : S.chat.inputMessage}
         onCompositionStart={() => { composing.current = true }}
         onCompositionEnd={(event) => { composing.current = false; changeDraft(event.currentTarget.value) }}
         onChange={(event) => changeDraft(event.currentTarget.value)}
@@ -868,13 +884,14 @@ function ChatComposer({ conversationId, initialDraft, disabled, onDraftChange }:
         onBlur={() => onDraftChange(draftRef.current)}
       />
       <button type="submit" disabled={disabled || draft.trim() === ''}>
-        {S.common.send} <span>⌘↵</span>
+        {S.common.send} {!compact && <span>⌘↵</span>}
       </button>
     </div>
   </form>
 }
 
-function ChatBubble({ message, mine, senderLabel, receipt, imageUnavailable, onImageError, onPlayVideo }: {
+function ChatBubble({ videoCapsule, message, mine, senderLabel, receipt, imageUnavailable, onImageError, onPlayVideo }: {
+  videoCapsule?: React.ReactNode
   message: ChatMessage
   mine: boolean
   senderLabel: string
@@ -890,7 +907,7 @@ function ChatBubble({ message, mine, senderLabel, receipt, imageUnavailable, onI
       <time>{chatClockTime(message.created_at)}</time>
     </div>
     <div className={`chat-bubble${mine ? ' mine' : ''}${hasSetRef ? ' set-ref-bubble' : ''}`}>
-      {renderMessageBody(message, onImageError, imageUnavailable, onPlayVideo)}
+      {videoCapsule ?? renderMessageBody(message, onImageError, imageUnavailable, onPlayVideo)}
     </div>
     {/* No set-ref guard needed: a receipt only ever attaches to a message this
         coach sent, and §3 lets only the student send a set card (a coach who

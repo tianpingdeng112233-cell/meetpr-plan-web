@@ -122,9 +122,9 @@ describe('English locale smoke', () => {
       exercise_type: 'main_lift', plan_count: 1, coach_count: 1,
     }] })
 
-    const [{ AdminWorkspace }, { VideosPage }, { SetRefCard }] = await Promise.all([
+    const [{ AdminWorkspace }, { BlockHistory }, { SetRefCard }] = await Promise.all([
       import('../features/admin/AdminWorkspace'),
-      import('../features/workspace/VideosPage'),
+      import('../features/plan-editor/components/BlockHistory'),
       import('../features/chat/setRef'),
     ])
     const host = document.createElement('div')
@@ -154,9 +154,9 @@ describe('English locale smoke', () => {
       set_index: 0, weight_kg: '140', reps: 1, rpe: '8.0', coach_rpe: null, viewed_at: null,
     }]
     await act(async () => {
-      root.render(<VideosPage studentId="athlete-1" videos={videos} onRefreshVideos={async () => undefined} />)
+      root.render(<BlockHistory studentId="athlete-1" studentName="Athlete" row={null} videos={videos} entries={videos.map(video => ({ video, inPlan: false }))} feedback={{ videoId: null, playerOpen: false, includeViewed: false }} onFeedbackChange={() => {}} />)
     })
-    const videoList = host.querySelector<HTMLElement>('.videos-master')!
+    const videoList = host.querySelector<HTMLElement>('.feedback-queue')!
     expect(videoList.textContent).toContain('Competition Squat')
     expect(videoList.innerHTML).not.toMatch(CJK)
 
