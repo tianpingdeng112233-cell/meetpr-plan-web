@@ -1728,6 +1728,28 @@ export function PlanEditor(props: PlanEditorProps) {
     setStatusText(displayedTarget && displayedWeek ? S.editor.pastedTo(dayDisplay(displayedWeek, displayedTarget)) : S.editor.pasted)
   }, [pasteRowsIntoSelection, props.exerciseIndex, sel, setWeeksWithHistory, weeks])
 
+  const restoreHistoryDayDeletions = useCallback((target: Week[], historical: TrackedDayDeletion[]) => {
+    const targetDay = (weekNumber: number, dow: number) => target.find(week => week.num === weekNumber)?.days.find(day => day.dow === dow)
+    // Consecutive undo/redo must retain pending removals while their days remain
+    // absent, but restoring a day cancels its pending removal.
+    const retained = deletedDaysRef.current.filter(deleted => {
+      const day = targetDay(deleted.weekNumber, deleted.dow)
+      return !day || !isBlockTrainingDay(day)
+    })
+    deletedDaysRef.current = [...new Map([...historical, ...retained].map(deleted => [deleted.sourceToken, deleted])).values()]
+    // Undoing a day insertion is an explicit removal too. Keep its identity for
+    // the existing save adapter, including an autosave response still in flight.
+    for (const week of latestWeeks.current) for (const day of week.days) {
+      const restored = targetDay(week.num, day.dow)
+      if (!isBlockTrainingDay(day) || (restored && isBlockTrainingDay(restored)) || blockDayDeletionLocked(day)
+        || (day.serverDayId && studentAddedByDay.get(day.serverDayId)?.length)) continue
+      const sourceToken = daySourceToken(day.rows)
+      if (!deletedDaysRef.current.some(deleted => deleted.sourceToken === sourceToken)) {
+        deletedDaysRef.current.push({ id: day.serverDayId ?? null, weekNumber: week.num, dow: day.dow, sourceToken })
+      }
+    }
+  }, [daySourceToken, studentAddedByDay])
+
   const undoWeeks = useCallback(() => {
     const prev = historyRef.current.pop()
     if (!prev) {
@@ -1735,7 +1757,7 @@ export function PlanEditor(props: PlanEditorProps) {
       return
     }
     redoDeletedDaysRef.current = [...redoDeletedDaysRef.current.slice(-49), deletedDaysRef.current]
-    deletedDaysRef.current = historyDeletedDaysRef.current.pop() ?? []
+    restoreHistoryDayDeletions(prev, historyDeletedDaysRef.current.pop() ?? [])
     const prevStart = historyStartRef.current.pop() ?? null
     const currentStart = currentPlanStart.current
     currentPlanStart.current = prevStart
@@ -1747,13 +1769,13 @@ export function PlanEditor(props: PlanEditorProps) {
       return prev
     })
     setStatusText(S.editor.undone)
-  }, [])
+  }, [restoreHistoryDayDeletions])
 
   const redoWeeks = useCallback(() => {
     const next = redoRef.current.pop()
     if (!next) return
     historyDeletedDaysRef.current = [...historyDeletedDaysRef.current.slice(-49), deletedDaysRef.current]
-    deletedDaysRef.current = redoDeletedDaysRef.current.pop() ?? []
+    restoreHistoryDayDeletions(next, redoDeletedDaysRef.current.pop() ?? [])
     const nextStart = redoStartRef.current.pop() ?? null
     const currentStart = currentPlanStart.current
     currentPlanStart.current = nextStart
@@ -1765,7 +1787,7 @@ export function PlanEditor(props: PlanEditorProps) {
       return next
     })
     setStatusText(S.editor.redone)
-  }, [])
+  }, [restoreHistoryDayDeletions])
 
   const moveCellSelection = (move: 'next' | 'previous' | 'up' | 'down') => {
     const next = movePlanCell(latestDisplayWeeks.current, cellSelection, move)
