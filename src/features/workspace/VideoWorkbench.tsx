@@ -301,9 +301,6 @@ export function VideoWorkbench({
 
   useGlobalKeyboardHandler(({ event, editable, video }) => {
       if (embedded && !(event.target instanceof Element && event.target.closest('.history-player,.feedback-workbench,[data-feedback-mode]'))) return false
-      if (embedded && event.altKey && !editable && /^Digit[1-5]$/.test(event.code)) {
-        event.preventDefault(); writeFeedback(S.chat.quickReplies[Number(event.code.slice(-1)) - 1]); return true
-      }
       if (event.key === 'Escape' && markerOpen) {
         event.preventDefault()
         setMarkerOpen(false)
@@ -1103,7 +1100,6 @@ export function VideoWorkbench({
                   <b>{embedded?.studentName ? S.block.replyTo(embedded.studentName) : S.video.feedbackTitle}</b>
                   <span>{videoAssociation(active)}</span>
                 </header>
-                {embedded && <div className="feedback-quick-replies" aria-label={S.chat.quickRepliesAria}>{S.chat.quickReplies.map((reply, index) => <button key={reply} title={reply} onClick={() => writeFeedback(reply)}><kbd>⌥{index + 1}</kbd> {reply}</button>)}</div>}
                 <textarea
                   value={feedback}
                   maxLength={2000}
