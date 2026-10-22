@@ -60,3 +60,11 @@ describe('PlanDialogs', () => {
     vi.useRealTimers()
   })
 })
+
+it.each([false, true])('offers weeks 3 through 12 for settings=%s', async settings => {
+  const host = document.createElement('div'); const root = createRoot(host)
+  try {
+    await act(async () => root.render(<NewPlanDialog open studentName="Synthetic" onCreate={vi.fn()} onClose={vi.fn()} settings={settings ? { name: 'Plan', weeks: 4, weekdays: [0], startDate: '2026-10-19' } : undefined} />))
+    expect([...host.querySelectorAll('.block-week-options button')].map(b => b.textContent)).toEqual(['3','4','5','6','7','8','9','10','11','12'])
+  } finally { act(() => root.unmount()) }
+})

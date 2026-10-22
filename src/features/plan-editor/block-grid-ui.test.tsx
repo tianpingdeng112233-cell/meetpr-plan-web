@@ -43,8 +43,9 @@ function hotfixFixture(extraWeeks = [2, 3, 5, 8]): Week[] {
 const api = vi.hoisted(() => ({ logs: vi.fn().mockResolvedValue([]) }))
 vi.mock('../../api/coach', () => ({ getStudentSetLogs: api.logs, getExerciseStats: vi.fn().mockResolvedValue({ recent_sessions: [] }) }))
 let host: HTMLDivElement, root: Root
-beforeEach(() => { api.logs.mockResolvedValue([]); host = document.createElement('div'); document.body.append(host); root = createRoot(host) })
-afterEach(() => { act(() => root.unmount()); host.remove(); vi.restoreAllMocks(); setLocale(undefined) })
+// Initialize React's async act scheduler before any test installs fake timers.
+beforeEach(async () => { await act(async () => {}); api.logs.mockResolvedValue([]); host = document.createElement('div'); document.body.append(host); root = createRoot(host) })
+afterEach(() => { act(() => root.unmount()); host.remove(); vi.useRealTimers(); vi.restoreAllMocks(); setLocale(undefined) })
 const cell = (w: number, dx: number) => host.querySelector<HTMLElement>(`[data-block-week="${w}"][data-dx="${dx}"]`)!
 const click = (el: Element, init = {}) => act(() => { el.dispatchEvent(new MouseEvent('click', { bubbles: true, ...init })) })
 const key = async (key: string, metaKey = false) => act(async () => { window.dispatchEvent(new KeyboardEvent('keydown', { key, metaKey, bubbles: true, cancelable: true })); await Promise.resolve() })
@@ -115,6 +116,7 @@ it.each(['12-week import', 'published with logs', 'student-added', 'shifted', 'u
     expect(JSON.stringify(weeks)).toBe(before)
     vi.useRealTimers()
   },
+  30_000, // The legacy 12-week fixture mounts every edit card; allow slower CI hosts.
 )
 
 it('fills W1D1 through W4 with confirmation and one-step undo', async () => {

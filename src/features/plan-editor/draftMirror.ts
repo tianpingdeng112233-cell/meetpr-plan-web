@@ -110,6 +110,7 @@ function canonicalContent(content: DraftMirrorContent, preserveEmptyDays = true)
     weeksCount: content.weeksCount,
     weeks: content.weeks.map((week) => ({
       num: week.num,
+      ...(week.importDoubts?.length ? { importDoubts: week.importDoubts } : {}),
       days: week.days.map((day) => ({
         dow: day.dow,
         rest: preserveEmptyDays && !day.rest ? false : isRestDay(day),
@@ -139,6 +140,7 @@ function canonicalContent(content: DraftMirrorContent, preserveEmptyDays = true)
             weightMode: row.weightMode,
             boxes: row.boxes.map((box) => ({ val: box.val, empty: box.empty })),
             note: row.note,
+            ...(row.importDoubts?.length ? { importDoubts: row.importDoubts } : {}),
           }
         }),
       })),

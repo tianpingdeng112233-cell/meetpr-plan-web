@@ -2,6 +2,7 @@ import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { TopBar } from './TopBar'
+import { setLocale } from '../../../i18n/locale'
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
@@ -25,6 +26,26 @@ describe('plan editor context bar', () => {
   afterEach(() => {
     act(() => root.unmount())
     host.remove()
+    setLocale('zh')
+  })
+
+  it.each(['zh', 'en'] as const)('marks the whole current plan row and offers the new-plan action in %s', async locale => {
+    setLocale(locale)
+    const onNewPlan = vi.fn()
+    await act(async () => root.render(<TopBar studentName="Synthetic" planName="Current" published={false}
+      statusText="" onPublish={vi.fn()} currentPlanId="current" onNewPlan={onNewPlan}
+      plans={[{ id: 'current', label: 'Current' }, { id: 'other', label: 'Other' }]} />))
+    await act(async () => host.querySelector<HTMLButtonElement>('[data-plan-menu-trigger]')!.click())
+    const menu = document.querySelector<HTMLElement>('[role="menu"]')!
+    const rows = menu.querySelectorAll('.plan-menu-row')
+    expect(rows[0].classList.contains('current')).toBe(true)
+    expect(rows[1].classList.contains('current')).toBe(false)
+    expect([...rows[0].querySelectorAll(':scope > button')].map(button => button.textContent)).toEqual(['Current', '⋯'])
+    const create = buttonByText(menu, locale === 'zh' ? '＋ 新建计划' : '+ New plan')
+    expect(create.classList.contains('plan-menu-new')).toBe(true)
+    await act(async () => create.click())
+    expect(onNewPlan).toHaveBeenCalledOnce()
+    expect(document.querySelector('[role="menu"]')).toBeNull()
   })
 
   it('shows only the approved 56px top bar and puts secondary actions in the plan menu', async () => {
@@ -49,7 +70,6 @@ describe('plan editor context bar', () => {
           onSwitchPlan={vi.fn()}
           totalShiftDays={3}
           onNewExercise={vi.fn()}
-          onImport={vi.fn()}
           planStartDate="2026-07-27"
           onChangeStartDate={vi.fn(async () => undefined)}
           issueCount={2}
@@ -76,10 +96,10 @@ describe('plan editor context bar', () => {
       expect(position).toBeGreaterThan(previous)
       previous = position
     }
-    for (const label of ['← 总览', '＋ 动作', '导入 .xlsx', '保存草稿', '学员曾顺延 3 天']) expect(bar.textContent).not.toContain(label)
+    for (const label of ['← 总览', '＋ 动作', '保存草稿', '学员曾顺延 3 天']) expect(bar.textContent).not.toContain(label)
     expect(bar.querySelector('img')?.getAttribute('src')).toContain('meetpr-icon')
     await act(async () => host.querySelector<HTMLButtonElement>('[data-plan-menu-trigger]')!.click())
-    expect(document.querySelector('[role="menu"]')?.textContent).toContain('导入 .xlsx')
+    expect(document.querySelector('input[type=file]')).toBeNull()
 
   })
 
@@ -119,4 +139,44 @@ describe('plan editor context bar', () => {
     expect(onSave).toHaveBeenCalledTimes(1)
     expect(host.textContent).not.toContain('不可撤回')
   })
+})
+
+it('keeps the plan menu lean and scopes actions to each plan row', async () => {
+  const host = document.createElement('div'); document.body.append(host); const root = createRoot(host)
+  const onPlanAction = vi.fn()
+  try {
+    await act(async () => root.render(<TopBar studentName="Synthetic" planName="Current" published={false} statusText="" onPublish={vi.fn()} currentPlanId="current"
+      plans={[{ id: 'current', label: 'Current', status: 'draft', startDate: '2000-01-03' }, { id: 'other', label: 'Other', status: 'published', startDate: '2000-01-03' }]}
+      onPlanAction={onPlanAction} onNewPlan={vi.fn()} />))
+    await act(async () => host.querySelector<HTMLButtonElement>('[data-plan-menu-trigger]')!.click())
+    expect(document.querySelector('[role=menu]')!.textContent).not.toContain('重命名')
+    await act(async () => document.querySelector<HTMLButtonElement>('[aria-label="Other · 更多操作"]')!.click())
+    expect(document.querySelector('[data-plan-actions]')!.textContent).toContain('标记完成')
+    expect(document.querySelector('[data-plan-actions]')!.textContent).not.toContain('删除草稿')
+    await act(async () => buttonByText(document.body, '重命名').click())
+    expect(onPlanAction).toHaveBeenCalledWith('other', 'rename')
+    await act(async () => host.querySelector<HTMLButtonElement>('[data-plan-menu-trigger]')!.click())
+    await act(async () => document.querySelector<HTMLButtonElement>('[aria-label="Current · 更多操作"]')!.click())
+    expect(document.querySelector('[data-plan-actions]')!.textContent).not.toContain('标记完成')
+    await act(async () => buttonByText(document.body, '删除草稿').click())
+    expect(onPlanAction).toHaveBeenLastCalledWith('current', 'delete')
+  } finally { act(() => root.unmount()); host.remove() }
+})
+
+it.each(['draft', 'published', 'completed', 'paused'] as const)('shows only eligible per-plan actions for %s', async status => {
+  const host = document.createElement('div'); document.body.append(host); const root = createRoot(host)
+  const action = vi.fn()
+  try {
+    await act(async () => root.render(<TopBar studentName="Synthetic" planName="Other" published={false} statusText="" onPublish={vi.fn()} currentPlanId="current"
+      plans={[{ id: 'other', label: 'Other', status, startDate: '2000-01-03' }]}
+      onPlanAction={action} />))
+    await act(async () => host.querySelector<HTMLButtonElement>('[data-plan-menu-trigger]')!.click())
+    await act(async () => document.querySelector<HTMLButtonElement>('[aria-label="Other · 更多操作"]')!.click())
+    const menu = document.querySelector('[data-plan-actions]')!
+    expect(menu.textContent?.includes('重命名')).toBe(status === 'draft' || status === 'published')
+    expect(menu.textContent?.includes('计划设置')).toBe(status === 'draft' || status === 'published')
+    expect(menu.textContent?.includes('删除草稿')).toBe(status === 'draft')
+    expect(menu.textContent?.includes('标记完成')).toBe(status === 'published')
+    expect(menu.textContent?.includes('补记过去训练')).toBe(status !== 'draft')
+  } finally { act(() => root.unmount()); host.remove() }
 })
