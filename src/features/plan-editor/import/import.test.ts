@@ -643,3 +643,79 @@ describe('buildWeeks', () => {
     })
   })
 })
+
+it('parses Traditional prescription tokens through the existing workbook seam', () => {
+  expect(parseSetLine('兩組三次', '彈力帶', '', '')).toEqual({ ...parseSetLine('两组三次', '弹力带', '', ''), note: '彈力帶' })
+  const index = new ExerciseIndex([exercise('bench', '竞技卧推'), exercise('deadlift', '相扑硬拉'), exercise('curl', '哑铃二头弯举')])
+  for (const [hant, zh] of [['臥推', '卧推'], ['相撲硬舉', '相扑硬拉'], ['二頭彎舉', '二头弯举']]) {
+    const create = (name: string) => buildWeeks([{ blockIndex: 0, dateSerials: [], days: [{ dayOfWeek: 1, rest: false, exercises: [{ rawName: name, setCount: 3, reps: '3', mode: 'kg', values: ['100', '100', '100'], note: '教练原文备注' }] }] }], index, '2026-10-19')
+    expect(create(hant)).toEqual(create(zh))
+  }
+})
+
+it('reads Taiwan reps and both note headers without turning the header into an exercise', () => {
+  const g = grid([
+    [2, 1, '動作'], [2, 2, '組數'], [2, 3, '下數'], [2, 4, '教練指示'], [2, 5, '反饋備註'],
+    [3, 1, '滑輪下拉'], [3, 2, '3'], [3, 3, '6'], [3, 4, '合成指示：慢放'], [3, 5, '合成反饋：稳住'],
+  ])
+  expect(parseDay(g, [2, 3], 0, 1).exercises).toEqual([
+    { rawName: '滑輪下拉', setCount: 3, reps: '6', mode: 'kg', values: [], note: '合成指示：慢放 · 合成反饋：稳住' },
+  ])
+})
+
+it('parses Taiwan compact reps and RPE with a full stop separator, retaining percentage guidance', () => {
+  expect(parseSetLine('3組', '2下@8。80%', '', '')).toMatchObject({
+    setCount: 3, reps: '2', mode: 'rpe', values: ['8', '8', '8'], note: '80%',
+  })
+  expect(parseSetLine('', '2下@8。80%', '', '')).toMatchObject({
+    setCount: 0, reps: '2', mode: 'rpe', values: [], note: '80%',
+  })
+})
+
+it('keeps a Taiwan name specification and percent through workbook import and canonical binding', () => {
+  const wb = XLSX.utils.book_new()
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([
+    ['動作', '組數', '下數', '教練指示', '反饋備註'],
+    ['滑輪下拉（2cm)', '3', '2下@8。80%', '合成备注：慢放', '合成反饋'],
+  ]), 'Synthetic')
+  const sheet = readWorkbook(XLSX.write(wb, { bookType: 'xlsx', type: 'array' }) as ArrayBuffer)[0]
+  const day = parseDay(sheet.grid, [1, 2], 0, 1)
+  const result = buildWeeks([{ blockIndex: 0, dateSerials: [], days: [day] }], new ExerciseIndex([exercise('row', '高位下拉')]), '2026-01-05')
+  expect(result.weeks[0].days[0].rows[0]).toMatchObject({
+    exerciseId: 'row', name: '高位下拉', reps: '2',
+    intensity: { mode: 'rpe', value: '8', high: '' },
+    note: '80% · 合成备注：慢放 · 合成反饋 · （2cm)',
+  })
+})
+
+it('keeps rest and event-only rows out of a table with Taiwan headers', () => {
+  const g = grid([
+    [1, 1, '動作'], [1, 2, '組數'], [1, 3, '下數'], [1, 4, '教練指示'], [1, 5, '反饋備註'],
+    [2, 1, '休息'], [3, 1, 'IPF 合成赛事'],
+  ])
+  expect(parseDay(g, [1, 2, 3], 0, 1)).toEqual({ dayOfWeek: 0, rest: true, exercises: [] })
+})
+
+it('preserves custom dimensions for both exact and fallback workbook bindings', () => {
+  const index = new ExerciseIndex([
+    exercise('custom', '合成自建練習', { created_by_coach_id: 'synthetic-coach' }),
+    exercise('exact', '合成自建練習（4cm)', { created_by_coach_id: 'synthetic-coach' }),
+  ])
+  const day = parseDay(grid([
+    [1, 1, '合成自建練習（2cm)'], [1, 2, '3x6'], [1, 5, '原文'],
+    [2, 1, '合成自建練習（4cm)'], [2, 2, '3x6'], [2, 5, '原文'],
+  ]), [1, 2], 0, 1)
+  const rows = buildWeeks([{ blockIndex: 0, dateSerials: [], days: [day] }], index, '2026-01-05').weeks[0].days[0].rows
+  expect(rows[0]).toMatchObject({ exerciseId: 'custom', name: '合成自建練習', note: '原文 · （2cm)' })
+  expect(rows[1]).toMatchObject({ exerciseId: 'exact', name: '合成自建練習（4cm)', note: '原文' })
+})
+
+it('retains note-only continuation rows under Taiwan headers', () => {
+  const day = parseDay(grid([
+    [1, 1, '動作'], [1, 2, '組數'], [1, 3, '下數'], [1, 4, '教練指示'], [1, 5, '反饋備註'],
+    [2, 1, '滑輪下拉'], [2, 2, '3'], [2, 3, '6'], [2, 4, '合成指示'],
+    [3, 5, '合成续行原文'],
+  ]), [1, 2, 3], 0, 1)
+  expect(day.exercises).toHaveLength(1)
+  expect(day.exercises[0].note).toBe('合成指示 · 合成续行原文')
+})

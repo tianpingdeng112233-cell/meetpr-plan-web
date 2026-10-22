@@ -1,5 +1,10 @@
 import { resolveLocale } from '../../i18n/locale'
-export const text = (zh: string, en: string) => resolveLocale() === 'zh' ? zh : en
+import onboardingHant from '../../i18n/onboarding-zh-hant.json'
+const hantCopy: Record<string, string> = onboardingHant
+export const text = (zh: string, en: string) => resolveLocale() === 'en' ? en : resolveLocale() === 'zh-Hant' && Object.hasOwn(hantCopy, zh) ? hantCopy[zh] : zh
+// Only static template fragments are translated; values remain user-authored.
+export const zhText = (parts: TemplateStringsArray, ...values: unknown[]): string =>
+  parts.reduce((result, part, index) => result + text(part, part) + (index < values.length ? String(values[index]) : ''), '')
 export function errorText(error: unknown): string {
   const code = error && typeof error === 'object' && 'code' in error ? String(error.code) : ''
   const errors: Record<string, [string, string]> = {

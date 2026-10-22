@@ -1,3 +1,5 @@
+import { traditionalExerciseName } from './exercise-names'
+import { zhHant } from './strings-zh-hant'
 import { enBlock, zhBlock } from './strings-block'
 import { resolveLocale } from './locale'
 import { enApp, zhApp } from './strings-app'
@@ -46,7 +48,7 @@ const en = {
 type Strings = Translations<typeof zh>
 
 function currentStrings(): Strings {
-  return resolveLocale() === 'zh' ? zh : en
+  return resolveLocale() === 'zh-Hant' ? zhHant : resolveLocale() === 'zh' ? zh : en
 }
 
 export const S = new Proxy({} as Strings, {
@@ -81,17 +83,25 @@ function parseDate(value: string): Date {
 
 export const fmt = {
   parseDate,
-  exerciseName(exercise: { name: string; name_en?: string | null }): string {
-    return resolveLocale() === 'en' ? exercise.name_en ?? exercise.name : exercise.name
+  exerciseName(exercise: { name: string; name_en?: string | null; custom?: boolean; created_by_coach_id?: string | null }): string {
+    if (resolveLocale() === 'en') return exercise.name_en ?? exercise.name
+    // DTOs without ownership carry server-localized display names (backend 052).
+    // A name match alone cannot distinguish a same-named custom exercise.
+    const system = exercise.custom !== true && exercise.created_by_coach_id == null
+      && (exercise.custom === false || exercise.created_by_coach_id === null)
+    if (resolveLocale() === 'zh-Hant' && system) {
+      return traditionalExerciseName(exercise.name)
+    }
+    return exercise.name
   },
   monthDay(date: Date, zhValue: () => string): string {
     return resolveLocale() === 'en' ? monthDay.format(date) : zhValue()
   },
   number(value: number, maximumFractionDigits = 1): string {
-    return value.toLocaleString(resolveLocale() === 'zh' ? 'zh-CN' : 'en-US', { maximumFractionDigits })
+    return value.toLocaleString(resolveLocale() === 'en' ? 'en-US' : 'zh-CN', { maximumFractionDigits })
   },
   decimal(value: number, digits = 1): string {
-    return value.toLocaleString(resolveLocale() === 'zh' ? 'zh-CN' : 'en-US', { minimumFractionDigits: digits, maximumFractionDigits: digits })
+    return value.toLocaleString(resolveLocale() === 'en' ? 'en-US' : 'zh-CN', { minimumFractionDigits: digits, maximumFractionDigits: digits })
   },
 }
 

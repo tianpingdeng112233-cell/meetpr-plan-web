@@ -211,7 +211,7 @@ export function CustomExerciseDialog({ open, initialName, initialTier, saving, e
             <div>{candidates.map((candidate) => (
               <button key={candidate.id} type="button" onClick={() => onUseExisting(candidate)}>
                 <b>{fmt.exerciseName(candidate)}</b>
-                {resolveLocale() === 'zh' && candidate.name_en && <small>{candidate.name_en}</small>}
+                {resolveLocale() !== 'en' && candidate.name_en && <small>{candidate.name_en}</small>}
                 <em>{S.catalog.useExisting}</em>
               </button>
             ))}</div>

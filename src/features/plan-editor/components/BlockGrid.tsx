@@ -177,7 +177,7 @@ export function BlockGrid(props: Props) {
                 </svg>
               </span>}
               {rows.map((row, i) => {
-                const name = fmt.exerciseName({ name: row.name, name_en: row.nameEn }) || S.common.unnamed
+                const name = fmt.exerciseName({ name: row.name, name_en: row.nameEn, custom: row.custom }) || S.common.unnamed
                 const actuals = props.actualsForRow?.(row)
                 const actual = props.showActuals && !!actuals?.length
                 const summary = actual ? actualShorthand(row, actuals!) : shorthand(row)
@@ -196,7 +196,7 @@ export function BlockGrid(props: Props) {
             {selected && !props.readOnly && <button type="button" className="block-fill-handle" aria-label={S.editor.blockFillHint} title={S.editor.blockFillHint}
               onMouseDown={event => startFill(event, cell)} onClick={event => event.stopPropagation()} />}
             {selectedCount > 1 && <div className="block-selection-hint">{S.editor.blockRowsSelected(selectedCount)}</div>}
-            {preview && <div className="block-fill-ghost" aria-hidden="true">{fillRows.map(row => <div key={row.id} className="block-brick">{fmt.exerciseName({ name: row.name, name_en: row.nameEn })} <code>{shorthand(row)}</code></div>)}<small>{S.editor.blockFillPreview(fill.source.weekNumber + 1, fill.endWeek, cell.dx + 1, fillRows.length)}</small></div>}
+            {preview && <div className="block-fill-ghost" aria-hidden="true">{fillRows.map(row => <div key={row.id} className="block-brick">{fmt.exerciseName({ name: row.name, name_en: row.nameEn, custom: row.custom })} <code>{shorthand(row)}</code></div>)}<small>{S.editor.blockFillPreview(fill.source.weekNumber + 1, fill.endWeek, cell.dx + 1, fillRows.length)}</small></div>}
           </div>
         })}
         {insertGaps.map(({ before, after, dates }) => {

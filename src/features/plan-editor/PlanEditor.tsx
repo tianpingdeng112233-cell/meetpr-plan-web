@@ -213,7 +213,7 @@ function pendingResponseMirror(planId: string, response: PendingRevisionResponse
 
 function savedClock(iso: string): string {
   try {
-    return new Intl.DateTimeFormat(resolveLocale() === 'zh' ? 'zh-CN' : 'en-US', {
+    return new Intl.DateTimeFormat(resolveLocale() !== 'en' ? 'zh-CN' : 'en-US', {
       hour: '2-digit', minute: '2-digit', hour12: false,
     }).format(new Date(iso))
   } catch {
@@ -1647,7 +1647,7 @@ export function PlanEditor(props: PlanEditorProps) {
     try { await navigator.clipboard?.writeText(text) } catch { /* internal clipboard still works */ }
     setStatusText(rows.length === 1
       ? S.editor.copiedExercise(
-        fmt.exerciseName({ name: rows[0].name, name_en: rows[0].nameEn }).trim() || S.common.unnamed)
+        fmt.exerciseName({ name: rows[0].name, name_en: rows[0].nameEn, custom: rows[0].custom }).trim() || S.common.unnamed)
       : S.editor.copiedExercises(rows.length))
   }, [selectedRowsValue])
 

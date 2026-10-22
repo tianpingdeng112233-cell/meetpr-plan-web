@@ -8,12 +8,12 @@ import { LoginScreen } from '../auth/LoginScreen'
 import { OnboardingFrame } from './OnboardingPages'
 import { groupedCode } from './InviteLandingPage'
 import { copyText, InstallOptions, QrImage } from './install'
-import { text, errorText } from './text'
+import { text, errorText, zhText } from './text'
 
 // Mirrors RN RnExtras.json coach.invites.message, including the Paste button label.
 export function invitationMessage(link: string, code: string, name?: string | null) {
   const coach = name?.trim() || text('教练', 'Coach')
-  return text(`我在用 MeetPR 给你排训练计划和看动作视频。\n1. 点这个链接安装 App：${link}\n2. 打开 App 注册账号\n3. 在「输入邀请码」页点「粘贴邀请码」，或输入：${groupedCode(code)}\n我这边确认后你就能看到训练计划了。—— ${coach}`, `I'm using MeetPR to plan your training and review your lift videos.\n1. Install the app: ${link}\n2. Open it and create an account\n3. On the invite code screen, tap Paste invite code, or enter: ${groupedCode(code)}\nOnce I accept, your plan will show up. — ${coach}`)
+  return text(zhText`我在用 MeetPR 给你排训练计划和看动作视频。\n1. 点这个链接安装 App：${link}\n2. 打开 App 注册账号\n3. 在「输入邀请码」页点「粘贴邀请码」，或输入：${groupedCode(code)}\n我这边确认后你就能看到训练计划了。—— ${coach}`, `I'm using MeetPR to plan your training and review your lift videos.\n1. Install the app: ${link}\n2. Open it and create an account\n3. On the invite code screen, tap Paste invite code, or enter: ${groupedCode(code)}\nOnce I accept, your plan will show up. — ${coach}`)
 }
 export function CoachWelcomePage() {
   const [user, setUser] = useState<AuthUser | null>(() => currentUser())

@@ -24,7 +24,7 @@ export const relativeDays = (value: string | null | undefined) => {
   if (d === 1) return S.workspace.yesterday
   return S.workspace.daysAgo(d)
 }
-export const kg = (value: string | null | undefined) => value == null ? '—' : Number(value).toLocaleString(resolveLocale() === 'zh' ? 'zh-CN' : 'en-US', { maximumFractionDigits: 1 })
+export const kg = (value: string | null | undefined) => value == null ? '—' : Number(value).toLocaleString(resolveLocale() !== 'en' ? 'zh-CN' : 'en-US', { maximumFractionDigits: 1 })
 export const profileLine = (p: { gender?: string | null; birth_date?: string | null; height_cm?: string | null; weight_kg?: string | null; training_years?: number | null }) => {
   const age = p.birth_date ? Math.max(0, new Date().getFullYear() - fmt.parseDate(p.birth_date).getFullYear()) : null
   return [p.gender === 'male' ? S.common.male : p.gender === 'female' ? S.common.female : null, age ? S.workspace.age(age) : null, p.height_cm ? `${kg(p.height_cm)}cm` : null, p.weight_kg ? `${kg(p.weight_kg)}kg` : null, p.training_years != null ? S.workspace.trainingYears(p.training_years) : null].filter(Boolean).join(' · ') || S.common.notProvided

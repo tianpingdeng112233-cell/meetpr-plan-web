@@ -43,7 +43,7 @@ it('opens email recovery, requests a code without auth, and shows the neutral se
   await click('发送验证码')
   expect(fetchMock).toHaveBeenCalledWith('/api/auth/email/forgot', expect.objectContaining({
     method: 'POST', body: JSON.stringify({ email: 'coach@example.com' }),
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', 'X-MeetPR-Locale': 'zh-Hans' },
   }))
   expect(host.textContent).toContain('如果这个邮箱注册过，验证码已经发出。')
   expect(host.querySelector('#reset-code')).toBeTruthy()
@@ -55,7 +55,7 @@ it('resets with the six-digit code, returns to login, and uses the new password'
   await click('重置密码')
   expect(fetchMock).toHaveBeenLastCalledWith('/api/auth/email/reset', expect.objectContaining({
     method: 'POST', body: JSON.stringify({ email: 'coach@example.com', code: '123456', newPassword: 'new-local-pass' }),
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', 'X-MeetPR-Locale': 'zh-Hans' },
   }))
   expect(host.textContent).toContain('密码已更新，请使用新密码登录')
   expect(host.querySelector('#reset-password')).toBeNull()
