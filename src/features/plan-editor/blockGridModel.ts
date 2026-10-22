@@ -4,6 +4,21 @@ import { addDays, dowLabel, mdLabel, recommendedDateForDay, isoDate } from './ma
 export interface BlockCell { weekNumber: number; dx: number; dayNumber: number | null; day: DayCol | null }
 export interface BlockColumn { dx: number; weekday: number; patternIndex: number | null }
 export interface BlockGrid { columns: BlockColumn[]; rows: { week: Week; cells: BlockCell[] }[] }
+export type BlockLayout = 'by-week' | 'by-day'
+
+/** Zero-based, end-exclusive content columns (the header is not included). */
+export function blockEditColumns(layout: BlockLayout, column: number, count: number) {
+  if (layout === 'by-day') return { start: column, end: column + 3, extra: Math.max(0, column + 3 - count) }
+  return { start: Math.min(column, Math.max(0, count - 3)), end: count, extra: 0 }
+}
+
+/** Change presentation axes only; every cell retains its storage address. */
+export function projectBlockGrid(grid: BlockGrid, layout: BlockLayout) {
+  const weeks = grid.rows.map(row => row.week)
+  return layout === 'by-day'
+    ? { rowHeaders: grid.columns, columnHeaders: weeks, rows: grid.columns.map(column => grid.rows.map(row => row.cells[column.dx])) }
+    : { rowHeaders: weeks, columnHeaders: grid.columns, rows: grid.rows.map(row => row.cells) }
+}
 /** Calendar offsets remain storage coordinates; Dx is only a projection. */
 export function buildBlockGrid(weeks: readonly Week[], startDate?: string | null, weekdays: readonly number[] = [], extraWeekdays: readonly number[] = []): BlockGrid {
   const days = weeks.map(week => week.days.filter(day => isBlockTrainingDay(day)).slice().sort((a, b) => {
@@ -122,14 +137,19 @@ function writeDay(weeks: Week[], weekNumber: number, day: DayCol): Week[] {
   })
 }
 
+export function blockFillTargets(grid: BlockGrid, source: BlockAddress, endWeek: number): BlockAddress[] {
+  return grid.rows.filter(row => row.week.num > source.weekNumber && row.week.num <= endWeek)
+    .map(row => ({ weekNumber: row.week.num, dx: source.dx }))
+}
+
 export function fillBlockDays(weeks: Week[], source: BlockAddress, endWeek: number, start?: string | null, weekdays: readonly number[] = [], extraWeekdays: readonly number[] = []): Week[] {
   const grid = buildBlockGrid(weeks, start, weekdays, extraWeekdays)
   const sourceDay = grid.rows.find(row => row.week.num === source.weekNumber)?.cells[source.dx]?.day
   if (!sourceDay) return weeks
-  return grid.rows.filter(row => row.week.num > source.weekNumber && row.week.num <= endWeek)
-    .reduce((result, row) => {
-      const day = blockTargetDay(grid, { weekNumber: row.week.num, dx: source.dx }, start)
-      return day ? writeDay(result, row.week.num, replaceBlockDay(day, sourceDay.rows)) : result
+  return blockFillTargets(grid, source, endWeek)
+    .reduce((result, target) => {
+      const day = blockTargetDay(grid, target, start)
+      return day ? writeDay(result, target.weekNumber, replaceBlockDay(day, sourceDay.rows)) : result
     }, weeks)
 }
 

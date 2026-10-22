@@ -1037,3 +1037,55 @@ npx vitest run src/features/plan-editor/block-grid-ui.test.tsx
 - 三条命令：`npm test` 101 files / 1021 passed；`npx tsc --noEmit` exit 0；`npm run build` exit 0（仅 chunk >500 kB 提示）。
 - 浏览器验收（Claude，临时夹具 mock-feedback / mock-workspace，1440×900，中英文，验完已删）：导航无反馈工作区、计划编排徽标 = 未读 + 待看；浮窗收起 / 展开、记忆、切学员换内容；聊天视频胶囊 → 反馈模式并高亮对应积木，浮窗让到大窗左侧；总览两列数字、点待看直达该学员第一段待看、点未读切学员并展开浮窗。
 - 已知遗留（不阻塞，待 Codex 10/25 后清）：`VideoWorkbench` 的非 embedded「整页」分支在生产已无调用方（旧 VideosPage 已删），但迁移来的约 35 条 UI 测试仍经它渲染。业务逻辑与 embedded 共用同一套 hooks，覆盖有效但路径不等价；后续卡：删整页分支、把这些测试改到 embedded 渲染。
+
+## 2026-10-22 · 014 卡 A：按天排（开发交付，待 Claude 浏览器验收）
+
+工作树 `meetpr-plan-web-wt-014-impl`，分支 `feat/014-transposed-layout`，基线 `f7026a5`。开工先读仓根 CONTEXT、CLAUDE、014 SPEC/CARD-A、011 与 012 前置章节，并现场核实 worktree、status、最近十条提交；开工工作树干净。没有 commit、push、开 PR 或修改锁文件。
+
+### 改动文件与行为
+
+- `src/features/plan-editor/blockGridModel.ts`：新增展示轴投影、编辑卡起止列与扩宽列数、共用跨周填充目标。按天排列为周、行为原星期列，保留原格子及地址；按周排的左借位公式不变。填充预览、覆盖确认、实际填充使用同一目标函数。
+- `src/features/plan-editor/blockLayout.ts`（新增）：本机通用排版偏好 `meetpr.plan-editor.block-layout`，默认按周排；读取失败回默认，写入失败保留本次会话选择。偏好不进入计划树、快照或草稿。
+- `src/features/plan-editor/components/BlockGrid.tsx`、`block-grid.css`：双图标切换；复用日卡、编辑内容、积木、实际速记和视频标记；按天排周列头/星期行头、容量气泡、固定行头、六周横滚、向右三列编辑及临时扩宽、左侧周提示、横缝首尾/中间插入和双语菜单。开始横向填充时安全收起编辑卡，暴露后方目标格；预览、覆盖确认、锁定跳过和一步撤销继续共用原路径。
+- `src/features/plan-editor/PlanEditor.tsx`：接入偏好；切换保留编辑卡和未完成组数/备注输入；按天排翻周改定位有布局盒的周列头，待核对定位不再横向居中。没有修改 reconcile、请求体或保存路径。
+- `src/i18n/strings-editor.ts`：补中英文切换、插入说明和本周标签；填充柄改为「拖动复制到后面几周」。行内 ⌘D 及其「已向下填充 N 格」保持原样。
+- `src/features/plan-editor/blockGridModel.test.ts`：新增 11 条，既有 14 条原样保留。
+- `src/features/plan-editor/by-day-layout-ui.test.tsx`（新增）：19 条，复用 `blockGridTestUtils.ts`；覆盖切换/重挂载/换计划学员、存储读写抛错、W1–W4 编辑与宽度恢复、横向填充、单周插入/首尾插入/删除撤销、行头规律、输入与发布状态、无保存请求、英文和六周横滚定位。
+
+### 红 → 绿证据
+
+逐个行为纵向实现；每行红均在对应实现前实际执行。模型命令 `npm test -- src/features/plan-editor/blockGridModel.test.ts`；UI 命令 `npm test -- src/features/plan-editor/by-day-layout-ui.test.tsx`。
+
+| 行为 | 红 | 绿 | 日志前缀（均位于 `/private/tmp/`，后缀 `-red.log` / `-green.log`） |
+| --- | --- | --- | --- |
+| 行列投影、单周插入空位 | 1 failed / 14 passed | 15 passed | `014-model-projection` |
+| W1–W4 编辑起止列、按周排不变 | 8 failed / 15 passed | 23 passed | `014-model-span` |
+| 两种排版共用填充目标 | 2 failed / 23 passed | 25 passed | `014-model-fill` |
+| 切换与跨计划记忆 | 1 failed | 1 passed | `014-ui-preference` |
+| 周列头、四周编辑位置与收起 | 4 failed / 1 passed | 5 passed | `014-ui-layout` |
+| 横缝插入、单周行、删除撤销 | 1 failed / 5 passed | 6 passed | `014-ui-insert` |
+| 横向拖拽暴露目标、预览和撤销 | 1 failed / 6 passed | 7 passed | `014-ui-fill` |
+| 切换保留未完成输入与发布状态 | 1 failed / 7 passed | 8 passed | `014-ui-input` |
+| 周容量气泡日期范围 | 1 failed / 14 passed | 15 passed | `014-ui-capacity` |
+| 审查返修：六周计划翻周定位 | 1 failed / 15 passed | 16 passed | `014-review-navigation` |
+| 审查返修：向左换编辑卡仍露出上一周 | 1 failed / 16 passed | 17 passed | `014-review-previous` |
+| 审查返修：待核对行/空天不横向居中 | 2 failed / 17 passed | 19 passed | `014-review-issue` |
+
+补充的存储异常、行头改规律、首尾插入、英文六周用例验证已共用的能力，加入即绿，没有把这些用例记为独立红绿。输入与待核对定位的测试初稿曾因使用 SPEC 概述文案而未命中既有状态/按钮；对齐实际 UI 后重新跑出上述有效红，不修改既有业务断言。
+
+### 最终检查
+
+- `npm test` 已执行：默认并发下 12 周 UI 用例超过既有 5 秒超时，导致同文件后续连锁失败；另拼音性能用例耗时 1253.78ms 超过既有 1000ms 阈值。该次 **2 files failed / 100 passed；61 failed / 986 passed**，日志 `/private/tmp/014-final-test.log`。没有修改测试阈值、旧断言或 Vitest 配置。
+- 限制并发后执行同一全量套件：`npm test -- --maxWorkers=2 --minWorkers=1`，exit 0，**102 files / 1051 passed**，53.84s；日志 `/private/tmp/014-final-test-bounded.log`。包含原 block-grid-ui 62 条、cell-selection-ui、block-history-ui、actuals-ui、block-date-save 等全部回归。此前单独复跑原 block-grid-ui 也是 62 passed，日志 `/private/tmp/014-week-regression.log`。
+- `npx tsc --noEmit`：exit 0，无诊断；`/private/tmp/014-final-tsc.log`。
+- `npm run build`：exit 0，Vite 4.02s；仅既有 chunk >500 kB 提示；`/private/tmp/014-final-build.log`。
+- `git diff --check` 通过；锁文件无改动。以上是本地验证，不是 CI 或上线证据。
+
+### 独立审查与验收边界
+
+按 `review-loop` 对未提交 diff 和新增文件做两轴独立只读审查。本仓缺少 `docs/agents/issue-tracker.md`，没有声称执行依赖 tracker 的完整 Matt 分支流程；后续需 `$setup-matt-pocock-skills`，本次本地审查直接采用已批准 SPEC。
+
+- **Standards**：初审 1 项——按天排的周 wrapper 为 `display: contents`，旧翻周滚动无法定位。补红绿后改定位周列头；定向复审未决 0、新发现 0。
+- **Spec**：初审 1 项——六周计划 W4 → W3 时，编辑卡已在视口内，单纯 nearest 不会露出上一周。补红绿后按上一周与固定行头边界补偿横滚，同时避免待核对定位/聚焦再次横滚；定向复审未决 0、新发现 0。
+- 未发现已知代码层面的 SPEC 偏离；存储写入失败时本次会话仍可切换、重开回默认，沿用 RAIL_MODE_KEY 的降级方式。
+- 本轮没有启动开发服务器或做真实浏览器验收。按 CARD-A，浏览器验收由 Claude 在沙箱外执行；DOM / CSS 与模拟几何测试不能替代 1440×900 的真实像素和滚动检查。仍须按 SPEC 1–10 收货，尤其验证 W1–W4 及六周 W4→W3、固定行头、逐组重量/RPE/10组长行、自加动作、已后移日、视频反馈/显示实际/聊天浮窗和已发布计划。本段仅为开发交付，不宣布产品验收通过。
