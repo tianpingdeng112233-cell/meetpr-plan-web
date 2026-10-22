@@ -1,0 +1,91 @@
+# 015 — 从表格导入：适配所有教练的模版
+
+- **Status**: Spec 已确认，屏幕稿待「定稿」（2026-10-22 /grill 三轮 16 题，David「你先做 做完我自己来验证」。逐题记录：`~/Projects/scratch/sheet-import-grill-20261022.md`）
+- **后端**: MeetPR-backend spec 052（AI 识别接口、每日次数、能力开关），wire 契约以那边为准，本文 §6 抄录要点。
+- **取代**: spec 002 的入口与解析器。002 的固定版式解析（`selectSheet` / `detectDayOffset` / `weekBlocks` / `parseDay` / `parseSetLine`）只认一位教练的表，本 spec 换成 AI 识别；`buildWeeks` 及以后的流程（绑定、`reconcile`、过往训练默认已完成「导」）保留复用。
+- **级别 / 节奏**: T2（新建计划流程 + 编辑器待核对行 + 新后端依赖）/ P1。本仓无 CI，合并闸门 = 本地全量测试 + `tsc --noEmit` + build + Opus 浏览器亲验。
+- **并行注意**: spec 014（按天排）同期在改编辑器网格。本 spec 的编辑器部分（§4）只碰「待核对行」的计数和定位，开工前 rebase 到最新 `main`，与 014 冲突时以 014 已合入的结构为准。
+
+## 0. 为什么
+
+教练手上都有自己排好的 Excel/WPS 计划。现在的导入只认 Monster 宇一种版式，别的教练导不进来；而且入口藏在「计划 ▾」里，学员还没有计划时根本看不到（David 2026-10-22 截图）。
+
+## 术语（已写入 `CONTEXT.md`）
+
+- **从表格导入**：新建计划的第二种方式，导入 = 新建一份草稿计划。
+- **导入存疑**：「待核对行」的第三类，分四种：新建动作 / 进了备注 / 推断数值 / 无日期周。
+
+## 1. 入口（Q3）
+
+- 「新建计划」弹窗顶部分成两种方式：**手动新建**（现在的三步）与 **从表格导入**。学员空状态的「＋ 新建计划」、计划 ▾ 里的「新建计划」都进这个弹窗。
+- 删除计划 ▾ 里的「导入 .xlsx」（覆盖当前计划那条路）。教练使用指南第五节同步改写。
+- 能力开关：进弹窗时调 `GET /coach/plan-imports/status`；`enabled:false`（海外 / 后端没配模型）时「从表格导入」不出现，弹窗与今天一样。
+
+## 2. 导入流程（屏幕稿定稿后以稿为准）
+
+1. **选来源**
+   - 上传文件：拖放或选择，接受 `.xlsx` `.xls` `.csv`；WPS 原生 `.et` 若 SheetJS 能读则一并接受，读不了提示「请在 WPS 里另存为 .xlsx」。
+   - **粘贴表格**：一个粘贴框，在 WPS / Excel / 金山文档 / Google Sheets 里选中区域复制后粘进来（读剪贴板的制表符文本；有 `text/html` 表格时优先用它，能保留合并格）。（Q15、Q16）
+   - 一行说明：「表格内容将由 AI 识别，不会上传文件名」。（Q6）
+   - 剩余次数：「今天还能为 {学员} 导入 N 次」；为 0 时按钮置灰并说明明天恢复。（Q9）
+2. **识别结构**（loading）→ 调第一步接口。
+3. **选周**（Q4）：列出识别到的每一周（标签 · 日期范围 · 练几天），默认勾**最新的连续一段、最多 12 周**；只能勾连续的周，最多 12。若后端回了 `truncated_rows > 0`，提示「表格较长，只识别了最后一部分」。计划名默认取文件名（只在本地用，不上传），粘贴时默认「导入计划」，可改。
+4. **识别内容**（loading，显示「第 x / N 周」）→ 调第二步接口。某周失败：该周标红，可「重试这一周」或取消勾选后继续。
+5. **结果摘要**（Q7、Q12）：N 周 · M 个训练日 · K 个动作；四类导入存疑分别计数（新建动作 X 个，并列出名字）；表里没有日期时在这一步选第一练日期（Q14，复用现有日期选择器）。按钮「创建草稿计划」。
+6. **创建**：`createPlan`（`plan_weeks` = 勾选周数，`start_date` = 第一周周一或教练所选日期，星期由表中各周的训练日位置得出）→ 自动新建自定义动作（§3）→ `buildWeeks` → 现有 `reconcile` 保存 → 打开编辑器停在当前周。过往日期的训练沿用 002「默认已完成、记为导」的规则。
+
+识别结果不在预览页逐格改，改动全部进编辑器做（Q7）。
+
+## 3. 动作名对不上（Q13）
+
+- 先走现有 `ExerciseIndex.resolve`（catalog 真名 + 别名表精确匹配）。
+- 找不到的，在「创建草稿计划」时自动建成该教练的**自定义动作**（`createCustomExercise`）：同一次导入里同名只建一个；该教练已有同名自定义动作则直接复用；后端给了 `family_guess` 时建成对应主项变式，否则按辅助项默认值。
+- 这些行在编辑器里标「导入存疑 · 新建动作」，教练可以改绑到库里的动作。
+
+## 4. 编辑器里的导入存疑（Q12）
+
+- 导入时把每行的存疑种类写进编辑器行状态，随快照（pending revision）持久，刷新页面不丢；不写进计划树。
+- 并入顶栏 ⚠ 待核对行的计数与「跳到下一个」循环；行上有小标记，悬停说明是哪一种（文案以稿为准）。
+- 消失条件：教练改过这一行（动作 / 组 / 次 / 强度 / 备注任一），或在编辑卡里点「确认」。无日期周一类在教练设好日期后整体消失。
+- **不拦发布**：发布 / 更新时还有存疑行，弹一次确认「还有 N 行导入存疑没看，仍要发布？」。
+
+## 5. 周数上限 12（Q10）
+
+- 新建计划与计划设置里的周数选项从 3–6 放到 3–12（控件形式以稿为准）。后端早已允许 1–52（migration 0020），学员端已有 12+ 周的导入计划在用，不需要改 App。
+
+## 6. 后端契约要点（详见 backend spec 052）
+
+- `GET /coach/plan-imports/status?trainee_id=` → `{ enabled, daily_limit, remaining_today }`
+- `POST /coach/plan-imports` `{ trainee_id, source, sheets:[{name, cells:[[r,c,text]]}] }` → `{ import_id, sheet, truncated_rows, header_region, weeks:[{index,label,start_date,training_days,region}] }`；422 `NO_TRAINING_WEEKS`；429 `IMPORT_DAILY_LIMIT`。
+- `POST /coach/plan-imports/:id/weeks` `{ weeks:[{index, cells}], header_cells }` → `{ weeks:[{index,start_date,days:[{weekday,rest,exercises:[{name,sets,reps,mode,values,note,family_guess,flags}]}]}] }`，单周失败 `{index, error:'PARSE_FAILED'}`。
+- 前端负责：单元格只发非空、trim；Excel 日期序列转 ISO；按 `region` 从原表截出每周 cells 与 `header_cells`；**不发文件名**。
+
+## 7. 测试 seam（先红后绿）
+
+1. **`import/` 纯函数**：`workbookToSheets`（SheetJS → cells，日期转 ISO，跳空格）、`pastedToSheets`（TSV / HTML 表格 → cells，含合并格）、`aiWeeksToParsed`（第二步响应 → 现有 `ParsedWeek`，再进 `buildWeeks`）、存疑种类推导（新建动作 / 无日期周由前端判定）。
+2. **`ImportPlanDialog` 组件测试**（mock `src/api/planImports.ts` 与 `createPlan` / `createCustomExercise`）：开关关闭时不出现；选周只能连续且 ≤ 12；单周失败可重试；摘要计数正确；「创建」时 `plan_weeks`、`start_date`、自定义动作去重、请求里无文件名。
+3. **待核对行**：沿用现有 TopBar / 编辑器 issue 测试，加「导入存疑计入 ⚠、改行后消失、点确认消失、刷新后由快照恢复、发布时弹确认」。
+4. 旧解析器删除后，002 的解析器测试一并删除；`buildWeeks` 相关测试保留并改喂新适配器的输出。
+
+## 8. 验收清单
+
+- [ ] 三条命令绿：`npm test`、`npx tsc --noEmit`、`npm run build`。
+- [ ] 后端开关关闭时，新建计划弹窗与今天完全一致（海外）。
+- [ ] 浏览器（连配了 DeepSeek key 的本地 / staging 后端）：`邓天平.xlsx`、`MeetPR-12周计划-planweb导入版.xlsx`、`sumo-cycle1.xlsx` 三种版式各导一次；再从 WPS 和 Google Sheets 各复制一段粘贴导入一次。周数、每周训练日、抽查动作的组×次与重量 / RPE 与原表一致，不一致的行都带导入存疑。
+- [ ] 第 4 次导入同一学员被拒并提示；换个学员不受影响。
+- [ ] 旧学员（已有 002 导入过的计划）打开编辑器第一屏正常；计划 ▾ 里不再有「导入 .xlsx」。
+- [ ] 新建计划能选 7–12 周，学员端（iOS / 安卓）打开 12 周计划正常。
+- [ ] 教练使用指南第五节已改写。
+- [ ] David 用其他教练的真实表格自行验收（他提供样表）。
+
+## Out of Scope
+
+- 截图 / PDF 识别；在线表格分享链接直读。
+- 逐组备注、失败组、退让组的结构化（继续进行备注，Q8）。
+- 预览页逐格编辑（Q7）。
+- 海外开放（Q11）。
+- 一张表多个学员批量导入。
+
+## 屏幕稿
+
+待出稿（入口两种方式 / 选来源 / 选周 / 结果摘要 / 编辑器存疑标记 / 12 周选择），David「定稿」后转写到这里，UI 卡以转写为准。
