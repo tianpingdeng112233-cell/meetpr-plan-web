@@ -162,7 +162,7 @@
   color-scheme: light;
 }
 
-/* Spec 014: light admin surfaces are scoped away from coach/onboarding UI. */
+/* Spec 016: light admin surfaces are scoped away from coach/onboarding UI. */
 [data-testid="admin-workspace"] {
   color-scheme: light;
   --brand-red: #111827;

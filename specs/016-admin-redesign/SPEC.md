@@ -1,4 +1,4 @@
-# Spec 014 · 管理后台重做（浅色 + 删计划总览）
+# Spec 016 · 管理后台重做（浅色 + 删计划总览）
 
 状态：屏幕稿 2026-10-22 David「定稿」，待实装。分级 T2（单模块、纯前端、用户可见改版），PR 等 David「放行」。
 
@@ -67,7 +67,7 @@
 - 不新增别的 seam。
 
 ## 屏幕稿
-画布：https://claude.ai/artifact/SbnjfeVtuow1iwjms8JEt5（10/22 定稿版本「浅色 · 编辑器配色」）。仓内副本：`specs/014-admin-redesign/design/*.dc.html`，可直接读源码取尺寸与颜色——
+画布：https://claude.ai/artifact/SbnjfeVtuow1iwjms8JEt5（10/22 定稿版本「浅色 · 编辑器配色」）。仓内副本：`specs/016-admin-redesign/design/*.dc.html`，可直接读源码取尺寸与颜色——
 - ① `Main.dc.html` 总览 ② `Applications.dc.html` 教练申请·待处理 ③ `ApproveConfirm.dc.html` 通过前确认 ④ `ApplicationsApproved.dc.html` 已通过 + 邮件未送达 + toast ⑤ `UserDetail.dc.html` 用户详情。
 - 稿里人名、邮箱、数字均为示例数据。稿只定布局/层级/间距/颜色；以本 SPEC 文字为准，两者冲突时问 Opus。
 - 关键尺寸：左栏 96px 宽、白底右边框；导航项竖排图标 20px + 11.5px 字，选中项 `#EEF0F3` 底 + 600 字重；内容区 `padding: 36px 40px 48px`、最大宽 1240px、区块间距 20–28px；卡片圆角 10px；表头 40px 高等宽 10.5px 字；行高 52–64px；按钮 34–36px 高、圆角 6px；确认框 440px 宽、圆角 12px、遮罩 `rgba(17,24,39,0.32)`。

@@ -1,6 +1,6 @@
-# 014 · 卡 — 管理后台浅色重做 + 删计划总览
+# 016 · 卡 — 管理后台浅色重做 + 删计划总览
 
-先读仓根 `CONTEXT.md`、`CLAUDE.md`、`specs/014-admin-redesign/SPEC.md`（全文，含「屏幕稿」节）以及 `specs/014-admin-redesign/design/*.dc.html` 五张稿的源码。在分支 `feat/014-admin-redesign`（本 worktree）上做。
+先读仓根 `CONTEXT.md`、`CLAUDE.md`、`specs/016-admin-redesign/SPEC.md`（全文，含「屏幕稿」节）以及 `specs/016-admin-redesign/design/*.dc.html` 五张稿的源码。在分支 `feat/014-admin-redesign`（本 worktree）上做。
 
 ## 目标
 按 SPEC §1–§8 一次做完：
@@ -25,7 +25,7 @@
 - 被删的计划相关测试直接删除。
 
 ## 验收
-SPEC 014 验收清单 1–13；第 14 条浏览器实看由 Claude 收货时做。
+SPEC 016 验收清单 1–13；第 14 条浏览器实看由 Claude 收货时做。
 
 ## 交付
 在 `docs/CODEX-JOURNAL.md` 追加一段：改动文件清单、红 → 绿证据（先红的测试名与失败摘要）、`typecheck` / `test` / `build` 三条命令结果、验收清单第 1 条的 grep 结果、拿不准的地方。
