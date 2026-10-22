@@ -3,7 +3,7 @@ import type { ExerciseResponse } from '../../../api/types'
 import type { ExerciseIndex } from '../exerciseIndex'
 import type { DayCol, ExerciseRow, IntensityMode, SetBox, Week } from '../types'
 import { currentPlanWeek, planDayDateLabel, planDayDowLabel, planWeekRangeLabel } from '../mapping'
-import { STABLE_IMPORT_SET_REPS, STABLE_ZH } from '../../../i18n/stable-zh'
+import { normalizeImportHeader, normalizeTraditionalInput, parseTaiwanSetShorthand, splitExerciseSpecification, STABLE_IMPORT_SET_REPS, STABLE_ZH } from '../../../i18n/stable-zh'
 
 export interface Cell { row: number; col: number; text: string }
 
@@ -291,7 +291,7 @@ function extractMarkerNotes(fields: string[]): string[] {
 }
 
 function pauseDurationNote(text: string): string {
-  const pause = text.match(STABLE_ZH.import.pauseDuration)
+  const pause = normalizeTraditionalInput(text).match(STABLE_ZH.import.pauseDuration)
   return pause ? `${pause[1]}s` : ''
 }
 
@@ -387,8 +387,23 @@ function unknownNoteForField(field: string): string {
 
 export function parseSetLine(setsCell: string, intensityCell: string, float1: string, float2: string): ParsedSetLine {
   const fields = [setsCell, intensityCell, float1, float2].map((field) => field.trim()).filter(Boolean)
-  const allText = fields.join(' ')
+  const allText = normalizeTraditionalInput(fields.join(' '))
   const { setCount, reps: baseReps } = parseSetReps(allText)
+  // Taiwan shorthand carries repetitions and RPE in one cell. Percentage
+  // guidance remains a note, matching the existing percent import policy.
+  const compactFields = fields.map(parseTaiwanSetShorthand)
+  const compactIndex = compactFields.findIndex(Boolean)
+  const compact = compactFields[compactIndex]
+  if (compact) {
+    return {
+      setCount, reps: compact.reps, mode: 'rpe', amrap: false,
+      values: Array.from({ length: setCount }, () => compact.rpe),
+      note: noteJoin([
+        compact.percentage ? `${compact.percentage}%` : '',
+        ...fields.filter((field, i) => i !== compactIndex && field !== setsCell.trim()),
+      ]),
+    }
+  }
   const amrap = /\bamrap\b/i.test(allText)
   const hasFailure = STABLE_ZH.import.failurePattern.test(allText)
   const timedNote = [intensityCell, float1, float2]
@@ -408,7 +423,7 @@ export function parseSetLine(setsCell: string, intensityCell: string, float1: st
   for (let i = 0; i < valueFields.length; i++) {
     const field = valueFields[i].trim()
     if (!field) continue
-    const parsed = parseValuesFromField(cleanValueText(field), setCount, mode)
+    const parsed = parseValuesFromField(cleanValueText(normalizeTraditionalInput(field)), setCount, mode)
     if (parsed) {
       values = parsed
       consumedFieldIndex = i
@@ -464,7 +479,7 @@ function isEventOnlyRow(rawName: string, fields: string[]): boolean {
 }
 
 function normalizeParsedExerciseName(rawName: string): { rawName: string; note: string } {
-  const trimmed = rawName.trim()
+  const trimmed = normalizeTraditionalInput(rawName.trim())
   const spoto = trimmed.match(STABLE_ZH.import.spoto)
   if (spoto) {
     return {
@@ -482,7 +497,7 @@ function normalizeParsedExerciseName(rawName: string): { rawName: string; note: 
     }
   }
 
-  const tempoSuffix = trimmed.match(/^(.+?)\s+([0-9０-９]{3})$/)
+  const tempoSuffix = rawName.trim().match(/^(.+?)\s+([0-9０-９]{3})$/)
   if (tempoSuffix) {
     const digits = tempoSuffix[2].replace(/[０-９]/g, (d) => String(d.charCodeAt(0) - 0xff10))
     return {
@@ -492,7 +507,7 @@ function normalizeParsedExerciseName(rawName: string): { rawName: string; note: 
   }
 
   const match = trimmed.match(STABLE_ZH.import.pauseName)
-  if (!match) return { rawName: trimmed, note: '' }
+  if (!match) return { rawName: rawName.trim(), note: '' }
   return {
     rawName: `${STABLE_ZH.import.pausePrefix}${match[1]}`,
     note: match[2] ? `${match[2]}s` : '',
@@ -512,14 +527,25 @@ export function parseDay(grid: Grid, rows: number[], dayIndex: number, offset: n
   const cols = dayColumns(dayIndex, offset)
   const exercises: ParsedExercise[] = []
   let sawRest = false
+  let headers: string[] | null = null
 
   for (const row of rows) {
-    const rawName = grid.text(row, cols.nameCol)
-    const sets = grid.text(row, cols.setsCol)
-    const intensity = grid.text(row, cols.intensityCol)
-    const float1 = grid.text(row, cols.float1)
-    const float2 = grid.text(row, cols.float2)
-    if (![rawName, sets, intensity, float1, float2].some((text) => text.trim())) continue
+    const cells = Array.from({ length: STRIDE }, (_, col) => grid.text(row, cols.nameCol + col))
+    const candidateHeaders = cells.map(normalizeImportHeader)
+    if (candidateHeaders.includes('动作') && candidateHeaders.includes('次数')) {
+      headers = candidateHeaders
+      continue
+    }
+    const cell = (header: string) => cells[headers?.indexOf(header) ?? -1] ?? ''
+    const rawName = headers ? cell('动作') : cells[0]
+    const compact = headers ? parseTaiwanSetShorthand(cell('次数')) : null
+    const sets = headers
+      ? [cell('组') ? `${cell('组')}组` : '', !compact && cell('次数') ? `${cell('次数')}次` : ''].join('')
+      : cells[1]
+    const intensity = compact ? cell('次数') : headers ? cell('重量') || cell('强度') : cells[2]
+    const float1 = headers ? '' : cells[3]
+    const float2 = headers ? '' : cells[4]
+    if (!cells.some(text => text.trim())) continue
 
     if (STABLE_ZH.import.rest.test(rawName) && ![sets, intensity, float1, float2].some((text) => text.trim())) {
       sawRest = true
@@ -531,6 +557,7 @@ export function parseDay(grid: Grid, rows: number[], dayIndex: number, offset: n
     if (isEventOnlyRow(rawName, [sets, intensity, float1, float2])) continue
 
     const line = parseSetLine(sets, intensity, float1, float2)
+    if (headers) line.note = noteJoin([line.note, ...cells.filter((_, i) => headers?.[i] === '备注')])
     const names = splitNames(rawName)
 
     if (names.length === 0) {
@@ -617,7 +644,8 @@ function rowFromParsed(exercise: ParsedExercise, resolved: ExerciseResponse | nu
       weightMode: 'uniform' as const,
     } : { intensity: null, weightMode: 'per_set' as const }),
     boxes,
-    note: exercise.note,
+    note: noteJoin([exercise.note, resolved && resolved.name !== exercise.rawName
+      ? splitExerciseSpecification(exercise.rawName).specification : '']),
   }
 }
 

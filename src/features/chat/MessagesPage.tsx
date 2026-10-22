@@ -940,7 +940,7 @@ function chatDayLabel(iso: string, now: number): string {
 function chatClockTime(iso: string): string {
   const date = new Date(iso)
   if (!Number.isFinite(date.getTime())) return ''
-  return new Intl.DateTimeFormat(resolveLocale() === 'zh' ? 'zh-CN' : 'en-US', {
+  return new Intl.DateTimeFormat(resolveLocale() !== 'en' ? 'zh-CN' : 'en-US', {
     hour: '2-digit',
     minute: '2-digit',
     hour12: false,

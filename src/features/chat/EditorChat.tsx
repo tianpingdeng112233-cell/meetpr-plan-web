@@ -47,7 +47,7 @@ export function EditorChat({ open, onOpenChange, editor, entries, ...messages }:
         const video = findChatVideo(entries.map(entry => entry.video), target)
         const entry = entries.find(entry => entry.video.id === video?.id)
         const position = entry?.inPlan ? `W${entry.week} · D${entry.day} · ` : `${ref.day_date.slice(5).replace('-', '/')} · `
-        const name = video ? fmt.exerciseName({ name: video.exercise_name ?? ref.exercise_name, name_en: video.name_en }) : ref.exercise_name
+        const name = fmt.exerciseName({ name: video?.exercise_name ?? ref.exercise_name, name_en: video ? video.name_en : undefined })
         return <button type="button" className="chat-video-capsule" onClick={() => messages.onPlayVideo?.(messages.selectedStudentId, target)}>
           <span className="chat-video-thumbnail" aria-hidden="true">▶</span>
           <span className="chat-video-caption"><b>{position}{name}</b><small>{S.video.setNumber(ref.set_number)} · {ref.weight_kg ?? '—'}×{ref.reps ?? '—'}{ref.rpe ? ` @${ref.rpe}` : ''}</small></span>

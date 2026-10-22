@@ -17,6 +17,7 @@ vi.mock('../../api/admin', async (importOriginal) => ({
 
 import { AdminWorkspace } from './AdminWorkspace'
 import { setLocale } from '../../i18n/locale'
+import simplifiedOnly from '../../i18n/simplified-only.json'
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
@@ -70,8 +71,71 @@ describe('AdminWorkspace', () => {
     act(() => root.unmount())
     host.remove()
     vi.clearAllMocks()
+    vi.restoreAllMocks()
     vi.unstubAllGlobals()
     setLocale('zh')
+  })
+
+  it('renders the redesigned admin pages and review flow in Taiwan Chinese while preserving applicant content', async () => {
+    setLocale('zh-Hant')
+    vi.spyOn(Date, 'now').mockReturnValue(new Date('2026-10-22T13:00:00Z').getTime())
+    const applicant = { id: 'app-1', name: '张教练', email: 'zhang@example.test', contact: '微信联系', student_count: 12, device: 'both', status: 'pending', created_at: '2026-10-22T12:58:00Z' }
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url.endsWith('/approve')) return new Response(JSON.stringify({ welcome_email_sent: false }))
+      if (url.endsWith('/resend')) return new Response(JSON.stringify({ welcome_email_sent: true }))
+      return new Response(JSON.stringify({ applications: [applicant] }))
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const user = { id: 'c1', displayName: 'Alex', role: 'coach', email: 'alex@example.test', phone: null, createdAt: '2026-10-22', relation: null }
+    api.users.mockResolvedValue({ users: [user] })
+    api.user.mockResolvedValue({ user, relations: [], plans: [{ name: 'Hidden plan' }] })
+    api.bindings.mockResolvedValue({ bindings: ['accepted', 'pending', 'rejected', 'expired', 'cancelled'].map((status, i) => ({ id: String(i), coachId: 'c1', coachName: 'Alex', studentId: `s${i}`, studentName: `Athlete ${i}`, status, submittedAt: '2026-10-21', respondedAt: null })) })
+    api.exerciseUsage.mockResolvedValue({ exercises: [{ exercise_id: 'e1', name: '競技深蹲', name_en: 'Competition Squat', exercise_type: 'main_lift', plan_count: 1, coach_count: 1 }] })
+    const simplified = new Set(simplifiedOnly)
+    const expectTraditionalCopy = () => {
+      // User-authored values must stay intact; scan only the surrounding UI copy.
+      const copy = host.innerHTML.replaceAll(applicant.name, '').replaceAll(applicant.contact, '')
+      expect([...new Set([...copy].filter(char => simplified.has(char)))]).toEqual([])
+    }
+    await act(async () => { root.render(<AdminWorkspace onLogout={vi.fn()}/>); await settle() })
+    expect(host.textContent).toContain('2 分鐘前提交')
+    expect(host.textContent).toContain('张教练 申請成為教練')
+    expectTraditionalCopy()
+    await act(async () => { buttonContaining(host.querySelector('nav')!, '教練申請').click(); await settle() })
+    expect(host.textContent).toContain('學員裝置')
+    expect(host.textContent).toContain('微信联系')
+    expectTraditionalCopy()
+    await act(async () => { button(host, '拒絕').click(); await settle() })
+    expect(host.querySelector('dialog')?.textContent).toContain('拒絕张教练的教練申請？')
+    expectTraditionalCopy()
+    await act(async () => { button(host, '取消').click(); button(host, '通過').click(); await settle() })
+    expect(host.querySelector('dialog')?.textContent).toContain('通過张教练的教練申請？')
+    expect(host.querySelector('dialog')?.textContent).toContain('用 zhang@example.test 建立教練帳號')
+    expectTraditionalCopy()
+    await act(async () => { button(host, '確認通過').click(); await settle() })
+    expect(host.textContent).toContain('沒有待處理的申請')
+    expectTraditionalCopy()
+    await act(async () => { buttonContaining(host, '已通過1').click(); await settle() })
+    expect(host.textContent).toContain('郵件未送達')
+    expectTraditionalCopy()
+    await act(async () => { button(host, '重發郵件').click(); await settle() })
+    expect(host.textContent).toContain('已重新發送郵件')
+    expect(host.textContent).not.toContain('郵件未送達')
+    for (const label of ['已拒絕0', '全部1']) {
+      await act(async () => { buttonContaining(host, label).click(); await settle() })
+      expectTraditionalCopy()
+    }
+    await act(async () => { button(host, '使用者').click(); await settle() })
+    expectTraditionalCopy()
+    await act(async () => { buttonContaining(host, 'Alex教練').click(); await settle() })
+    expect(host.textContent).toContain('繫結記錄生效 1 · 共 5 條')
+    expect(host.textContent).not.toContain('Hidden plan')
+    expect(host.textContent).toContain('2026-10-21')
+    expectTraditionalCopy()
+    await act(async () => { button(host, '動作庫').click(); await settle() })
+    expect(host.textContent).toContain('競技深蹲')
+    expectTraditionalCopy()
   })
 
   it('opens overview with four navigation items, shared pending counts and four key figures', async () => {

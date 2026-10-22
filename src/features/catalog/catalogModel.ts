@@ -9,7 +9,7 @@ import type {
 } from '../../api/types'
 import { localizedRecord, S } from '../../i18n/strings'
 import { zhCommon } from '../../i18n/strings-common'
-import { STABLE_ZH } from '../../i18n/stable-zh'
+import { normalizeTraditionalInput, STABLE_ZH } from '../../i18n/stable-zh'
 
 export const EXERCISE_TYPE_LABEL = localizedRecord<ExerciseType>(
   zhCommon.exerciseType,
@@ -119,7 +119,7 @@ export function guessCatalogFields(rawName: string): {
   equipment: Equipment
   movementPattern: MovementPattern
 } {
-  const name = rawName.toLowerCase()
+  const name = normalizeTraditionalInput(rawName).toLowerCase()
   const patterns = STABLE_ZH.catalogGuess
   const equipment: Equipment =
     patterns.equipment.dumbbell.test(name) ? 'dumbbell'

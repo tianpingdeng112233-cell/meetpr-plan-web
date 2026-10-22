@@ -13,7 +13,7 @@ interface Props {
 }
 
 function requestTime(value: string): string {
-  const parts = new Intl.DateTimeFormat(resolveLocale() === 'zh' ? 'zh-CN' : 'en-US', {
+  const parts = new Intl.DateTimeFormat(resolveLocale() !== 'en' ? 'zh-CN' : 'en-US', {
     month: '2-digit',
     day: '2-digit',
     hour: '2-digit',
@@ -21,7 +21,7 @@ function requestTime(value: string): string {
     hour12: false,
   }).formatToParts(new Date(value))
   const part = (type: Intl.DateTimeFormatPartTypes) => parts.find((item) => item.type === type)?.value ?? '—'
-  return resolveLocale() === 'zh'
+  return resolveLocale() !== 'en'
     ? `${part('month')}-${part('day')} ${part('hour')}:${part('minute')}`
     : `${part('month')} ${part('day')}, ${part('hour')}:${part('minute')}`
 }

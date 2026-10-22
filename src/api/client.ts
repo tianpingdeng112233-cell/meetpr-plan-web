@@ -1,6 +1,7 @@
 // Thin fetch wrapper around the MeetPR backend (dev: same-origin /api proxy).
 // Attaches the Bearer access token, transparently refreshes on 401 once.
 
+import { localeTag } from '../i18n/locale'
 import type { TokenPair } from './types'
 
 // Dev: '/api' (Vite dev-server proxy handles it).
@@ -57,7 +58,7 @@ interface ReqOpts {
 }
 
 async function raw(path: string, opts: ReqOpts): Promise<Response> {
-  const headers: Record<string, string> = {}
+  const headers: Record<string, string> = { 'X-MeetPR-Locale': localeTag() }
   if (opts.body !== undefined) headers['Content-Type'] = 'application/json'
   if (opts.auth !== false) {
     const tok = getAccessToken()

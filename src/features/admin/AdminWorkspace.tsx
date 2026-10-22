@@ -1,5 +1,6 @@
 import { ApplicationsPage, applicationDevice } from './ApplicationsPage'
 import { getCoachApplications, type CoachApplication } from '../../api/onboarding'
+import { normalizeTraditionalInput } from '../../i18n/stable-zh'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   getAdminBindings,
@@ -110,7 +111,7 @@ function displayName(name: string | null, phone?: string | null): string {
 function dateOnly(value: string | null | undefined): string {
   if (!value) return '—'
   const iso = value.slice(0, 10)
-  if (resolveLocale() === 'zh') return iso
+  if (resolveLocale() !== 'en') return iso
   const [year, month, day] = iso.split('-').map(Number)
   return fmt.monthDay(new Date(year, month - 1, day), () => iso)
 }
@@ -155,7 +156,8 @@ function relativeSubmission(value: string): string {
   const minutes = Math.max(0, Math.floor((Date.now() - new Date(value).getTime()) / 60000))
   const unit = minutes < 60 ? 'minute' : minutes < 1440 ? 'hour' : 'day'
   const amount = unit === 'minute' ? minutes : unit === 'hour' ? Math.floor(minutes / 60) : Math.floor(minutes / 1440)
-  return S.admin.overview.submitted(new Intl.RelativeTimeFormat(resolveLocale() === 'zh' ? 'zh-CN' : 'en', { numeric: 'auto' }).format(-amount, unit))
+  const locale = resolveLocale()
+  return S.admin.overview.submitted(new Intl.RelativeTimeFormat(locale === 'zh' ? 'zh-CN' : locale === 'zh-Hant' ? 'zh-TW' : 'en', { numeric: 'auto' }).format(-amount, unit))
 }
 
 function OverviewPage({ state, applications, applicationsLoading, applicationsError, retryApplications, users, openUser, navigate }: {
@@ -293,13 +295,13 @@ const exerciseTypeLabel = (type: string): string => S.common.exerciseType[type a
 function ExerciseUsagePage({ state }: { state: ResourceState<Awaited<ReturnType<typeof getAdminExerciseUsage>>> }) {
   const [search, setSearch] = useState('')
   const rows = useMemo(() => {
-    const query = search.trim().toLowerCase()
+    const query = normalizeTraditionalInput(search.trim()).toLowerCase()
     return (state.data?.exercises ?? [])
       .map((exercise, sourceIndex) => ({ exercise, sourceIndex }))
       .filter(({ exercise }) => !query
-        || exercise.name.toLowerCase().includes(query)
+        || normalizeTraditionalInput(exercise.name).toLowerCase().includes(query)
         || (exercise.name_en?.toLowerCase().includes(query) ?? false)
-        || exerciseTypeLabel(exercise.exercise_type).toLowerCase().includes(query))
+        || normalizeTraditionalInput(exerciseTypeLabel(exercise.exercise_type)).toLowerCase().includes(query))
       .sort((a, b) => b.exercise.plan_count - a.exercise.plan_count || a.sourceIndex - b.sourceIndex)
       .map(({ exercise }) => exercise)
   }, [search, state.data])

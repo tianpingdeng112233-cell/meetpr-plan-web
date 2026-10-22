@@ -10,8 +10,9 @@ import {
 } from './intensityModel'
 import { ApiException } from '../../api/client'
 import { clearDayDeletionIntent, loadDayDeletionIntent, saveDayDeletionIntent, type ExplicitDayDeletion } from './dayDeletionIntent'
+import { useBlockLayout } from './blockLayout'
 import { BlockGrid } from './components/BlockGrid'
-import { insertBlockDay, deleteBlockDay, blockDayDeletionLocked, isBlockTrainingDay, buildBlockGrid, changeBlockPattern, blockTargetDay, fillBlockDays, changeBlockDate, changeBlockWeekday, type BlockAddress } from './blockGridModel'
+import { blockFillTargets, insertBlockDay, deleteBlockDay, blockDayDeletionLocked, isBlockTrainingDay, buildBlockGrid, changeBlockPattern, blockTargetDay, fillBlockDays, changeBlockDate, changeBlockWeekday, type BlockAddress } from './blockGridModel'
 import { NewPlanDialog } from '../workspace/PlanDialogs'
 import { loadBlockExtraWeekdays, saveBlockExtraWeekdays, loadBlockWeekdays, saveBlockWeekdays } from '../workspace/blockPlanSettings'
 import { deriveVideoFeedback, type FeedbackEntry } from './feedbackModel'
@@ -213,7 +214,7 @@ function pendingResponseMirror(planId: string, response: PendingRevisionResponse
 
 function savedClock(iso: string): string {
   try {
-    return new Intl.DateTimeFormat(resolveLocale() === 'zh' ? 'zh-CN' : 'en-US', {
+    return new Intl.DateTimeFormat(resolveLocale() !== 'en' ? 'zh-CN' : 'en-US', {
       hour: '2-digit', minute: '2-digit', hour12: false,
     }).format(new Date(iso))
   } catch {
@@ -575,6 +576,7 @@ export function PlanEditor(props: PlanEditorProps) {
   // answer rather than prompting again or silently changing historical data.
   const importedPastHistory = useRef(false)
   const [colW, setColW] = useState<ColWidths[]>(() => Array.from({ length: 7 }, () => ({ ...COL_DEFAULTS })))
+  const [blockLayout, setBlockLayout] = useBlockLayout()
   const [editingDay, setEditingDay] = useState<Sel | null>(null)
   const [blockMenu, setBlockMenu] = useState<{ x: number; y: number } | null>(null)
   const [sel, setSel] = useState<Sel | null>(null)
@@ -1647,7 +1649,7 @@ export function PlanEditor(props: PlanEditorProps) {
     try { await navigator.clipboard?.writeText(text) } catch { /* internal clipboard still works */ }
     setStatusText(rows.length === 1
       ? S.editor.copiedExercise(
-        fmt.exerciseName({ name: rows[0].name, name_en: rows[0].nameEn }).trim() || S.common.unnamed)
+        fmt.exerciseName({ name: rows[0].name, name_en: rows[0].nameEn, custom: rows[0].custom }).trim() || S.common.unnamed)
       : S.editor.copiedExercises(rows.length))
   }, [selectedRowsValue])
 
@@ -1828,7 +1830,7 @@ export function PlanEditor(props: PlanEditorProps) {
       setVisibleWeek(next.weekNumber)
       window.requestAnimationFrame(() => {
         const sc = scrollerRef.current
-        const slot = weeksRef.current?.querySelector<HTMLElement>(`[data-week-slot][data-wnum="${next.weekNumber}"]`)
+        const slot = weeksRef.current?.querySelector<HTMLElement>(`[data-week-slot][data-wnum="${next.weekNumber}"]${blockLayout === 'by-day' ? ' .block-week-label' : ''}`)
         if (sc && slot) slot.scrollIntoView?.({ block: 'nearest', inline: 'nearest', behavior: 'smooth' })
       })
     }
@@ -2515,14 +2517,14 @@ export function PlanEditor(props: PlanEditorProps) {
       const cell = empty[index - cur.length]
       handleSelect(cell.weekNumber, cell.day!.dow)
       setEditingDay({ wnum: cell.weekNumber, dow: cell.day!.dow })
-      window.requestAnimationFrame(() => rootRef.current?.querySelector(`[data-block-week="${cell.weekNumber}"][data-dow="${cell.day!.dow}"]`)?.scrollIntoView?.({ block: 'center', inline: 'center' }))
+      window.requestAnimationFrame(() => rootRef.current?.querySelector(`[data-block-week="${cell.weekNumber}"][data-dow="${cell.day!.dow}"]`)?.scrollIntoView?.({ block: 'center', inline: blockLayout === 'by-day' ? 'nearest' : 'center' }))
       return
     }
     const issue = cur[index]
     const focusRow = () => {
       const rowEl = rootRef.current?.querySelector<HTMLElement>(`[data-rowid="${issue.rowId}"]`)
       if (!rowEl) return
-      rowEl.scrollIntoView?.({ block: 'center', inline: 'center' })
+      rowEl.scrollIntoView?.({ block: 'center', inline: blockLayout === 'by-day' ? 'nearest' : 'center' })
       // For prescriptions, filled-but-invalid cells win over empty cells; the set-count
       // box is only the fallback when no editable prescription cell exists yet.
       const input = issue.kind === 'unbound'
@@ -2530,7 +2532,7 @@ export function PlanEditor(props: PlanEditorProps) {
         : rowEl.querySelector<HTMLInputElement>('[data-input-invalid="true"]')
           ?? [...rowEl.querySelectorAll<HTMLInputElement>('[data-guard-field]')].find((field) => field.value === '')
           ?? rowEl.querySelector<HTMLInputElement>('input[inputmode="numeric"]')
-      window.setTimeout(() => input?.focus(), 60)
+      window.setTimeout(() => input?.focus(blockLayout === 'by-day' ? { preventScroll: true } : undefined), 60)
     }
     const targetWeek = latestWeeks.current.find(week => week.days.some(day => day.rows.some(row => row.id === issue.rowId)))
     const targetDay = targetWeek?.days.find(day => day.rows.some(row => row.id === issue.rowId))
@@ -2545,7 +2547,7 @@ export function PlanEditor(props: PlanEditorProps) {
     setVisibleWeek(num)
     window.requestAnimationFrame(() => {
       const sc = scrollerRef.current
-      const slot = weeksRef.current?.querySelector<HTMLElement>(`[data-week-slot][data-wnum="${num}"]`)
+      const slot = weeksRef.current?.querySelector<HTMLElement>(`[data-week-slot][data-wnum="${num}"]${blockLayout === 'by-day' ? ' .block-week-label' : ''}`)
       if (sc && slot) slot.scrollIntoView?.({ block: 'nearest', inline: 'nearest', behavior: 'smooth' })
     })
   }
@@ -2920,8 +2922,8 @@ export function PlanEditor(props: PlanEditorProps) {
   const fillBlock = (source: BlockAddress, endWeek: number) => {
     if (readOnly) return
     const grid = buildBlockGrid(weeks, planStartDate, blockWeekdays, extraWeekdays)
-    const occupied = grid.rows.filter(row => row.week.num > source.weekNumber && row.week.num <= endWeek)
-      .filter(row => blockTargetDay(grid, { weekNumber: row.week.num, dx: source.dx }, planStartDate)?.rows.length).length
+    const occupied = blockFillTargets(grid, source, endWeek)
+      .filter(target => blockTargetDay(grid, target, planStartDate)?.rows.length).length
     if (occupied && !window.confirm(S.editor.overwriteDaysConfirm(occupied))) return
     setWeeksWithHistory(prev => fillBlockDays(prev, source, endWeek, planStartDate, blockWeekdays, extraWeekdays))
   }
@@ -2929,7 +2931,7 @@ export function PlanEditor(props: PlanEditorProps) {
   return (
     <div ref={rootRef} onMouseDownCapture={event => {
       const target = event.target as HTMLElement
-      if (!target.closest('.show-actuals,.block-history,.block-cell,.block-context-menu,.ex-popover,[data-popover],[role="dialog"]')) {
+      if (!target.closest('.block-layout-switch,.show-actuals,.block-history,.block-cell,.block-context-menu,.ex-popover,[data-popover],[role="dialog"]')) {
         closeBlockEditor(); setBlockMenu(null)
       }
     }} className="plan-editor" style={{
@@ -2996,7 +2998,7 @@ export function PlanEditor(props: PlanEditorProps) {
         <div className="scroller" ref={scrollerRef} aria-readonly={readOnly || undefined}>
           {readOnly && <div role="status" className="block-readonly">{S.editor.historyReadOnlyBanner}</div>}
           <div ref={weeksRef}>
-            <BlockGrid weeks={weeks} startDate={planStartDate} weekdays={blockWeekdays} extraWeekdays={extraWeekdays} editing={editingDay}
+            <BlockGrid layout={blockLayout} onLayout={setBlockLayout} weeks={weeks} startDate={planStartDate} weekdays={blockWeekdays} extraWeekdays={extraWeekdays} editing={editingDay}
               selectedDays={daySelection.days} selectedRows={selectedRowIds} readOnly={readOnly}
               rowTier={rowTier} onClose={closeBlockEditor}
               showActuals={showActuals} actualsForRow={actualsForRow} studentAddedByDay={studentAddedByDay}

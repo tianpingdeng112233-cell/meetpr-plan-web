@@ -11,7 +11,7 @@ import {
   rowWeightBoxes,
 } from './intensityModel'
 import { S } from '../../i18n/strings'
-import { STABLE_ZH } from '../../i18n/stable-zh'
+import { normalizeImportHeader, normalizeTraditionalInput, parseTaiwanSetShorthand, splitExerciseSpecification, STABLE_ZH } from '../../i18n/stable-zh'
 
 type ExerciseResolver = Pick<ExerciseIndex, 'resolve'>
 
@@ -68,16 +68,26 @@ export function formatTranslatedDaysPasteStatus(pasted: number, skipped: number)
 export function parseClipboardRows(text: string, exerciseIndex?: ExerciseResolver | null): ExerciseRow[] | null {
   const lines = text.replace(/\r/g, '').split('\n').map((line) => line.trimEnd()).filter((line) => line.trim() !== '')
   if (lines.length === 0) return null
-  const headerCells = (lines.find((line) => !line.trimStart().startsWith('#')) ?? '').split('\t')
+  const headerCells = (lines.find((line) => !line.trimStart().startsWith('#')) ?? '').split('\t').map(normalizeImportHeader)
   const modernFormat = headerCells.includes(STABLE_ZH.clipboard.weightMode) && headerCells.includes(STABLE_ZH.clipboard.weight)
+  const namedColumns = !modernFormat && headerCells.includes('动作') && headerCells.includes('次数')
   const pctAnchorIndex = headerCells.indexOf(STABLE_ZH.clipboard.pctAnchor)
 
   const rows: ExerciseRow[] = []
   for (const [lineIndex, line] of lines.entries()) {
     if (line.trimStart().startsWith('#')) continue
-    const cells = line.split('\t')
+    const rawCells = line.split('\t')
+    if (namedColumns && rawCells.map(normalizeImportHeader).every((cell, i) => cell === headerCells[i])) continue
+    const column = (name: string) => rawCells[headerCells.indexOf(name)] ?? ''
+    const orderedCells = namedColumns
+      ? [column('动作'), column('组'), column('次数'), column('强度类型'), column('重量') || column('强度值') || column('强度'),
+        rawCells.filter((_, i) => headerCells[i] === '备注').filter(Boolean).join(' · ')]
+      : rawCells
+    const cells = orderedCells.map((cell, index) =>
+      index === 0 || index === (modernFormat ? 7 : 5) ? cell : normalizeTraditionalInput(cell))
     const name = (cells[0] ?? '').trim()
-    if (!name || name === STABLE_ZH.clipboard.exercise || name.toLowerCase() === 'exercise') continue
+    if (!name || normalizeTraditionalInput(name) === STABLE_ZH.clipboard.exercise || name.toLowerCase() === 'exercise') continue
+    const compact = parseTaiwanSetShorthand(cells[2] ?? '')
     const modern = modernFormat
     const legacyPerSetRpe = modern && (cells[3] ?? '').replace(/\s/g, '').toLowerCase() === STABLE_ZH.clipboard.legacyPerSetRpe
     const legacyMode = clipboardMode(cells[3] ?? '')
@@ -90,7 +100,7 @@ export function parseClipboardRows(text: string, exerciseIndex?: ExerciseResolve
       : modern
         ? weightText.split('/').map((value) => value.trim())
         : weightText.split(/[\/,，、\s]+/).map((value) => value.trim()).filter(Boolean)
-    const intensityText = weightRangeMode ? weightText
+    const intensityText = compact ? compact.rpe : weightRangeMode ? weightText
       : modern ? cells[4] ?? ''
         : legacyMode === 'rpe' ? cells[4] ?? '' : ''
     const intensityValues = intensityText.split('/').map((value) => value.trim())
@@ -103,7 +113,7 @@ export function parseClipboardRows(text: string, exerciseIndex?: ExerciseResolve
       : Array.from({ length: count }, (_, i) => ({ val: weightValues[i] ?? '', empty: (weightValues[i] ?? '') === '' }))
     const resolved = exerciseIndex?.resolve(name) ?? null
     const custom = resolved?.created_by_coach_id != null
-    const rawLoadMode = legacyPerSetRpe ? 'rpe' : modern ? cells[3] ?? '' : legacyMode === 'rpe' ? 'rpe' : ''
+    const rawLoadMode = compact ? 'rpe' : legacyPerSetRpe ? 'rpe' : modern ? cells[3] ?? '' : legacyMode === 'rpe' ? 'rpe' : ''
     const loadMode = weightRangeMode ? 'weight_range'
       : ['pct', 'rpe', 'rir', 'weight_range', 'rpe_range', 'fixed_weight'].includes(rawLoadMode)
       ? rawLoadMode as LoadMode
@@ -146,7 +156,7 @@ export function parseClipboardRows(text: string, exerciseIndex?: ExerciseResolve
       custom: resolved ? custom : false,
       isMain: resolved ? resolved.is_competition_lift || resolved.main_lift_family != null : false,
       aux: boxes.length === 0,
-      reps: (cells[2] ?? '').trim() || '—',
+      reps: compact?.reps ?? ((cells[2] ?? '').trim() || '—'),
       mode,
       ...(mode !== 'bodyweight' ? {
         intensity,
@@ -157,7 +167,8 @@ export function parseClipboardRows(text: string, exerciseIndex?: ExerciseResolve
           : 'uniform' as const,
       } : {}),
       boxes,
-      note: (cells[modern ? 7 : 5] ?? '').trim(),
+      note: [(cells[modern ? 7 : 5] ?? '').trim(), compact?.percentage ? `${compact.percentage}%` : '',
+        resolved && resolved.name !== name ? splitExerciseSpecification(name).specification : ''].filter(Boolean).join(' · '),
     })
   }
   return rows.length > 0 ? rows : null

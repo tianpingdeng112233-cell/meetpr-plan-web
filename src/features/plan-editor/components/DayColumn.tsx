@@ -1089,7 +1089,7 @@ export function DayColumn({
                   </span>
                   {badge && <span className={`week-band-badge ${badge.tone}`}>{badge.label}</span>}
                   <input
-                    value={fmt.exerciseName({ name: row.name, name_en: row.nameEn })} placeholder={S.editor.exercisePlaceholder}
+                    value={fmt.exerciseName({ name: row.name, name_en: row.nameEn, custom: row.custom })} placeholder={S.editor.exercisePlaceholder}
                     disabled={readOnly || row.hasLogs}
                     onMouseDown={stop}
                     onClick={(event) => { stop(event); selectCell(row.id, 'name') }}

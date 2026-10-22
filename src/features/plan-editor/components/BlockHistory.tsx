@@ -75,7 +75,7 @@ export function BlockHistory({ studentId, studentName, row, profile, overview, o
   const videoButton = (set: ExerciseHistorySet, session: ExerciseHistorySession) => set.has_video || set.video_id ? <button className={isPlaying(set) ? 'playing' : ''} aria-label={set.video_id ? S.block.play : S.block.videos} onClick={() => {
     if (!set.video_id) { onVideos?.(); return }
     onVideoVisibilityChange?.(true)
-    setPlaying({ id: set.video_id, video: videos?.find(video => video.id === set.video_id) ?? { id: set.video_id, set_log_id: null, plan_exercise_id: row?.serverRowId ?? null, content_type: 'video/mp4', size_bytes: 0, filename: '', created_at: session.date, logged_at: session.date, exercise_name: row?.name, set_index: set.set_index, weight_kg: set.weight_kg, reps: set.reps, rpe: set.rpe }, title: `${shortDate(session.date)} · ${fmt.exerciseName({ name: row!.name, name_en: row!.nameEn })} · ${S.video.setNumber(set.set_index + 1)} · ${setLabel(set)}` })
+    setPlaying({ id: set.video_id, video: videos?.find(video => video.id === set.video_id) ?? { id: set.video_id, set_log_id: null, plan_exercise_id: row?.serverRowId ?? null, content_type: 'video/mp4', size_bytes: 0, filename: '', created_at: session.date, logged_at: session.date, exercise_name: row?.name, set_index: set.set_index, weight_kg: set.weight_kg, reps: set.reps, rpe: set.rpe }, title: `${shortDate(session.date)} · ${fmt.exerciseName({ name: row!.name, name_en: row!.nameEn, custom: row!.custom })} · ${S.video.setNumber(set.set_index + 1)} · ${setLabel(set)}` })
   }}>▶</button> : null
   const activeEntry = entries.find(entry => entry.video.id === feedback?.videoId)
   const activeVideo = activeEntry?.video
@@ -145,7 +145,7 @@ export function BlockHistory({ studentId, studentName, row, profile, overview, o
         <div className="history-metrics">{metricCells({ level: 1, profile, detail: null, overview, reps: 0, weight: null }).map(cell => <div key={cell.label}><b>{cell.value}</b><small>{cell.label}</small></div>)}</div>
         <p>{S.block.historyHint}</p></> : <>
         <nav aria-label={S.block.history} className="history-breadcrumbs">
-          <button className={level === 2 ? 'current' : ''} onClick={() => setCeiling(2)}>{fmt.exerciseName({ name: row!.name, name_en: row!.nameEn })}</button>
+          <button className={level === 2 ? 'current' : ''} onClick={() => setCeiling(2)}>{fmt.exerciseName({ name: row!.name, name_en: row!.nameEn, custom: row!.custom })}</button>
           {contextRailLevel(row) >= 3 && <><span>›</span><button className={level === 3 ? 'current' : ''} onClick={() => setCeiling(3)}>{S.common.countSets(row!.boxes.length)}</button></>}
           {contextRailLevel(row) >= 4 && <><span>›</span><button className={level === 4 ? 'current' : ''} onClick={() => setCeiling(4)}>{S.block.reps(Number(row!.reps))}</button></>}
         </nav>
