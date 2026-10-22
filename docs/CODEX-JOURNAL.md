@@ -1090,3 +1090,35 @@ npx vitest run src/features/plan-editor/block-grid-ui.test.tsx
 - 样式检测器只报告未改动的全局 CSS 旧规则（侧边线、width 动画），未扩范围修改；记录 `/tmp/014-design-detect.json`。
 - **浏览器实看未完成**：按卡第 14 项由 Claude 收货。曾尝试启动纯本地 fetch 夹具做补充自看，当前沙箱拒绝 `listen 127.0.0.1:5194`（EPERM，`/tmp/014-vite.log`）；没有绕过权限，临时 HTML/TSX 已删除，没有真实后端请求。1280/1024 下的像素布局、原生 dialog 焦点和遮罩仍待 Claude 实看，不能把 DOM 测试或源码审查当作视觉验收。
 - 总览邮箱从既有 users 接口取得；未做线上数据或真实邮件联调。以上为开发自测和代码自审，不声明产品验收完成。
+
+## 2026-10-22 · 016 卡 B（Codex 开发交付，待 Claude 收货）
+
+基线：`feat/014-admin-redesign`，HEAD `768fef0`；按新版 `CARD-B.md`、SPEC §6 与稿 ⑤ 实装。没有 commit、push、PR、后端、依赖或锁文件改动。
+
+### 改动文件
+
+- `src/features/admin/AdminWorkspace.tsx`：左栏减为总览 / 教练申请 / 用户 / 动作库；删除 `BindingsPage`、导航与专用图标，保留 `getAdminBindings`。用户详情移除旧关系卡和全部计划渲染，替换为绑定记录：按当前用户 coachId / studentId 过滤全部状态，发起时间倒序，accepted 计生效数；显示发起/响应日期、空响应为 `—`，整行进入对方详情。绑定数据有独立加载、错误重试与角色空态，页头刷新同时更新详情和记录；表格在窄栏内横向滚动。
+- `src/features/admin/AdminWorkspace.test.tsx`：四项导航断言；改写原只读计划概要测试，覆盖五状态、无关记录排除、排序、计数、日期和双向跳转，同时断言教练/学员详情均无计划。旧用户加载失败身份回归改用 bindings 夹具，保留卡 A 的审核、用户与动作库覆盖；新增英文全部状态、错误重试及刷新覆盖，最终 14 条。
+- `src/i18n/strings-admin.ts`：中英文同步新增绑定记录标题/计数，精简列名；删除绑定列表搜索/计数/空态和旧详情计划、关系标题专用 key。
+- `docs/CODEX-JOURNAL.md`：本记录。当前基线已无独立绑定页测试；`en-smoke.test.tsx` 未引用已删入口，无需修改。接口返回的计划类型仍保留，详情组件不读取或渲染它。
+
+### 红 → 绿证据
+
+- 导航：先改 `four navigation items` 断言，旧实现多出「绑定关系」而失败，`/tmp/016-b-nav-red.log`（1 failed）；删除导航/页面后 `/tmp/016-b-nav-green.log`（1 passed）。
+- 详情：先替换概要断言，旧实现仍显示「相关计划 / 力量积累 / 名下学员」，`/tmp/016-b-detail-red.log`（1 failed）；接入绑定记录并删除计划渲染后 `/tmp/016-b-detail-green.log`（12 passed）。
+- 补充覆盖：`/tmp/016-b-admin-final.log`（14 passed）。错误重试测试初次误写既有错误文案为「加载失败」，按真实公共错误组件文案「内容没能加载出来」修正断言；未为测试改产品文案。
+
+### 检查与审查
+
+- `npm run lint`：通过（等价 `tsc --noEmit`），`/tmp/016-b-lint.log`。
+- `npm run build`：通过，Vite 构建 21.02s，仅既有 >500 kB chunk 提示，`/tmp/016-b-build.log`。
+- 完整测试最终通过：`npm test -- --maxWorkers=2 --minWorkers=1`，101 files / 1029 passed，44.06s，`/tmp/016-b-full-test-final.log`。默认并发首轮（`/tmp/016-b-full-test.log`）为 4 files / 63 tests failed：包含修正前的错误文案断言，以及无关 `block-history-ui` / `block-grid-ui` 的 5000ms 超时、连带失败和 `pinyin` 耗时阈值超限。第一轮两 worker（`/tmp/016-b-full-test-bounded.log`）与构建重叠，仍有 `block-grid-ui` 超时及连带失败、`pinyin` 1096ms 超过 1000ms（2 files / 61 tests failed）；构建结束后使用相同两 worker 命令，最终整套全绿。未修改超时阈值、跳过测试或改变仓内测试配置。
+- 验收 1 grep：`rg -n '计划总览|Plan overview|getAdminPlans|getAdminPlan\(|planDetail|PlanDetailPage|BindingsPage' src/` 仅命中后台测试中「计划总览」不存在的断言；生产代码零命中。用户详情 `detail.plans` / `planBadge` / `detail.relations` 零命中，`git diff --check` 通过。
+- Standards：独立只读审查仅发现绑定页删除后遗留的 `arrow` 图标死分支，已删除并经 reviewer 定向复核关闭；剩余 0 项。
+- Spec：独立只读审查剩余 0 项。机械设计检测 `[]`，`/tmp/016-b-design-detect.json`；此检测不等同视觉验收。
+
+### 拿不准的地方 / 待收货
+
+- 无未定产品分支。稿 ⑤ 示例行并非发起时间倒序，按 CARD-B 与 SPEC §6 明确要求排序；稿中的人名/数字仅作示例。
+- 浏览器实看未完成：本地 Vite `--host 127.0.0.1 --port 5194` 被当前沙箱拒绝 `listen EPERM`（`/tmp/016-b-vite.log`），未绕过权限或发起真实后端请求。1280/1024 下的表格滚动、结构/层级/间距仍由 Claude 按验收 14 收货，不能将 DOM 测试或源码审查写成视觉验收通过。
+- 本节是开发自测与代码审查记录，不宣布产品验收完成。仓内缺 `docs/agents/issue-tracker.md` 已告知 David 后续运行 `/setup-matt-pocock-skills`；本次以明确本地卡片为审查依据。

@@ -74,11 +74,12 @@ describe('AdminWorkspace', () => {
     setLocale('zh')
   })
 
-  it('opens overview with five navigation items, shared pending counts and four key figures', async () => {
+  it('opens overview with four navigation items, shared pending counts and four key figures', async () => {
     await act(async () => { root.render(<AdminWorkspace onLogout={vi.fn()}/>); await settle() })
     const nav = host.querySelector('nav')!
-    expect([...nav.querySelectorAll('button')].filter(b => !b.getAttribute('aria-label')).map(b => b.textContent)).toEqual(['总览', '教练申请2', '用户', '绑定关系', '动作库'])
+    expect([...nav.querySelectorAll('button')].filter(b => !b.getAttribute('aria-label')).map(b => b.textContent)).toEqual(['总览', '教练申请2', '用户', '动作库'])
     expect(host.textContent).not.toContain('计划总览')
+    expect(nav.textContent).not.toContain('绑定关系')
     const overview = host.querySelector<HTMLElement>('[data-testid="admin-overview"]')!
     expect(overview).not.toBeNull()
     expect(overview.textContent).toContain('待办2')
@@ -93,19 +94,73 @@ describe('AdminWorkspace', () => {
     expect(vi.mocked(fetch).mock.calls.filter(([url]) => String(url).endsWith('/coach-applications'))).toHaveLength(1)
   })
 
-  it('shows email and read-only plan summaries while linked users still open', async () => {
-    api.user.mockResolvedValueOnce({ user: { id: 'c1', displayName: '教练甲', role: 'coach', email: 'coach@example.test', phone: null, createdAt: '2026-10-22' }, relations: [{ userId: 's1', displayName: '学员乙', role: 'coached_student', bondAcceptedAt: '2026-10-21' }], plans: [{ id: 'p1', name: '力量积累', status: 'published', weeks: 4, createdAt: '2026-10-20' }] })
+  it('shows all binding states newest first, counts only this user and opens either counterpart without plans', async () => {
+    api.user.mockResolvedValueOnce({ user: { id: 'c1', displayName: '教练甲', role: 'coach', email: 'coach@example.test', phone: null, createdAt: '2026-10-22' }, relations: [{ userId: 'legacy', displayName: '旧关系', role: 'coached_student', bondAcceptedAt: '2026-10-21' }], plans: [{ id: 'p1', name: '力量积累', status: 'published', weeks: 4, createdAt: '2026-10-20' }] })
+    api.user.mockResolvedValueOnce({ user: { id: 's1', displayName: '学员乙', role: 'coached_student', email: 'athlete@example.test', phone: null, createdAt: '2026-10-22' }, relations: [], plans: [{ id: 'p2', name: '学员计划', status: 'draft', weeks: 6, createdAt: '2026-10-20' }] })
+    api.bindings.mockResolvedValue({ bindings: [
+      { id: 'accepted', coachId: 'c1', coachName: '教练甲', studentId: 's1', studentName: '学员乙', status: 'accepted', submittedAt: '2026-10-20T12:00:00Z', respondedAt: '2026-10-21T12:00:00Z' },
+      { id: 'expired', coachId: 'c1', coachName: '教练甲', studentId: 's2', studentName: '过期学员', status: 'expired', submittedAt: '2026-10-18T12:00:00Z', respondedAt: null },
+      { id: 'unrelated', coachId: 'c2', coachName: '其他教练', studentId: 's9', studentName: '无关学员', status: 'accepted', submittedAt: '2026-10-23T12:00:00Z', respondedAt: '2026-10-23' },
+      { id: 'pending', coachId: 'c1', coachName: '教练甲', studentId: 's3', studentName: '待处理学员', status: 'pending', submittedAt: '2026-10-22T12:00:00Z', respondedAt: null },
+      { id: 'cancelled', coachId: 'c1', coachName: '教练甲', studentId: 's4', studentName: '取消学员', status: 'cancelled', submittedAt: '2026-10-19T12:00:00Z', respondedAt: '2026-10-20' },
+      { id: 'rejected', coachId: 'c1', coachName: '教练甲', studentId: 's5', studentName: '拒绝学员', status: 'rejected', submittedAt: '2026-10-21T12:00:00Z', respondedAt: '2026-10-22' },
+    ] })
     await act(async () => { root.render(<AdminWorkspace onLogout={vi.fn()}/>); await settle() })
     await act(async () => { button(host, '用户').click(); await settle() })
     await act(async () => { buttonContaining(host, '教练甲教练').click(); await settle() })
     const page = host.querySelector<HTMLElement>('[data-testid="admin-user-detail"]')!
     expect(page.textContent).toContain('邮箱coach@example.test')
-    expect(page.textContent).toContain('1 份 · 仅显示概要')
-    const name = [...page.querySelectorAll('span')].find(n => n.textContent === '力量积累')!
-    expect(name.closest('button, a')).toBeNull()
-    expect(name.parentElement?.querySelector('svg')).toBeNull()
-    await act(async () => { buttonContaining(page, '学员乙').click(); await settle() })
+    expect(page.textContent).not.toMatch(/计划|力量积累|已发布|4 周|旧关系|名下学员|无关学员/)
+    expect(page.textContent).toContain('绑定记录生效 1 · 共 5 条')
+    expect(page.textContent).toContain('学员状态发起响应')
+    const rows = [...page.querySelectorAll('button')]
+    expect(rows.map(row => row.firstElementChild?.textContent)).toEqual(['待处理学员', '拒绝学员', '学员乙', '取消学员', '过期学员'])
+    expect(rows.map(row => row.children[1]?.textContent)).toEqual(['待处理', '已拒绝', '已接受', '已取消', '已过期'])
+    expect(rows[0].textContent).toContain('2026-10-22—')
+    expect(rows[2].textContent).toContain('2026-10-202026-10-21')
+    await act(async () => { rows[2].click(); await settle() })
     expect(api.user).toHaveBeenLastCalledWith('s1')
+    const studentPage = host.querySelector<HTMLElement>('[data-testid="admin-user-detail"]')!
+    expect(studentPage.textContent).toContain('教练状态发起响应')
+    expect(studentPage.textContent).toContain('生效 1 · 共 1 条')
+    expect(studentPage.textContent).not.toMatch(/计划|6 周|草稿|过期学员/)
+    await act(async () => { buttonContaining(studentPage, '教练甲').click(); await settle() })
+    expect(api.user).toHaveBeenLastCalledWith('c1')
+  })
+
+  it('renders English binding history and all status labels without Chinese copy', async () => {
+    setLocale('en')
+    api.user.mockResolvedValue({ user: { id: 'c1', displayName: 'Alex', role: 'coach', email: 'alex@example.test', phone: null, createdAt: '2026-10-22' }, relations: [], plans: [] })
+    api.bindings.mockResolvedValue({ bindings: ['accepted', 'pending', 'rejected', 'expired', 'cancelled'].map((status, i) => ({ id: String(i), coachId: 'c1', coachName: 'Alex', studentId: `s${i}`, studentName: `Athlete ${i}`, status, submittedAt: '2026-10-21', respondedAt: null })) })
+    api.users.mockResolvedValue({ users: [{ id: 'c1', displayName: 'Alex', role: 'coach', email: 'alex@example.test', phone: null, createdAt: '2026-10-22', relation: null }] })
+    await act(async () => { root.render(<AdminWorkspace onLogout={vi.fn()}/>); await settle() })
+    await act(async () => { button(host, 'Users').click(); await settle() })
+    await act(async () => { buttonContaining(host, 'AlexCoach').click(); await settle() })
+    const page = host.querySelector<HTMLElement>('[data-testid="admin-user-detail"]')!
+    expect(page.textContent).toContain('Link historyActive 1 · Total 5')
+    expect(page.textContent).toContain('AthleteStatusRequestedResponded')
+    for (const label of ['Accepted', 'Pending', 'Rejected', 'Expired', 'Cancelled']) expect(page.textContent).toContain(label)
+    expect(host.textContent).not.toMatch(/[一-鿿]/)
+    expect(page.textContent).not.toMatch(/Related plans|Summary only/)
+  })
+
+  it('retries failed bindings without claiming an empty history and refreshes records with the detail', async () => {
+    api.bindings.mockRejectedValueOnce(new Error('offline'))
+    await act(async () => { root.render(<AdminWorkspace onLogout={vi.fn()}/>); await settle() })
+    await act(async () => { button(host, '用户').click(); await settle() })
+    await act(async () => { buttonContaining(host, '教练甲教练').click(); await settle() })
+    expect(host.querySelector('[role="alert"]')?.textContent).toContain('内容没能加载出来')
+    expect(host.textContent).not.toContain('生效 0')
+    expect(host.textContent).not.toContain('暂无绑定学员')
+    await act(async () => { button(host, '重试').click(); await settle() })
+    expect(host.textContent).toContain('生效 0 · 共 0 条')
+    expect(host.textContent).toContain('暂无绑定学员。')
+    api.bindings.mockResolvedValue({ bindings: [{ id: 'new', coachId: 'c1', coachName: '教练甲', studentId: 's1', studentName: '新学员', status: 'pending', submittedAt: '2026-10-22', respondedAt: null }] })
+    await act(async () => { button(host, '刷新').click(); await settle() })
+    expect(host.textContent).toContain('生效 0 · 共 1 条')
+    expect(host.textContent).toContain('新学员待处理')
+    expect(api.user).toHaveBeenCalledTimes(2)
+    expect(api.bindings).toHaveBeenCalledTimes(3)
   })
 
   it('confirms approval once, updates shared counts, tracks approval and clears failed mail after resend', async () => {
@@ -226,6 +281,7 @@ describe('AdminWorkspace', () => {
   })
 
   it('never labels a failed linked-user load with the previous user identity', async () => {
+    api.bindings.mockResolvedValue({ bindings: [{ id: 'b1', coachId: 'c1', coachName: '教练甲', studentId: 's1', studentName: '学员乙', status: 'accepted', submittedAt: '2026-10-21', respondedAt: '2026-10-21' }] })
     api.user.mockResolvedValueOnce({ user: { id: 'c1', displayName: '教练甲', role: 'coach', email: 'coach@example.test', phone: null, createdAt: '2026-10-22' }, relations: [{ userId: 's1', displayName: '学员乙', role: 'coached_student', bondAcceptedAt: '2026-10-21' }], plans: [] })
     let rejectUser!: (reason: Error) => void
     api.user.mockImplementationOnce(() => new Promise((_, reject) => { rejectUser = reject }))

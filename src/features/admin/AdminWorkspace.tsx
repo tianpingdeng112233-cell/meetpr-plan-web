@@ -7,21 +7,19 @@ import {
   getAdminOverview,
   getAdminUser,
   getAdminUsers,
-  type AdminBinding,
   type AdminBindingStatus,
   type AdminExerciseUsage,
   type AdminManagedRole,
   type AdminUser,
   type AdminUserDetailResponse,
 } from '../../api/admin'
-import type { PlanStatus } from '../../api/types'
 import { fmt, resolveLocale, S } from '../../i18n/strings'
 import { EmptyState, ErrorState, SkeletonRows, useDelayedLoading } from '../../components/states'
 
 interface Props { onLogout: () => void }
 
-type AdminPage = 'applications' | 'overview' | 'users' | 'userDetail' | 'bindings' | 'exercises'
-type RootPage = 'applications' | 'overview' | 'users' | 'bindings' | 'exercises'
+type AdminPage = 'applications' | 'overview' | 'users' | 'userDetail' | 'exercises'
+type RootPage = 'applications' | 'overview' | 'users' | 'exercises'
 type ResourceState<T> = { data: T | null; loading: boolean; error: boolean; retry: () => void; updatedAt: Date | null }
 type BadgeSpec = { label: string; color: string; background: string; border: string; weight?: number }
 
@@ -79,19 +77,6 @@ function bindBadge(status: AdminBindingStatus): BadgeSpec {
   return { label: labels[status], color: '#5C6371', background: 'transparent', border: '#E5E7EB', weight: 400 }
 }
 
-function planBadge(status: PlanStatus): BadgeSpec {
-  if (status === 'published') {
-    return { label: S.admin.planStatus.published, color: '#10715A', background: '#E7F1EE', border: '#B7D4CC' }
-  }
-  if (status === 'draft') {
-    return { label: S.admin.planStatus.draft, color: '#4B5563', background: 'transparent', border: '#D1D5DB' }
-  }
-  if (status === 'paused') {
-    return { label: S.admin.planStatus.paused, color: '#A15C00', background: '#FEF3C7', border: '#F2D9A6' }
-  }
-  return { label: S.admin.planStatus.completed, color: '#5C6371', background: '#F5F6F8', border: '#E5E7EB' }
-}
-
 function Badge({ spec }: { spec: BadgeSpec }) {
   return (
     <span
@@ -103,20 +88,18 @@ function Badge({ spec }: { spec: BadgeSpec }) {
   )
 }
 
-type IconName = 'applications' | 'overview' | 'users' | 'bindings' | 'exercises' | 'logout' | 'back' | 'chevron' | 'search' | 'arrow'
+type IconName = 'applications' | 'overview' | 'users' | 'exercises' | 'logout' | 'back' | 'chevron' | 'search'
 
 function Icon({ name, size = 20 }: { name: IconName; size?: number }) {
   const common = { width: size, height: size, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 1.75, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const, 'aria-hidden': true as const }
   if (name === 'overview') return <svg {...common}><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></svg>
   if (name === 'users') return <svg {...common}><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-  if (name === 'bindings') return <svg {...common}><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
   if (name === 'applications') return <svg {...common}><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6M9 14l2 2 4-4"/></svg>
   if (name === 'exercises') return <svg {...common}><path d="M6.5 6.5 17.5 17.5M5 9l4-4M15 19l4-4M3.5 7.5l3-3M17.5 19.5l3-3"/></svg>
   if (name === 'logout') return <svg {...common}><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5M21 12H9"/></svg>
   if (name === 'back') return <svg {...common} strokeWidth="2"><path d="M19 12H5m7 7-7-7 7-7"/></svg>
   if (name === 'chevron') return <svg {...common} strokeWidth="2"><path d="m9 18 6-6-6-6"/></svg>
   if (name === 'search') return <svg {...common} strokeWidth="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
-  if (name === 'arrow') return <svg {...common}><path d="M5 12h14m-7-7 7 7-7 7"/></svg>
   return null
 }
 
@@ -264,8 +247,9 @@ function DangerCard({ detail, onToast }: { detail: AdminUserDetailResponse; onTo
   </>
 }
 
-function UserDetailPage({ state, openUser, onToast }: {
+function UserDetailPage({ state, bindings, openUser, onToast }: {
   state: ResourceState<AdminUserDetailResponse>
+  bindings: ResourceState<Awaited<ReturnType<typeof getAdminBindings>>>
   openUser: (id: string, label: string) => void
   onToast: (text: string) => void
 }) {
@@ -274,25 +258,34 @@ function UserDetailPage({ state, openUser, onToast }: {
   const detail = state.data
   const user = detail.user
   const name = displayName(user.displayName, user.phone)
-  const relationTitle = user.role === 'coach' ? S.admin.users.assignedStudents : user.role === 'admin' ? S.admin.users.bindingRelation : S.admin.users.assignedCoach
+  const rows = (bindings.data?.bindings ?? [])
+    .filter(binding => binding.coachId === user.id || binding.studentId === user.id)
+    .sort((a, b) => b.submittedAt.localeCompare(a.submittedAt))
+  const activeCount = rows.filter(binding => binding.status === 'accepted').length
   const relationEmpty = user.role === 'admin' ? S.admin.users.adminNoRelation : user.role === 'self_train_student' ? S.admin.users.selfNoCoach : user.role === 'coach' ? S.admin.users.noStudents : S.admin.users.noCoach
   return <div className="flex flex-col gap-6" data-testid="admin-user-detail">
     <div className="flex items-center gap-3.5"><div className="flex h-[52px] w-[52px] shrink-0 items-center justify-center rounded-full bg-s3 text-xl font-bold">{name.slice(0, 1)}</div><div><div className="flex items-center gap-2.5"><h1 className="text-[26px] font-bold">{name}</h1><Badge spec={roleBadge(user.role)}/></div><div className="mt-1 font-mono text-xs text-fg-tertiary tabular-nums">{user.email || user.phone || '—'} · {S.admin.users.registeredOn(dateOnly(user.createdAt))}</div></div></div>
     <div className="grid grid-cols-[repeat(auto-fit,minmax(min(320px,100%),1fr))] items-start gap-4"><div className="flex min-w-0 flex-col gap-4"><Card className="px-5 py-4"><div className="mb-1.5 text-[15px] font-semibold">{S.admin.users.basicInfo}</div>{[[S.admin.users.name, name], [S.admin.users.role, roleBadge(user.role).label], [S.admin.users.email, user.email || '—'], [S.admin.users.phone, user.phone || '—'], [S.admin.users.registeredAt, dateOnly(user.createdAt)]].map(([key, value]) => <div key={key} className="flex items-center justify-between gap-3 border-b border-[#EEF0F3] py-2.5"><span className="text-[12.5px] text-fg-tertiary">{key}</span><span className="min-w-0 break-all text-right font-mono text-[13px] tabular-nums">{value}</span></div>)}</Card>{ADMIN_WRITE_ENABLED && <DangerCard detail={detail} onToast={onToast}/>}</div>
-      <div className="flex min-w-0 flex-col gap-4"><Card><CardHeader title={relationTitle} aside={<span className="text-xs text-fg-tertiary tabular-nums">{detail.relations.length ? (user.role === 'coach' ? S.admin.users.people(detail.relations.length) : S.admin.users.persons(detail.relations.length)) : ''}</span>}/>{detail.relations.length === 0 ? <EmptyState text={relationEmpty}/> : detail.relations.map((relation) => { const relationName = displayName(relation.displayName); return <button type="button" key={relation.userId} onClick={() => openUser(relation.userId, relationName)} className="grid h-[52px] w-full grid-cols-[1fr_auto_auto_16px] items-center gap-3 border-b border-[#EEF0F3] px-4 text-left hover:bg-s2"><span className="font-medium">{relationName}</span><Badge spec={bindBadge('accepted')}/><span className="font-mono text-xs text-fg-tertiary">{S.admin.users.boundOn(dateOnly(relation.bondAcceptedAt))}</span><span className="text-fg-tertiary"><Icon name="chevron" size={14}/></span></button> })}</Card>
-        <Card><CardHeader title={S.admin.users.relatedPlans} aside={<span className="text-xs text-fg-tertiary tabular-nums">{S.admin.users.planCount(detail.plans.length)}</span>}/>{detail.plans.length === 0 ? <EmptyState text={S.admin.users.noRelatedPlans}/> : detail.plans.map((plan) => <div key={plan.id} className="grid min-h-12 grid-cols-[minmax(0,1fr)_auto_56px_96px] items-center gap-3 border-b border-[#EEF0F3] px-5 last:border-0"><span className="truncate font-medium">{plan.name}</span><Badge spec={planBadge(plan.status)}/><span className="whitespace-nowrap text-right text-xs text-fg-secondary">{S.common.countWeeks(plan.weeks)}</span><span className="text-right font-mono text-xs text-fg-tertiary">{dateOnly(plan.createdAt)}</span></div>)}</Card></div>
+      <Card className="min-w-0">
+        <CardHeader title={S.admin.bindings.title} aside={!bindings.loading && !bindings.error && bindings.data && <span className="text-xs text-fg-tertiary tabular-nums">{S.admin.bindings.summary(activeCount, rows.length)}</span>}/>
+        {bindings.loading ? <SkeletonRows/> : bindings.error ? <ErrorState retry={bindings.retry}/> : rows.length === 0 ? <EmptyState text={relationEmpty}/> : <div className="overflow-x-auto">
+          <div className="min-w-[480px]">
+            <div className="grid h-[34px] grid-cols-[minmax(0,1fr)_72px_96px_96px_16px] items-center gap-3 border-b border-[#EEF0F3] px-5 font-mono text-[10.5px] tracking-[0.08em] text-fg-tertiary">
+              <span>{user.role === 'coach' ? S.admin.bindings.student : S.admin.bindings.coach}</span><span>{S.admin.bindings.status}</span><span className="text-right">{S.admin.bindings.submittedAt}</span><span className="text-right">{S.admin.bindings.respondedAt}</span><span/>
+            </div>
+            {rows.map(binding => {
+              const isCoach = binding.coachId === user.id
+              const counterpartId = isCoach ? binding.studentId : binding.coachId
+              const counterpartName = displayName(isCoach ? binding.studentName : binding.coachName)
+              return <button type="button" key={binding.id} onClick={() => openUser(counterpartId, counterpartName)} className="grid h-[52px] w-full grid-cols-[minmax(0,1fr)_72px_96px_96px_16px] items-center gap-3 border-b border-[#EEF0F3] px-5 text-left last:border-0 hover:bg-s2">
+                <span className="truncate font-medium">{counterpartName}</span><span><Badge spec={bindBadge(binding.status)}/></span><span className="text-right font-mono text-xs text-fg-tertiary">{dateOnly(binding.submittedAt)}</span><span className="text-right font-mono text-xs text-fg-tertiary">{dateOnly(binding.respondedAt)}</span><span className="text-fg-tertiary"><Icon name="chevron" size={14}/></span>
+              </button>
+            })}
+          </div>
+        </div>}
+      </Card>
     </div>
   </div>
-}
-
-type BindingFilter = 'all' | AdminBindingStatus
-
-function BindingsPage({ state, openUser }: { state: ResourceState<Awaited<ReturnType<typeof getAdminBindings>>>; openUser: (id: string, label: string) => void }) {
-  const [filter, setFilter] = useState<BindingFilter>('all')
-  const [search, setSearch] = useState('')
-  const rows = useMemo(() => { const query = search.trim().toLocaleLowerCase(); return [...(state.data?.bindings ?? [])].filter((binding) => (filter === 'all' || binding.status === filter) && (!query || displayName(binding.coachName).toLocaleLowerCase().includes(query) || displayName(binding.studentName).toLocaleLowerCase().includes(query))).sort((a, b) => b.submittedAt.localeCompare(a.submittedAt)) }, [filter, search, state.data])
-  const filtered = filter !== 'all' || search.trim() !== ''
-  return <div className="flex max-w-[1200px] flex-col gap-5" data-testid="admin-bindings"><PageHeader title={S.admin.page.bindings} subtitle={state.data ? S.admin.bindings.count(rows.length) : '—'} loading={state.loading} refresh={state.retry}/><div className="flex flex-wrap items-center gap-3"><FilterChips options={[["all", S.common.all], ['accepted', S.admin.binding.accepted], ['pending', S.admin.binding.pending], ['rejected', S.admin.binding.rejected], ['expired', S.admin.binding.expired], ['cancelled', S.admin.binding.cancelled]]} value={filter} onChange={setFilter}/><SearchBox value={search} onChange={setSearch} placeholder={S.admin.bindings.search}/></div><Card className="overflow-x-auto"><div className="min-w-[820px]"><div className="grid h-10 grid-cols-[minmax(120px,1fr)_20px_minmax(120px,1fr)_120px_140px_140px] items-center gap-3 border-b border-border px-4 font-mono text-[10.5px] uppercase tracking-[0.08em] text-fg-tertiary"><span>{S.admin.bindings.coach}</span><span/><span>{S.admin.bindings.student}</span><span>{S.admin.bindings.status}</span><span>{S.admin.bindings.submittedAt}</span><span>{S.admin.bindings.respondedAt}</span></div>{state.loading ? <SkeletonRows/> : state.error ? <ErrorState retry={state.retry}/> : rows.length === 0 ? <EmptyState text={filtered ? S.admin.bindings.noMatch : S.admin.bindings.empty} clear={filtered ? () => { setFilter('all'); setSearch('') } : undefined}/> : <>{rows.map((binding: AdminBinding) => <div key={binding.id} className="grid h-12 grid-cols-[minmax(120px,1fr)_20px_minmax(120px,1fr)_120px_140px_140px] items-center gap-3 border-b border-[#EEF0F3] px-4" style={{ opacity: binding.status === 'accepted' || binding.status === 'pending' ? 1 : 0.55 }}><button type="button" onClick={() => openUser(binding.coachId, displayName(binding.coachName))} className="truncate text-left font-medium hover:text-brand">{displayName(binding.coachName)}</button><span className="text-fg-tertiary"><Icon name="arrow" size={14}/></span><button type="button" onClick={() => openUser(binding.studentId, displayName(binding.studentName))} className="truncate text-left font-medium hover:text-brand">{displayName(binding.studentName)}</button><span><Badge spec={bindBadge(binding.status)}/></span><span className="font-mono text-[12.5px] text-fg-tertiary tabular-nums">{dateOnly(binding.submittedAt)}</span><span className="font-mono text-[12.5px] text-fg-tertiary tabular-nums">{dateOnly(binding.respondedAt)}</span></div>)}<div className="px-4 py-2.5 text-[11.5px] text-fg-tertiary">{S.admin.bindings.rowsHint(rows.length)}</div></>}</div></Card></div>
 }
 
 const exerciseTypeLabel = (type: string): string => S.common.exerciseType[type as keyof typeof S.common.exerciseType] ?? type
@@ -338,7 +331,7 @@ function ExerciseUsagePage({ state }: { state: ResourceState<Awaited<ReturnType<
 }
 
 function AdminRail({ page, pending, navigate, onLogout }: { page: AdminPage; pending: number; navigate: (page: RootPage) => void; onLogout: () => void }) {
-  const tabs: RootPage[] = ['overview', 'applications', 'users', 'bindings', 'exercises']
+  const tabs: RootPage[] = ['overview', 'applications', 'users', 'exercises']
   const activeRoot = page === 'userDetail' ? 'users' : page
   return <nav aria-label={S.admin.navigation} className="flex w-24 flex-none flex-col items-center border-r border-border bg-s1 px-2.5 py-[18px]">
     <div className="flex h-10 w-10 items-center justify-center rounded-lg border border-border-strong text-lg font-black">M</div>
@@ -368,29 +361,28 @@ export function AdminWorkspace({ onLogout }: Props) {
   // The overview endpoint omits email; the existing users endpoint supplies the recent-registration table.
   const users = useResource(page === 'users' || page === 'overview' ? 'users' : null, getAdminUsers)
   const userDetail = useResource(page === 'userDetail' && userId ? `user:${userId}` : null, () => getAdminUser(userId as string))
-  const bindings = useResource(page === 'bindings' ? 'bindings' : null, getAdminBindings)
+  const bindings = useResource(page === 'userDetail' ? 'bindings' : null, getAdminBindings)
   const exercises = useResource(page === 'exercises' ? 'exercises' : null, getAdminExerciseUsage)
   const navigate = (next: RootPage) => { setPage(next); setUserId(null) }
   const openUser = (id: string, label: string) => { setBackPage(page === 'userDetail' ? backPage : page); setUserId(id); setUserLabel(label); setPage('userDetail') }
-  const active = page === 'overview' ? overview : page === 'users' ? users : page === 'userDetail' ? userDetail : page === 'bindings' ? bindings : page === 'exercises' ? exercises : applicationState
+  const active = page === 'overview' ? overview : page === 'users' ? users : page === 'userDetail' ? userDetail : page === 'exercises' ? exercises : applicationState
   const leaf = page === 'userDetail' ? (userDetail.data ? displayName(userDetail.data.user.displayName, userDetail.data.user.phone) : userLabel) : pageTitle(page)
   const pending = applications?.filter(item => item.status === 'pending').length ?? 0
   const subtitle = page === 'overview' ? S.admin.overview.updated(overview.updatedAt?.toLocaleTimeString(resolveLocale(), { hour: '2-digit', minute: '2-digit', hour12: false }) ?? '—') : page === 'applications' ? S.admin.applications.subtitle : ''
-  const refresh = () => { active.retry(); if (page === 'overview') { applicationState.retry(); users.retry() } }
+  const refresh = () => { active.retry(); if (page === 'userDetail') bindings.retry(); if (page === 'overview') { applicationState.retry(); users.retry() } }
   return <div className="flex h-screen overflow-hidden bg-bg font-sans text-sm leading-[1.4] text-fg" data-testid="admin-workspace">
     <AdminRail page={page} pending={pending} navigate={navigate} onLogout={onLogout}/>
     <div className="relative min-w-0 flex-1 overflow-y-auto">
       {active.loading && <div className="absolute inset-x-0 top-0 z-30 h-0.5 overflow-hidden"><div className="admin-loadbar absolute top-0 h-0.5 w-[30%] bg-[#111827]"/></div>}
       <main className={`flex min-w-0 max-w-[1240px] flex-col px-10 pb-12 ${page === 'userDetail' ? 'gap-6 pt-7' : page === 'overview' ? 'gap-7 pt-9' : 'gap-5 pt-9'}`}>
-        {page !== 'users' && page !== 'bindings' && page !== 'exercises' && <header className="flex flex-wrap items-end justify-between gap-4">
+        {page !== 'users' && page !== 'exercises' && <header className="flex flex-wrap items-end justify-between gap-4">
           {page === 'userDetail' ? <div className="flex items-center gap-2 text-[13px]"><button type="button" onClick={() => navigate(backPage)} className="flex items-center gap-1.5 text-fg-secondary"><Icon name="back" size={15}/>{S.admin.page.users}</button><span>/</span><span>{leaf}</span></div> : <div><h1 className="text-[26px] font-bold tracking-[-0.01em]">{leaf}</h1><p className="mt-1 text-[13px] text-fg-tertiary">{subtitle}</p></div>}
           <button type="button" onClick={refresh} disabled={active.loading || reviewBusy} className="admin-secondary">{S.admin.refresh}</button>
         </header>}
         {page === 'applications' && <ApplicationsPage applications={applications} loading={applicationState.loading} error={applicationState.error} retry={applicationState.retry} onChange={setApplications} onToast={setToast} mailFailures={mailFailures} onMailResult={setMailFailures} busy={reviewBusy} onBusyChange={setReviewBusy}/>}
         {page === 'overview' && <OverviewPage state={overview} applications={applications} applicationsLoading={applicationState.loading} applicationsError={applicationState.error} retryApplications={applicationState.retry} users={users} openUser={openUser} navigate={navigate}/>}
         {page === 'users' && <UsersPage state={users} openUser={openUser}/>}
-        {page === 'userDetail' && <UserDetailPage state={userDetail} openUser={openUser} onToast={setToast}/>}
-        {page === 'bindings' && <BindingsPage state={bindings} openUser={openUser}/>}
+        {page === 'userDetail' && <UserDetailPage state={userDetail} bindings={bindings} openUser={openUser} onToast={setToast}/>}
         {page === 'exercises' && <ExerciseUsagePage state={exercises}/>}
       </main>
     </div>
