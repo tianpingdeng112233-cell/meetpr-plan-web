@@ -73,6 +73,7 @@ export function CatalogPage({
   const isCustom = (exercise: ExerciseResponse) => exercise.created_by_coach_id != null
   const isOwnedCustom = (exercise: ExerciseResponse) => exercise.created_by_coach_id === currentCoachId
   const displayName = (exercise: ExerciseResponse) => {
+    if (exercise.adopted) return exercise.name
     const entry = catalog?.get(exercise.id)
     return fmt.exerciseName({ name: entry?.name ?? exercise.name, name_en: entry?.nameEn ?? exercise.name_en })
   }
@@ -310,6 +311,8 @@ export function CatalogPage({
             const planCount = typeof caught.details.plan_count === 'number' ? caught.details.plan_count : 0
             const logCount = typeof caught.details.log_count === 'number' ? caught.details.log_count : 0
             window.alert(S.catalog.exerciseInUse(planCount, logCount))
+          } else if (caught instanceof ApiException && caught.code === 'EXERCISE_ADOPTED') {
+            window.alert(S.catalog.adoptedDelete)
           } else {
             window.alert(S.catalog.deleteFailed)
           }
@@ -427,12 +430,12 @@ function ExerciseDetailDrawer({ exercise, displayName, custom, owned, deleting, 
         <div><dt>{S.catalog.synergistMuscles}</dt><dd><MetaTags values={synergists} labels={MUSCLE_LABEL} /></dd></div>
         <div><dt>{S.catalog.aliases}</dt><dd>{aliases.length ? aliases.map((alias) => <span key={alias} className="catalog-meta-tag">{alias}</span>) : <span className="catalog-muted">{S.common.nonePlain}</span>}</dd></div>
       </dl>
-      <div className="catalog-drawer-note">{owned
+      <div className="catalog-drawer-note">{exercise.adopted ? S.catalog.adoptedNote : owned
         ? <><b>{S.catalog.myCustomExercise}</b>{S.catalog.customAvailable}</>
         : custom ? S.catalog.otherCustomManaged : S.catalog.systemManaged}</div>
     </div>
     <footer className="catalog-drawer-footer">{owned
-      ? <><button type="button" className="catalog-ghost-action" disabled={deleting} onClick={onDelete}>{S.catalog.deleteExercise}</button><button type="button" className="catalog-white-action" disabled={deleting} onClick={onEdit}>{S.catalog.editExercise}</button></>
+      ? <>{!exercise.adopted && <button type="button" className="catalog-ghost-action" disabled={deleting} onClick={onDelete}>{S.catalog.deleteExercise}</button>}<button type="button" className="catalog-white-action" disabled={deleting} onClick={onEdit}>{S.catalog.editExercise}</button></>
       : <button type="button" className="catalog-white-action" onClick={onUse}>{S.catalog.useInPlan}</button>}</footer>
   </aside>
 }
@@ -534,35 +537,44 @@ function CreateExerciseDrawer({ initialName, exercise, index, exerciseList, onCl
         : [...current.equipment, item],
     }))
   }
-  const canSubmit = draft.name.trim().length > 0 && draft.primaryMuscle != null && !saving
+  const canSubmit = draft.name.trim().length > 0 && (exercise?.adopted || draft.primaryMuscle != null) && !saving
 
   return <aside className="writing-panel catalog-drawer" role="dialog" aria-label={exercise ? S.catalog.editExercise : S.catalog.newExercise}>
     <header className="catalog-drawer-header">
-      <div><h2>{exercise ? S.catalog.editExercise : S.catalog.newExercise}</h2><small>{S.catalog.customSubtitle}</small></div>
+      <div><h2>{exercise ? S.catalog.editExercise : S.catalog.newExercise}</h2><small>{exercise?.adopted ? S.catalog.adoptedNote : S.catalog.customSubtitle}</small></div>
       <button type="button" aria-label={S.catalog.closeCreate} disabled={saving} onClick={onClose}>✕</button>
     </header>
     <form
       className="catalog-create-form"
       onSubmit={(event) => {
         event.preventDefault()
-        if (!canSubmit || !draft.primaryMuscle) return
+        if (!canSubmit) return
         setSaving(true)
         setError('')
-        void onCreate({
+        void onCreate(exercise?.adopted ? { name: draft.name.trim() } : {
           name: draft.name.trim(),
           nameEn: draft.nameEn.trim() || null,
           exerciseType: draft.exerciseType === 'main_lift' ? undefined : draft.exerciseType,
           mainLiftFamily: draft.exerciseType === 'main_lift_variation' ? draft.mainLiftFamily : undefined,
-          muscleGroups: [draft.primaryMuscle, ...draft.synergists],
+          muscleGroups: [draft.primaryMuscle!, ...draft.synergists],
           equipmentList: draft.equipment,
           movementPattern: draft.movementPattern,
-        }).catch(() => {
-          setError(exercise ? S.catalog.updateFailed : S.catalog.createFailed)
+        }).catch((caught) => {
+          setError(caught instanceof ApiException && caught.code === 'EXERCISE_ADOPTED_ATTRIBUTES_LOCKED' ? S.catalog.adoptedLocked : exercise ? S.catalog.updateFailed : S.catalog.createFailed)
           setSaving(false)
         })
       }}
     >
       <label className="catalog-form-field"><span>{S.catalog.exerciseName}</span><input autoFocus type="text" value={draft.name} onChange={(event) => updateName(event.target.value)} placeholder={S.catalog.exampleSmithLunge} /></label>
+      {exercise?.adopted ? <dl className="catalog-fields">
+        <div><dt>{S.catalog.englishName}</dt><dd>{exercise.name_en || S.common.nonePlain}</dd></div>
+        <div><dt>{S.catalog.exerciseCategories}</dt><dd>{EXERCISE_TYPE_LABEL[exercise.exercise_type]}</dd></div>
+        <div><dt>{S.catalog.belongsToMainLift}</dt><dd>{exercise.main_lift_family ? LIFT_FAMILY_LABEL[exercise.main_lift_family] : S.catalog.genericAccessory}</dd></div>
+        {exercise.is_competition_lift && <div><dt>{S.catalog.competitionExercise}</dt><dd>✓</dd></div>}
+        <div><dt>{S.common.muscleGroup}</dt><dd><MetaTags values={exercise.muscle_groups} labels={MUSCLE_LABEL}/></dd></div>
+        <div><dt>{S.common.equipment}</dt><dd><MetaTags values={exercise.equipment} labels={EQUIPMENT_LABEL}/></dd></div>
+        <div><dt>{S.catalog.movementPattern}</dt><dd><MetaTags values={exercise.movement_pattern} labels={MOVEMENT_PATTERN_LABEL}/></dd></div>
+      </dl> : <>
       <label className="catalog-form-field"><span>{S.catalog.englishName} <small>{S.catalog.optional}</small></span><input type="text" value={draft.nameEn} maxLength={120} onChange={(event) => setDraft((current) => ({ ...current, nameEn: event.target.value }))} /></label>
       {candidates.length > 0 && <div className="catalog-form-field catalog-existing-candidates">
         <span>{S.catalog.possibleExisting}</span>
@@ -594,6 +606,7 @@ function CreateExerciseDrawer({ initialName, exercise, index, exerciseList, onCl
           setDraft((current) => ({ ...current, movementPattern: pattern }))
         }}>{MOVEMENT_PATTERN_LABEL[pattern]}</ChoiceChip>)}
       </ChipField>
+      </>}
       {error && <div className="catalog-form-error">{error}</div>}
       <footer className="catalog-drawer-footer catalog-create-footer">
         <button type="button" className="catalog-ghost-action" disabled={saving} onClick={onClose}>{S.common.cancel}</button>

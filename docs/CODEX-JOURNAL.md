@@ -1144,3 +1144,54 @@ npx vitest run src/features/plan-editor/block-grid-ui.test.tsx
 - `npm run build`：exit 0，Vite 4.71s，仅既有 >500 kB chunk 提示，`/tmp/016-c-build.log`。
 - `git diff --check` 通过；检索确认无旧题目残留，无其他需要更名的同字段标签。Standards 自审：未见问题；Spec 自审：未见遗漏或超范围改动。本次为 T0 文案调整，未做独立互审。
 - 浏览器实看未完成：`npm run dev -- --host 127.0.0.1 --port 5194` 被沙箱拒绝 `listen EPERM`（`/tmp/016-c-vite.log`）。没有绕过权限或向真实后端写入；DOM 测试不等同视觉验收。
+
+## 2026-10-22 · 017（Codex 开发交付，待 Claude 收货）
+
+基线：`feat/017-exercise-adoption`，HEAD `ba684aa`（基于 016）。已全文读取本仓 CONTEXT / CLAUDE、017 CARD / SPEC、四份定稿 HTML 源码，以及后端 053 SPEC / CONTEXT。未 commit、push、开 PR；未修改后端、依赖、锁文件或产品正典。
+
+### 改动文件
+
+- `src/api/admin.ts`：自建动作待处理/已收录 wire 类型，以及 list / adopt / unadopt 三接口；收录请求用互斥类型表达 `target_exercise_id` 或 `new_official`。成功响应形状在 053 中未进一步定字段，客户端不猜字段，成功后重新 GET。
+- `src/api/types.ts`、`src/api/exercises.ts`：响应类型增加可选 `canonical_exercise_id` / `adopted`（兼容尚未返回字段的环境）；被收录动作 PATCH 只生成 name。
+- `src/features/admin/CustomExercisesPage.tsx`：两层分段、搜索、待处理表与已收录分组表、单条撤销、toast、列表与计数刷新。官方分段保留原使用统计表的排序和搜索行为。
+- `src/features/admin/AdoptDialog.tsx`：推荐/新建同一原生 modal；最多三条推荐、官方搜索、按最高 plan_count 预填、往返保留输入、属性胶囊与类型联动、单次提交防重、失败保留输入。409 后以最新 pending 同步待处理 IDs；整组已处理时保留输入并禁用提交；刷新 GET 失败时可在弹窗内仅重拉数据。
+- `src/features/admin/adoptionCandidates.ts`：纯函数排序，归一去空白/大小写/全角，别名表 > 包含 > 单字集合 Dice ≥ 0.5；所有写法取最高分、相同分沿用 catalog 顺序，排除自建动作。
+- `src/features/admin/useAdminResource.ts`、`AdminWorkspace.tsx`：将既有资源 hook 原样提取供新页面复用，并接入动作库分段容器。
+- `src/features/catalog/CatalogPage.tsx`：被收录自建动作只允许改 name，其余属性完整只读（含多个动作模式）；隐藏删除；处理两个 adoption 409 错误码。英文模式也保留教练自己的 name，改名后列表与详情同步显示。
+- `src/i18n/strings-admin.ts`、`strings-catalog.ts`：中英文同步；`src/index.css`：只给收录弹窗覆盖旧审核弹窗的按钮最小高度，让胶囊保持稿中的 30px、底部操作保持 40px。
+- 测试：`src/features/admin/AdminWorkspace.test.tsx`、`adoptionCandidates.test.ts`、`src/features/catalog/CatalogPage.test.tsx`。`src/i18n/en-smoke.test.tsx` 将后台整模块 mock 改成部分 mock，保留新增接口导出，继续覆盖原英文 smoke。
+- `docs/CODEX-JOURNAL.md`：本记录。
+
+### 红 → 绿证据
+
+按卡片批准的三个 seam 逐个行为推进；后台新增交互用 fetch 桩，没有真实后端写请求。各日志位于 `/tmp/017-*.log`。
+
+| 行为 | Red | Green |
+| --- | --- | --- |
+| 候选排序优先级 / 前三 / 排除自建 | `017-rank-red.log`：模块未实现，导入失败 | `017-rank-green.log`：首条通过；后续补全角、英文、双向包含、0.5 阈值、空写法覆盖 |
+| 两层分段、表格、写法数、教练搜索 | `017-list-red.log`：无「教练自建」入口 | `017-list-green.log`：通过 |
+| 归到已有官方、全组 IDs、搜索选中、防重、刷新 | `017-existing-red.log`：无收录弹窗 | `017-existing-green.log`：通过 |
+| 新建预填 / 往返保留 / 类型联动 / 必填 / 请求体 | `017-new-red.log`：无新建切换入口 | `017-new-green.log`：通过；过程中修正同批连续选择覆盖前一选择的问题，改用函数式 state 更新 |
+| 无候选直达新建、普通错误保留、409 刷新 | `017-errors-red.log`：未直达新建 | `017-errors-green.log`：通过；测试错误信封按既有 client 的 `{ error: string }` 校正 |
+| 撤销单条、无确认、防重、回待处理 | `017-undo-red.log`：无 unadopt 请求 | `017-undo-green.log`：通过 |
+| 教练只改名、属性只读、无删除 | `017-catalog-red.log`：仍有删除按钮 | `017-catalog-green.log`：catalog 9 条通过 |
+| 旧 catalog 遇到属性锁定 / 禁删错误 | `017-catalog-error-red.log`：只有通用错误 | `017-catalog-error-green.log`：catalog 10 条通过 |
+| 自审返修：409 重试使用剩余 IDs；英文显示教练叫法 | `017-review-red.log`：2 条失败，旧 IDs / 官方英文名 | `017-review-green.log`：相关 3 文件 35 条通过 |
+| 自审返修：409 后 GET 失败，在弹窗里重试且保留输入 | `017-refresh-red.log`：弹窗内无「重试」 | `017-refresh-green.log`：通过，重试不重复 POST，最后可提交成功 |
+
+### 检查与开发自审
+
+- `npm run lint`：通过（`tsc --noEmit`），`/tmp/017-lint-final.log`。
+- 全量测试：`npm test -- --maxWorkers=2 --minWorkers=1` 通过，102 files / 1043 passed，44.30s，`/tmp/017-full-test-two-workers.log`。
+- `npm run build`：通过，Vite 7.22s，`/tmp/017-build-final.log`；仅既有 >500 kB chunk 提示。
+- `git diff --check` 通过，`package.json` / `package-lock.json` 无 diff。最终完整改动（含新增文件）导出 `/tmp/017-changes.diff`，供本地收货查看。
+- 默认并发首次全测 `/tmp/017-full-test.log`：1039 passed / 1 failed，唯一失败是旧英文 smoke 的 admin 全模块 mock 缺少新增导出，已修正。修正及审查返修后的默认并发 `/tmp/017-full-test-final.log`：1042 passed / 1 failed；唯一失败是未修改的 `plan-editor/pinyin.test.ts` 性能用例 1237ms 超过 1000ms 阈值。按任务要求改用两 worker 重跑，未改测试超时/阈值、未跳过用例、未改仓内并发配置。
+- Standards：独立只读初审发现 409 继续提交旧 IDs；修复后定向复审发现 GET 失败时重试在原生 modal 背后不可操作。两轮均补红→绿回归，第二轮定向复核关闭全部问题。
+- Spec：独立只读初审发现英文模式显示官方 name_en 遮盖教练叫法，以及 30px 胶囊受旧样式影响变成 40px。均已修复；复核同步确认 409 刷新恢复修复，无剩余明确代码缺陷。以下计数口径为未明确定义项，不宣称产品验收通过。
+
+### 拿不准的地方 / 待 Claude 收货
+
+- 分段 N 的计量单位未在 017 / 053 明确定义。目前官方按 `/exercises` 官方动作条数；待处理按归一名组数；已收录按官方目标组数；教练自建为后两者之和。多组归到同一官方时总组数可能下降；此处与两张表的分组单位一致，需收货时确认口径。
+- 053 单次 adopt 上限为 50 条，017 要求整组一次提交。实现遵循整组单次请求，没有私自拆批或截断；超 50 条的组如何处理，两个 spec 未约定。
+- 浏览器实看未完成：本地 `npm run dev -- --host 127.0.0.1 --port 5194` 被当前沙箱拒绝 `listen EPERM`，见 `/tmp/017-vite.log`。未绕过权限。DOM 测试不代替视觉验收；定稿⑥–⑨结构/间距、原生 modal 实际焦点与滚动，以及验收 10 的真实 staging「收录 → 教练自己叫法且官方隐藏 → 撤销恢复」仍由 Claude 收货。
+- 仓内无 `docs/agents/issue-tracker.md`，已告知需后续 `$setup-matt-pocock-skills`；本次依据明确本地卡片，用 review-loop 独立双轴开发自审，不宣称运行了缺配置的 tracker 工作流。

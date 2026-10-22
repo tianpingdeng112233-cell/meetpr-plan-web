@@ -1,5 +1,5 @@
 import { api } from './client'
-import type { PlanStatus } from './types'
+import type { ExerciseResponse, PlanStatus } from './types'
 
 // Includes 'admin': /admin/users and overview return the admin account itself.
 export type AdminManagedRole = 'coach' | 'coached_student' | 'self_train_student' | 'admin'
@@ -88,3 +88,39 @@ export const getAdminUser = (userId: string) =>
 export const getAdminBindings = () => api.get<AdminBindingsResponse>('/admin/bindings')
 export const getAdminExerciseUsage = () =>
   api.get<AdminExerciseUsageResponse>('/admin/exercise-usage')
+
+// Wire shapes from backend spec 053. Official creation also accepts main lifts.
+export type OfficialExerciseInput = Pick<ExerciseResponse, 'name' | 'name_en' | 'exercise_type' | 'main_lift_family' | 'is_competition_lift' | 'muscle_groups' | 'equipment' | 'movement_pattern'>
+export interface CustomExerciseRow extends OfficialExerciseInput {
+  exercise_id: string
+  coach_id: string
+  coach_name: string | null
+  plan_count: number
+}
+export interface PendingExerciseGroup {
+  key: string
+  display_name: string
+  coach_count: number
+  plan_count: number
+  rows: CustomExerciseRow[]
+}
+export interface AdoptedExerciseRow {
+  exercise_id: string
+  name: string
+  coach_id: string
+  coach_name: string | null
+  plan_count: number
+  adopted_at: string
+}
+export interface AdminCustomExercisesResponse {
+  pending: PendingExerciseGroup[]
+  adopted: Array<{ official: Pick<ExerciseResponse, 'id' | 'name' | 'name_en'>; rows: AdoptedExerciseRow[] }>
+}
+export const getAdminCustomExercises = () => api.get<AdminCustomExercisesResponse>('/admin/custom-exercises')
+export type AdoptExercisesInput = { exercise_ids: string[] } & (
+  | { target_exercise_id: string; new_official?: never }
+  | { new_official: OfficialExerciseInput; target_exercise_id?: never }
+)
+// Consumers refresh the canonical lists; the success envelope is not specified further by 053.
+export const adoptCustomExercises = (body: AdoptExercisesInput) => api.post<unknown>('/admin/custom-exercises/adopt', body)
+export const unadoptCustomExercises = (exercise_ids: string[]) => api.post<unknown>('/admin/custom-exercises/unadopt', { exercise_ids })
