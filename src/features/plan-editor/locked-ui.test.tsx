@@ -228,6 +228,7 @@ describe('exercise history lock UI', () => {
     openBlockDay(host)
 
     act(() => host.querySelector<HTMLButtonElement>('[data-plan-menu-trigger]')!.click())
+    act(() => document.querySelector<HTMLButtonElement>('[aria-haspopup=menu][aria-label]')!.click())
     act(() => ([...document.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')].find(button => button.textContent?.startsWith('计划设置'))!).click())
     const date = host.querySelector<HTMLInputElement>('input[type="date"]')!
     expect(date.disabled).toBe(true)
@@ -318,17 +319,9 @@ describe('exercise history lock UI', () => {
     expect(onSave).not.toHaveBeenCalled()
   })
 
-  it('keeps xlsx import forbidden for a published plan', async () => {
-    const alert = vi.spyOn(window, 'alert').mockImplementation(() => {})
-    act(() => root?.render(
-      <PlanEditor initialWeeks={[week(1, [])]} weeksCount={1} studentName="学员" planName="已发布计划"
-        initialPublished planStartDate="2026-01-01" exerciseIndex={new ExerciseIndex([])} />,
-    ))
-    openBlockDay(host)
-    const input = host.querySelector<HTMLInputElement>('input[type="file"]')!
-    Object.defineProperty(input, 'files', { value: [new File(['x'], 'plan.xlsx')], configurable: true })
-    await act(async () => input.dispatchEvent(new Event('change', { bubbles: true })))
-    expect(alert).toHaveBeenCalledWith(expect.stringContaining('请先点右上「新建计划」'))
+  it('has no overwrite import control on a published plan', async () => {
+    act(() => root?.render(<PlanEditor initialWeeks={[week(1, [])]} weeksCount={1} studentName="学员" planName="已发布计划" initialPublished planStartDate="2026-01-01" exerciseIndex={new ExerciseIndex([])} />))
+    expect(host.querySelector('input[type=file]')).toBeNull()
   })
 
   it('keeps published changes unsaved after a scoped 409 instead of showing a false saved state', async () => {

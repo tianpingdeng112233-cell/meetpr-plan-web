@@ -1,3 +1,4 @@
+import { clearEditedDoubts, clearDateDoubts, countImportDoubts, withoutImportDoubts } from './import/doubts'
 import { useCallback, useEffect, useMemo, useRef, useState, useImperativeHandle, type Ref } from 'react'
 import type { ColKey, ColWidths, Week, DayCol, ExerciseRow } from './types'
 import { COL_DEFAULTS, COL_MIN, isContentfulUnbound, isRestDay } from './types'
@@ -19,7 +20,7 @@ import type { EditorFeedbackHandle, FeedbackSession } from './feedbackSession'
 import { VideoMarker } from './components/VideoMarker'
 import { BlockHistory } from './components/BlockHistory'
 import './components/block-history.css'
-import { TopBar } from './components/TopBar'
+import { TopBar, type PlanAction } from './components/TopBar'
 import { DayColumn } from './components/DayColumn'
 import { ExercisePopover } from './components/ExercisePopover'
 import { CustomExerciseDialog } from './components/CustomExerciseDialog'
@@ -33,7 +34,6 @@ import type {
   PlanWithChildren,
   StudentOnboardingProfile, StudentVideo, StudentSetLog,
 } from '../../api/types'
-import type { ParsedWeek } from './import'
 import {
   LockedRowMutationError, ReconcileConflict, ReconciliationError, type SaveResult,
 } from './reconcile'
@@ -109,7 +109,7 @@ const DAY_MOVE_THRESHOLD = 5
 // One automatic retry for a failed「更新计划」before the modal error (David 2026-08-23).
 export const UPDATE_RETRY_DELAY = 1500
 
-interface Switcher { id: string; label: string; tag?: string }
+interface Switcher { id: string; label: string; tag?: string; status?: PlanStatus; startDate?: string }
 interface RecoveryMirror { mirror: DraftMirror; source: 'local' | 'remote' }
 
 export interface PlanEditorProps {
@@ -141,6 +141,7 @@ export interface PlanEditorProps {
   readOnly?: boolean
   /** Real publish call; when omitted the button just toggles locally (sample mode). */
   onPublish?: () => Promise<void>
+  onBackfillAfterPublish?: () => Promise<void>
   /** Save current edits back to the backend; resolves with how many contentful rows were skipped. */
   onSave?: (
     weeks: Week[],
@@ -165,6 +166,9 @@ export interface PlanEditorProps {
   plans?: Switcher[]
   currentPlanId?: string
   onSwitchPlan?: (id: string) => void | Promise<void>
+  onPlanAction?: (id: string, action: PlanAction) => void | Promise<void>
+  openSettingsRequest?: boolean
+  onSettingsRequestHandled?: () => void
   onNewPlan?: () => void | Promise<void>
   onDeleteCurrentDraft?: () => void | Promise<void>
   onMarkComplete?: () => void | Promise<void>
@@ -184,10 +188,6 @@ export interface PlanEditorProps {
   planUpdatedAt?: string
   onChangeStartDate?: (startDate: string) => Promise<void>
   onChangePlanWeeks?: (planWeeks: number) => Promise<void>
-}
-
-function hasGridContent(weeks: Week[]): boolean {
-  return weeks.some((week) => week.days.some((day) => day.rows.length > 0))
 }
 
 function emptyTrainingDays(weeks: Week[], start: string | null) {
@@ -221,13 +221,9 @@ function savedClock(iso: string): string {
   }
 }
 
-function hasParsedWeekContent(week: ParsedWeek): boolean {
-  return week.days.some((day) => day.exercises.length > 0)
-}
-
 export interface IssueRow {
   rowId: string
-  kind: 'unbound' | 'noSets'
+  kind: 'unbound' | 'noSets' | 'importDoubt'
 }
 
 interface DetailedIssueRow extends IssueRow {
@@ -239,40 +235,25 @@ function findDetailedIssueRows(wks: Week[]): DetailedIssueRow[] {
   for (const wk of wks) for (const d of wk.days) {
     if (isRestDay(d)) continue
     for (const r of d.rows) {
-      if (r.hasLogs) continue
+      if (r.hasLogs) {
+        if (r.importDoubts?.length) issues.push({ rowId: r.id, kind: 'importDoubt' })
+        continue
+      }
       if (isContentfulUnbound(r)) issues.push({ rowId: r.id, kind: 'unbound' })
       else {
         const inputIssue = getBoundRowInputIssue(r)
         if (inputIssue) issues.push({ rowId: r.id, kind: 'noSets', inputIssue })
+        else if (r.importDoubts?.length) issues.push({ rowId: r.id, kind: 'importDoubt' })
       }
     }
   }
+  for (const week of wks) if (week.importDoubts?.length && !week.days.some(day => day.rows.length)) issues.push({ rowId: `import-week-${week.num}`, kind: 'importDoubt' })
   return issues
 }
 
 /** Grid-order issue list used by both the chip count and its cycling cursor. */
 export function findIssueRows(wks: Week[]): IssueRow[] {
   return findDetailedIssueRows(wks).map(({ rowId, kind }) => ({ rowId, kind }))
-}
-
-function importRangeLabel(weeks: Week[]): string {
-  const first = weeks[0]
-  const last = weeks[weeks.length - 1]
-  const start = first?.days[0]?.dateLabel
-  const end = last?.days[6]?.dateLabel
-  return start && end ? `${start}–${end}` : ''
-}
-
-function isPastISODate(iso: string): boolean {
-  const [year, month, day] = iso.split('-').map(Number)
-  const candidate = new Date(year, month - 1, day)
-  if (
-    !Number.isInteger(year) || !Number.isInteger(month) || !Number.isInteger(day)
-    || candidate.getFullYear() !== year || candidate.getMonth() !== month - 1 || candidate.getDate() !== day
-  ) return false
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
-  return candidate < today
 }
 
 type WeeksUpdate = Week[] | ((prev: Week[]) => Week[])
@@ -469,7 +450,7 @@ export function PlanEditor(props: PlanEditorProps) {
   useEffect(() => {
     const local = mountedMirror.current
     if (!waitsForRemoteRecovery || !mirrorPlanId) {
-      if (local && local.contentHash === serverMirrorHash.current) clearDraftMirror(mirrorPlanId)
+      if (local && local.contentHash === serverMirrorHash.current && !countImportDoubts(local.content.weeks)) clearDraftMirror(mirrorPlanId)
       return
     }
     let cancelled = false
@@ -477,6 +458,20 @@ export function PlanEditor(props: PlanEditorProps) {
       .then((response) => {
         if (cancelled) return
         let remote = response ? pendingResponseMirror(mirrorPlanId, response) : null
+        // Metadata-only snapshots survive tree saves and publication timestamps. Restore only
+        // review flags onto the current tree; never roll back server identity, logs or dates.
+        const metadata = [remote, local].filter((m): m is DraftMirror => !!m)
+          .sort((a,b) => Date.parse(b.savedAt) - Date.parse(a.savedAt))[0]
+        if (metadata && countImportDoubts(metadata.content.weeks) > 0
+          && draftContentHash({ ...metadata.content, weeks: withoutImportDoubts(metadata.content.weeks) }) === draftContentHash({ ...initialServerMirrorContent.current, weeks: withoutImportDoubts(initialServerMirrorContent.current.weeks) })) {
+          setWeeks(prev => prev.map(week => {
+            const source = metadata.content.weeks.find(w => w.num === week.num)!
+            return { ...week, importDoubts: source.importDoubts, days: week.days.map(day => ({ ...day, rows: day.rows.map((row, index) => ({ ...row, importDoubts: source.days.find(d => d.dow === day.dow)?.rows[index]?.importDoubts })) })) }
+          }))
+          serverMirrorHash.current = metadata.contentHash
+          setRecoveryMirror(null); setRecoveryReady(true)
+          return
+        }
         if (response && (!remote || remote.contentHash === serverMirrorHash.current)) {
           remote = null
           remoteWriter.current?.clear()
@@ -561,6 +556,7 @@ export function PlanEditor(props: PlanEditorProps) {
   const lastBlockWeekdays = useRef(buildBlockGrid(initialWeeks, props.planStartDate).columns.filter(column => column.patternIndex !== null).map(column => column.weekday))
   const [columnWeekdays, setColumnWeekdays] = useState<Record<number, number>>(() => Object.fromEntries((loadBlockWeekdays(props.currentPlanId) ?? []).map((day, dx) => [dx, day])))
   const [settingsOpen, setSettingsOpen] = useState(false)
+  useEffect(() => { if (props.openSettingsRequest) { setSettingsOpen(true); props.onSettingsRequestHandled?.() } }, [props.openSettingsRequest])
   const [setsDraft, setSetsDraft] = useState<{ rowId: string; value: string | null } | null>(null)
   const [extraWeekdays, setExtraWeekdays] = useState<number[]>(() => [...new Set([...loadBlockExtraWeekdays(props.currentPlanId),
     ...buildBlockGrid(initialWeeks, props.planStartDate).columns.filter(column => column.patternIndex === null).map(column => column.weekday)])])
@@ -573,7 +569,6 @@ export function PlanEditor(props: PlanEditorProps) {
 
   // Kept with the import token so an autosave retry reuses the coach's explicit
   // answer rather than prompting again or silently changing historical data.
-  const importedPastHistory = useRef(false)
   const [colW, setColW] = useState<ColWidths[]>(() => Array.from({ length: 7 }, () => ({ ...COL_DEFAULTS })))
   const [editingDay, setEditingDay] = useState<Sel | null>(null)
   const [blockMenu, setBlockMenu] = useState<{ x: number; y: number } | null>(null)
@@ -820,8 +815,9 @@ export function PlanEditor(props: PlanEditorProps) {
     if (readOnly) return
     const startSnapshot = currentPlanStart.current
     setWeeks((prev) => {
-      const next = typeof update === 'function' ? update(prev) : update
-      if (next === prev) return prev
+      const updated = typeof update === 'function' ? update(prev) : update
+      if (updated === prev) return prev
+      const next = clearEditedDoubts(prev, updated)
       historyRef.current = [...historyRef.current.slice(-49), prev]
       historyStartRef.current = [...historyStartRef.current.slice(-49), startSnapshot]
       historyDeletedDaysRef.current = [...historyDeletedDaysRef.current.slice(-49), deletedDaysRef.current]
@@ -840,6 +836,13 @@ export function PlanEditor(props: PlanEditorProps) {
     const hash = draftContentHash(content)
     serverMirrorHash.current = hash
     mirrorWriter.current.dropPendingIfHash(hash)
+    if (countImportDoubts(content.weeks)) {
+      saveDraftMirror(mirrorPlanId, content)
+      remoteWriter.current?.schedule(content)
+      remoteHasDirtyContent.current = true
+      if (published) setPublishedDirty(draftContentHash(mirrorContent(latestWeeks.current, currentPlanStart.current)) !== hash)
+      return
+    }
     clearDraftMirrorIfHash(mirrorPlanId, hash)
     clearDayDeletionIntent(mirrorPlanId, hash)
     remoteWriter.current?.markCovered(hash)
@@ -882,6 +885,11 @@ export function PlanEditor(props: PlanEditorProps) {
     if (hash === serverMirrorHash.current) {
       if (published) setPublishedDirty(false)
       if (!mirrorPlanId) return
+      if (countImportDoubts(content.weeks)) {
+        saveDraftMirror(mirrorPlanId, content)
+        remoteWriter.current?.schedule(content)
+        return
+      }
       // Content is back at the server baseline (e.g. undo): there is no draft
       // left to protect, so drop ANY pending write and wipe the stored mirror
       // outright — a hash-conditional clean would leave the undone draft to
@@ -2160,7 +2168,7 @@ export function PlanEditor(props: PlanEditorProps) {
     setStatusText(S.editor.updatingStartDate)
     try {
       await props.onChangeStartDate(nextStart)
-      const nextWeeks = relabelWeeksForStartDate(latestWeeks.current, nextStart)
+      const nextWeeks = clearDateDoubts(relabelWeeksForStartDate(latestWeeks.current, nextStart))
       const contentChangedDuringRequest = latestWeeks.current !== weeksAtRequest
       skipNextAutosave.current = !hadUnsavedContent && !contentChangedDuringRequest
       setWeeks(nextWeeks)
@@ -2306,7 +2314,6 @@ export function PlanEditor(props: PlanEditorProps) {
     if (!props.onSave || published || readOnly) return true
     const auto = saveMode.current === 'auto' && !publishing.current
     const importStart = pendingPlanStart.current
-    const markPastAsAssumedComplete = importedPastHistory.current
     const verb = auto ? S.editor.autosaving : S.editor.saving
     setSaving(true); setStatusText(verb); setDegradedSaveStatus(null)
     setDraftSaveFailed(false)
@@ -2319,7 +2326,7 @@ export function PlanEditor(props: PlanEditorProps) {
       const savedWeeks = latestWeeks.current
       const savedDeletedIds = requestedDeletedDayIds(savedWeeks)
       const savedPlanStart = importStart ?? currentPlanStart.current
-      const res = await props.onSave(savedWeeks, importStart, markPastAsAssumedComplete, onProgress, savedDeletedIds)
+      const res = await props.onSave(savedWeeks, importStart, false, onProgress, savedDeletedIds)
       lastSaveFailureAlert.current = null
       // Clear only the token this save consumed: an import landing mid-flight writes a fresh
       // token, and the drain loop's next pass must still deliver it via reconcileImportedPlan —
@@ -2327,7 +2334,6 @@ export function PlanEditor(props: PlanEditorProps) {
       if (pendingPlanStart.current === importStart) {
         pendingPlanStart.current = null
         if (importStart !== null) persistedPlanStart.current = importStart
-        importedPastHistory.current = false
       }
       // Same generation rule for the unsaved flag: edits typed while this save was in flight
       // are NOT in what we just persisted, so they must keep the leave guards armed.
@@ -2354,9 +2360,7 @@ export function PlanEditor(props: PlanEditorProps) {
         ))
         remoteWriter.current?.flush()
       }
-      const base = importStart && markPastAsAssumedComplete
-        ? S.editor.historyBackfilledLocked
-        : (auto ? S.editor.draftAutosaved : S.editor.draftSaved)
+      const base = auto ? S.editor.draftAutosaved : S.editor.draftSaved
       const coveredBase = res.skippedRows > 0 ? S.editor.skippedUnboundRows(base, res.skippedRows) : base
       setStatusText(coveredBase)
       setDegradedSaveStatus(res.degradedRows > 0 ? { base: coveredBase, count: res.degradedRows } : null)
@@ -2519,6 +2523,10 @@ export function PlanEditor(props: PlanEditorProps) {
       return
     }
     const issue = cur[index]
+    if (issue.rowId.startsWith('import-week-')) {
+      jumpToWeek(Number(issue.rowId.slice('import-week-'.length)))
+      return
+    }
     const focusRow = () => {
       const rowEl = rootRef.current?.querySelector<HTMLElement>(`[data-rowid="${issue.rowId}"]`)
       if (!rowEl) return
@@ -2580,7 +2588,7 @@ export function PlanEditor(props: PlanEditorProps) {
         ? S.editor.updateUnboundNote(unboundRows)
         : ''
       const recoveryLine = recoveryMirror ? `\n${S.editor.updateRecoveryOverwriteNote}` : ''
-      if (!window.confirm(S.editor.updatePublishedConfirm(planName, studentName, `${unboundLine}${recoveryLine}`))) return
+      if (!window.confirm(S.editor.updatePublishedConfirm(planName, studentName, `${unboundLine}${recoveryLine}${countImportDoubts(latestWeeks.current) ? `\n${S.sheetImport.publishDoubts(countImportDoubts(latestWeeks.current))}` : ''}`))) return
       setSaving(true); setStatusText(S.editor.updating)
       // Transient failures (network, 5xx, exhausted 429 back-off) get ONE automatic
       // retry; reconcile re-baselines against the server first, so replaying it is
@@ -2661,102 +2669,14 @@ export function PlanEditor(props: PlanEditorProps) {
     await saver.current.saveNow() // draft: goes through the shared queue
   }
 
-  const handleImport = async (file: File) => {
-    if (readOnly) return
-    const currentStart = currentPlanStart.current
-    if (!props.exerciseIndex || !currentStart) {
-      setStatusText(S.editor.importNotReady)
-      return
-    }
-    // No importing inside the publish round-trip (client `published` is still false there): if
-    // the publish wins, the plan flips to published and the imported weeks are stranded — never
-    // autosaved, never carried by「更新计划」. Refuse instead of racing; also covers in-flight saves.
-    if (publishing.current || saving) {
-      setStatusText(S.editor.importWhileSaving)
-      return
-    }
-    // Never import over a published plan — saving would silently overwrite what the
-    // student is already seeing. Direct the coach to a fresh draft instead.
-    if (published) {
-      window.alert(S.editor.importPublishedAlert(planName, studentName))
-      return
-    }
-    if (hasGridContent(weeks) && !window.confirm(S.editor.importOverwriteConfirm)) return
-
-    setStatusText(S.editor.importing)
-    try {
-      const importer = await import('./import')
-      const sheets = importer.readWorkbook(await file.arrayBuffer())
-      const grid = importer.selectSheet(sheets)
-      if (!grid) {
-        window.alert(S.editor.noTrainingWeeks)
-        setStatusText(S.editor.importNoPlan)
-        return
-      }
-
-      const offset = importer.detectDayOffset(grid)
-      const parsedWeeks: ParsedWeek[] = importer.weekBlocks(grid, offset).map((block, blockIndex) => ({
-        blockIndex,
-        dateSerials: block.dateSerials,
-        days: Array.from({ length: 7 }, (_, day) => importer.parseDay(grid, block.contentRows, day, offset)),
-      }))
-      const sourceWeekCount = parsedWeeks.filter(hasParsedWeekContent).length
-      const { weeks: nextWeeks, startDate: importStart } = importer.buildWeeks(parsedWeeks, props.exerciseIndex, currentStart)
-
-      if (nextWeeks.length === 0) {
-        window.alert(S.editor.noTrainingWeeks)
-        setStatusText(S.editor.importNoPlan)
-        return
-      }
-
-      // Past sessions in an imported plan default to assumed-complete (2026-07-09
-      // decision): they enter rep-PR / e1RM baselines tagged「导」so a returning
-      // lifter's history anchors PR detection, while completion stats ignore them.
-      const markPastAsAssumedComplete = isPastISODate(importStart)
-      setWeeksWithHistory(nextWeeks)
-      currentPlanStart.current = importStart
-      setPlanStartDate(importStart)
-      pendingPlanStart.current = importStart
-      importedPastHistory.current = markPastAsAssumedComplete
-      const targetWeek = nextWeeks.find((week) => week.isCurrent) ?? nextWeeks[0]
-      const firstTrain = targetWeek?.days.find((day) => !isRestDay(day))
-      const target = targetWeek && firstTrain ? { wnum: targetWeek.num, dow: firstTrain.dow } : null
-      setSel(target)
-      setDaySelection(singleDaySelection(target))
-      if (targetWeek) {
-        window.setTimeout(() => jumpToWeek(targetWeek.num), 80)
-      }
-      setPop((p) => ({ ...p, visible: false }))
-      // Name the plan after the file (usually the student), so the plan switcher stops
-      // filling up with indistinguishable「新计划」s. The coach can rename via the dropdown.
-      const fileBase = file.name.replace(/\.[^.]+$/, '').trim()
-      // Best-effort: a failed rename must not fail the import (the coach can rename manually).
-      if (fileBase && props.onRename) void Promise.resolve(props.onRename(fileBase)).catch(() => {})
-      const imported = nextWeeks.length
-      const dropped = sourceWeekCount - imported
-      let truncation: string
-      if (dropped > 0) {
-        truncation = S.editor.importTruncated(sourceWeekCount, imported)
-      } else {
-        truncation = S.editor.importedUnsaved(imported)
-      }
-      const range = importRangeLabel(nextWeeks)
-      if (range) truncation += `（${range}）`
-      setStatusText(truncation)
-      if (dropped > 0) window.alert(truncation)
-    } catch (e) {
-      const code = e instanceof Error ? e.message : ''
-      if (code === 'WORKBOOK_TOO_LARGE' || code === 'SHEET_TOO_LARGE') {
-        window.alert(S.editor.importTooLargeAlert)
-        setStatusText(S.editor.importTooLarge)
-      } else {
-        window.alert(S.editor.importInvalidFile)
-        setStatusText(S.editor.importFailedRetry)
-      }
-    }
-  }
-
-  const handlePublish = async () => {
+  const [publishConfirmOpen, setPublishConfirmOpen] = useState(false)
+  const [backfillOnPublish, setBackfillOnPublish] = useState(true)
+  const pastTrainingWeeks = props.onBackfillAfterPublish && planStartDate ? weeks.filter(week => week.days.some(day =>
+    recommendedDateForDay(planStartDate, week.num, day) < isoDate(new Date())
+    && !day.completedAt && day.rows.some(row => !row.hasLogs && row.exerciseId && row.boxes.length > 0),
+  )) : []
+  const pastDoubtCount = countImportDoubts(pastTrainingWeeks)
+  const handlePublish = async (confirmed = false) => {
     // 发布后不可撤回，且当前编辑器不就地覆盖已发布树，避免破坏历史 set log。
     // saving 时也不发布:避免在后台 reconcile 半途翻页发布,发布按钮已 disabled,这里再兜底。
     if (readOnly || published || publishing.current || saving) return
@@ -2776,6 +2696,10 @@ export function PlanEditor(props: PlanEditorProps) {
     // Latch publishing so nothing autosaves while the client still thinks this is a draft — client
     // `published` only flips true after the round-trip below, and an autosave in that window would
     // silently overwrite the just-published plan.
+    if (!confirmed && (countImportDoubts(latestWeeks.current) || pastTrainingWeeks.length)) {
+      setBackfillOnPublish(true); setPublishConfirmOpen(true); return
+    }
+    setPublishConfirmOpen(false)
     publishing.current = true
     saver.current.cancelAutosave()
     const snapshot = latestWeeks.current // to detect edits typed during the publish round-trip
@@ -2812,6 +2736,9 @@ export function PlanEditor(props: PlanEditorProps) {
       pendingPlanStart.current = null
       setPlanStartDate(publishedBaseline.planStartDate)
       setPublished(true); becamePublished = true
+      if (confirmed && backfillOnPublish && pastTrainingWeeks.length && props.onBackfillAfterPublish) {
+        try { await props.onBackfillAfterPublish() } catch { window.alert(S.sheetImport.backfillFailed) }
+      }
       // Edits typed during the round-trip aren't in the published plan — surface them, never drop silently.
       setStatusText(latestWeeks.current !== snapshot
         ? S.editor.publishedDirty(studentName)
@@ -2939,9 +2866,14 @@ export function PlanEditor(props: PlanEditorProps) {
     }}>
       <TopBar showActuals={showActuals} onToggleActuals={toggleActuals}
         studentName={studentName} planName={planName} published={published} publishedDirty={publishedDirty}
-        readOnly={readOnly} statusText={visibleStatusText} onPublish={handlePublish}
+        readOnly={readOnly} statusText={visibleStatusText} onPublish={() => void handlePublish()}
         students={props.students} currentStudentId={props.currentStudentId} onSwitchStudent={guardLeaveId(props.onSwitchStudent)}
         plans={props.plans} currentPlanId={props.currentPlanId} onSwitchPlan={guardLeaveId(props.onSwitchPlan)}
+        onPlanAction={props.onPlanAction ? async (id, action) => {
+          if (id === props.currentPlanId && action === 'settings') { setSettingsOpen(true); return }
+          if (['settings', 'backfill', 'delete'].includes(action) && !(await confirmLeave())) return
+          await props.onPlanAction!(id, action)
+        } : undefined}
         onNewPlan={guardLeave(props.onNewPlan)}
         onBackToBoard={props.onBackToBoard}
         currentPlanStatus={props.planStatus ?? (published ? 'published' : 'draft')}
@@ -2961,7 +2893,6 @@ export function PlanEditor(props: PlanEditorProps) {
           }
         } : undefined}
           onSave={!readOnly && props.onSave ? handleSave : undefined} saving={saving} draftSaveFailed={draftSaveFailed}
-        onImport={!readOnly && props.exerciseIndex && planStartDate ? handleImport : undefined}
         planStartDate={planStartDate ?? undefined}
         calendarLocked={calendarLocked || !props.onChangeStartDate}
         calendarLockedHint={calendarLocked ? calendarLockedHint : S.editor.calendarUnavailable}
@@ -2977,6 +2908,15 @@ export function PlanEditor(props: PlanEditorProps) {
         weeksCount={weeks.length}
         onPlanSettings={!readOnly && planStartDate ? () => setSettingsOpen(true) : undefined}
       />
+      {publishConfirmOpen && <div className="import-overlay"><section className="import-dialog" data-publish-confirm="" role="dialog" aria-modal="true" aria-label={S.sheetImport.publishTitle}>
+        <h3>{S.sheetImport.publishTitle}</h3>
+        {countImportDoubts(weeks) > 0 && <p>{S.sheetImport.publishDoubts(countImportDoubts(weeks))}</p>}
+        {pastTrainingWeeks.length > 0 && <>
+          <label style={{ display: 'flex', alignItems: 'start' }}><input type="checkbox" checked={backfillOnPublish} onChange={e => setBackfillOnPublish(e.target.checked)} />{S.sheetImport.backfill(pastTrainingWeeks.length)}</label>
+          {pastDoubtCount > 0 && <small>{S.sheetImport.pastDoubts(pastDoubtCount)}</small>}
+        </>}
+        <footer><button onClick={() => setPublishConfirmOpen(false)}>{S.common.cancel}</button><button className="primary" onClick={() => void handlePublish(true)}>{S.editor.publishToStudent}</button></footer>
+      </section></div>}
       {planStartDate && <NewPlanDialog open={settingsOpen} studentName={studentName}
         settings={{ name: planName, weeks: weeks.length, startDate: planStartDate, weekdays: blockWeekdays }}
         calendarLocked={calendarLocked || !props.onChangeStartDate}
@@ -2996,7 +2936,7 @@ export function PlanEditor(props: PlanEditorProps) {
         <div className="scroller" ref={scrollerRef} aria-readonly={readOnly || undefined}>
           {readOnly && <div role="status" className="block-readonly">{S.editor.historyReadOnlyBanner}</div>}
           <div ref={weeksRef}>
-            <BlockGrid weeks={weeks} startDate={planStartDate} weekdays={blockWeekdays} extraWeekdays={extraWeekdays} editing={editingDay}
+            <BlockGrid onConfirmWeekImport={num => setWeeksWithHistory(prev => prev.map(week => week.num === num ? { ...week, importDoubts: undefined } : week))} weeks={weeks} startDate={planStartDate} weekdays={blockWeekdays} extraWeekdays={extraWeekdays} editing={editingDay}
               selectedDays={daySelection.days} selectedRows={selectedRowIds} readOnly={readOnly}
               rowTier={rowTier} onClose={closeBlockEditor}
               showActuals={showActuals} actualsForRow={actualsForRow} studentAddedByDay={studentAddedByDay}
@@ -3099,6 +3039,7 @@ export function PlanEditor(props: PlanEditorProps) {
                         onNameCompositionEnd={() => { nameComposingRef.current = false }}
                         onNameBlur={(rowId) => handleNameBlur(wk.num, day.dow, rowId)}
                         onAddRow={(tier) => addRowToDay(wk.num, day.dow, tier)}
+                        onConfirmImport={rowId => setWeeksWithHistory(prev => prev.map(week => week.num !== wk.num ? week : { ...week, days: week.days.map(d => d.dow !== day.dow ? d : { ...d, rows: d.rows.map(row => row.id === rowId ? { ...row, importDoubts: undefined } : row) }) }))}
                         onEditRow={(rowId, updater) => editRow(wk.num, day.dow, rowId, updater)}
                         onReorderRow={(dragRowId, targetRowId, position) => reorderRow(wk.num, day.dow, dragRowId, targetRowId, position)}
                         onDeleteRow={(rowId) => deleteRow(wk.num, day.dow, rowId)}

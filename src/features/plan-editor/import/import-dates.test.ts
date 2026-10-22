@@ -2,35 +2,21 @@ import { describe, it, expect } from 'vitest'
 import { excelSerialToISODate, importStartDate, buildWeeks, type ParsedWeek } from './index'
 import { planDayDowLabel, relabelWeeksForStartDate, shiftISODate } from '../mapping'
 import type { ExerciseIndex } from '../exerciseIndex'
+import { aiWeeksToParsed } from './aiWeeks'
 import type { Week } from '../types'
 
 const STUB = { resolve: () => null } as unknown as ExerciseIndex
 
 function weekAt(serialBase: number): ParsedWeek {
-  return {
-    blockIndex: 0,
-    dateSerials: Array.from({ length: 7 }, (_, d) => serialBase + d),
-    days: [
-      {
-        dayOfWeek: 0,
-        rest: false,
-        exercises: [{ rawName: '深蹲', setCount: 1, reps: '5', mode: 'kg', values: ['100'], note: '' }],
-      },
-    ],
-  }
+  return aiWeeksToParsed([{ index: 0, start_date: excelSerialToISODate(serialBase), days: [{ weekday: 0, rest: false, exercises: [{ name: 'Synthetic squat', sets: 1, reps: '5', mode: 'kg', values: ['100'], note: '', family_guess: null, flags: [] }] }] }])[0]
 }
-
 function emptyWeekAt(serialBase: number): ParsedWeek {
-  return {
-    blockIndex: 0,
-    dateSerials: Array.from({ length: 7 }, (_, d) => serialBase + d),
-    days: Array.from({ length: 7 }, (_, dayOfWeek) => ({ dayOfWeek, rest: false, exercises: [] })),
-  }
+  return aiWeeksToParsed([{ index: 0, start_date: excelSerialToISODate(serialBase), days: [] }])[0]
 }
 
 describe('import dates — keep the source plan dates (spec 002 option A)', () => {
   it('converts an Excel date serial to an ISO date', () => {
-    expect(excelSerialToISODate(46020)).toBe('2025-12-29') // 许可 2026 sheet, week 1 Monday
+    expect(excelSerialToISODate(46020)).toBe('2025-12-29') // Synthetic week 1 Monday
   })
 
   it('derives the plan start from the first selected week-column anchor', () => {
@@ -91,9 +77,9 @@ describe('import dates — keep the source plan dates (spec 002 option A)', () =
   })
 
   it('imports only the latest 12 weeks of a long continuous plan', () => {
-    // 27 consecutive weeks (吕子豪 2026 sheet); David: keep the latest 12 only.
+    // Selection UI has already chosen the latest 12 of 27 synthetic weeks.
     const weeks = Array.from({ length: 27 }, (_, i) => weekAt(46020 + i * 7))
-    const { weeks: built } = buildWeeks(weeks, STUB, '2099-01-01')
+    const { weeks: built } = buildWeeks(weeks.slice(-12), STUB, '2099-01-01')
     expect(built).toHaveLength(12)
     expect(built[0].num).toBe(1) // re-numbered from 1
     expect(built[0].days[0].dateLabel).toBe('4/13') // original week 16 = 2026-04-13
@@ -110,7 +96,7 @@ describe('import dates — keep the source plan dates (spec 002 option A)', () =
       ...Array.from({ length: 6 }, (_, i) => weekAt(may11 + (i + 6) * 7)),
     ]
 
-    const { weeks: built, startDate } = buildWeeks(weeks, STUB, '2099-01-01')
+    const { weeks: built, startDate } = buildWeeks(weeks.slice(-12), STUB, '2099-01-01')
 
     expect(startDate).toBe('2026-05-11')
     expect(built).toHaveLength(12)

@@ -8,6 +8,7 @@ import { setRefFirstLine } from '../chat/setRef'
 
 const api = vi.hoisted(() => ({
   realEditor: false,
+  deletePlan: vi.fn(),
   getStudentSetLogs: vi.fn(),
   markVideoViewed: vi.fn(),
   getCoachStudents: vi.fn(),
@@ -56,7 +57,7 @@ vi.mock('../../api/plans', () => ({
   patchPlan: api.patchPlan,
   markImportedHistory: vi.fn(),
   renameCoachStudent: vi.fn(),
-  deletePlan: vi.fn(),
+  deletePlan: api.deletePlan,
 }))
 vi.mock('../../api/exercises', () => ({
   listExercises: api.listExercises,
@@ -1585,4 +1586,65 @@ describe('PlanWorkspace editor remount', () => {
     expect(latestProps.planStartDate).toBe('2026-01-07')
     expect(latestProps.weeksCount).toBe(1)
   })
+  it('renames another plan in place and opens settings only after switching to that plan', async () => {
+    const current = plan('current')
+    const other = { ...current, id: 'other-plan', name: 'Other plan' }
+    api.getStudentPlans.mockResolvedValue([current, other])
+    api.getPlan.mockImplementation(async (id: string) => id === 'other-plan' ? other : current)
+    api.patchPlan.mockResolvedValue({ ...other, name: 'Renamed' })
+    await act(async () => { root.render(<PlanWorkspace onLogout={vi.fn()} me={me} />); await settle() })
+    vi.spyOn(window, 'prompt').mockReturnValue('Renamed')
+    const props = api.captureEditorProps.mock.calls.at(-1)![0]
+    await act(async () => props.onPlanAction('other-plan', 'rename'))
+    expect(api.patchPlan).toHaveBeenCalledWith('other-plan', { name: 'Renamed' })
+    expect(api.captureEditorProps.mock.calls.at(-1)![0].currentPlanId).toBe('plan')
+    await act(async () => props.onPlanAction('other-plan', 'settings'))
+    expect(api.captureEditorProps.mock.calls.at(-1)![0]).toMatchObject({ currentPlanId: 'other-plan', openSettingsRequest: true })
+  })
+
+  it('deletes another draft with its actual day count without switching the editor', async () => {
+    const current = plan('current')
+    const other = { ...current, id: 'other-plan', name: 'Synthetic other draft' }
+    api.getStudentPlans.mockResolvedValue([current, other])
+    api.getPlan.mockImplementation(async (id: string) => id === other.id ? other : current)
+    api.deletePlan.mockResolvedValue(undefined)
+    await act(async () => { root.render(<PlanWorkspace onLogout={vi.fn()} me={me} />); await settle() })
+    await act(async () => api.captureEditorProps.mock.calls.at(-1)![0].onPlanAction(other.id, 'delete'))
+    expect(host.querySelector('[role=dialog]')?.textContent).toContain('1 个训练日')
+    const button = [...host.querySelectorAll('button')].find(b => b.textContent === '删除计划')!
+    await act(async () => { button.click(); await settle() })
+    expect(api.deletePlan).toHaveBeenCalledWith(other.id)
+    expect(api.captureEditorProps.mock.calls.at(-1)![0].currentPlanId).toBe(current.id)
+  })
+  it('completes another published plan without switching the editor', async () => {
+    const current = plan('current')
+    const other = { ...plan('Synthetic published', 'published'), id: 'other-plan' }
+    api.getStudentPlans.mockResolvedValue([current, other])
+    api.getPlan.mockImplementation(async (id: string) => id === other.id ? other : current)
+    api.patchPlan.mockResolvedValue({ ...other, status: 'completed' })
+    await act(async () => { root.render(<PlanWorkspace onLogout={vi.fn()} me={me} />); await settle() })
+    await act(async () => api.captureEditorProps.mock.calls.at(-1)![0].onPlanAction(other.id, 'complete'))
+    const button = [...host.querySelectorAll('button')].find(b => b.textContent === '标记完成')!
+    await act(async () => { button.click(); await settle() })
+    expect(api.patchPlan).toHaveBeenCalledWith(other.id, { status: 'completed' })
+    expect(api.captureEditorProps.mock.calls.at(-1)![0].currentPlanId).toBe(current.id)
+  })
+
+  it('discards a delayed delete dialog after switching athletes', async () => {
+    const current = plan('current'), other = { ...plan('Synthetic other'), id: 'other-plan' }
+    const next = { ...plan('Synthetic next athlete'), id: 'next-plan', trainee_id: 'student-2' }
+    api.getCoachStudents.mockResolvedValue([{ id: 'student', display_name: 'Synthetic A', status: 'active', evaluation: null }, { id: 'student-2', display_name: 'Synthetic B', status: 'active', evaluation: null }])
+    api.getStudentPlans.mockImplementation(async (id: string) => id === 'student' ? [current, other] : [next])
+    let resolveOther!: (value: PlanWithChildren) => void
+    api.getPlan.mockImplementation(async (id: string) => id === 'other-plan' ? new Promise<PlanWithChildren>(resolve => { resolveOther = resolve }) : id === 'next-plan' ? next : current)
+    await act(async () => { root.render(<PlanWorkspace onLogout={vi.fn()} me={me} />); await settle() })
+    let request!: Promise<void>
+    await act(async () => { request = api.captureEditorProps.mock.calls.at(-1)![0].onPlanAction(other.id, 'delete'); await settle() })
+    await act(async () => { await api.captureEditorProps.mock.calls.at(-1)![0].onSwitchStudent('student-2'); await settle() })
+    await act(async () => { resolveOther(other); await request })
+    expect(host.querySelector('[aria-labelledby=delete-plan-title]')).toBeNull()
+    expect(host.textContent).not.toContain('Synthetic other')
+    expect(api.captureEditorProps.mock.calls.at(-1)![0].currentPlanId).toBe('next-plan')
+  })
+
 })

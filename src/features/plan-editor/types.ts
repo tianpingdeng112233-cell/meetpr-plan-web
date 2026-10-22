@@ -68,8 +68,11 @@ export function snapshotOpaqueSets(sets: readonly OpaqueSetSpec[]): OpaqueSetSpe
   }))
 }
 
+export type ImportDoubt = 'new_exercise' | 'note_fallback' | 'inferred' | 'no_date' | 'empty_week'
+
 /** One exercise line inside a day. */
 export interface ExerciseRow {
+  importDoubts?: ImportDoubt[]
   id: string
   /** Persisted plan_exercise identity. UI-only/new/imported rows have no server identity yet. */
   serverRowId: string | null
@@ -175,6 +178,8 @@ export interface DayCol {
 }
 
 export interface Week {
+  /** Week-level doubts also cover weeks without any rows. Snapshot-only. */
+  importDoubts?: ImportDoubt[]
   num: number
   num2: string         // zero-padded, e.g. "03"
   range: string

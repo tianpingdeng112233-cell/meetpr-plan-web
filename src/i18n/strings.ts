@@ -1,3 +1,4 @@
+import { enImport, zhImport } from './strings-import'
 import { enBlock, zhBlock } from './strings-block'
 import { resolveLocale } from './locale'
 import { enApp, zhApp } from './strings-app'
@@ -14,6 +15,7 @@ import { enStates, zhStates } from './strings-states'
 import type { Translations } from './types'
 
 const zh = {
+  sheetImport: zhImport,
   block: zhBlock,
   app: zhApp,
   common: zhCommon,
@@ -29,6 +31,7 @@ const zh = {
 } as const
 
 const en = {
+  sheetImport: enImport,
   block: enBlock,
   app: enApp,
   common: enCommon,

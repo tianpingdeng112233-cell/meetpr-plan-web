@@ -2,10 +2,11 @@ import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import type { PlanShiftSummary, PlanStatus } from '../../../api/types'
 import { planShiftNoticeText, type StudentPlanCursor } from '../mapping'
-import { mmdd } from './PlanCalendarControls'
+import { mmdd, todayISO } from './PlanCalendarControls'
 import { S } from '../../../i18n/strings'
 
-interface Option { id: string; label: string; tag?: string; sub?: string }
+export type PlanAction = 'settings' | 'rename' | 'backfill' | 'complete' | 'delete'
+interface Option { id: string; label: string; tag?: string; sub?: string; status?: PlanStatus; startDate?: string }
 
 interface Props {
   showActuals?: boolean
@@ -40,7 +41,7 @@ interface Props {
   onSave?: () => void
   saving?: boolean
   draftSaveFailed?: boolean
-  onImport?: (file: File) => void | Promise<void>
+  onPlanAction?: (id: string, action: PlanAction) => void | Promise<void>
   planStartDate?: string
   calendarLocked?: boolean
   calendarLockedHint?: string
@@ -61,20 +62,27 @@ interface Props {
 
 export function TopBar(p: Props) {
   const [menu, setMenu] = useState<'student' | 'plan' | null>(null)
-  const fileRef = useRef<HTMLInputElement>(null)
+  const [actions, setActions] = useState<{ option: Option; top: number; left: number } | null>(null)
   const studentAnchor = useRef<HTMLButtonElement>(null)
   const planAnchor = useRef<HTMLButtonElement>(null)
-  const close = () => setMenu(null)
+  const close = () => { setMenu(null); setActions(null) }
   useEffect(() => {
-    const escape = (event: KeyboardEvent) => { if (event.key === 'Escape') setMenu(null) }
+    const escape = (event: KeyboardEvent) => { if (event.key === 'Escape') { setMenu(null); setActions(null) } }
     window.addEventListener('keydown', escape)
     return () => window.removeEventListener('keydown', escape)
   }, [])
   const anchor = menu === 'student' ? studentAnchor.current : planAnchor.current
   const rect = anchor?.getBoundingClientRect()
-  const options = menu === 'student' ? p.students ?? [] : p.plans ?? []
+  const options: Option[] = menu === 'student' ? p.students ?? [] : p.plans?.length ? p.plans : [{ id: p.currentPlanId ?? 'current', label: p.planName, status: p.currentPlanStatus, startDate: p.planStartDate }]
   const currentId = menu === 'student' ? p.currentStudentId : p.currentPlanId
   const action = (label: string, callback?: () => void | Promise<void>, danger = false, disabled = false) => callback && <button type="button" role="menuitem" className={danger ? 'danger' : ''} disabled={disabled} onClick={() => { close(); void callback() }}>{label}</button>
+  const callback = (option: Option, kind: PlanAction) => {
+    if (p.onPlanAction) return () => p.onPlanAction!(option.id, kind)
+    if (option.id !== (p.currentPlanId ?? 'current')) return undefined
+    return { settings: p.onPlanSettings, rename: p.onRenamePlan, backfill: p.onBackfillHistory, complete: p.onMarkComplete, delete: p.onDeleteCurrentDraft }[kind]
+  }
+  const actionStatus = actions?.option.status ?? (actions?.option.id === (p.currentPlanId ?? 'current') ? p.currentPlanStatus : undefined)
+  const editableAction = actionStatus === 'draft' || actionStatus === 'published' || actionStatus === undefined
   const shiftNotice = planShiftNoticeText(p.totalShiftDays ?? 0, p.latestShift ?? null)
   return <>
     <div className="plan-context-bar block-topbar" data-plan-context-bar="" aria-label={S.editor.planContext}
@@ -90,27 +98,36 @@ export function TopBar(p: Props) {
       <button className="block-primary" disabled={p.readOnly || p.saving || (p.published && !p.onSave)} onClick={p.published ? p.onSave : p.onPublish} title={p.readOnly ? S.editor.historicalReadOnlyHint : undefined}>
         {p.readOnly ? S.editor.historicalReadOnly : p.saving ? S.editor.saving : p.published ? S.editor.updatePlan : S.editor.publishToStudent}
       </button>
-      <input ref={fileRef} type="file" accept=".xlsx" hidden onChange={event => { const file = event.currentTarget.files?.[0]; event.currentTarget.value = ''; if (file) void p.onImport?.(file) }} />
+
     </div>
     {menu && rect && createPortal(<>
       <div className="block-menu-backdrop" onClick={close} />
       <div role="menu" className="block-plan-menu" style={{ top:rect.bottom + 6, left:Math.min(rect.left, window.innerWidth - 316) }}>
         {menu === 'plan' && <header>{S.block.switchPlan}</header>}
-        {options.map(option => <button key={option.id} type="button" role="menuitem" className={option.id === currentId ? 'current' : ''} onClick={() => { close(); void (menu === 'student' ? p.onSwitchStudent : p.onSwitchPlan)?.(option.id) }}><span>{option.label}</span><small>{option.tag}</small></button>)}
+        {options.map(option => <div key={option.id} className={`plan-menu-row${option.id === currentId ? ' current' : ''}`}>
+          <button type="button" role="menuitem" onClick={() => { close(); void (menu === 'student' ? p.onSwitchStudent : p.onSwitchPlan)?.(option.id) }}><span>{option.label}</span><small>{option.startDate ? `${mmdd(option.startDate)} · ` : ''}{option.tag}</small></button>
+          {menu === 'plan' && <button type="button" aria-label={S.sheetImport.planActions(option.label)} aria-haspopup="menu" aria-expanded={actions?.option.id === option.id} onClick={event => {
+            const bounds = event.currentTarget.getBoundingClientRect()
+            setActions(actions?.option.id === option.id ? null : { option, top: Math.min(bounds.top, window.innerHeight - 260), left: Math.min(bounds.right + 6, window.innerWidth - 316) })
+          }}>⋯</button>}
+        </div>)}
         <hr />
         {menu === 'student' ? <>
           {action(S.editor.renameStudent, p.onRenameStudent)}
           {action(S.editor.backToOverview, p.onBackToBoard)}
         </> : <>
-          {action(S.editor.newPlan, p.onNewPlan)}
-          {action(S.block.settingsMenu, p.onPlanSettings, false, p.saving)}
-          {action(S.editor.renameCurrentPlan, p.onRenamePlan)}
-          {action(S.editor.importXlsx, p.onImport ? () => fileRef.current?.click() : undefined, false, p.saving)}
-          {action(S.editor.backfillPastTraining, p.onBackfillHistory)}
-          {p.currentPlanStatus === 'published' && action(S.editor.markCompleted, p.onMarkComplete)}
-          {p.currentPlanStatus === 'draft' && p.onDeleteCurrentDraft && <><hr />{action(S.editor.deleteCurrentDraft, p.onDeleteCurrentDraft, true)}</>}
+          {p.onNewPlan && <button type="button" role="menuitem" className="plan-menu-new"
+            onClick={() => { close(); p.onNewPlan?.() }}>{S.editor.newPlan}</button>}
+
         </>}
       </div>
+      {actions && menu === 'plan' && <div role="menu" data-plan-actions="" className="block-plan-menu plan-row-actions" style={{ top: Math.max(8, actions.top), left: Math.max(8, actions.left) }}>
+        {editableAction && action(S.block.settingsMenu, callback(actions.option, 'settings'), false, p.saving)}
+        {editableAction && action(S.editor.renameCurrentPlan, callback(actions.option, 'rename'), false, p.saving)}
+        {actionStatus !== 'draft' && (actions.option.startDate ?? p.planStartDate ?? '') < todayISO() && action(S.editor.backfillPastTraining, callback(actions.option, 'backfill'), false, p.saving)}
+        {actionStatus === 'published' && action(S.editor.markCompleted, callback(actions.option, 'complete'), false, p.saving)}
+        {actionStatus === 'draft' && <><hr />{action(S.editor.deleteCurrentDraft, callback(actions.option, 'delete'), true, p.saving)}</>}
+      </div>}
     </>, document.body)}
     {shiftNotice && <div className="block-shift-notice" data-plan-shift-notice="">{shiftNotice}
       {p.latestShift && p.onUndoShift && <button type="button" data-plan-shift-undo="" disabled={p.undoingShift} onClick={() => { void p.onUndoShift?.() }}>{p.undoNeedsRefresh ? S.editor.retryShiftRefresh : S.editor.undoShift}</button>}
