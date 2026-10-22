@@ -1122,3 +1122,25 @@ npx vitest run src/features/plan-editor/block-grid-ui.test.tsx
 - 无未定产品分支。稿 ⑤ 示例行并非发起时间倒序，按 CARD-B 与 SPEC §6 明确要求排序；稿中的人名/数字仅作示例。
 - 浏览器实看未完成：本地 Vite `--host 127.0.0.1 --port 5194` 被当前沙箱拒绝 `listen EPERM`（`/tmp/016-b-vite.log`），未绕过权限或发起真实后端请求。1280/1024 下的表格滚动、结构/层级/间距仍由 Claude 按验收 14 收货，不能将 DOM 测试或源码审查写成视觉验收通过。
 - 本节是开发自测与代码审查记录，不宣布产品验收完成。仓内缺 `docs/agents/issue-tracker.md` 已告知 David 后续运行 `/setup-matt-pocock-skills`；本次以明确本地卡片为审查依据。
+
+## 2026-10-22 · 016 卡 C（Codex 开发交付）
+
+基线：`feat/014-admin-redesign`，HEAD `fd3a68b`；按 `specs/016-admin-redesign/CARD-C.md` 执行。
+
+### 改动文件
+
+- `src/features/onboarding/OnboardingPages.tsx`：题目改为「学员主要用什么手机」/ “What phones do most of your athletes use?”，选项、默认值与提交字段保持不变。
+- `src/i18n/strings-admin.ts`：`applications.device` 改为「学员设备」/ “Athlete phones”；旧申请值仍按原映射显示，总览副标题不改。
+- `src/features/onboarding/onboarding.test.tsx`：增加中英文题目、三种选项和值、默认值断言，测试后恢复中文；保留原提交 payload 回归。
+- `src/features/admin/AdminWorkspace.test.tsx`：增加中英文表头断言与「学员 12 人 · iPhone · …」总览格式回归。
+- `docs/CODEX-JOURNAL.md`：本节。无后端、依赖、锁文件改动；未 commit、push 或开 PR。
+
+### 红 → 绿与检查
+
+- 申请页：先加断言运行原实现，2 failed / 19 passed，明确失败于旧中英文题目（`/tmp/016-c-onboarding-red.log`）；仅替换题目后 21 passed（`/tmp/016-c-onboarding-green.log`）。
+- 后台：先加断言运行原实现，2 failed / 12 passed，明确失败于旧中英文表头（`/tmp/016-c-admin-red.log`）；仅替换表头后 14 passed（`/tmp/016-c-admin-green.log`）。
+- `npm run lint`：exit 0，`/tmp/016-c-lint.log`。
+- `npm test -- src/features/onboarding/onboarding.test.tsx src/features/admin/AdminWorkspace.test.tsx src/i18n/en-smoke.test.tsx`：3 files / 38 passed，exit 0，`/tmp/016-c-related-tests.log`；有 Node `--localstorage-file` 路径提示，不影响测试结果。
+- `npm run build`：exit 0，Vite 4.71s，仅既有 >500 kB chunk 提示，`/tmp/016-c-build.log`。
+- `git diff --check` 通过；检索确认无旧题目残留，无其他需要更名的同字段标签。Standards 自审：未见问题；Spec 自审：未见遗漏或超范围改动。本次为 T0 文案调整，未做独立互审。
+- 浏览器实看未完成：`npm run dev -- --host 127.0.0.1 --port 5194` 被沙箱拒绝 `listen EPERM`（`/tmp/016-c-vite.log`）。没有绕过权限或向真实后端写入；DOM 测试不等同视觉验收。

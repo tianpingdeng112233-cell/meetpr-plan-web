@@ -84,6 +84,7 @@ describe('AdminWorkspace', () => {
     expect(overview).not.toBeNull()
     expect(overview.textContent).toContain('待办2')
     expect(overview.textContent).toContain('王雪 申请成为教练')
+    expect(overview.textContent).toContain('学员 12 人 · iPhone · ')
     expect(overview.textContent).toContain('陈默 申请成为教练')
     const figures = overview.querySelector('[aria-label="关键数字"]')!
     expect([...figures.children].map(n => n.firstElementChild?.textContent)).toEqual(['教练', '学员', '生效绑定', '待审申请'])
@@ -260,6 +261,7 @@ describe('AdminWorkspace', () => {
     await act(async () => { buttonContaining(host.querySelector('nav')!, '教练申请').click(); await settle() })
     const page = host.querySelector<HTMLElement>('[data-testid="admin-applications"]')!
     const names = () => [...page.querySelectorAll('tbody tr')].map(row => row.querySelector('td span')?.textContent)
+    expect([...page.querySelectorAll('th')].map(th => th.textContent)).toContain('学员设备')
     expect(names()).toEqual(['新申请', '旧申请'])
     expect(page.textContent).toContain('iPhone 和安卓')
     expect(page.textContent).toContain('安卓')
@@ -327,6 +329,7 @@ describe('AdminWorkspace', () => {
     await act(async () => { buttonContaining(host.querySelector('nav')!, 'Coach applications').click(); await settle() })
     expect(host.textContent).not.toMatch(/[一-鿿]/)
     expect(host.textContent).toContain('Android')
+    expect([...host.querySelectorAll('th')].map(th => th.textContent)).toContain('Athlete phones')
     await act(async () => { button(host, 'Approve').click(); await settle() })
     expect(host.querySelector('dialog')?.textContent).toContain('Approve Alex’s coach application?')
     await act(async () => { button(host, 'Confirm approval').click(); await settle() })

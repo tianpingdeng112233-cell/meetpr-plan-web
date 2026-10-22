@@ -5,7 +5,7 @@ export const zhAdmin = {
   page: { overview: '总览', applications: '教练申请', users: '用户', exercises: '动作库' },
   applications: {
     subtitle: '通过后自动创建教练账号和永久邀请码，并发送欢迎邮件', pending: '待处理', approved: '已通过', rejected: '已拒绝', all: '全部',
-    filters: '按状态筛选', search: '搜索姓名或邮箱', list: '申请列表', applicant: '申请人', contact: '联系方式', students: '学员数', device: '设备', submittedAt: '申请时间', actions: '操作',
+    filters: '按状态筛选', search: '搜索姓名或邮箱', list: '申请列表', applicant: '申请人', contact: '联系方式', students: '学员数', device: '学员设备', submittedAt: '申请时间', actions: '操作',
     devices: { iphone: 'iPhone', android: '安卓', both: 'iPhone 和安卓' }, approve: '通过', reject: '拒绝', resend: '重发邮件',
     emptyPending: '没有待处理的申请', empty: '没有匹配的申请',
     pendingHint: '待处理的申请按提交时间从新到旧排列；处理完会自动移到「已通过 / 已拒绝」。', otherHint: '本次操作里邮件没发出去的会标黄，点「重发邮件」补发。',
@@ -47,7 +47,7 @@ export const enAdmin = {
   page: { overview: 'Overview', applications: 'Coach applications', users: 'Users', exercises: 'Exercise library' },
   applications: {
     subtitle: 'Approval creates a coach account and permanent invite, then sends a welcome email', pending: 'Pending', approved: 'Approved', rejected: 'Rejected', all: 'All',
-    filters: 'Filter by status', search: 'Search name or email', list: 'Applications', applicant: 'Applicant', contact: 'Contact', students: 'Athletes', device: 'Device', submittedAt: 'Submitted', actions: 'Actions',
+    filters: 'Filter by status', search: 'Search name or email', list: 'Applications', applicant: 'Applicant', contact: 'Contact', students: 'Athletes', device: 'Athlete phones', submittedAt: 'Submitted', actions: 'Actions',
     devices: { iphone: 'iPhone', android: 'Android', both: 'iPhone and Android' }, approve: 'Approve', reject: 'Reject', resend: 'Resend email',
     emptyPending: 'No pending applications', empty: 'No matching applications',
     pendingHint: 'Pending applications are newest first. Reviewed applications move to Approved / Rejected.', otherHint: 'Emails that failed during this session are highlighted. Use “Resend email” to retry.',

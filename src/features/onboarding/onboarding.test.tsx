@@ -2,16 +2,28 @@ import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { beforeEach, afterEach, it, expect, vi } from 'vitest'
 import { CoachApplicationPage } from './OnboardingPages'
+import { setLocale } from '../../i18n/locale'
 ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 let host: HTMLDivElement
 let root: Root
 beforeEach(() => { const store = new Map<string, string>(); vi.stubGlobal('localStorage', { getItem: (k: string) => store.get(k) ?? null, setItem: (k: string, v: string) => store.set(k, v), removeItem: (k: string) => store.delete(k) }); host = document.createElement('div'); document.body.append(host); root = createRoot(host) })
-afterEach(() => { act(() => root.unmount()); host.remove(); vi.unstubAllGlobals(); vi.unstubAllEnvs(); vi.restoreAllMocks(); history.replaceState(null, '', '/') })
+afterEach(() => { act(() => root.unmount()); host.remove(); setLocale('zh'); vi.unstubAllGlobals(); vi.unstubAllEnvs(); vi.restoreAllMocks(); history.replaceState(null, '', '/') })
 function input(name: string, value: string) {
   const el = host.querySelector<HTMLInputElement>(`[name="${name}"]`)!
   Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(el, value)
   act(() => el.dispatchEvent(new Event('input', { bubbles: true })))
 }
+it.each([
+  ['zh', '学员主要用什么手机', ['iPhone', '安卓', '都有']],
+  ['en', 'What phones do most of your athletes use?', ['iPhone', 'Android', 'Both']],
+] as const)('asks about athletes’ phones in %s with the existing device choices', async (locale, question, choices) => {
+  setLocale(locale)
+  await act(async () => root.render(<CoachApplicationPage />))
+  const select = host.querySelector<HTMLSelectElement>('select[name="device"]')!
+  expect(select.labels?.[0].textContent).toBe(question + choices.join(''))
+  expect([...select.options].map(option => option.value)).toEqual(['iphone', 'android', 'both'])
+  expect(select.value).toBe('iphone')
+})
 it('submits a public application and shows the email receipt even if delivery failed', async () => {
   const fetcher = vi.fn().mockResolvedValue(new Response(JSON.stringify({ id: 'app-1', status: 'pending', receipt_email_sent: false }), { status: 201 }))
   vi.stubGlobal('fetch', fetcher)
