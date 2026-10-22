@@ -17,7 +17,15 @@ export const zhEditor = {
   blockDeleteLocked: '已有打卡记录，不能删除',
   blockDeleteConfirm: (week: number, day: number, date: string, count: number) => `删除 W${week} · D${day}（${date}）及其中 ${count} 个动作？`,
   blockDateUnavailable: '该日期已有训练或超出本周，日期未修改',
-  blockFillHint: '拖动复制到下面几周',
+  blockByWeek: '按周排',
+  blockByDay: '按天排',
+  blockInsertBetween: (week: number, before: number | null, after: number | null) => before === null
+    ? `在 W${week} 的第一练之前插入一练（插入后为 D1，本周后面顺延）`
+    : after === null ? `在 W${week} 的最后一练之后插入一练（插入后为 D${before + 1}）`
+      : `在 W${week} 的 D${before} 和 D${after} 之间插入一练（插入后为 D${after}，本周后面顺延）`,
+  blockInsertFootnote: '只列出这两天之间空着的日子 · 只改这一周',
+  blockCurrentWeek: '本周',
+  blockFillHint: '拖动复制到后面几周',
   blockFillPreview: (from: number, to: number, dx: number, rows: number) => `松开：填到 W${from}–W${to} · D${dx}（${rows} 行） · 各周之后可单独改`,
   blockRowsSelected: (rows: number) => `已框选 ${rows} 行 · ⌘C 复制，点目标格 ⌘V 粘贴`,
   blockGestures: '拖框选中几行 · ⌘C 复制 · 到别的格子 ⌘V 粘贴 · Delete 删除',
@@ -336,6 +344,14 @@ export const enEditor = {
   blockDeleteLocked: 'This day has workout logs and cannot be deleted',
   blockDeleteConfirm: (week: number, day: number, date: string, count: number) => `Delete W${week} · D${day} (${date}) and its ${count} exercises?`,
   blockDateUnavailable: 'That date is occupied or outside this week; no date changed',
+  blockByWeek: 'By week',
+  blockByDay: 'By day',
+  blockInsertBetween: (week: number, before: number | null, after: number | null) => before === null
+    ? `Insert before W${week}'s first session (new D1; later sessions are renumbered)`
+    : after === null ? `Insert after W${week}'s last session (new D${before + 1})`
+      : `Insert between W${week} D${before} and D${after} (new D${after}; later sessions are renumbered)`,
+  blockInsertFootnote: 'Only available dates between these sessions · This week only',
+  blockCurrentWeek: 'This week',
   blockFillHint: 'Drag to copy to later weeks',
   blockFillPreview: (from: number, to: number, dx: number, rows: number) => `Release: fill W${from}–W${to} · D${dx} (${rows} rows) · edit each week independently`,
   blockRowsSelected: (rows: number) => `${rows} rows selected · ⌘C Copy, then ⌘V in the target day`,
