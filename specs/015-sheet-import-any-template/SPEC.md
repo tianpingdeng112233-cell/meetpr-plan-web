@@ -3,6 +3,7 @@
 - **Status**: Spec 已确认，屏幕稿待「定稿」（2026-10-22 /grill 三轮 16 题，David「你先做 做完我自己来验证」。逐题记录：`~/Projects/scratch/sheet-import-grill-20261022.md`）
 - **后端**: MeetPR-backend spec 052（AI 识别接口、每日次数、能力开关），wire 契约以那边为准，本文 §6 抄录要点。
 - **取代**: spec 002 的入口与解析器。002 的固定版式解析（`selectSheet` / `detectDayOffset` / `weekBlocks` / `parseDay` / `parseSetLine`）只认一位教练的表，本 spec 换成 AI 识别；`buildWeeks` 及以后的流程（绑定、`reconcile`、过往训练默认已完成「导」）保留复用。
+- **屏幕稿**: 画布 https://claude.ai/artifact/EpuvzY9B8Y5JLkbjhqa3aU 第 ⑮–⑲ 张（2026-10-22 出稿，待「定稿」）；定稿后结构与文案转写到文末「屏幕稿」，实装以转写为准（外链 Codex 打不开）。
 - **级别 / 节奏**: T2（新建计划流程 + 编辑器待核对行 + 新后端依赖）/ P1。本仓无 CI，合并闸门 = 本地全量测试 + `tsc --noEmit` + build + Opus 浏览器亲验。
 - **并行注意**: spec 014（按天排）同期在改编辑器网格。本 spec 的编辑器部分（§4）只碰「待核对行」的计数和定位，开工前 rebase 到最新 `main`，与 014 冲突时以 014 已合入的结构为准。
 
@@ -88,4 +89,4 @@
 
 ## 屏幕稿
 
-待出稿（入口两种方式 / 选来源 / 选周 / 结果摘要 / 编辑器存疑标记 / 12 周选择），David「定稿」后转写到这里，UI 卡以转写为准。
+已出稿：⑮ 选来源、⑯ 选周、⑰ 识别完成、⑱ 编辑器里的导入存疑、⑲ 手动新建 3–12 周。David「定稿」后转写到这里，UI 卡以转写为准。
