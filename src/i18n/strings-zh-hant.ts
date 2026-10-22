@@ -356,7 +356,15 @@ const hantEditor = {
     blockDeleteLocked: "\u5DF2\u6709\u6253\u5361\u8A18\u9304\uFF0C\u4E0D\u80FD\u522A\u9664",
     blockDeleteConfirm: (week: number, day: number, date: string, count: number) => `\u522A\u9664 W${week} \u00B7 D${day}\uFF08${date}\uFF09\u53CA\u5176\u4E2D ${count} \u500B\u52D5\u4F5C\uFF1F`,
     blockDateUnavailable: "\u8A72\u65E5\u671F\u5DF2\u6709\u8A13\u7DF4\u6216\u8D85\u51FA\u672C\u9031\uFF0C\u65E5\u671F\u672A\u4FEE\u6539",
-    blockFillHint: "\u62D6\u66F3\u8907\u88FD\u5230\u4E0B\u9762\u5E7E\u9031",
+    blockByWeek: "\u6309\u9031\u6392",
+    blockByDay: "\u6309\u5929\u6392",
+    blockInsertBetween: (week: number, before: number | null, after: number | null) => before === null
+        ? `\u5728 W${week} \u7684\u7B2C\u4E00\u7DF4\u4E4B\u524D\u63D2\u5165\u4E00\u7DF4\uFF08\u63D2\u5165\u5F8C\u70BA D1\uFF0C\u672C\u9031\u5F8C\u9762\u9806\u5EF6\uFF09`
+        : after === null ? `\u5728 W${week} \u7684\u6700\u5F8C\u4E00\u7DF4\u4E4B\u5F8C\u63D2\u5165\u4E00\u7DF4\uFF08\u63D2\u5165\u5F8C\u70BA D${before + 1}\uFF09`
+            : `\u5728 W${week} \u7684 D${before} \u548C D${after} \u4E4B\u9593\u63D2\u5165\u4E00\u7DF4\uFF08\u63D2\u5165\u5F8C\u70BA D${after}\uFF0C\u672C\u9031\u5F8C\u9762\u9806\u5EF6\uFF09`,
+    blockInsertFootnote: "\u53EA\u5217\u51FA\u9019\u5169\u5929\u4E4B\u9593\u7A7A\u8457\u7684\u65E5\u5B50 \u00B7 \u53EA\u6539\u9019\u4E00\u9031",
+    blockCurrentWeek: "\u672C\u9031",
+    blockFillHint: "\u62D6\u66F3\u8907\u88FD\u5230\u5F8C\u9762\u5E7E\u9031",
     blockFillPreview: (from: number, to: number, dx: number, rows: number) => `\u9B06\u958B\uFF1A\u586B\u5230 W${from}\u2013W${to} \u00B7 D${dx}\uFF08${rows} \u884C\uFF09 \u00B7 \u5404\u9031\u4E4B\u5F8C\u53EF\u55AE\u7368\u6539`,
     blockRowsSelected: (rows: number) => `\u5DF2\u6846\u9078 ${rows} \u884C \u00B7 \u2318C \u8907\u88FD\uFF0C\u9EDE\u76EE\u6A19\u683C \u2318V \u8CBC\u4E0A`,
     blockGestures: "\u62D6\u6846\u9078\u4E2D\u5E7E\u884C \u00B7 \u2318C \u8907\u88FD \u00B7 \u5230\u5225\u7684\u683C\u5B50 \u2318V \u8CBC\u4E0A \u00B7 Delete \u522A\u9664",

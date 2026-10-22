@@ -5,7 +5,7 @@ import * as OpenCC from 'opencc-js'
 
 const convert = OpenCC.Converter({ from: 'cn', to: 'twp' })
 const simplify = OpenCC.Converter({ from: 'twp', to: 'cn' })
-const glossary = readFileSync('specs/014-zh-hant/GLOSSARY-zh-Hant.md', 'utf8')
+const glossary = readFileSync('specs/018-zh-hant/GLOSSARY-zh-Hant.md', 'utf8')
 const overrides = []
 for (const line of glossary.split('## 台湾动作写法别名')[0].split('\n')) {
   if (!line.startsWith('| ')) continue

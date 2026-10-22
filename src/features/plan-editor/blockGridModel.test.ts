@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { insertBlockDay, blockInsertDates, deleteBlockDay, changeBlockPattern, buildBlockGrid, fillBlockDays, pasteBlockRows, changeBlockWeekday, changeBlockDate } from './blockGridModel'
+import { blockFillTargets, blockEditColumns, projectBlockGrid, insertBlockDay, blockInsertDates, deleteBlockDay, changeBlockPattern, buildBlockGrid, fillBlockDays, pasteBlockRows, changeBlockWeekday, changeBlockDate } from './blockGridModel'
 import { relabelWeeksForStartDate } from './mapping'
 import type { ExerciseRow, Week } from './types'
 
@@ -177,4 +177,41 @@ it('reconstructs the extra Thursday column on a fresh load without local view me
   expect(grid.columns.map(c => c.weekday)).toEqual([0,2,3,4,5])
   expect(grid.columns[2].patternIndex).toBeNull()
   expect(grid.rows.map(r => r.cells[2].day?.dow ?? null)).toEqual([null,3,null,null])
+})
+
+
+it('projects weekday rows and week columns without changing single-week inserted slots', () => {
+  const weeks = insertBlockDay(fixture([[0,2,4,5], [0,2,4,5], [0,2,4,5], [0,2,4,5]]), 2, '2026-10-29', '2026-10-19')
+  const grid = buildBlockGrid(weeks, '2026-10-19', [0,2,4,5], [3])
+  const view = projectBlockGrid(grid, 'by-day')
+  expect(view.rowHeaders).toEqual(grid.columns)
+  expect(view.columnHeaders).toEqual(weeks)
+  expect(view.rows.map(cells => cells.map(cell => cell.day?.dow ?? null))).toEqual([
+    [0,0,0,0], [2,2,2,2], [null,3,null,null], [4,4,4,4], [5,5,5,5],
+  ])
+  expect(view.rows[2][1]).toBe(grid.rows[1].cells[2])
+  const original = projectBlockGrid(grid, 'by-week')
+  expect(original.rowHeaders).toEqual(weeks)
+  expect(original.columnHeaders).toEqual(grid.columns)
+  expect(original.rows).toEqual(grid.rows.map(row => row.cells))
+})
+
+
+it.each([
+  [0, 0, 3, 0], [1, 1, 4, 0], [2, 2, 5, 1], [3, 3, 6, 2],
+])('opens by-day W%s to the right and adds only the required columns', (column, start, end, extra) => {
+  expect(blockEditColumns('by-day', column, 4)).toEqual({ start, end, extra })
+})
+it.each([[0,0], [1,1], [2,1], [3,1]])('keeps by-week column %s left borrowing unchanged', (column, start) => {
+  expect(blockEditColumns('by-week', column, 4)).toEqual({ start, end: 4, extra: 0 })
+})
+
+
+it.each(['by-week', 'by-day'] as const)('uses the same cross-week fill addresses in %s', layout => {
+  const grid = buildBlockGrid(fixture([[0,2], [0], [0,2], [0,2]]), '2026-10-19')
+  const view = projectBlockGrid(grid, layout)
+  const source = layout === 'by-day' ? view.rows[1][0] : view.rows[0][1]
+  expect(blockFillTargets(grid, source, 3)).toEqual([{ weekNumber: 2, dx: 1 }, { weekNumber: 3, dx: 1 }])
+  expect(blockFillTargets(grid, source, 99)).toHaveLength(3)
+  expect(blockFillTargets(grid, source, 1)).toEqual([])
 })

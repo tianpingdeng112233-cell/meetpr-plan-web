@@ -1,4 +1,4 @@
-# 卡 014 — 网页（教练计划编辑器）：繁体中文
+# 卡 018 — 网页（教练计划编辑器）：繁体中文
 
 先读仓根 `CONTEXT.md`、`CLAUDE.md`，再读同目录 `SPEC.md`（共用规格）与 `GLOSSARY-zh-Hant.md`，以及 `specs/008-i18n-en/SPEC.md` 了解现有 i18n 架构。
 
@@ -29,5 +29,5 @@ SPEC 验收清单 1–5、8、9 条中网页部分。
 4. 速记解析现有测试加繁体输入用例（`臥推 100x5 @8`、`相撲硬舉 3x3`、`二頭彎舉`）→ 结果等于简体输入。
 
 ## 交付
-- 分支 `feat/014-zh-hant`（本 worktree），原子 commit；不 push、不开 PR、不部署。
+- 分支 `feat/018-zh-hant`（本 worktree），原子 commit；不 push、不开 PR、不部署。
 - `docs/CODEX-JOURNAL.md` 末尾追加记录（无则新建）：改动、测试命令与结果、偏离与疑问。
