@@ -1,3 +1,4 @@
+import { normalizeTraditionalInput } from '../../i18n/stable-zh'
 import { CoachApplicationsSection } from '../onboarding/CoachApplicationsSection'
 import { text } from '../onboarding/text'
 import { useEffect, useMemo, useRef, useState } from 'react'
@@ -132,7 +133,7 @@ function displayName(name: string | null, phone?: string | null): string {
 function dateOnly(value: string | null | undefined): string {
   if (!value) return '—'
   const iso = value.slice(0, 10)
-  if (resolveLocale() === 'zh') return iso
+  if (resolveLocale() !== 'en') return iso
   const [year, month, day] = iso.split('-').map(Number)
   return fmt.monthDay(new Date(year, month - 1, day), () => iso)
 }
@@ -321,13 +322,13 @@ const exerciseTypeLabel = (type: string): string => S.common.exerciseType[type a
 function ExerciseUsagePage({ state }: { state: ResourceState<Awaited<ReturnType<typeof getAdminExerciseUsage>>> }) {
   const [search, setSearch] = useState('')
   const rows = useMemo(() => {
-    const query = search.trim().toLowerCase()
+    const query = normalizeTraditionalInput(search.trim()).toLowerCase()
     return (state.data?.exercises ?? [])
       .map((exercise, sourceIndex) => ({ exercise, sourceIndex }))
       .filter(({ exercise }) => !query
-        || exercise.name.toLowerCase().includes(query)
+        || normalizeTraditionalInput(exercise.name).toLowerCase().includes(query)
         || (exercise.name_en?.toLowerCase().includes(query) ?? false)
-        || exerciseTypeLabel(exercise.exercise_type).toLowerCase().includes(query))
+        || normalizeTraditionalInput(exerciseTypeLabel(exercise.exercise_type)).toLowerCase().includes(query))
       .sort((a, b) => b.exercise.plan_count - a.exercise.plan_count || a.sourceIndex - b.sourceIndex)
       .map(({ exercise }) => exercise)
   }, [search, state.data])

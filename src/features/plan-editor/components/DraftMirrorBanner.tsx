@@ -7,7 +7,7 @@ interface Props {
 
 function savedTime(iso: string): string {
   try {
-    return new Intl.DateTimeFormat(resolveLocale() === 'zh' ? 'zh-CN' : 'en-US', {
+    return new Intl.DateTimeFormat(resolveLocale() !== 'en' ? 'zh-CN' : 'en-US', {
       month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit',
     }).format(new Date(iso))
   } catch {

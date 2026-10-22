@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import QRCode from 'qrcode'
-import { text } from './text'
+import { text, zhText } from './text'
 import { trackOnboarding } from './telemetry'
 
 export type Device = 'iphone' | 'android' | 'desktop'
@@ -55,7 +55,7 @@ export function InstallOptions({ code }: { code?: string }) {
   }
   return <>
     {inWechat ? <p role="status">{text('点右上角 ··· 选「在浏览器打开」，再安装 App。', 'Tap ··· in the top-right corner and choose “Open in browser” to install the app.')}</p>
-      : device === 'desktop' ? <div className="onboarding-qr-grid">{(['iphone', 'android'] as const).map(target => <div key={target}><h2>{target === 'iphone' ? 'iPhone' : text('安卓', 'Android')}</h2>{links[target] ? <QrImage value={links[target]!} label={text(`用${target === 'iphone' ? ' iPhone ' : '安卓手机'}扫码安装`, `Scan with ${target === 'iphone' ? 'iPhone' : 'Android'} to install`)} /> : <p>{text('安装链接暂未开放，请联系教练或管理员。', 'Installation is not available yet. Contact your coach or administrator.')}</p>}</div>)}</div>
+      : device === 'desktop' ? <div className="onboarding-qr-grid">{(['iphone', 'android'] as const).map(target => <div key={target}><h2>{target === 'iphone' ? 'iPhone' : text('安卓', 'Android')}</h2>{links[target] ? <QrImage value={links[target]!} label={text(zhText`用${target === 'iphone' ? ' iPhone ' : text('安卓手机', 'Android')}扫码安装`, `Scan with ${target === 'iphone' ? 'iPhone' : 'Android'} to install`)} /> : <p>{text('安装链接暂未开放，请联系教练或管理员。', 'Installation is not available yet. Contact your coach or administrator.')}</p>}</div>)}</div>
         : device === 'iphone' && links.iphone ? <>
           <p>{text('已安装 TestFlight 可直接进行第 2 步。', 'Already have TestFlight? Go straight to step 2.')}</p>
           <ol>

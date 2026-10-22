@@ -245,9 +245,9 @@ export function DayHeaderContext({ studentId, studentName, row, profile }: {
   const bucket = detail && sets > 0 ? (detail.by_set_count[String(sets)] ?? []).slice(0, 2) : []
   const last = detail?.recent_sessions[0]
   return (
-    <div className="dayhead-context exercise" data-dayhead-context="" data-context-state="exercise" title={fmt.exerciseName({ name: activeRow.name, name_en: activeRow.nameEn }) || S.stats.context.unnamedExercise}>
+    <div className="dayhead-context exercise" data-dayhead-context="" data-context-state="exercise" title={fmt.exerciseName({ name: activeRow.name, name_en: activeRow.nameEn, custom: activeRow.custom }) || S.stats.context.unnamedExercise}>
       <div className="dayhead-context-id">
-        <b className="dayhead-context-name">{fmt.exerciseName({ name: activeRow.name, name_en: activeRow.nameEn }) || S.stats.context.unnamedExercise}</b>
+        <b className="dayhead-context-name">{fmt.exerciseName({ name: activeRow.name, name_en: activeRow.nameEn, custom: activeRow.custom }) || S.stats.context.unnamedExercise}</b>
         {/* The one-line 上次 summary duplicates the per-set panel; show it only
             while that panel is absent (loading / failed / no history). */}
         {!(last && last.sets.length > 0) && (
@@ -418,7 +418,7 @@ export function ContextRailView({
         {level > 1 && (
           <>
             <div className="rail-row-chip">
-              <b>{row ? fmt.exerciseName({ name: row.name, name_en: row.nameEn }) : ''}</b>
+              <b>{row ? fmt.exerciseName({ name: row.name, name_en: row.nameEn, custom: row.custom }) : ''}</b>
               <span>{S.stats.context.setsReps(sets || '—', reps || '—')}</span>
             </div>
             {loading && <div className="empty-state">{S.stats.context.loadingProfile}</div>}
@@ -544,7 +544,7 @@ export function Profile({ profile, compact = false }: { profile: StudentOnboardi
         <dt>{S.stats.context.years}</dt><dd>{profile.training_years != null ? S.workspace.requests.yearsAndDays(profile.training_years, profile.training_days?.length ?? '—') : S.common.notProvided}</dd>
         <dt>{S.stats.context.style}</dt><dd>{techniqueStyleLine(profile)}</dd>
         <dt>{S.stats.context.selfReport}</dt><dd>S {kg(profile.squat_1rm_kg)} / B {kg(profile.bench_1rm_kg)} / D {kg(profile.deadlift_1rm_kg)}</dd>
-        <dt>{S.stats.context.injuries}</dt><dd>{profile.injury_notes || profile.injury_areas?.join(resolveLocale() === 'zh' ? '、' : ', ') || S.common.noInjury}</dd>
+        <dt>{S.stats.context.injuries}</dt><dd>{profile.injury_notes || profile.injury_areas?.join(resolveLocale() !== 'en' ? '、' : ', ') || S.common.noInjury}</dd>
         <dt>{S.stats.context.competition}</dt><dd>{profile.is_competing ? `${shortDate(profile.competition_date)} · ${profile.target_weight_class || S.stats.context.levelMissing}` : S.stats.context.notCompeting}</dd>
       </dl>
       {profile.note_to_coach && <blockquote>“{profile.note_to_coach}”</blockquote>}

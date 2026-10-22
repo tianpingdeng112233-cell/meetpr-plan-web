@@ -54,6 +54,23 @@
     { "alias": "安全杆节奏蹲", "canonical": "安全杠节奏深蹲" },
     { "alias": "安全杠节奏蹲", "canonical": "安全杠节奏深蹲" },
     { "alias": "帕洛夫推", "canonical": "弹力带 pallof 推" },
-    { "alias": "对握弯举", "canonical": "绳索锤式弯举" }
+    { "alias": "对握弯举", "canonical": "绳索锤式弯举" },
+    {"alias": "滑轮下拉", "canonical": "高位下拉"},
+    {"alias": "窄卧推", "canonical": "窄握卧推"},
+    {"alias": "杠铃窄卧推", "canonical": "窄握卧推"},
+    {"alias": "不碰胸暂停卧推", "canonical": "spoto 卧推"},
+    {"alias": "不碰胸暂停1秒卧推", "canonical": "spoto 卧推"},
+    {"alias": "不碰胸暂停1秒杠铃卧推", "canonical": "spoto 卧推"},
+    {"alias": "不碰胸卧推", "canonical": "spoto 卧推"},
+    {"alias": "保护杠重启深蹲", "canonical": "架上(PIN)深蹲"},
+    {"alias": "保护杠重启杠铃深蹲", "canonical": "架上(PIN)深蹲"},
+    {"alias": "弹力绳卧推", "canonical": "弹力带卧推"},
+    {"alias": "弹力绳杠铃卧推", "canonical": "弹力带卧推"},
+    {"alias": "弹力绳相扑硬拉", "canonical": "弹力带辅助相扑硬拉"},
+    {"alias": "屈体划船", "canonical": "杠铃划船"},
+    {"alias": "杠铃屈体划船", "canonical": "杠铃划船"},
+    {"alias": "杠铃早安", "canonical": "早安式"},
+    {"alias": "后脚抬高蹲", "canonical": "后脚抬高分腿蹲"},
+    {"alias": "哑铃后脚抬高蹲", "canonical": "后脚抬高分腿蹲"}
   ]
 }

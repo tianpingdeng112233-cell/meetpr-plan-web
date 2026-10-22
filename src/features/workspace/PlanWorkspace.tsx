@@ -962,8 +962,8 @@ export function PlanWorkspace({ onLogout, me }: Props) {
       commandStudents={students.map((student) => ({ id: student.id, label: student.display_name }))}
       commandExercises={exerciseList.map((exercise) => ({
         id: exercise.id,
-        label: fmt.exerciseName({ name: catalog?.get(exercise.id)?.name ?? displayExerciseName(exercise.name), name_en: exercise.name_en }),
-        secondary: resolveLocale() === 'zh' ? exercise.name_en : null,
+        label: fmt.exerciseName({ name: catalog?.get(exercise.id)?.name ?? displayExerciseName(exercise.name), name_en: exercise.name_en, created_by_coach_id: exercise.created_by_coach_id }),
+        secondary: resolveLocale() !== 'en' ? exercise.name_en : null,
       }))}
       onCommandStudent={async id => { await openStudentEditor(id) }}
       onCommandExercise={openExerciseFromCommand}

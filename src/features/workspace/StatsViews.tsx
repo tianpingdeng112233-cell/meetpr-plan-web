@@ -1,3 +1,4 @@
+import { normalizeTraditionalInput } from '../../i18n/stable-zh'
 import { useEffect, useMemo, useState } from 'react'
 import { getExerciseStats, getExerciseStatsOverview } from '../../api/coach'
 import { getStudentOnboarding } from '../../api/plans'
@@ -384,8 +385,8 @@ export function StudentDetail({ students, studentId, onStudent, onBack, catalog,
   }, [studentId, exerciseId])
   const exercises = useMemo(() => overview?.exercises.filter((exercise) => {
     const names = index?.namesById(exercise.exercise_id)
-    const needle = query.toLowerCase()
-    return exercise.name.toLowerCase().includes(needle) || (names?.name_en?.toLowerCase().includes(needle) ?? false)
+    const needle = normalizeTraditionalInput(query).toLowerCase()
+    return normalizeTraditionalInput(exercise.name).toLowerCase().includes(needle) || (names?.name_en?.toLowerCase().includes(needle) ?? false)
   }) ?? [], [index, overview, query])
   return <main className="data-page"><PageTop title={S.stats.board.dashboard} students={students} studentId={studentId} onStudent={onStudent} onBack={onBack} tail={<span className="page-status">{S.stats.board.recentTraining} {shortDate(overview?.last_trained_at)}</span>} />
     <div className="overview-cards"><article><h3>{S.stats.board.registered1rm}</h3><div className="rm-three"><span><b>{kg(overview?.one_rm.squat)}</b><small>{S.common.squat}</small></span><span><b>{kg(overview?.one_rm.bench)}</b><small>{S.common.benchPress}</small></span><span><b>{kg(overview?.one_rm.deadlift)}</b><small>{S.common.deadlift}</small></span></div></article><article><h3>{S.stats.board.profile}</h3><p>{profile ? profileLine(profile) : S.common.loadingEllipsis}</p><p>{profile?.is_competing ? S.stats.board.preparing(shortDate(profile.competition_date), profile.target_weight_class ?? S.stats.board.weightClassMissing) : S.stats.board.noCompetition} · {profile?.injury_notes || S.stats.board.noInjury}</p></article><article><h3>{S.stats.board.lastFourWeeks}</h3><p>{S.stats.board.attendanceOf(overview?.recent_4w.trained_days ?? '—', overview?.recent_4w.total_planned_days ?? '—')}</p><p>{S.stats.board.completion(`${overview ? Math.round(overview.recent_4w.completion_rate * 100) : '—'}%`)}</p></article><StudentPlanCapacityCard studentId={studentId} catalog={catalog} index={index} /></div>

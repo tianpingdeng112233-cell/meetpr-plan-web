@@ -221,7 +221,7 @@ function rowNumberInWeek(week: Week, dayIndex: number, rowIndex: number): number
 
 function cellLabel(row: ExerciseRow, field: PlanCellField, setIndex?: number): string {
   const name =
-    fmt.exerciseName({ name: row.name, name_en: row.nameEn }).trim() || S.common.unnamedExercise
+    fmt.exerciseName({ name: row.name, name_en: row.nameEn, custom: row.custom }).trim() || S.common.unnamedExercise
   switch (field) {
     case 'name': return S.editor.cellNameLabel(name)
     case 'sets': return S.editor.cellSetsLabel(name)
@@ -242,7 +242,7 @@ function cellLabel(row: ExerciseRow, field: PlanCellField, setIndex?: number): s
 
 function cellValue(row: ExerciseRow, field: PlanCellField, setIndex?: number): string {
   switch (field) {
-    case 'name': return fmt.exerciseName({ name: row.name, name_en: row.nameEn }) || '/'
+    case 'name': return fmt.exerciseName({ name: row.name, name_en: row.nameEn, custom: row.custom }) || '/'
     case 'sets': return row.boxes.length > 0 ? S.common.countSets(row.boxes.length) : '/'
     case 'reps': return row.reps && row.reps !== '—' ? S.common.countReps(row.reps) : '/'
     case 'intensity': {
