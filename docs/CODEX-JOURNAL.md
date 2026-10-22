@@ -1037,3 +1037,56 @@ npx vitest run src/features/plan-editor/block-grid-ui.test.tsx
 - 三条命令：`npm test` 101 files / 1021 passed；`npx tsc --noEmit` exit 0；`npm run build` exit 0（仅 chunk >500 kB 提示）。
 - 浏览器验收（Claude，临时夹具 mock-feedback / mock-workspace，1440×900，中英文，验完已删）：导航无反馈工作区、计划编排徽标 = 未读 + 待看；浮窗收起 / 展开、记忆、切学员换内容；聊天视频胶囊 → 反馈模式并高亮对应积木，浮窗让到大窗左侧；总览两列数字、点待看直达该学员第一段待看、点未读切学员并展开浮窗。
 - 已知遗留（不阻塞，待 Codex 10/25 后清）：`VideoWorkbench` 的非 embedded「整页」分支在生产已无调用方（旧 VideosPage 已删），但迁移来的约 35 条 UI 测试仍经它渲染。业务逻辑与 embedded 共用同一套 hooks，覆盖有效但路径不等价；后续卡：删整页分支、把这些测试改到 embedded 渲染。
+
+## 2026-10-22 · 014 管理后台浅色重做（Codex 开发交付，待 Claude 收货）
+
+范围补充：`src/i18n/en-smoke.test.tsx` 仍引用已删除的管理计划详情类型与入口；为完成删除和全量类型检查，需要同步移除该文件中的计划详情专用夹具/断言，保留动作库、视频和组卡英文覆盖。总览接口不含邮箱，最近注册表使用现有 `/admin/users` 获取身份信息并按注册时间取前十；不新增接口或修改后端。
+
+### 改动文件与行为
+
+- `src/features/admin/AdminWorkspace.tsx`：五项导航，默认总览；父层加载一次申请列表并共享待处理计数；待办最多五条、四个关键数字、最近注册最多十行；统一页头与刷新；浅色角色/状态标签；用户详情补邮箱，计划仅保留不可交互概要，关联用户仍可打开。删除计划列表、详情、矩阵、导航及其内部类型。`ADMIN_WRITE_ENABLED` 保持 false。
+- `src/features/admin/ApplicationsPage.tsx`（新增）：待处理默认筛选、四状态计数与姓名/邮箱搜索；按提交时间倒序；原生确认对话框；审核与重发防重复提交；复用 onboarding API、`errorText` 和 `trackOnboarding`；审核成功在父层本地更新，邮件失败标记跨后台页导航保留，重新加载申请列表时清除。
+- `src/index.css`：仅替换后台选择器下暗色变量与状态覆写，新增同作用域按钮、申请表格、确认框样式；不改 `:root`。
+- `src/i18n/strings-admin.ts`：中英同步增加总览/申请文案，删除计划页、详情及闲置计划文案。
+- `src/api/admin.ts`、`src/api/admin.test.ts`：删除前端计划总览/详情 API 与专用类型，保留用户详情所需计划概要及其余只读接口测试。
+- `src/features/onboarding/CoachApplicationsSection.tsx`（删除）、`src/features/onboarding/onboarding.css`、`src/features/onboarding/onboarding.test.tsx`：移除旧后台申请组件、其独占样式及已迁移的两条业务测试；其他入驻行为不变。
+- `src/features/admin/AdminWorkspace.test.tsx`：在指定 seam 经左栏进入申请页，以 fetch 桩覆盖真实 onboarding 请求和遥测；最终 12 条。包含确认后单次 POST、通过/拒绝、本地计数同步、邮件失败/重发、学员邮箱冲突、四筛选/搜索、刷新清标、英文文案、只读概要与关联用户跳转。
+- `src/i18n/en-smoke.test.tsx`：仅移除被删计划页的专用类型、mock 和断言，保留其余英文覆盖。范围扩展原因见本节开头。
+- `docs/CODEX-JOURNAL.md`：本记录。没有依赖、锁文件或后端改动，没有 commit、push 或 PR；分支 `feat/014-admin-redesign`，HEAD 仍为 `dca136c`。
+
+### 红 → 绿证据
+
+均使用 `npm test -- src/features/admin/AdminWorkspace.test.tsx`：
+
+| 行为 / 测试名 | 先红证据 | 转绿证据 |
+| --- | --- | --- |
+| `opens overview with five navigation items, shared pending counts and four key figures` | 原导航六项、申请先于总览且无计数；另两条原用户测试因标签仍为「用户管理」失败。有效红日志：`/tmp/014-overview-red.log`（3 failed / 1 passed） | `/tmp/014-overview-green.log`：5 passed，覆盖导航、默认页、待办/左栏计数、四数字和去审核 |
+| `shows email and read-only plan summaries while linked users still open` | 用户详情缺邮箱，期望 `邮箱coach@example.test` 未找到。`/tmp/014-detail-red.log`（该测试和总览测试失败） | 同上 5 passed；概要行无 button/link/svg，关联用户仍调用详情 |
+| `confirms approval once, updates shared counts, tracks approval and clears failed mail after resend` | 新申请页尚无「通过」操作，`button not found: 通过`。`/tmp/014-review-red.log`（1 failed / 5 passed） | `/tmp/014-review-green.log`：6 passed；包含连续两次确认只发一次 approve、遥测事件、成功行离开 pending、resend 清除失败标记 |
+| `never labels a failed linked-user load with the previous user identity`（审查返修） | 点学员乙后面包屑仍是 `用户/教练甲刷新`。`/tmp/014-review-identity-red.log`（1 failed / 9 passed） | `/tmp/014-review-identity-green.log`：10 passed；换资源 key 时清旧身份，同 key 刷新可保留 |
+
+旧 onboarding 的两条业务覆盖均已迁入：审核确认与邮件失败重发，以及 `COACH_APPLICATION_EMAIL_IS_STUDENT` 报错后保持待处理。额外覆盖拒绝确认/取消/重发、筛选与搜索、会话标记刷新清除、英文通过成功 toast。最终后台 seam：`/tmp/014-admin-final.log`，12 passed；最终相关四文件复验：`/tmp/014-targeted-final.log`，35 passed。
+
+### 三条检查命令
+
+| 检查 | 命令 | 结果 |
+| --- | --- | --- |
+| Typecheck | `npm run lint`（package.json 中等价脚本 `tsc --noEmit`，无名为 typecheck 的脚本） | exit 0，无类型诊断；`/tmp/014-typecheck-final.log` |
+| 完整测试 | `npm test -- --maxWorkers=2 --minWorkers=1` | exit 0，101 files / 1027 passed，47.90s；`/tmp/014-full-test-bounded.log` |
+| 生产构建 | `npm run build` | exit 0，Vite 6.15s；仅既有 chunk >500 kB 提示；`/tmp/014-build-final.log` |
+
+默认并发的 `npm test` 两次触发旧 `block-grid-ui` 的 5000ms 超时（后续同文件连带失败）及 `pinyin` 的 1000ms 耗时阈值：`/tmp/014-full-test.log`、`/tmp/014-full-test-final.log`。独立运行 block-grid-ui 全部 62 条通过（`/tmp/014-block-isolated.log`）；降低 worker 数后整套全绿。没有改测试阈值、跳过测试或改仓库并发配置。最后的间距/图标及死类型清理之后，重新运行 typecheck、build 和相关四测试文件（35/35）。
+
+### 验收项 1 grep
+
+命令：`rg -n '计划总览|Plan overview|getAdminPlans|getAdminPlan\(|planDetail|PlanDetailPage' src/`
+
+唯一命中：`src/features/admin/AdminWorkspace.test.tsx:81: expect(host.textContent).not.toContain('计划总览')`，属于清单允许的“不存在”断言。排除 `*.test.*` 后为零命中（rg exit 1）；`CoachApplicationsSection`、`onboarding-admin`、`buildMatrix`、`PlanContext` 生产源码也零命中。原始记录 `/tmp/014-acceptance-1-grep.log`。`git diff --check` 通过，`package.json` / `package-lock.json` diff 为空。
+
+### 自审与待收货事项
+
+- Standards：独立只读 reviewer 发现 1 项跨用户加载旧身份问题，先红后绿修复并定向复核关闭；剩余 0 项。
+- Spec：独立只读 reviewer 发现 2 项稿面偏差（左栏选中态、用户详情双栏/标题/间距），已修复并定向复核关闭；剩余 0 项。三列表页筛选后计数已移入各自页头副标题，刷新仍指向对应资源。
+- 样式检测器只报告未改动的全局 CSS 旧规则（侧边线、width 动画），未扩范围修改；记录 `/tmp/014-design-detect.json`。
+- **浏览器实看未完成**：按卡第 14 项由 Claude 收货。曾尝试启动纯本地 fetch 夹具做补充自看，当前沙箱拒绝 `listen 127.0.0.1:5194`（EPERM，`/tmp/014-vite.log`）；没有绕过权限，临时 HTML/TSX 已删除，没有真实后端请求。1280/1024 下的像素布局、原生 dialog 焦点和遮罩仍待 Claude 实看，不能把 DOM 测试或源码审查当作视觉验收。
+- 总览邮箱从既有 users 接口取得；未做线上数据或真实邮件联调。以上为开发自测和代码自审，不声明产品验收完成。

@@ -28,14 +28,4 @@
 .onboarding li { margin: 10px 0; }
 .onboarding-status { color: var(--ok); }
 .onboarding-actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 16px; }
-.onboarding-admin { color: inherit; }
-.onboarding-admin article { padding: 20px 0; border-bottom: 1px solid var(--border-strong); overflow-wrap: anywhere; }
-.onboarding-admin h2 { margin-bottom: 16px; font-weight: 600; font-size: 20px; }
-.onboarding-admin p { margin: 6px 0; }
-.onboarding-admin button { border: 1px solid var(--border-strong); border-radius: var(--r-md); padding: 8px 14px; min-height: 44px; color: var(--fg-primary); background: var(--surface-2); }
-.onboarding-admin button:hover { background: var(--surface-3); }
-.onboarding-admin button:focus-visible { outline: 2px solid var(--fg-primary); outline-offset: 3px; }
-.onboarding-admin .onboarding-error { color: var(--brand-red); }
-.onboarding-admin button:disabled { opacity: .5; }
-.onboarding-admin [role="dialog"] { padding: 16px; margin: 12px 0; border: 1px solid var(--border-strong); background: var(--surface-2); }
 @media(max-width: 480px) { .onboarding { padding: 24px 20px 48px; } .onboarding-brand { margin-bottom: 32px; } .onboarding-qr-grid { gap: 16px; } }

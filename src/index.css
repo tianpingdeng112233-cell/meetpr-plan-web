@@ -162,26 +162,58 @@
   color-scheme: light;
 }
 
-/* The admin product keeps its existing dark contract; this card only changes coach web. */
+/* Spec 014: light admin surfaces are scoped away from coach/onboarding UI. */
 [data-testid="admin-workspace"] {
-  --brand-red: #E5221E;
-  --brand-red-press: #B81A17;
-  --brand-red-soft: rgba(229, 34, 30, 0.12);
-  --green: #1FB358;
-  --green-soft: rgba(31, 179, 88, 0.14);
-  --amber: #E0A810;
-  --amber-soft: rgba(224, 168, 16, 0.14);
-  --bg: #000000;
-  --surface-1: #0E0E0E;
-  --surface-2: #161616;
-  --surface-3: #1F1F1F;
-  --border: #262626;
-  --border-strong: #3A3A3A;
-  --fg-primary: #FFFFFF;
-  --fg-secondary: #B5B5B5;
-  --fg-tertiary: #737373;
-  --fg-disabled: rgba(255, 255, 255, 0.35);
+  color-scheme: light;
+  --brand-red: #111827;
+  --brand-red-press: #4B5563;
+  --brand-red-soft: #EEF0F3;
+  --green: #10715A;
+  --green-soft: #E7F1EE;
+  --amber: #A15C00;
+  --amber-soft: #FEF3C7;
+  --bg: #F5F6F8;
+  --surface-1: #FFFFFF;
+  --surface-2: #F5F6F8;
+  --surface-3: #EEF0F3;
+  --border: #E5E7EB;
+  --border-strong: #D1D5DB;
+  --fg-primary: #111827;
+  --fg-secondary: #4B5563;
+  --fg-tertiary: #5C6371;
+  --fg-disabled: #9CA3AF;
+  --txt: #111827;
+  --mut: #5C6371;
+  --faint: #9CA3AF;
+  --ink: #111827;
+  --ink-press: #4B5563;
+  --tint: #EEF0F3;
+  --line: #E5E7EB;
+  --line-2: #EEF0F3;
 }
+[data-testid="admin-workspace"] :is(button, input):focus-visible { outline: 2px solid #111827; outline-offset: 3px; }
+[data-testid="admin-workspace"] button:disabled { opacity: .5; cursor: default; }
+[data-testid="admin-workspace"] .admin-count { display: inline-flex; align-items: center; justify-content: center; min-width: 20px; height: 20px; padding: 0 6px; border-radius: 10px; background: #111827; color: #FFFFFF; font-size: 11px; font-weight: 700; }
+[data-testid="admin-workspace"] [aria-pressed="true"] .admin-count { background: #FFFFFF; color: #111827; }
+[data-testid="admin-workspace"] :is(.admin-secondary, .admin-primary) { display: inline-flex; align-items: center; justify-content: center; min-height: 36px; padding: 0 14px; border: 1px solid #D1D5DB; border-radius: 6px; background: #FFFFFF; color: #111827; font-size: 13px; white-space: nowrap; }
+[data-testid="admin-workspace"] .admin-primary { background: #111827; color: #FFFFFF; border-color: #111827; font-weight: 600; }
+[data-testid="admin-workspace"] .admin-secondary:hover { background: #F5F6F8; }
+[data-testid="admin-workspace"] .admin-applications-table { width: 100%; min-width: 960px; table-layout: fixed; border-collapse: collapse; }
+[data-testid="admin-workspace"] .admin-applications-table th { height: 40px; font-family: var(--font-mono); font-size: 10.5px; letter-spacing: .08em; font-weight: 400; color: #5C6371; border-bottom: 1px solid #E5E7EB; text-align: left; }
+[data-testid="admin-workspace"] .admin-applications-table :is(th, td) { padding: 10px 8px; }
+[data-testid="admin-workspace"] .admin-applications-table :is(th, td):first-child { width: 27%; padding-left: 20px; overflow-wrap: anywhere; }
+[data-testid="admin-workspace"] .admin-applications-table :is(th, td):nth-child(2) { width: 16%; overflow-wrap: anywhere; }
+[data-testid="admin-workspace"] .admin-applications-table :is(th, td):nth-child(3) { width: 8%; }
+[data-testid="admin-workspace"] .admin-applications-table :is(th, td):nth-child(4) { width: 12%; }
+[data-testid="admin-workspace"] .admin-applications-table :is(th, td):nth-child(5) { width: 14%; }
+[data-testid="admin-workspace"] .admin-applications-table :is(th, td):last-child { width: 23%; padding-right: 20px; text-align: right; }
+[data-testid="admin-workspace"] .admin-applications-table td { height: 64px; border-bottom: 1px solid #EEF0F3; font-size: 13px; color: #4B5563; }
+[data-testid="admin-workspace"] .admin-applications-table tr:last-child td { border-bottom: 0; }
+[data-testid="admin-workspace"] .admin-applications-table tbody tr:hover { background: #F5F6F8; }
+
+[data-testid="admin-workspace"] .admin-review-dialog { width: 440px; max-width: calc(100vw - 48px); padding: 24px; border: 1px solid #D1D5DB; border-radius: 12px; background: #FFFFFF; color: #111827; box-shadow: 0 18px 44px rgba(17,24,39,.18); }
+[data-testid="admin-workspace"] .admin-review-dialog::backdrop { background: rgba(17,24,39,.32); }
+[data-testid="admin-workspace"] .admin-review-dialog button { min-height: 40px; }
 
 html, body, #root {
   height: 100%;
@@ -237,15 +269,9 @@ textarea {
 .state-inline-fail { height: 20px; padding: 0 7px; border: 0; border-radius: var(--r-sm); display: inline-flex; align-items: center; gap: 5px; color: var(--bad); background: var(--bad-soft); font: 600 10.5px var(--font-mono); white-space: nowrap; cursor: pointer; }
 .state-inline-fail:hover { background: color-mix(in srgb, var(--bad) 13%, var(--card-bg)); }
 .state-cell-skeleton { height: 9px; border-radius: var(--r-sm); display: block; background: var(--line); animation: state-shimmer 1.4s ease-in-out infinite; }
-[data-testid="admin-workspace"] .state-card { color: var(--fg-primary); }
-[data-testid="admin-workspace"] .state-card p { color: var(--fg-tertiary); }
-[data-testid="admin-workspace"] .state-skeleton-row i,
-[data-testid="admin-workspace"] .state-skeleton-row b,
-[data-testid="admin-workspace"] .state-skeleton-row em { background: var(--surface-3); }
-[data-testid="admin-workspace"] .state-error-icon { color: var(--brand-red); background: var(--brand-red-soft); }
-[data-testid="admin-workspace"] .state-empty-icon { color: var(--fg-secondary); background: var(--surface-3); }
-[data-testid="admin-workspace"] .state-primary-action { color: var(--bg); background: var(--fg-primary); }
-[data-testid="admin-workspace"] .state-link-action { color: var(--fg-secondary); }
+[data-testid="admin-workspace"] .state-error-icon { color: #A15C00; background: #FEF3C7; }
+[data-testid="admin-workspace"] .state-primary-action { color: #FFFFFF; background: #111827; }
+
 
 /* Coach workspace navigation and data surfaces */
 .coach-shell {

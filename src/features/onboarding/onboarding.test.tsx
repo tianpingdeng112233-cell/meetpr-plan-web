@@ -69,22 +69,6 @@ it('shows the current permanent invite and copies the full invitation with the c
   expect(copy).toHaveBeenCalledWith(expect.stringContaining('ABCD 234 567'))
   expect(copy).toHaveBeenCalledWith(expect.stringContaining('—— 测试教练'))
 })
-it('requires confirmation to approve and offers resend when the welcome email fails', async () => {
-  const fetcher = vi.fn(async (_url: string, init?: RequestInit) => {
-    if (init?.method === 'POST') return new Response(JSON.stringify({ welcome_email_sent: false }))
-    return new Response(JSON.stringify({ applications: [{ id: 'app-1', name: '测试教练', email: 'coach@example.test', contact: '', student_count: 12, device: 'iphone', status: 'pending', created_at: '2026-10-17T00:00:00Z' }] }))
-  })
-  vi.stubGlobal('fetch', fetcher)
-  const { CoachApplicationsSection } = await import('./CoachApplicationsSection')
-  await act(async () => root.render(<CoachApplicationsSection />))
-  await act(async () => [...host.querySelectorAll('button')].find(b => b.textContent === '通过')!.click())
-  expect(fetcher.mock.calls.filter(([, init]) => init?.method === 'POST')).toHaveLength(0)
-  expect(host.querySelector('[role="dialog"]')).not.toBeNull()
-  await act(async () => [...host.querySelectorAll('button')].find(b => b.textContent === '确认通过')!.click())
-  expect(fetcher.mock.calls.filter(([url, init]) => url.endsWith('/app-1/approve') && init?.method === 'POST')).toHaveLength(1)
-  expect(host.textContent).toContain('邮件暂未送达')
-  expect(host.textContent).toContain('重新发送邮件')
-})
 it('shows duplicate-application errors without losing the entered fields', async () => {
   vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ error: 'COACH_APPLICATION_EXISTS' }), { status: 409 })))
   await act(async () => root.render(<CoachApplicationPage />))
@@ -92,18 +76,6 @@ it('shows duplicate-application errors without losing the entered fields', async
   await act(async () => { host.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })) })
   expect(host.querySelector('[role="alert"]')?.textContent).toContain('这个邮箱已经提交过申请')
   expect(host.querySelector<HTMLInputElement>('[name="email"]')?.value).toBe('duplicate@example.test')
-})
-it('shows explicit student-account review errors without converting the account', async () => {
-  const fetcher = vi.fn(async (_url: string, init?: RequestInit) => init?.method === 'POST'
-    ? new Response(JSON.stringify({ error: 'COACH_APPLICATION_EMAIL_IS_STUDENT' }), { status: 409 })
-    : new Response(JSON.stringify({ applications: [{ id: 'app', name: '学生', email: 'student@example.test', student_count: 1, device: 'android', status: 'pending', created_at: '2026-10-17T00:00:00Z' }] })))
-  vi.stubGlobal('fetch', fetcher)
-  const { CoachApplicationsSection } = await import('./CoachApplicationsSection')
-  await act(async () => root.render(<CoachApplicationsSection />))
-  await act(async () => [...host.querySelectorAll('button')].find(b => b.textContent === '通过')!.click())
-  await act(async () => [...host.querySelectorAll('button')].find(b => b.textContent === '确认通过')!.click())
-  expect(host.textContent).toContain('该邮箱已是学员账号')
-  expect(host.textContent).toContain('待处理')
 })
 it('offers a resend after an expired setup token and reports the request', async () => {
   history.replaceState(null, '', `/coach/set-password#email=coach%40example.test&token=${'b'.repeat(64)}`)

@@ -3,8 +3,6 @@ import {
   getAdminBindings,
   getAdminExerciseUsage,
   getAdminOverview,
-  getAdminPlan,
-  getAdminPlans,
   getAdminUser,
   getAdminUsers,
 } from './admin'
@@ -31,9 +29,7 @@ describe('admin API contract', () => {
     await getAdminUsers()
     await getAdminUser('user/one')
     await getAdminBindings()
-    await getAdminPlans()
     await getAdminExerciseUsage()
-    await getAdminPlan('plan/one')
 
     const calls = vi.mocked(fetch).mock.calls
     expect(calls.map(([url]) => url)).toEqual([
@@ -41,9 +37,7 @@ describe('admin API contract', () => {
       '/api/admin/users',
       '/api/admin/users/user%2Fone',
       '/api/admin/bindings',
-      '/api/admin/plans',
       '/api/admin/exercise-usage',
-      '/api/admin/plans/plan%2Fone',
     ])
     calls.forEach(([, init]) => expect(new Headers(init?.headers).get('Authorization')).toBe('Bearer admin-token'))
   })
