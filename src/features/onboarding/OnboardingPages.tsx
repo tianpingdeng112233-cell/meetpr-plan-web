@@ -28,7 +28,7 @@ export function CoachApplicationPage() {
         <label>{text('邮箱', 'Email')}<input name="email" type="email" required maxLength={320} autoComplete="email" autoCapitalize="none" /></label>
         <label>{text('手机或微信（选填）', 'Phone or WeChat (optional)')}<input name="contact" maxLength={200} /></label>
         <label>{text('大概带多少学员', 'Approximate number of students')}<input name="student_count" type="number" min={0} max={100000} required inputMode="numeric" /></label>
-        <label>{text('主要用什么设备', 'Primary device')}<select name="device" defaultValue="iphone"><option value="iphone">iPhone</option><option value="android">{text('安卓', 'Android')}</option><option value="both">{text('都有', 'Both')}</option></select></label>
+        <label>{text('学员主要用什么手机', 'What phones do most of your athletes use?')}<select name="device" defaultValue="iphone"><option value="iphone">iPhone</option><option value="android">{text('安卓', 'Android')}</option><option value="both">{text('都有', 'Both')}</option></select></label>
         <button type="submit" className="onboarding-primary" disabled={busy}>{busy ? text('提交中…', 'Submitting…') : text('提交申请', 'Submit application')}</button>
       </form></>}
     {error && <p role="alert" className="onboarding-error">{error}</p>}<p className="onboarding-footnote"><a href="/">{text('已有账号？登录网页', 'Already have an account? Sign in')}</a></p>

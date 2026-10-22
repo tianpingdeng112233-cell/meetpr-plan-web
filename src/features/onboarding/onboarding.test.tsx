@@ -2,16 +2,28 @@ import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { beforeEach, afterEach, it, expect, vi } from 'vitest'
 import { CoachApplicationPage } from './OnboardingPages'
+import { setLocale } from '../../i18n/locale'
 ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 let host: HTMLDivElement
 let root: Root
 beforeEach(() => { const store = new Map<string, string>(); vi.stubGlobal('localStorage', { getItem: (k: string) => store.get(k) ?? null, setItem: (k: string, v: string) => store.set(k, v), removeItem: (k: string) => store.delete(k) }); host = document.createElement('div'); document.body.append(host); root = createRoot(host) })
-afterEach(() => { act(() => root.unmount()); host.remove(); vi.unstubAllGlobals(); vi.unstubAllEnvs(); vi.restoreAllMocks(); history.replaceState(null, '', '/') })
+afterEach(() => { act(() => root.unmount()); host.remove(); setLocale('zh'); vi.unstubAllGlobals(); vi.unstubAllEnvs(); vi.restoreAllMocks(); history.replaceState(null, '', '/') })
 function input(name: string, value: string) {
   const el = host.querySelector<HTMLInputElement>(`[name="${name}"]`)!
   Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(el, value)
   act(() => el.dispatchEvent(new Event('input', { bubbles: true })))
 }
+it.each([
+  ['zh', '学员主要用什么手机', ['iPhone', '安卓', '都有']],
+  ['en', 'What phones do most of your athletes use?', ['iPhone', 'Android', 'Both']],
+] as const)('asks about athletes’ phones in %s with the existing device choices', async (locale, question, choices) => {
+  setLocale(locale)
+  await act(async () => root.render(<CoachApplicationPage />))
+  const select = host.querySelector<HTMLSelectElement>('select[name="device"]')!
+  expect(select.labels?.[0].textContent).toBe(question + choices.join(''))
+  expect([...select.options].map(option => option.value)).toEqual(['iphone', 'android', 'both'])
+  expect(select.value).toBe('iphone')
+})
 it('submits a public application and shows the email receipt even if delivery failed', async () => {
   const fetcher = vi.fn().mockResolvedValue(new Response(JSON.stringify({ id: 'app-1', status: 'pending', receipt_email_sent: false }), { status: 201 }))
   vi.stubGlobal('fetch', fetcher)
@@ -69,22 +81,6 @@ it('shows the current permanent invite and copies the full invitation with the c
   expect(copy).toHaveBeenCalledWith(expect.stringContaining('ABCD 234 567'))
   expect(copy).toHaveBeenCalledWith(expect.stringContaining('—— 测试教练'))
 })
-it('requires confirmation to approve and offers resend when the welcome email fails', async () => {
-  const fetcher = vi.fn(async (_url: string, init?: RequestInit) => {
-    if (init?.method === 'POST') return new Response(JSON.stringify({ welcome_email_sent: false }))
-    return new Response(JSON.stringify({ applications: [{ id: 'app-1', name: '测试教练', email: 'coach@example.test', contact: '', student_count: 12, device: 'iphone', status: 'pending', created_at: '2026-10-17T00:00:00Z' }] }))
-  })
-  vi.stubGlobal('fetch', fetcher)
-  const { CoachApplicationsSection } = await import('./CoachApplicationsSection')
-  await act(async () => root.render(<CoachApplicationsSection />))
-  await act(async () => [...host.querySelectorAll('button')].find(b => b.textContent === '通过')!.click())
-  expect(fetcher.mock.calls.filter(([, init]) => init?.method === 'POST')).toHaveLength(0)
-  expect(host.querySelector('[role="dialog"]')).not.toBeNull()
-  await act(async () => [...host.querySelectorAll('button')].find(b => b.textContent === '确认通过')!.click())
-  expect(fetcher.mock.calls.filter(([url, init]) => url.endsWith('/app-1/approve') && init?.method === 'POST')).toHaveLength(1)
-  expect(host.textContent).toContain('邮件暂未送达')
-  expect(host.textContent).toContain('重新发送邮件')
-})
 it('shows duplicate-application errors without losing the entered fields', async () => {
   vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ error: 'COACH_APPLICATION_EXISTS' }), { status: 409 })))
   await act(async () => root.render(<CoachApplicationPage />))
@@ -92,18 +88,6 @@ it('shows duplicate-application errors without losing the entered fields', async
   await act(async () => { host.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })) })
   expect(host.querySelector('[role="alert"]')?.textContent).toContain('这个邮箱已经提交过申请')
   expect(host.querySelector<HTMLInputElement>('[name="email"]')?.value).toBe('duplicate@example.test')
-})
-it('shows explicit student-account review errors without converting the account', async () => {
-  const fetcher = vi.fn(async (_url: string, init?: RequestInit) => init?.method === 'POST'
-    ? new Response(JSON.stringify({ error: 'COACH_APPLICATION_EMAIL_IS_STUDENT' }), { status: 409 })
-    : new Response(JSON.stringify({ applications: [{ id: 'app', name: '学生', email: 'student@example.test', student_count: 1, device: 'android', status: 'pending', created_at: '2026-10-17T00:00:00Z' }] })))
-  vi.stubGlobal('fetch', fetcher)
-  const { CoachApplicationsSection } = await import('./CoachApplicationsSection')
-  await act(async () => root.render(<CoachApplicationsSection />))
-  await act(async () => [...host.querySelectorAll('button')].find(b => b.textContent === '通过')!.click())
-  await act(async () => [...host.querySelectorAll('button')].find(b => b.textContent === '确认通过')!.click())
-  expect(host.textContent).toContain('该邮箱已是学员账号')
-  expect(host.textContent).toContain('待处理')
 })
 it('offers a resend after an expired setup token and reports the request', async () => {
   history.replaceState(null, '', `/coach/set-password#email=coach%40example.test&token=${'b'.repeat(64)}`)

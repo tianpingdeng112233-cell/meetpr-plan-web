@@ -1038,6 +1038,59 @@ npx vitest run src/features/plan-editor/block-grid-ui.test.tsx
 - 浏览器验收（Claude，临时夹具 mock-feedback / mock-workspace，1440×900，中英文，验完已删）：导航无反馈工作区、计划编排徽标 = 未读 + 待看；浮窗收起 / 展开、记忆、切学员换内容；聊天视频胶囊 → 反馈模式并高亮对应积木，浮窗让到大窗左侧；总览两列数字、点待看直达该学员第一段待看、点未读切学员并展开浮窗。
 - 已知遗留（不阻塞，待 Codex 10/25 后清）：`VideoWorkbench` 的非 embedded「整页」分支在生产已无调用方（旧 VideosPage 已删），但迁移来的约 35 条 UI 测试仍经它渲染。业务逻辑与 embedded 共用同一套 hooks，覆盖有效但路径不等价；后续卡：删整页分支、把这些测试改到 embedded 渲染。
 
+## 2026-10-22 · 016（原编号 014）管理后台浅色重做（Codex 开发交付，待 Claude 收货）
+
+范围补充：`src/i18n/en-smoke.test.tsx` 仍引用已删除的管理计划详情类型与入口；为完成删除和全量类型检查，需要同步移除该文件中的计划详情专用夹具/断言，保留动作库、视频和组卡英文覆盖。总览接口不含邮箱，最近注册表使用现有 `/admin/users` 获取身份信息并按注册时间取前十；不新增接口或修改后端。
+
+### 改动文件与行为
+
+- `src/features/admin/AdminWorkspace.tsx`：五项导航，默认总览；父层加载一次申请列表并共享待处理计数；待办最多五条、四个关键数字、最近注册最多十行；统一页头与刷新；浅色角色/状态标签；用户详情补邮箱，计划仅保留不可交互概要，关联用户仍可打开。删除计划列表、详情、矩阵、导航及其内部类型。`ADMIN_WRITE_ENABLED` 保持 false。
+- `src/features/admin/ApplicationsPage.tsx`（新增）：待处理默认筛选、四状态计数与姓名/邮箱搜索；按提交时间倒序；原生确认对话框；审核与重发防重复提交；复用 onboarding API、`errorText` 和 `trackOnboarding`；审核成功在父层本地更新，邮件失败标记跨后台页导航保留，重新加载申请列表时清除。
+- `src/index.css`：仅替换后台选择器下暗色变量与状态覆写，新增同作用域按钮、申请表格、确认框样式；不改 `:root`。
+- `src/i18n/strings-admin.ts`：中英同步增加总览/申请文案，删除计划页、详情及闲置计划文案。
+- `src/api/admin.ts`、`src/api/admin.test.ts`：删除前端计划总览/详情 API 与专用类型，保留用户详情所需计划概要及其余只读接口测试。
+- `src/features/onboarding/CoachApplicationsSection.tsx`（删除）、`src/features/onboarding/onboarding.css`、`src/features/onboarding/onboarding.test.tsx`：移除旧后台申请组件、其独占样式及已迁移的两条业务测试；其他入驻行为不变。
+- `src/features/admin/AdminWorkspace.test.tsx`：在指定 seam 经左栏进入申请页，以 fetch 桩覆盖真实 onboarding 请求和遥测；最终 12 条。包含确认后单次 POST、通过/拒绝、本地计数同步、邮件失败/重发、学员邮箱冲突、四筛选/搜索、刷新清标、英文文案、只读概要与关联用户跳转。
+- `src/i18n/en-smoke.test.tsx`：仅移除被删计划页的专用类型、mock 和断言，保留其余英文覆盖。范围扩展原因见本节开头。
+- `docs/CODEX-JOURNAL.md`：本记录。没有依赖、锁文件或后端改动，没有 commit、push 或 PR；分支 `feat/014-admin-redesign`，HEAD 仍为 `dca136c`。
+
+### 红 → 绿证据
+
+均使用 `npm test -- src/features/admin/AdminWorkspace.test.tsx`：
+
+| 行为 / 测试名 | 先红证据 | 转绿证据 |
+| --- | --- | --- |
+| `opens overview with five navigation items, shared pending counts and four key figures` | 原导航六项、申请先于总览且无计数；另两条原用户测试因标签仍为「用户管理」失败。有效红日志：`/tmp/014-overview-red.log`（3 failed / 1 passed） | `/tmp/014-overview-green.log`：5 passed，覆盖导航、默认页、待办/左栏计数、四数字和去审核 |
+| `shows email and read-only plan summaries while linked users still open` | 用户详情缺邮箱，期望 `邮箱coach@example.test` 未找到。`/tmp/014-detail-red.log`（该测试和总览测试失败） | 同上 5 passed；概要行无 button/link/svg，关联用户仍调用详情 |
+| `confirms approval once, updates shared counts, tracks approval and clears failed mail after resend` | 新申请页尚无「通过」操作，`button not found: 通过`。`/tmp/014-review-red.log`（1 failed / 5 passed） | `/tmp/014-review-green.log`：6 passed；包含连续两次确认只发一次 approve、遥测事件、成功行离开 pending、resend 清除失败标记 |
+| `never labels a failed linked-user load with the previous user identity`（审查返修） | 点学员乙后面包屑仍是 `用户/教练甲刷新`。`/tmp/014-review-identity-red.log`（1 failed / 9 passed） | `/tmp/014-review-identity-green.log`：10 passed；换资源 key 时清旧身份，同 key 刷新可保留 |
+
+旧 onboarding 的两条业务覆盖均已迁入：审核确认与邮件失败重发，以及 `COACH_APPLICATION_EMAIL_IS_STUDENT` 报错后保持待处理。额外覆盖拒绝确认/取消/重发、筛选与搜索、会话标记刷新清除、英文通过成功 toast。最终后台 seam：`/tmp/014-admin-final.log`，12 passed；最终相关四文件复验：`/tmp/014-targeted-final.log`，35 passed。
+
+### 三条检查命令
+
+| 检查 | 命令 | 结果 |
+| --- | --- | --- |
+| Typecheck | `npm run lint`（package.json 中等价脚本 `tsc --noEmit`，无名为 typecheck 的脚本） | exit 0，无类型诊断；`/tmp/014-typecheck-final.log` |
+| 完整测试 | `npm test -- --maxWorkers=2 --minWorkers=1` | exit 0，101 files / 1027 passed，47.90s；`/tmp/014-full-test-bounded.log` |
+| 生产构建 | `npm run build` | exit 0，Vite 6.15s；仅既有 chunk >500 kB 提示；`/tmp/014-build-final.log` |
+
+默认并发的 `npm test` 两次触发旧 `block-grid-ui` 的 5000ms 超时（后续同文件连带失败）及 `pinyin` 的 1000ms 耗时阈值：`/tmp/014-full-test.log`、`/tmp/014-full-test-final.log`。独立运行 block-grid-ui 全部 62 条通过（`/tmp/014-block-isolated.log`）；降低 worker 数后整套全绿。没有改测试阈值、跳过测试或改仓库并发配置。最后的间距/图标及死类型清理之后，重新运行 typecheck、build 和相关四测试文件（35/35）。
+
+### 验收项 1 grep
+
+命令：`rg -n '计划总览|Plan overview|getAdminPlans|getAdminPlan\(|planDetail|PlanDetailPage' src/`
+
+唯一命中：`src/features/admin/AdminWorkspace.test.tsx:81: expect(host.textContent).not.toContain('计划总览')`，属于清单允许的“不存在”断言。排除 `*.test.*` 后为零命中（rg exit 1）；`CoachApplicationsSection`、`onboarding-admin`、`buildMatrix`、`PlanContext` 生产源码也零命中。原始记录 `/tmp/014-acceptance-1-grep.log`。`git diff --check` 通过，`package.json` / `package-lock.json` diff 为空。
+
+### 自审与待收货事项
+
+- Standards：独立只读 reviewer 发现 1 项跨用户加载旧身份问题，先红后绿修复并定向复核关闭；剩余 0 项。
+- Spec：独立只读 reviewer 发现 2 项稿面偏差（左栏选中态、用户详情双栏/标题/间距），已修复并定向复核关闭；剩余 0 项。三列表页筛选后计数已移入各自页头副标题，刷新仍指向对应资源。
+- 样式检测器只报告未改动的全局 CSS 旧规则（侧边线、width 动画），未扩范围修改；记录 `/tmp/014-design-detect.json`。
+- **浏览器实看未完成**：按卡第 14 项由 Claude 收货。曾尝试启动纯本地 fetch 夹具做补充自看，当前沙箱拒绝 `listen 127.0.0.1:5194`（EPERM，`/tmp/014-vite.log`）；没有绕过权限，临时 HTML/TSX 已删除，没有真实后端请求。1280/1024 下的像素布局、原生 dialog 焦点和遮罩仍待 Claude 实看，不能把 DOM 测试或源码审查当作视觉验收。
+- 总览邮箱从既有 users 接口取得；未做线上数据或真实邮件联调。以上为开发自测和代码自审，不声明产品验收完成。
+
 ## 2026-10-22 · 014 卡 A：按天排（开发交付，待 Claude 浏览器验收）
 
 工作树 `meetpr-plan-web-wt-014-impl`，分支 `feat/014-transposed-layout`，基线 `f7026a5`。开工先读仓根 CONTEXT、CLAUDE、014 SPEC/CARD-A、011 与 012 前置章节，并现场核实 worktree、status、最近十条提交；开工工作树干净。没有 commit、push、开 PR 或修改锁文件。
@@ -1089,6 +1142,38 @@ npx vitest run src/features/plan-editor/block-grid-ui.test.tsx
 - **Spec**：初审 1 项——六周计划 W4 → W3 时，编辑卡已在视口内，单纯 nearest 不会露出上一周。补红绿后按上一周与固定行头边界补偿横滚，同时避免待核对定位/聚焦再次横滚；定向复审未决 0、新发现 0。
 - 未发现已知代码层面的 SPEC 偏离；存储写入失败时本次会话仍可切换、重开回默认，沿用 RAIL_MODE_KEY 的降级方式。
 - 本轮没有启动开发服务器或做真实浏览器验收。按 CARD-A，浏览器验收由 Claude 在沙箱外执行；DOM / CSS 与模拟几何测试不能替代 1440×900 的真实像素和滚动检查。仍须按 SPEC 1–10 收货，尤其验证 W1–W4 及六周 W4→W3、固定行头、逐组重量/RPE/10组长行、自加动作、已后移日、视频反馈/显示实际/聊天浮窗和已发布计划。本段仅为开发交付，不宣布产品验收通过。
+
+## 2026-10-22 · 016 卡 B（Codex 开发交付，待 Claude 收货）
+
+基线：`feat/014-admin-redesign`，HEAD `768fef0`；按新版 `CARD-B.md`、SPEC §6 与稿 ⑤ 实装。没有 commit、push、PR、后端、依赖或锁文件改动。
+
+### 改动文件
+
+- `src/features/admin/AdminWorkspace.tsx`：左栏减为总览 / 教练申请 / 用户 / 动作库；删除 `BindingsPage`、导航与专用图标，保留 `getAdminBindings`。用户详情移除旧关系卡和全部计划渲染，替换为绑定记录：按当前用户 coachId / studentId 过滤全部状态，发起时间倒序，accepted 计生效数；显示发起/响应日期、空响应为 `—`，整行进入对方详情。绑定数据有独立加载、错误重试与角色空态，页头刷新同时更新详情和记录；表格在窄栏内横向滚动。
+- `src/features/admin/AdminWorkspace.test.tsx`：四项导航断言；改写原只读计划概要测试，覆盖五状态、无关记录排除、排序、计数、日期和双向跳转，同时断言教练/学员详情均无计划。旧用户加载失败身份回归改用 bindings 夹具，保留卡 A 的审核、用户与动作库覆盖；新增英文全部状态、错误重试及刷新覆盖，最终 14 条。
+- `src/i18n/strings-admin.ts`：中英文同步新增绑定记录标题/计数，精简列名；删除绑定列表搜索/计数/空态和旧详情计划、关系标题专用 key。
+- `docs/CODEX-JOURNAL.md`：本记录。当前基线已无独立绑定页测试；`en-smoke.test.tsx` 未引用已删入口，无需修改。接口返回的计划类型仍保留，详情组件不读取或渲染它。
+
+### 红 → 绿证据
+
+- 导航：先改 `four navigation items` 断言，旧实现多出「绑定关系」而失败，`/tmp/016-b-nav-red.log`（1 failed）；删除导航/页面后 `/tmp/016-b-nav-green.log`（1 passed）。
+- 详情：先替换概要断言，旧实现仍显示「相关计划 / 力量积累 / 名下学员」，`/tmp/016-b-detail-red.log`（1 failed）；接入绑定记录并删除计划渲染后 `/tmp/016-b-detail-green.log`（12 passed）。
+- 补充覆盖：`/tmp/016-b-admin-final.log`（14 passed）。错误重试测试初次误写既有错误文案为「加载失败」，按真实公共错误组件文案「内容没能加载出来」修正断言；未为测试改产品文案。
+
+### 检查与审查
+
+- `npm run lint`：通过（等价 `tsc --noEmit`），`/tmp/016-b-lint.log`。
+- `npm run build`：通过，Vite 构建 21.02s，仅既有 >500 kB chunk 提示，`/tmp/016-b-build.log`。
+- 完整测试最终通过：`npm test -- --maxWorkers=2 --minWorkers=1`，101 files / 1029 passed，44.06s，`/tmp/016-b-full-test-final.log`。默认并发首轮（`/tmp/016-b-full-test.log`）为 4 files / 63 tests failed：包含修正前的错误文案断言，以及无关 `block-history-ui` / `block-grid-ui` 的 5000ms 超时、连带失败和 `pinyin` 耗时阈值超限。第一轮两 worker（`/tmp/016-b-full-test-bounded.log`）与构建重叠，仍有 `block-grid-ui` 超时及连带失败、`pinyin` 1096ms 超过 1000ms（2 files / 61 tests failed）；构建结束后使用相同两 worker 命令，最终整套全绿。未修改超时阈值、跳过测试或改变仓内测试配置。
+- 验收 1 grep：`rg -n '计划总览|Plan overview|getAdminPlans|getAdminPlan\(|planDetail|PlanDetailPage|BindingsPage' src/` 仅命中后台测试中「计划总览」不存在的断言；生产代码零命中。用户详情 `detail.plans` / `planBadge` / `detail.relations` 零命中，`git diff --check` 通过。
+- Standards：独立只读审查仅发现绑定页删除后遗留的 `arrow` 图标死分支，已删除并经 reviewer 定向复核关闭；剩余 0 项。
+- Spec：独立只读审查剩余 0 项。机械设计检测 `[]`，`/tmp/016-b-design-detect.json`；此检测不等同视觉验收。
+
+### 拿不准的地方 / 待收货
+
+- 无未定产品分支。稿 ⑤ 示例行并非发起时间倒序，按 CARD-B 与 SPEC §6 明确要求排序；稿中的人名/数字仅作示例。
+- 浏览器实看未完成：本地 Vite `--host 127.0.0.1 --port 5194` 被当前沙箱拒绝 `listen EPERM`（`/tmp/016-b-vite.log`），未绕过权限或发起真实后端请求。1280/1024 下的表格滚动、结构/层级/间距仍由 Claude 按验收 14 收货，不能将 DOM 测试或源码审查写成视觉验收通过。
+- 本节是开发自测与代码审查记录，不宣布产品验收完成。仓内缺 `docs/agents/issue-tracker.md` 已告知 David 后续运行 `/setup-matt-pocock-skills`；本次以明确本地卡片为审查依据。
 
 ## 2026-10-22 · 014 网页繁体中文（开发交付，合并闸门未过）
 
@@ -1227,3 +1312,24 @@ worktree 文件可写，但实际 Git 元数据在可写根之外；本会话禁
 - `npm run gen:zh-hant -- --check`、`npm run lint`（即 `tsc --noEmit`）、`npm run build` 均 **exit 0**；build 只有既有 chunk >500 kB 提示。日志 `/private/tmp/014-v22-generation-check.log`、`/private/tmp/014-v22-lint.log`、`/private/tmp/014-v22-build.log`。`git diff --check` 与 `git diff --cached --check` 通过。
 - 独立增量审查基线 `/private/tmp/014-v22-before/i18n`，代码差异 `/private/tmp/014-v22.patch`；**Standards 0 项；Spec 0 项**。按本地返修卡审查，不依赖缺失的 issue-tracker 配置。
 - 浏览器实看未完成：尝试 `npm run dev -- --host 127.0.0.1 --strictPort`，沙箱拒绝监听，原始错误 `Error: listen EPERM: operation not permitted 127.0.0.1:5180`。未启动服务、未绕过权限边界。自动化标题测试不代替真实浏览器截图或 Opus 验收。
+## 2026-10-22 · 016 卡 C（Codex 开发交付）
+
+基线：`feat/014-admin-redesign`，HEAD `fd3a68b`；按 `specs/016-admin-redesign/CARD-C.md` 执行。
+
+### 改动文件
+
+- `src/features/onboarding/OnboardingPages.tsx`：题目改为「学员主要用什么手机」/ “What phones do most of your athletes use?”，选项、默认值与提交字段保持不变。
+- `src/i18n/strings-admin.ts`：`applications.device` 改为「学员设备」/ “Athlete phones”；旧申请值仍按原映射显示，总览副标题不改。
+- `src/features/onboarding/onboarding.test.tsx`：增加中英文题目、三种选项和值、默认值断言，测试后恢复中文；保留原提交 payload 回归。
+- `src/features/admin/AdminWorkspace.test.tsx`：增加中英文表头断言与「学员 12 人 · iPhone · …」总览格式回归。
+- `docs/CODEX-JOURNAL.md`：本节。无后端、依赖、锁文件改动；未 commit、push 或开 PR。
+
+### 红 → 绿与检查
+
+- 申请页：先加断言运行原实现，2 failed / 19 passed，明确失败于旧中英文题目（`/tmp/016-c-onboarding-red.log`）；仅替换题目后 21 passed（`/tmp/016-c-onboarding-green.log`）。
+- 后台：先加断言运行原实现，2 failed / 12 passed，明确失败于旧中英文表头（`/tmp/016-c-admin-red.log`）；仅替换表头后 14 passed（`/tmp/016-c-admin-green.log`）。
+- `npm run lint`：exit 0，`/tmp/016-c-lint.log`。
+- `npm test -- src/features/onboarding/onboarding.test.tsx src/features/admin/AdminWorkspace.test.tsx src/i18n/en-smoke.test.tsx`：3 files / 38 passed，exit 0，`/tmp/016-c-related-tests.log`；有 Node `--localstorage-file` 路径提示，不影响测试结果。
+- `npm run build`：exit 0，Vite 4.71s，仅既有 >500 kB chunk 提示，`/tmp/016-c-build.log`。
+- `git diff --check` 通过；检索确认无旧题目残留，无其他需要更名的同字段标签。Standards 自审：未见问题；Spec 自审：未见遗漏或超范围改动。本次为 T0 文案调整，未做独立互审。
+- 浏览器实看未完成：`npm run dev -- --host 127.0.0.1 --port 5194` 被沙箱拒绝 `listen EPERM`（`/tmp/016-c-vite.log`）。没有绕过权限或向真实后端写入；DOM 测试不等同视觉验收。
