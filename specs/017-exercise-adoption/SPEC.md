@@ -1,6 +1,6 @@
 # Spec 017 · 管理后台「动作库」收录教练自建动作
 
-状态：2026-10-22 /grill 共识「确认」；屏幕稿 ⑥–⑨ 待「定稿」。T2，依赖后端 spec 053（`MeetPR-backend` 仓 `specs/053-exercise-adoption/SPEC.md`，接口与可见性规则以它为准）与本仓 spec 016（管理后台重做，PR #124）。分支 `feat/017-exercise-adoption`，基于 016 分支；016 合并后 rebase 到 main。
+状态：2026-10-22 /grill 共识「确认」；屏幕稿 ⑥–⑨ 10/22「定稿」。T2，依赖后端 spec 053（`MeetPR-backend` 仓 `specs/053-exercise-adoption/SPEC.md`，接口与可见性规则以它为准）与本仓 spec 016（管理后台重做，PR #124）。分支 `feat/017-exercise-adoption`，基于 016 分支；016 合并后 rebase 到 main。
 
 ## 背景
 教练常自建动作，同一个动作各人写法不同。David 要在后台按出现次数看到这些自建动作，并把它们「收录」进官方动作库：教练和学员照旧看到自己的叫法，但背后指向同一个官方动作。术语见后端仓 `CONTEXT.md`：**收录**、**教练叫法**。
@@ -36,4 +36,4 @@
 - 教练端 catalog 现有测试文件（`src/features/catalog/` 下）：被收录动作只能改名、无删除。
 
 ## 屏幕稿
-画布 https://claude.ai/artifact/SbnjfeVtuow1iwjms8JEt5 第 ⑥–⑨ 张（⑦⑧ 为同一弹窗的两种状态）；定稿后副本放 `specs/017-exercise-adoption/design/`。稿内名字、数字为示例数据。
+画布 https://claude.ai/artifact/SbnjfeVtuow1iwjms8JEt5 第 ⑥–⑨ 张（⑦⑧ 为同一弹窗的两种状态）；副本：`design/CustomPending.dc.html`（⑥）、`AdoptNew.dc.html`（⑦ 先推荐）、`AdoptExisting.dc.html`（⑧ 新建）、`CustomAdopted.dc.html`（⑨）。稿内名字、数字为示例数据。

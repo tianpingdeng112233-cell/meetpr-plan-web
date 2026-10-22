@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>管理后台 · 已收录的自建动作</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&amp;family=IBM+Plex+Sans:wght@400;500;600;700&amp;family=Noto+Sans+SC:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#F5F6F8}
+a{color:#4B5563}a:hover{color:#111827}
+.mono{font-family:"IBM Plex Mono","Noto Sans SC",ui-monospace,monospace}
+.rail a{position:relative;display:flex;flex-direction:column;align-items:center;gap:5px;padding:11px 0;color:#5C6371;text-decoration:none;font-size:11.5px;border-radius:8px}
+.rail a:hover{color:#111827;background:#F5F6F8}
+.rail a.on{color:#111827;background:#EEF0F3;font-weight:600}
+.seg a{display:flex;align-items:center;gap:6px;padding:6px 12px;border-radius:4px;font-size:12.5px;color:#5C6371;text-decoration:none;white-space:nowrap}
+.seg a.on{background:#111827;color:#fff;font-weight:600}
+.row:hover{background:#F5F6F8}
+.chip{display:inline-flex;align-items:center;height:30px;padding:0 12px;border-radius:15px;border:1px solid #D1D5DB;background:#fff;color:#4B5563;font-size:12.5px}
+.chip.on{background:#111827;border-color:#111827;color:#fff}
+.field{display:flex;flex-direction:column;gap:6px}
+.lbl{font-size:12.5px;color:#4B5563;font-weight:500}
+.inp{height:38px;box-sizing:border-box;border:1px solid #D1D5DB;border-radius:6px;padding:0 12px;font:inherit;font-size:13px;color:#111827;background:#fff}
+</style>
+</helmet>
+<div style="position: relative; display: flex; flex-wrap: wrap; min-height: 900px; background: #F5F6F8; color: #111827; font-family: 'IBM Plex Sans', 'Noto Sans SC', 'PingFang SC', system-ui, sans-serif; font-size: 14px; line-height: 1.4">
+
+  <nav class="rail" aria-label="管理后台导航" style="flex: 0 0 96px; box-sizing: border-box; background: #FFFFFF; border-right: 1px solid #E5E7EB; padding: 18px 10px; display: flex; flex-direction: column; gap: 4px">
+    <div style="display: flex; flex-direction: column; align-items: center; gap: 8px; padding-bottom: 18px">
+      <div style="width: 40px; height: 40px; border: 1px solid #D1D5DB; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-weight: 900; font-size: 18px">M</div>
+      <span class="mono" style="font-size: 9.5px; letter-spacing: 0.1em; color: #A81E17; border: 1px solid #E0B4B0; border-radius: 4px; padding: 1px 6px">ADMIN</span>
+    </div>
+    <a href="Main.dc.html"><svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9" rx="1"></rect><rect x="14" y="3" width="7" height="5" rx="1"></rect><rect x="14" y="12" width="7" height="9" rx="1"></rect><rect x="3" y="16" width="7" height="5" rx="1"></rect></svg>总览</a>
+    <a href="Applications.dc.html"><svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"></path><path d="M14 3v6h6M9 14l2 2 4-4"></path></svg>教练申请<span style="position: absolute; top: 6px; left: 46px; min-width: 18px; height: 18px; box-sizing: border-box; padding: 0 5px; border-radius: 9px; background: #111827; color: #fff; font-size: 10.5px; font-weight: 700; line-height: 18px; text-align: center">2</span></a>
+    <a href="Main.dc.html"><svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"></path></svg>用户</a>
+    <a href="CustomPending.dc.html" class="on"><svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M6.5 6.5 17.5 17.5M5 9l4-4M15 19l4-4M3.5 7.5l3-3M17.5 19.5l3-3"></path></svg>动作库</a>
+    <div style="flex: 1"></div>
+    <div style="display: flex; flex-direction: column; align-items: center; gap: 10px; border-top: 1px solid #E5E7EB; padding-top: 14px">
+      <div style="width: 32px; height: 32px; border-radius: 16px; background: #EEF0F3; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700">创</div>
+      <button type="button" aria-label="退出登录" style="width: 44px; height: 44px; border: 0; background: transparent; color: #5C6371; display: flex; align-items: center; justify-content: center; cursor: pointer"><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><path d="m16 17 5-5-5-5M21 12H9"></path></svg></button>
+    </div>
+  </nav>
+
+  <main style="flex: 999 1 560px; min-width: 0; box-sizing: border-box; padding: 36px 40px 48px; display: flex; flex-direction: column; gap: 20px; max-width: 1240px">
+    <header style="display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 16px">
+      <div style="display: flex; flex-direction: column; gap: 4px">
+        <h1 style="margin: 0; font-size: 26px; font-weight: 700; letter-spacing: -0.01em">动作库</h1>
+        <div style="font-size: 13px; color: #5C6371">教练自建的动作可以收录进官方库；收录后教练和学员仍看到自己的叫法</div>
+      </div>
+      <button type="button" style="height: 36px; padding: 0 14px; border-radius: 6px; border: 1px solid #D1D5DB; background: #fff; color: #111827; font: inherit; font-size: 13px; cursor: pointer">刷新</button>
+    </header>
+    <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px">
+      <div class="seg" role="tablist" aria-label="动作来源" style="display: flex; gap: 2px; border: 1px solid #E5E7EB; border-radius: 6px; padding: 2px; background: #fff">
+          <a href="CustomPending.dc.html" role="tab" aria-selected="false">官方 1204</a>
+          <a href="CustomPending.dc.html" class="on" role="tab" aria-selected="true">教练自建 37</a>
+        </div>
+      <div class="seg" role="tablist" aria-label="收录状态" style="display: flex; gap: 2px; border: 1px solid #E5E7EB; border-radius: 6px; padding: 2px; background: #fff">
+          <a href="CustomPending.dc.html" role="tab" aria-selected="false">待处理 12</a>
+          <a href="CustomAdopted.dc.html" class="on" role="tab" aria-selected="true">已收录 25</a>
+        </div>
+      <label style="position: relative; display: block; flex: 1; max-width: 280px">
+        <span style="position: absolute; left: 10px; top: 11px; color: #5C6371; display: flex"><svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.35-4.35"></path></svg></span>
+        <input placeholder="搜索动作名或教练" aria-label="搜索动作名或教练" style="height: 36px; width: 100%; box-sizing: border-box; border-radius: 6px; border: 1px solid #E5E7EB; background: #fff; padding: 0 12px 0 32px; color: #111827; font: inherit; font-size: 13px; outline: none">
+      </label>
+    </div>
+    <section aria-label="已收录的自建动作" style="border: 1px solid #E5E7EB; border-radius: 10px; background: #FFFFFF; overflow: hidden">
+      <div style="overflow-x: auto"><div style="min-width: 760px">
+          <div class="mono" style="display: grid; grid-template-columns: minmax(200px, 1.4fr) minmax(200px, 1.4fr) 80px 110px 100px; align-items: center; gap: 16px; height: 40px; padding: 0 20px 0 36px; border-bottom: 1px solid #E5E7EB; font-size: 10.5px; letter-spacing: 0.08em; color: #5C6371">
+            <span>教练</span><span>教练叫法</span><span>计划数</span><span>收录时间</span><span style="text-align: right">操作</span>
+          </div>
+          <div style="display: flex; align-items: baseline; gap: 10px; padding: 14px 20px 8px; background: #F5F6F8; border-bottom: 1px solid #EEF0F3"><span style="font-weight: 700">保加利亚单腿蹲</span><span style="display: inline-flex; font-size: 11px; color: #10715A; background: #E7F1EE; border: 1px solid #B7D4CC; border-radius: 4px; padding: 1px 6px">官方</span><span style="font-size: 12px; color: #5C6371">3 位教练的叫法挂在这里</span></div>
+          <div class="row" style="display: grid; grid-template-columns: minmax(200px, 1.4fr) minmax(200px, 1.4fr) 80px 110px 100px; align-items: center; gap: 16px; height: 52px; padding: 0 20px 0 36px; border-bottom: 1px solid #EEF0F3;">
+            <span style="font-size: 13px">王雪</span><span style="font-size: 13px; color: #4B5563">叫「保加利亚分腿蹲」</span><span class="mono" style="font-size: 12.5px">9</span><span class="mono" style="font-size: 12px; color: #5C6371">10-22 16:40</span>
+            <div style="display: flex; justify-content: flex-end"><button type="button" style="height: 32px; padding: 0 12px; border-radius: 6px; border: 1px solid #D1D5DB; background: #fff; color: #111827; font: inherit; font-size: 12.5px; cursor: pointer">撤销</button></div>
+          </div>
+          <div class="row" style="display: grid; grid-template-columns: minmax(200px, 1.4fr) minmax(200px, 1.4fr) 80px 110px 100px; align-items: center; gap: 16px; height: 52px; padding: 0 20px 0 36px; border-bottom: 1px solid #EEF0F3;">
+            <span style="font-size: 13px">李教练</span><span style="font-size: 13px; color: #4B5563">叫「保加利亚 分腿蹲」</span><span class="mono" style="font-size: 12.5px">4</span><span class="mono" style="font-size: 12px; color: #5C6371">10-22 16:40</span>
+            <div style="display: flex; justify-content: flex-end"><button type="button" style="height: 32px; padding: 0 12px; border-radius: 6px; border: 1px solid #D1D5DB; background: #fff; color: #111827; font: inherit; font-size: 12.5px; cursor: pointer">撤销</button></div>
+          </div>
+          <div class="row" style="display: grid; grid-template-columns: minmax(200px, 1.4fr) minmax(200px, 1.4fr) 80px 110px 100px; align-items: center; gap: 16px; height: 52px; padding: 0 20px 0 36px; border-bottom: 1px solid #EEF0F3;">
+            <span style="font-size: 13px">陈默</span><span style="font-size: 13px; color: #4B5563">叫「保加利亚分腿蹲」</span><span class="mono" style="font-size: 12.5px">1</span><span class="mono" style="font-size: 12px; color: #5C6371">10-22 16:40</span>
+            <div style="display: flex; justify-content: flex-end"><button type="button" style="height: 32px; padding: 0 12px; border-radius: 6px; border: 1px solid #D1D5DB; background: #fff; color: #111827; font: inherit; font-size: 12.5px; cursor: pointer">撤销</button></div>
+          </div>
+          <div style="display: flex; align-items: baseline; gap: 10px; padding: 14px 20px 8px; background: #F5F6F8; border-bottom: 1px solid #EEF0F3"><span style="font-weight: 700">竞技卧推</span><span style="display: inline-flex; font-size: 11px; color: #10715A; background: #E7F1EE; border: 1px solid #B7D4CC; border-radius: 4px; padding: 1px 6px">官方</span><span style="font-size: 12px; color: #5C6371">1 位教练的叫法挂在这里</span></div>
+          <div class="row" style="display: grid; grid-template-columns: minmax(200px, 1.4fr) minmax(200px, 1.4fr) 80px 110px 100px; align-items: center; gap: 16px; height: 52px; padding: 0 20px 0 36px;">
+            <span style="font-size: 13px">QA测试教练</span><span style="font-size: 13px; color: #4B5563">叫「比赛卧推」</span><span class="mono" style="font-size: 12.5px">7</span><span class="mono" style="font-size: 12px; color: #5C6371">10-20 11:02</span>
+            <div style="display: flex; justify-content: flex-end"><button type="button" style="height: 32px; padding: 0 12px; border-radius: 6px; border: 1px solid #D1D5DB; background: #fff; color: #111827; font: inherit; font-size: 12.5px; cursor: pointer">撤销</button></div>
+          </div>
+      </div></div>
+    </section>
+    <div style="font-size: 12px; color: #5C6371">撤销后那条恢复成教练自建动作，回到「待处理」；历史计划和训练记录不受影响。</div>
+  </main>
+  <div role="status" style="position: absolute; left: 50%; bottom: 28px; transform: translateX(-50%); border: 1px solid #D1D5DB; border-radius: 8px; background: #111827; color: #fff; padding: 11px 18px; font-size: 13px; white-space: nowrap">已把 3 位教练的「保加利亚分腿蹲」归到「保加利亚单腿蹲」</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>
