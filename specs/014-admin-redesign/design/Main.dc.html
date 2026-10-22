@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>管理后台 · 总览</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&amp;family=IBM+Plex+Sans:wght@400;500;600;700&amp;family=Noto+Sans+SC:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#F5F6F8}
+a{color:#4B5563}a:hover{color:#111827}
+.mono{font-family:"IBM Plex Mono","Noto Sans SC",ui-monospace,monospace}
+.rail a{position:relative;display:flex;flex-direction:column;align-items:center;gap:5px;padding:11px 0;color:#5C6371;text-decoration:none;font-size:11.5px;border-radius:8px}
+.rail a:hover{color:#111827;background:#F5F6F8}
+.rail a.on{color:#111827;background:#EEF0F3;font-weight:600}
+.row:hover{background:#F5F6F8}
+</style>
+</helmet>
+<div style="display: flex; flex-wrap: wrap; min-height: 900px; background: #F5F6F8; color: #111827; font-family: 'IBM Plex Sans', 'Noto Sans SC', 'PingFang SC', system-ui, sans-serif; font-size: 14px; line-height: 1.4">
+
+  <nav class="rail" aria-label="管理后台导航" style="flex: 0 0 96px; box-sizing: border-box; background: #FFFFFF; border-right: 1px solid #E5E7EB; padding: 18px 10px; display: flex; flex-direction: column; gap: 4px">
+    <div style="display: flex; flex-direction: column; align-items: center; gap: 8px; padding-bottom: 18px">
+      <div style="width: 40px; height: 40px; border: 1px solid #D1D5DB; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-weight: 900; font-size: 18px">M</div>
+      <span class="mono" style="font-size: 9.5px; letter-spacing: 0.1em; color: #A81E17; border: 1px solid #E0B4B0; border-radius: 4px; padding: 1px 6px">ADMIN</span>
+    </div>
+    <a href="Main.dc.html" class="on"><svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9" rx="1"></rect><rect x="14" y="3" width="7" height="5" rx="1"></rect><rect x="14" y="12" width="7" height="9" rx="1"></rect><rect x="3" y="16" width="7" height="5" rx="1"></rect></svg>总览</a>
+    <a href="Applications.dc.html"><svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"></path><path d="M14 3v6h6M9 14l2 2 4-4"></path></svg>教练申请<span style="position: absolute; top: 6px; left: 46px; min-width: 18px; height: 18px; box-sizing: border-box; padding: 0 5px; border-radius: 9px; background: #111827; color: #fff; font-size: 10.5px; font-weight: 700; line-height: 18px; text-align: center">2</span></a>
+    <a href="Main.dc.html"><svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"></path></svg>用户</a>
+    <a href="Main.dc.html"><svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>绑定关系</a>
+    <a href="Main.dc.html"><svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M6.5 6.5 17.5 17.5M5 9l4-4M15 19l4-4M3.5 7.5l3-3M17.5 19.5l3-3"></path></svg>动作库</a>
+    <div style="flex: 1"></div>
+    <div style="display: flex; flex-direction: column; align-items: center; gap: 10px; border-top: 1px solid #E5E7EB; padding-top: 14px">
+      <div style="width: 32px; height: 32px; border-radius: 16px; background: #EEF0F3; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700">创</div>
+      <button type="button" aria-label="退出登录" style="width: 44px; height: 44px; border: 0; background: transparent; color: #5C6371; display: flex; align-items: center; justify-content: center; cursor: pointer"><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><path d="m16 17 5-5-5-5M21 12H9"></path></svg></button>
+    </div>
+  </nav>
+
+  <main style="flex: 999 1 560px; min-width: 0; box-sizing: border-box; padding: 36px 40px 48px; display: flex; flex-direction: column; gap: 28px; max-width: 1240px">
+    <header style="display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 16px">
+      <div style="display: flex; flex-direction: column; gap: 4px">
+        <h1 style="margin: 0; font-size: 26px; font-weight: 700; letter-spacing: -0.01em">总览</h1>
+        <div style="font-size: 13px; color: #5C6371">内测期全量数据 · 更新于 15:02</div>
+      </div>
+      <button type="button" style="height: 36px; padding: 0 14px; border-radius: 6px; border: 1px solid #D1D5DB; background: transparent; color: #111827; font: inherit; font-size: 13px; cursor: pointer">刷新</button>
+    </header>
+
+    <section aria-labelledby="todo-h" style="border: 1px solid #D1D5DB; border-radius: 10px; background: #FFFFFF; overflow: hidden">
+      <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 20px; border-bottom: 1px solid #E5E7EB">
+        <div style="display: flex; align-items: center; gap: 10px">
+          <h2 id="todo-h" style="margin: 0; font-size: 15px; font-weight: 600">待办</h2>
+          <span style="min-width: 20px; height: 20px; box-sizing: border-box; padding: 0 6px; border-radius: 10px; background: #111827; color: #fff; font-size: 11.5px; font-weight: 700; line-height: 20px; text-align: center">2</span>
+        </div>
+        <a href="Applications.dc.html" style="font-size: 12.5px; text-decoration: none">全部申请 →</a>
+      </div>
+      <a href="Applications.dc.html" class="row" style="display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 16px; padding: 14px 20px; border-bottom: 1px solid #EEF0F3; color: #111827; text-decoration: none">
+        <div style="display: flex; flex-direction: column; gap: 3px; min-width: 0">
+          <div style="font-weight: 600">王雪 申请成为教练</div>
+          <div style="font-size: 12.5px; color: #5C6371">学员 12 人 · iPhone · 2 小时前提交</div>
+        </div>
+        <span style="font-size: 13px; color: #111827; border: 1px solid #D1D5DB; border-radius: 6px; padding: 7px 12px">去审核</span>
+      </a>
+      <a href="Applications.dc.html" class="row" style="display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 16px; padding: 14px 20px; color: #111827; text-decoration: none">
+        <div style="display: flex; flex-direction: column; gap: 3px; min-width: 0">
+          <div style="font-weight: 600">陈默 申请成为教练</div>
+          <div style="font-size: 12.5px; color: #5C6371">学员 3 人 · iPhone 和安卓 · 昨天 21:40 提交</div>
+        </div>
+        <span style="font-size: 13px; color: #111827; border: 1px solid #D1D5DB; border-radius: 6px; padding: 7px 12px">去审核</span>
+      </a>
+    </section>
+
+    <section aria-label="关键数字" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(min(200px, 100%), 1fr)); gap: 12px">
+      <div style="border: 1px solid #E5E7EB; border-radius: 10px; background: #FFFFFF; padding: 18px 20px; display: flex; flex-direction: column; gap: 6px">
+        <div style="font-size: 12.5px; color: #5C6371">教练</div>
+        <div style="font-size: 34px; font-weight: 800; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; line-height: 1.1">6</div>
+        <div style="font-size: 12px; color: #5C6371">内测期全量</div>
+      </div>
+      <div style="border: 1px solid #E5E7EB; border-radius: 10px; background: #FFFFFF; padding: 18px 20px; display: flex; flex-direction: column; gap: 6px">
+        <div style="font-size: 12.5px; color: #5C6371">学员</div>
+        <div style="font-size: 34px; font-weight: 800; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; line-height: 1.1">41</div>
+        <div style="font-size: 12px; color: #5C6371">有教练 30 · 自主训练 11</div>
+      </div>
+      <div style="border: 1px solid #E5E7EB; border-radius: 10px; background: #FFFFFF; padding: 18px 20px; display: flex; flex-direction: column; gap: 6px">
+        <div style="font-size: 12.5px; color: #5C6371">生效绑定</div>
+        <div style="font-size: 34px; font-weight: 800; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; line-height: 1.1">28</div>
+        <div style="font-size: 12px; color: #5C6371">已接受并生效</div>
+      </div>
+      <div style="border: 1px solid #E5E7EB; border-radius: 10px; background: #FFFFFF; padding: 18px 20px; display: flex; flex-direction: column; gap: 6px">
+        <div style="font-size: 12.5px; color: #5C6371">待审申请</div>
+        <div style="font-size: 34px; font-weight: 800; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; line-height: 1.1; color: #111827">2</div>
+        <div style="font-size: 12px; color: #5C6371">已通过 4 · 已拒绝 0</div>
+      </div>
+    </section>
+
+    <section aria-labelledby="recent-h" style="border: 1px solid #E5E7EB; border-radius: 10px; background: #FFFFFF; overflow: hidden">
+      <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 20px; border-bottom: 1px solid #E5E7EB">
+        <h2 id="recent-h" style="margin: 0; font-size: 15px; font-weight: 600">最近注册</h2>
+        <a href="Main.dc.html" style="font-size: 12.5px; text-decoration: none">全部用户 →</a>
+      </div>
+      <div style="overflow-x: auto">
+        <div style="min-width: 640px">
+          <a href="UserDetail.dc.html" class="row" style="display: grid; grid-template-columns: minmax(140px, 1fr) 120px minmax(200px, 1.4fr) 110px 16px; align-items: center; gap: 16px; height: 52px; padding: 0 20px; border-bottom: 1px solid #EEF0F3; color: #111827; text-decoration: none">
+            <span style="font-weight: 500">QA测试教练</span>
+            <span><span style="display: inline-flex; font-size: 11px; color: #fff; background: #111827; border: 1px solid #111827; border-radius: 4px; padding: 2px 8px">教练</span></span>
+            <span class="mono" style="font-size: 12.5px; color: #4B5563; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">coachqa@example.com</span>
+            <span class="mono" style="font-size: 12px; color: #5C6371">2026-10-22</span>
+            <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#5C6371" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"></path></svg>
+          </a>
+          <a href="UserDetail.dc.html" class="row" style="display: grid; grid-template-columns: minmax(140px, 1fr) 120px minmax(200px, 1.4fr) 110px 16px; align-items: center; gap: 16px; height: 52px; padding: 0 20px; border-bottom: 1px solid #EEF0F3; color: #111827; text-decoration: none">
+            <span style="font-weight: 500">吕子豪</span>
+            <span><span style="display: inline-flex; font-size: 11px; color: #111827; background: #EEF0F3; border: 1px solid #E5E7EB; border-radius: 4px; padding: 2px 8px">有教练学员</span></span>
+            <span class="mono" style="font-size: 12.5px; color: #4B5563">—</span>
+            <span class="mono" style="font-size: 12px; color: #5C6371">2026-10-21</span>
+            <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#5C6371" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"></path></svg>
+          </a>
+          <a href="UserDetail.dc.html" class="row" style="display: grid; grid-template-columns: minmax(140px, 1fr) 120px minmax(200px, 1.4fr) 110px 16px; align-items: center; gap: 16px; height: 52px; padding: 0 20px; color: #111827; text-decoration: none">
+            <span style="font-weight: 500">李沐</span>
+            <span><span style="display: inline-flex; font-size: 11px; color: #4B5563; background: transparent; border: 1px solid #D1D5DB; border-radius: 4px; padding: 2px 8px">自主训练</span></span>
+            <span class="mono" style="font-size: 12.5px; color: #4B5563">limu@example.com</span>
+            <span class="mono" style="font-size: 12px; color: #5C6371">2026-10-20</span>
+            <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#5C6371" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"></path></svg>
+          </a>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>
