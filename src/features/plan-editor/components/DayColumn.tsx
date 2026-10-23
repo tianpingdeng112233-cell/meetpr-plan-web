@@ -1,3 +1,4 @@
+import { activeImportDoubts } from '../import/doubts'
 import { useLayoutEffect, useRef, useState } from 'react'
 import type { FeedbackEntry } from '../feedbackModel'
 import { createPortal } from 'react-dom'
@@ -1032,8 +1033,8 @@ export function DayColumn({
       </>}
 
 
-      {day.rows.some(row => row.importDoubts?.length) && <small className="import-review-hint">{S.sheetImport.reviewedHint}</small>}
-      <div className={`daygrid${day.rows.some(row => row.importDoubts?.length) ? ' has-import-doubts' : ''}`} style={{ width: total, fontVariantNumeric: 'tabular-nums' }}>
+      {day.rows.some(row => activeImportDoubts(row.importDoubts).length) && <small className="import-review-hint">{S.sheetImport.reviewedHint}</small>}
+      <div className={`daygrid${day.rows.some(row => activeImportDoubts(row.importDoubts).length) ? ' has-import-doubts' : ''}`} style={{ width: total, fontVariantNumeric: 'tabular-nums' }}>
         <div className="gridhead" style={{ display: 'flex', alignItems: 'stretch', background: 'var(--card-bg)', borderBottom: '1px solid var(--line)' }}>
           {weekBand && <div className="gcell week-band-frozen week-band-index" data-c="index" style={{ width: 28, padding: '4px 3px', textAlign: 'center', ...head }}>#</div>}
           <div className={`gcell${weekBand ? ' week-band-frozen' : ''}`} data-c="name" style={{ width: colW.name, padding: '4px 6px', ...head }}>{S.common.action}</div>
@@ -1054,7 +1055,7 @@ export function DayColumn({
           return (
             <div
               key={row.id}
-              data-rowid={row.id} data-import-doubt={row.importDoubts?.length ? "true" : undefined}
+              data-rowid={row.id} data-import-doubt={activeImportDoubts(row.importDoubts).length ? "true" : undefined}
               data-locked={row.hasLogs ? 'true' : 'false'}
               data-drag-disabled={dragDisabled ? 'true' : 'false'}
               className={`exrow${highlightedVideo?.rowId === row.id ? ' video-highlight' : ''}${resolveTier(row) === 'aux' ? ' aux' : ''}${row.hasLogs ? ' locked' : ''}${(actualsForRow?.(row)?.length ?? 0) > 0 ? ' has-actuals' : ''}${isSelectedRow ? ' row-sel' : ''}${dragRowId === row.id ? ' row-dragging' : ''}${dropPosition ? ` row-drop-${dropPosition}` : ''}`}
@@ -1197,8 +1198,8 @@ export function DayColumn({
                       onClick={(e) => { e.stopPropagation(); onDeleteRow(row.id) }}>✕</span>
                   )}
                 </div>
-                {!!row.importDoubts?.length && <div className="gcell import-row-review" data-c="import-review" onClick={stop}>
-                  {row.importDoubts.map(kind => <span key={kind} className="import-doubt-label" title={kind === 'new_exercise' ? S.sheetImport.doubtTooltip(row.name) : S.sheetImport.doubtHints[kind]}>{S.sheetImport.doubts[kind]}</span>)}
+                {!!activeImportDoubts(row.importDoubts).length && <div className="gcell import-row-review" data-c="import-review" onClick={stop}>
+                  {activeImportDoubts(row.importDoubts).map(kind => <span key={kind} className="import-doubt-label" title={S.sheetImport.doubtHints[kind]}>{S.sheetImport.doubts[kind]}</span>)}
                   <button type="button" disabled={readOnly} onClick={() => onConfirmImport ? onConfirmImport(row.id) : edit(r => ({ ...r, importDoubts: undefined }))}>{S.sheetImport.confirm}</button>
                 </div>}
               </div>

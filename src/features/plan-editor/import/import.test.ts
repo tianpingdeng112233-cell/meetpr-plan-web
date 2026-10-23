@@ -52,7 +52,7 @@ describe('buildWeeks from AI adapter output', () => {
   it('keeps selected empty weeks and binds catalog hits and existing custom exercises', () => {
     const index = new ExerciseIndex([exercise('bench', '竞技卧推', { is_competition_lift: true }), exercise('custom', '自定义动作', { created_by_coach_id: 'coach-1' }), exercise('lowbar', '低杠位深蹲', { main_lift_family: 'squat' })])
     const input = parsed([ai('卧推'), ai('自定义动作', { sets: 0, reps: '—', weight_values: [], note: '4*12' }), ai('不存在'), ai('低杆深蹲')])
-    input.push(...aiWeeksToParsed([{ index: 1, start_date: '2026-01-05', days: [] }], new Set(), new Set([1])))
+    input.push(...aiWeeksToParsed([{ index: 1, start_date: '2026-01-05', days: [] }], new Set([1])))
     const { weeks } = buildWeeks(input, index, '2099-01-01')
     expect(weeks).toHaveLength(2)
     expect(weeks[0].range).toBe('12/29 – 1/4')
@@ -75,7 +75,8 @@ describe('buildWeeks from AI adapter output', () => {
   it('preserves ambiguous choice names for the coach to review', () => {
     const { weeks } = buildWeeks(parsed([ai('二三头自选*2', { flags: ['note_fallback'], note: '原文' })]), new ExerciseIndex([]), '2099-01-01')
     expect(weeks[0].days[0].rows).toHaveLength(1)
-    expect(weeks[0].days[0].rows[0]).toMatchObject({ name: '二三头自选*2', note: '原文', importDoubts: ['note_fallback'] })
+    expect(weeks[0].days[0].rows[0]).toMatchObject({ name: '二三头自选*2', note: '原文' })
+    expect(weeks[0].days[0].rows[0].importDoubts ?? []).toEqual([])
   })
   it('does not resolve aliases whose canonical exercise is absent', () => {
     const { weeks } = buildWeeks(parsed([ai('低杆深蹲')]), new ExerciseIndex([exercise('other', '杠铃卧推')]), '2099-01-01')

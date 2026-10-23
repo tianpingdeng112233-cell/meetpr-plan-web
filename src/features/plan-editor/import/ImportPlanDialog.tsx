@@ -47,7 +47,7 @@ export function ImportPlanDialog(p: ImportPlanDialogProps) {
     try {
       const result = await outlineImport({ trainee_id: p.traineeId, source: filename ? 'file' : 'paste', sheets })
       setResults([]); setEditedCells({}); setEmptyWeeks(new Set()); createdRef.current = null; addedRef.current = []
-      setFirstDate(defaultFirstDate(0))
+      setFirstDate(defaultFirstDate(0)); setInferredConfirmed(false)
       setOutline(result); setSelected(result.weeks.slice(-12).map(w => w.index)); setRemaining(Math.max(0, remaining - 1)); p.onRemainingChange?.(Math.max(0, remaining - 1))
       setName(filename.replace(/\.[^.]+$/, '').trim() || S.sheetImport.defaultName); setStage('weeks')
     } catch (e) {
@@ -65,12 +65,14 @@ export function ImportPlanDialog(p: ImportPlanDialogProps) {
   const [results, setResults] = useState<AIWeekResult[]>([])
   const [emptyWeeks, setEmptyWeeks] = useState(new Set<number>())
   const [editedCells, setEditedCells] = useState<Record<number, SheetCell[]>>({})
+  const [inferredConfirmed, setInferredConfirmed] = useState(false)
   const [firstDate, setFirstDate] = useState(defaultFirstDate(0))
   const cells = sheets.find(sheet => sheet.name === outline?.sheet)?.cells ?? []
   const cellsFor = (index: number) => editedCells[index] ?? regionCells(cells, outline!.weeks.find(w => w.index === index)!.region)
   const recognize = async (indexes: number[]) => {
     if (!outline || busy) return
     setError(''); setBusy(S.sheetImport.progress(1, indexes.length))
+    if (indexes.length) setInferredConfirmed(false)
     const received: AIWeekResult[] = []
     try {
       // Four weeks per request leaves at least five of the backend's eight calls for corrections.
@@ -123,7 +125,7 @@ export function ImportPlanDialog(p: ImportPlanDialogProps) {
       }
       // No-date weeks now have an explicit calendar. Rotate weekday positions relative to D1.
       const scheduled = goodWeeks.map((w, position) => ({ ...w, start_date: shiftISODate(startDate, position * 7), days: w.days.map(d => ({ ...d, weekday: (d.weekday - anchor + 7) % 7 })) }))
-      const parsed = aiWeeksToParsed(scheduled, new Set(newNames), emptyWeeks)
+      const parsed = aiWeeksToParsed(scheduled, emptyWeeks, inferredConfirmed)
       const built = buildWeeks(parsed, index, startDate)
       const planId = createdRef.current.id
       const content = { weeks: built.weeks, planStartDate: startDate, weeksCount: built.weeks.length }
@@ -201,7 +203,9 @@ export function ImportPlanDialog(p: ImportPlanDialogProps) {
       </div>)}
       <div className="import-footnote"><b>{S.sheetImport.attention}</b><small>{S.sheetImport.attentionHint}</small></div>
       <div className="import-doubts">{(Object.keys(counts) as (keyof typeof counts)[]).filter(kind => kind !== 'empty_week' || counts[kind]).map(kind => <div key={kind} data-doubt-count={kind}>
-        <span className="import-doubt-label">{S.sheetImport.doubts[kind]}</span><span>{kind === 'no_date' && !counts.no_date ? S.sheetImport.allDated : S.sheetImport.doubtHints[kind]}</span><b>{counts[kind]}</b>
+        <span className="import-doubt-label">{S.sheetImport.doubts[kind]}</span><span>{kind === 'no_date' && !counts.no_date ? S.sheetImport.allDated : S.sheetImport.doubtHints[kind]}
+          {kind === 'inferred' && counts.inferred > 0 && <button type="button" className="import-confirm-all" aria-pressed={inferredConfirmed} onClick={() => setInferredConfirmed(value => !value)}>{inferredConfirmed ? S.sheetImport.undoConfirmAll : S.sheetImport.confirmAll}</button>}
+        </span><b>{counts[kind]}</b>
         {kind === 'new_exercise' && <small>{newNames.join(' · ')}</small>}
       </div>)}</div>
       {counts.no_date > 0 && <label>{S.block.firstDate}<input type="date" aria-label={S.block.firstDate} value={firstDate} onChange={e => setFirstDate(e.target.value)} /></label>}

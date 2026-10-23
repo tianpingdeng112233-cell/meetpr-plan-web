@@ -1,3 +1,4 @@
+import { activeImportDoubts } from '../import/doubts'
 import { actualShorthand } from '../actualShorthand'
 import type { ActualSet, StudentAddedExercise } from '../actuals'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
@@ -149,8 +150,8 @@ export function BlockGrid(props: Props) {
         return { before, after, dates: blockInsertDates(week, props.startDate!, before?.day?.dow ?? null, after?.day?.dow ?? null) }
       }).filter(gap => gap.dates.length > 0)
       return <div key={week.num} className="block-week weekband" data-week-slot="" data-wnum={week.num}>
-        {!!week.importDoubts?.length && !week.days.some(day => day.rows.length) && <div className="import-empty-week" data-import-week={week.num}>
-          {week.importDoubts.map(kind => <span key={kind} title={S.sheetImport.doubtHints[kind]}>{S.sheetImport.doubts[kind]}</span>)}
+        {!!activeImportDoubts(week.importDoubts).length && !week.days.some(day => day.rows.length) && <div className="import-empty-week" data-import-week={week.num}>
+          {activeImportDoubts(week.importDoubts).map(kind => <span key={kind} title={S.sheetImport.doubtHints[kind]}>{S.sheetImport.doubts[kind]}</span>)}
           <button disabled={props.readOnly} onClick={() => props.onConfirmWeekImport?.(week.num)}>{S.sheetImport.confirm}</button>
         </div>}
         <div className="block-week-label" tabIndex={0}>
@@ -187,7 +188,7 @@ export function BlockGrid(props: Props) {
                 const actual = props.showActuals && !!actuals?.length
                 const summary = actual ? actualShorthand(row, actuals!) : shorthand(row)
                 return <div key={row.id} className={`block-brick${actual ? ' actual-display' : ''}${props.showActuals && !actual ? ' prescribed-muted' : ''}${props.highlightedVideo?.rowId === row.id ? ' video-highlight' : ''}${props.selectedRows.has(row.id) ? ' row-sel' : ''}${props.rowTier(row) === 'aux' ? ' aux' : ''}${i > 0 && props.rowTier(rows[i - 1]) !== props.rowTier(row) ? ' section-start' : ''}`}
-                data-rowid={row.id} data-import-doubt={row.importDoubts?.length ? "true" : undefined} data-locked={row.hasLogs} role="button" tabIndex={0} title={actual ? S.block.prescription(shorthand(row)) : `${name} ${summary}${row.hasLogs ? ' ✓' : ''}`} data-hint={actual ? S.block.prescription(shorthand(row)) : undefined}
+                data-rowid={row.id} data-import-doubt={activeImportDoubts(row.importDoubts).length ? "true" : undefined} data-locked={row.hasLogs} role="button" tabIndex={0} title={actual ? S.block.prescription(shorthand(row)) : `${name} ${summary}${row.hasLogs ? ' ✓' : ''}`} data-hint={actual ? S.block.prescription(shorthand(row)) : undefined}
                 onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); event.stopPropagation(); event.currentTarget.click() } }}
                 onClick={event => { event.stopPropagation(); if (day) props.onSelectRow(week, day, row.id, { toggle: event.metaKey || event.ctrlKey, range: event.shiftKey }) }}>
                 <span>{name}</span><div className="block-brick-summary"><code>{summary}</code><span className="block-brick-status">{row.hasLogs && <span>✓</span>}{props.videoMarker?.(row)}</span></div>

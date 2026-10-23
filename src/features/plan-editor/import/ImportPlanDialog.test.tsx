@@ -9,6 +9,7 @@ import * as pending from '../../../api/pendingRevision'
 import * as imports from '../../../api/planImports'
 import { ApiException } from '../../../api/client'
 import * as XLSX from 'xlsx'
+import type { Week } from '../types'
 import { S, setLocale } from '../../../i18n/strings'
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
@@ -76,13 +77,13 @@ it('sends only content sheets in the outline request for an uploaded workbook', 
 })
 async function source(index = new ExerciseIndex([])) {
   vi.mocked(imports.getImportStatus).mockResolvedValue({ enabled: true, daily_limit: 3, remaining_today: 3 })
-  await render(index); await click('从表格导入')
+  await render(index); await click(S.sheetImport.title)
   await act(async () => {
     const event = new Event('paste', { bubbles: true, cancelable: true })
     Object.defineProperty(event, 'clipboardData', { value: { getData: (type: string) => type === 'text/plain' ? 'Squat\t4*8\t100' : '' } })
     host.querySelector('textarea')!.dispatchEvent(event)
   })
-  await click('开始识别')
+  await click(S.sheetImport.start)
 }
 it('defaults to the latest 12 consecutive weeks and sends cells without a filename', async () => {
   vi.mocked(imports.outlineImport).mockResolvedValue({ import_id: 'run', sheet: 'Paste', truncated_rows: 2, header_region: null,
@@ -164,7 +165,7 @@ it('creates a new draft with both RPE and weight saved, deduplicates custom lift
   expect(onImported).toHaveBeenCalledOnce()
   const result = onImported.mock.calls[0][0]
   expect(result.weeks).toHaveLength(3)
-  expect(result.weeks[0].days[0].rows[0]).toMatchObject({ exerciseId: 'custom', importDoubts: ['new_exercise', 'inferred'] })
+  expect(result.weeks[0].days[0].rows[0]).toMatchObject({ exerciseId: 'custom', importDoubts: ['inferred'] })
   expect(result.weekdays).toEqual([2])
 })
 
@@ -265,4 +266,41 @@ it('strips accidental file metadata at the API boundary', async () => {
   await real.outlineImport({ trainee_id: 'synthetic', source: 'file', sheets: [{ name: 'Training', cells: [[1,1,'Squat']] }], filename: 'Synthetic.xlsx' } as never)
   expect(post).toHaveBeenCalledWith('/coach/plan-imports', { trainee_id: 'synthetic', source: 'file', sheets: [{ name: 'Training', cells: [[1,1,'Squat']] }] }, { retryRateLimit: false })
   post.mockRestore()
+})
+
+it.each([
+  ['zh', false, '全部确认', '已全部确认 · 撤销'],
+  ['zh', true, '全部确认', '已全部确认 · 撤销'],
+  ['en', false, 'Confirm all', 'All confirmed · Undo'],
+  ['en', true, 'Confirm all', 'All confirmed · Undo'],
+] as const)('keeps informational counts and allows bulk inferred confirmation in %s (undo=%s)', async (locale, undo, confirmLabel, undoLabel) => {
+  setLocale(locale)
+  threeWeeks()
+  vi.mocked(imports.recognizeImportWeeks).mockResolvedValue({ weeks: [
+    { index: 0, start_date: null, days: [{ weekday: 0, rest: false, exercises: [{ ...aiExercise, flags: ['inferred', 'note_fallback'], note: 'tempo' }] }] },
+    { index: 1, error: 'PARSE_FAILED', reason: 'BAD_OUTPUT' },
+    { index: 2, error: 'PARSE_FAILED', reason: 'BAD_OUTPUT' },
+  ] })
+  const draft = { id: 'bulk-confirm', trainee_id: 'trainee', name: 'Synthetic', plan_weeks: 3, start_date: '2026-10-19', end_date: '2026-11-08', status: 'draft', days: [] } as never
+  vi.mocked(plans.createPlan).mockResolvedValue(draft); vi.mocked(plans.getPlan).mockResolvedValue(draft); vi.mocked(plans.batchDays).mockResolvedValue(draft)
+  vi.mocked(catalog.createCustomExercise).mockResolvedValue({ id: 'custom', name: aiExercise.name, created_by_coach_id: 'coach' } as never)
+  await source(); await click(S.sheetImport.recognize(3))
+  await click(S.sheetImport.leaveEmpty); await click(S.sheetImport.leaveEmpty)
+  expect(host.querySelector('[data-doubt-count=new_exercise] b')?.textContent).toBe('1')
+  expect(host.querySelector('[data-doubt-count=new_exercise] small')?.textContent).toBe(aiExercise.name)
+  expect(host.querySelector('[data-doubt-count=note_fallback] b')?.textContent).toBe('1')
+  expect(host.querySelector('[data-doubt-count=no_date] b')?.textContent).toBe('1')
+  expect(button(confirmLabel)?.getAttribute('aria-pressed')).toBe('false')
+  await click(confirmLabel)
+  expect(button(undoLabel)?.getAttribute('aria-pressed')).toBe('true')
+  expect(host.querySelector('[data-doubt-count=inferred] b')?.textContent).toBe('1')
+  if (undo) { await click(undoLabel); expect(button(confirmLabel)?.getAttribute('aria-pressed')).toBe('false') }
+  await click(S.sheetImport.create)
+  expect(onImported).toHaveBeenCalledOnce()
+  const weeks: Week[] = onImported.mock.calls[0][0].weeks
+  expect(weeks[0].days.flatMap(day => day.rows)[0].importDoubts ?? []).toEqual(undo ? ['inferred'] : [])
+  expect(weeks[1].importDoubts).toEqual(['empty_week'])
+  expect(weeks[2].importDoubts).toEqual(['empty_week'])
+  const saved = vi.mocked(pending.putPendingRevision).mock.calls.at(-1)![1].content.weeks
+  expect(saved[0].days.flatMap(day => day.rows)[0].importDoubts ?? []).toEqual(undo ? ['inferred'] : [])
 })

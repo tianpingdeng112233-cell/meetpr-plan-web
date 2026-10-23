@@ -63,3 +63,6 @@
 .import-summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); padding: 16px 0; font-size: 18px; }
 .import-summary > span + span { border-left: 1px solid #e5e7eb; }
 .import-stat-divider { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+
+.import-confirm-all { display: block; margin-top: 6px; padding: 3px 7px; border: 1px solid #d1d5db; border-radius: 4px; background: white; font-size: 12px; }
+.import-confirm-all[aria-pressed=true] { background: #fef3c7; border-color: #fde68a; }

@@ -1,4 +1,4 @@
-import { clearEditedDoubts, clearDateDoubts, countImportDoubts, withoutImportDoubts } from './import/doubts'
+import { clearEditedDoubts, activeImportDoubts, countImportDoubts, withoutImportDoubts } from './import/doubts'
 import { useCallback, useEffect, useMemo, useRef, useState, useImperativeHandle, type Ref } from 'react'
 import type { ColKey, ColWidths, Week, DayCol, ExerciseRow } from './types'
 import { COL_DEFAULTS, COL_MIN, isContentfulUnbound, isRestDay } from './types'
@@ -236,18 +236,18 @@ function findDetailedIssueRows(wks: Week[]): DetailedIssueRow[] {
     if (isRestDay(d)) continue
     for (const r of d.rows) {
       if (r.hasLogs) {
-        if (r.importDoubts?.length) issues.push({ rowId: r.id, kind: 'importDoubt' })
+        if (activeImportDoubts(r.importDoubts).length) issues.push({ rowId: r.id, kind: 'importDoubt' })
         continue
       }
       if (isContentfulUnbound(r)) issues.push({ rowId: r.id, kind: 'unbound' })
       else {
         const inputIssue = getBoundRowInputIssue(r)
         if (inputIssue) issues.push({ rowId: r.id, kind: 'noSets', inputIssue })
-        else if (r.importDoubts?.length) issues.push({ rowId: r.id, kind: 'importDoubt' })
+        else if (activeImportDoubts(r.importDoubts).length) issues.push({ rowId: r.id, kind: 'importDoubt' })
       }
     }
   }
-  for (const week of wks) if (week.importDoubts?.length && !week.days.some(day => day.rows.length)) issues.push({ rowId: `import-week-${week.num}`, kind: 'importDoubt' })
+  for (const week of wks) if (activeImportDoubts(week.importDoubts).length && !week.days.some(day => day.rows.length)) issues.push({ rowId: `import-week-${week.num}`, kind: 'importDoubt' })
   return issues
 }
 
@@ -2168,7 +2168,7 @@ export function PlanEditor(props: PlanEditorProps) {
     setStatusText(S.editor.updatingStartDate)
     try {
       await props.onChangeStartDate(nextStart)
-      const nextWeeks = clearDateDoubts(relabelWeeksForStartDate(latestWeeks.current, nextStart))
+      const nextWeeks = relabelWeeksForStartDate(latestWeeks.current, nextStart)
       const contentChangedDuringRequest = latestWeeks.current !== weeksAtRequest
       skipNextAutosave.current = !hadUnsavedContent && !contentChangedDuringRequest
       setWeeks(nextWeeks)

@@ -6,6 +6,7 @@ import { blockWeeks, openBlockDay } from '../blockGridTestUtils'
 import { createDraftMirror, draftContentHash, saveDraftMirror } from '../draftMirror'
 import * as pending from '../../../api/pendingRevision'
 import { installLocalStorageMock } from '../../../test/localStorageMock'
+import { countImportDoubts } from './doubts'
 import type { Week } from '../types'
 vi.mock('../../../api/pendingRevision')
 let host: HTMLDivElement, root: Root
@@ -13,12 +14,13 @@ const makeWeeks = () => { const weeks = blockWeeks([[0]]); weeks[0].days[0].rows
 beforeEach(() => {
   installLocalStorageMock(); vi.clearAllMocks(); vi.mocked(pending.getPendingRevision).mockResolvedValue(null)
   vi.mocked(pending.putPendingRevision).mockImplementation(async (_id, mirror) => ({ plan_id: mirror.planId, version: mirror.version, content_hash: mirror.contentHash, saved_at: mirror.savedAt }))
+  vi.mocked(pending.deletePendingRevision).mockResolvedValue(undefined)
   host = document.createElement('div'); document.body.append(host); root = createRoot(host)
 })
 afterEach(() => { act(() => root.unmount()); host.remove(); vi.restoreAllMocks() })
 async function render(weeks = makeWeeks(), extra = {}) { await act(async () => root.render(<PlanEditor initialWeeks={weeks} weeksCount={1} studentName="Synthetic" planName="Synthetic" planStartDate="2026-10-19" {...extra} />)) }
 const click = async (text: string) => { await act(async () => [...host.querySelectorAll('button')].find(b => b.textContent === text)!.click()) }
-it('keeps two import doubt tags and confirmation in the trailing cell after notes', async () => {
+it('keeps only the active import doubt tag and confirmation in the trailing cell after notes', async () => {
   const weeks = makeWeeks()
   const row = weeks[0].days[0].rows[0]
   row.name = '很长的自定义动作名称用于检查编辑卡行尾存疑标签'
@@ -30,9 +32,9 @@ it('keeps two import doubt tags and confirmation in the trailing cell after note
   expect(trailing).not.toBeNull()
   expect(main.lastElementChild).toBe(trailing)
   expect(trailing.previousElementSibling?.getAttribute('data-c')).toBe('note')
-  expect([...trailing.querySelectorAll('.import-doubt-label')].map(tag => tag.textContent)).toEqual(['新建动作', '推断数值'])
+  expect([...trailing.querySelectorAll('.import-doubt-label')].map(tag => tag.textContent)).toEqual(['推断数值'])
   expect(trailing.querySelector('button')?.textContent).toBe('确认')
-  expect(trailing.querySelector('.import-doubt-label')?.getAttribute('title')).toContain(row.name)
+  expect(trailing.querySelector('.import-doubt-label')?.getAttribute('title')).toContain('数字在原表里找不到')
   await act(async () => trailing.querySelector('button')!.click())
   expect(host.querySelector('[data-c="import-review"]')).toBeNull()
 })
@@ -117,4 +119,50 @@ it('counts, jumps to and confirms an intentionally empty imported week', async (
   expect(findIssueRows(weeks)).toEqual([{ rowId: 'import-week-1', kind: 'importDoubt' }])
   await click('! 1 处待核对'); await click('确认')
   expect(host.textContent).not.toContain('1 处待核对')
+})
+
+it('counts and cycles only inferred rows and empty weeks, ignoring legacy kinds', async () => {
+  const weeks = blockWeeks([[0], [], []], 4)
+  const rows = weeks[0].days[0].rows
+  rows[0].importDoubts = ['new_exercise']
+  rows[1].importDoubts = ['note_fallback']
+  rows[2].importDoubts = ['no_date']
+  rows[3].importDoubts = ['inferred', 'new_exercise', 'note_fallback', 'no_date']
+  weeks[1].importDoubts = ['no_date']
+  weeks[2].importDoubts = ['no_date', 'empty_week']
+  expect(countImportDoubts(weeks)).toBe(2)
+  expect(findIssueRows(weeks)).toEqual([
+    { rowId: rows[3].id, kind: 'importDoubt' },
+    { rowId: 'import-week-3', kind: 'importDoubt' },
+  ])
+  await render(weeks, { weeksCount: 3 })
+  await click('! 2 处待核对')
+  expect(host.querySelector(`[data-rowid="${rows[3].id}"] [data-c=import-review]`)?.textContent).toContain('推断数值')
+  expect(host.querySelector('[data-import-week="2"]')).toBeNull()
+  await click('! 2 处待核对')
+  expect(host.querySelector('[data-import-week="3"]')?.textContent).toContain('无内容周')
+  expect(host.textContent).not.toContain('无日期周')
+})
+
+it.each(['local', 'remote'] as const)('loads %s snapshots carrying only removed kinds without marks', async source => {
+  const weeks = blockWeeks([[0], []], 3)
+  weeks[0].days[0].rows[0].importDoubts = ['new_exercise']
+  weeks[0].days[0].rows[1].importDoubts = ['note_fallback']
+  weeks[0].days[0].rows[2].importDoubts = ['no_date']
+  weeks[0].days[0].rows[0].note = 'restored snapshot'
+  weeks[1].importDoubts = ['no_date']
+  const content = { weeks, weeksCount: 2, planStartDate: '2026-10-19' }
+  const now = () => new Date('2026-10-23T00:00:00Z')
+  if (source === 'local') saveDraftMirror('legacy-import', content, localStorage, now)
+  else {
+    const mirror = createDraftMirror('legacy-import', content, now)
+    vi.mocked(pending.getPendingRevision).mockResolvedValue({ plan_id: 'legacy-import', version: mirror.version, content_hash: mirror.contentHash, saved_at: mirror.savedAt, content: mirror.content })
+  }
+  await render(blockWeeks([[0], []], 3), { weeksCount: 2, currentPlanId: 'legacy-import', planUpdatedAt: '2026-10-22T00:00:00Z' })
+  if (source === 'local') await click('恢复')
+  expect(host.textContent).not.toContain('处待核对')
+  expect(host.querySelector('[data-import-doubt=true], [data-import-week]')).toBeNull()
+  openBlockDay(host)
+  expect(host.querySelector<HTMLInputElement>('[data-c=note] input')?.value).toBe('restored snapshot')
+  expect(host.querySelector('[data-c=import-review], .import-review-hint, .has-import-doubts')).toBeNull()
 })

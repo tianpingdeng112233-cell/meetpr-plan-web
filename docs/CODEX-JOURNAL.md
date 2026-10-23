@@ -1094,3 +1094,12 @@ npx vitest run src/features/plan-editor/block-grid-ui.test.tsx
 - 先红后绿：新契约 adapter/buildWeeks 14 failed，创建草稿保存断言 1 failed → 四文件 42 passed；覆盖 RPE 6 + 227.5 kg、RIR、pct、纯重量、两线皆空，并通过真实 reconcile 检查 batchDays 中每组的 `target_rpe` 和 `target_weight`。审查补充空强度数组两例：2 failed / 11 passed → 13 passed。日志 `/private/tmp/015-tracks-{contract-red,save-red,green,empty-red,empty-green}.log`。
 - review-loop 独立只读审查：Standards 0 findings；Spec 初审 1 项（有 kind 但强度数组为空），定向修复及复核后 0 未决项。未运行依赖缺失 tracker 的完整 code-review 流程。
 - 最终 `npm test` exit 0：105 files / 1055 tests passed；`npx tsc --noEmit` exit 0、0 诊断；`npm run build` exit 0，仅既有 >500 kB chunk 提示。日志 `/private/tmp/015-tracks-{test,tsc,build}.log`；`git diff --check` 通过。后端并行契约改动与真实教练表联调待 David/Opus 收货，本次不声明端到端验收完成。
+
+## 2026-10-23 · 015 §4.1：仅推断数值与无内容周进入待核对
+
+- 基线 `0ec5261`，按 CHANGE CARD 实装：仅 `inferred` / `empty_week` 生成编辑器标记；摘要保留新建动作（含名字）、备注、无日期统计。推断数值增加中英文「全部确认」及可撤销的 pressed 状态，创建与快照均尊重确认；识别新结果或换表时重置确认。无产品决策偏差。
+- 旧快照采用卡允许的「忽略」方式：统一过滤标记、计数、跳转和发布提醒，保留兼容 wire 类型与快照格式；移除仅服务旧标记的日期清除、动作 tooltip 和 adapter 新动作参数。仅改授权源码/测试及本记录，未启停 dev server。
+- 指定 seam 先红后绿：adapter 2 failed → adapter/buildWeeks 16 passed；dialog 4 failed → 25 passed；editor 4 failed → 13 passed（含本地/远端旧快照）。证据 `/private/tmp/015-doubts-{adapter,dialog,ui}-{red,green}.log`。review-loop 独立只读审查一轮：Standards 0 findings；Spec 0 代码 findings，要求补本记录已落实；缺 tracker，未声称运行完整 code-review。
+- 验证：`npm test` exit 0，105 files / 1062 tests passed；`npx tsc --noEmit` exit 0、0 诊断；`npm run build` exit 0、244 modules，仅既有 >500 kB chunk 提示。日志 `/private/tmp/015-doubts-{test,tsc,build}.log`；`git diff --check` exit 0。Impeccable detector 返回 `[]`。
+- 浏览器复验未完成：CUA 权限策略拒绝读取已有 `http://localhost:5180` 标签页（origin approval 未获准）；未换通道绕过，未声明视觉或真实导入端到端验收通过。
+- Git：`git add` exit 128，主仓 `.git/worktrees/meetpr-plan-web-wt-015/index.lock` 被沙箱拒写；按卡保留未提交改动，未 commit/push。完整补丁 `/private/tmp/015-doubts.patch`。
