@@ -42,7 +42,7 @@ export const zhAdmin = {
   adoption: {
     title: (name: string) => `收录「${name}」`,
     description: (coaches: number, spellings: number, plans: number) => `${coaches} 位教练 · ${spellings} 种写法 · ${plans} 份计划。收录后他们和学员仍看到自己的叫法。`,
-    undone: (coach: string, name: string) => `已撤销，${coach} 的「${name}」恢复为自建动作`,
+    undone: (coach: string, name: string) => `已撤销，${coach}的「${name}」恢复为自建动作`,
     alreadyProcessed: '这组动作已全部处理，可关闭弹窗查看最新列表。',
     noCandidates: '没找到相近的官方动作', conflict: '有动作刚被别处处理过，已刷新列表',
     newInstead: '都不对，收录为新的官方动作', back: '← 返回推荐的官方动作', newTitle: '收录为新的官方动作 · 已按用得最多的那条预填',

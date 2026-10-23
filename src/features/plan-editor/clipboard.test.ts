@@ -200,3 +200,39 @@ describe('plan editor clipboard rows', () => {
     expect(formatTranslatedDaysPasteStatus(0, 2)).toBe('2 天全部超出计划范围已跳过')
   })
 })
+
+it('pastes Traditional protocol fields and binds names without changing notes or custom names', () => {
+  const custom = { ...exercise('custom', '自訂卧推'), created_by_coach_id: 'coach' }
+  const index = new ExerciseIndex([exercise('bench', '竞技卧推'), custom])
+  const pasted = parseClipboardRows('動作\t組\t次\t強度類型\t強度值\t重量模式\t重量\t備註\t百分比錨點\n臥推\t3\t5\trpe\t8\t逐組標重\t100/102/104\t教练原文备注\t\n自訂卧推\t1\t5\trpe\t7\t固定重量\t20\t保留原文\t', index)
+  expect(pasted).toHaveLength(2)
+  expect(pasted?.[0]).toMatchObject({ name: '竞技卧推', exerciseId: 'bench', note: '教练原文备注', weightMode: 'per_set', boxes: [{ val: '100' }, { val: '102' }, { val: '104' }] })
+  expect(pasted?.[1]).toMatchObject({ name: '自訂卧推', custom: true, note: '保留原文' })
+})
+
+it('recognizes reordered Taiwan reps and note columns in pasted Excel rows', () => {
+  const rows = parseClipboardRows('動作\t下數\t組數\t教練指示\t反饋備註\n滑輪下拉\t6\t3\t合成指示：慢放\t合成反饋：稳住')
+  expect(rows).toHaveLength(1)
+  expect(rows?.[0]).toMatchObject({ name: '滑輪下拉', reps: '6', note: '合成指示：慢放 · 合成反饋：稳住' })
+  expect(rows?.[0].boxes).toHaveLength(3)
+  expect(rows?.[0].boxes.every(box => box.empty)).toBe(true)
+})
+
+it('pastes compact Taiwan reps without losing percentage guidance or size specifications', () => {
+  const index = new ExerciseIndex([exercise('row', '高位下拉')])
+  const rows = parseClipboardRows('動作\t組數\t下數\t教練指示\n滑輪下拉（2cm)\t3\t2下@8。80%\t合成备注：慢放', index)
+  expect(rows?.[0]).toMatchObject({
+    exerciseId: 'row', name: '高位下拉', reps: '2',
+    intensity: { mode: 'rpe', value: '8', high: '' },
+    note: '合成备注：慢放 · 80% · （2cm)',
+  })
+  expect(rows?.[0].intensityBoxes).toEqual(Array.from({ length: 3 }, () => ({ val: '8', empty: false })))
+})
+
+it('preserves custom dimensions for both exact and fallback paste bindings', () => {
+  const custom = { ...exercise('custom', '合成自建練習'), created_by_coach_id: 'synthetic-coach' }
+  const index = new ExerciseIndex([custom, { ...custom, id: 'exact', name: '合成自建練習（4cm)' }])
+  const rows = parseClipboardRows('動作\t組數\t下數\t教練指示\n合成自建練習（2cm)\t3\t6\t原文\n合成自建練習（4cm)\t3\t6\t原文', index)
+  expect(rows?.[0]).toMatchObject({ exerciseId: 'custom', name: '合成自建練習', note: '原文 · （2cm)' })
+  expect(rows?.[1]).toMatchObject({ exerciseId: 'exact', name: '合成自建練習（4cm)', note: '原文' })
+})

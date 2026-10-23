@@ -81,7 +81,7 @@ export function WeekdayDateSelector({ value, onChange, compact = false, disabled
               cursor: disabled ? 'default' : 'pointer',
             }}
           >
-            {compact && resolveLocale() === 'zh' ? day.slice(1) : day}
+            {compact && resolveLocale() !== 'en' ? day.slice(1) : day}
           </button>
         ))}
       </div>

@@ -75,7 +75,7 @@ export function CatalogPage({
   const displayName = (exercise: ExerciseResponse) => {
     if (exercise.adopted) return exercise.name
     const entry = catalog?.get(exercise.id)
-    return fmt.exerciseName({ name: entry?.name ?? exercise.name, name_en: entry?.nameEn ?? exercise.name_en })
+    return fmt.exerciseName({ name: entry?.name ?? exercise.name, name_en: entry?.nameEn ?? exercise.name_en, custom: isCustom(exercise) })
   }
   const trimmedQuery = query.trim()
   const searchIds = useMemo(() => {
@@ -171,7 +171,7 @@ export function CatalogPage({
           {exercise.is_competition_lift && <span className="catalog-competition-badge" title={S.catalog.competitionExercise}>{S.catalog.competitionBadge}</span>}
           {custom && <span className="catalog-tag mine">{S.catalog.customBadge}</span>}
         </div>
-        <div className="catalog-name-en">{resolveLocale() === 'zh' ? exercise.name_en || '—' : '—'}</div>
+        <div className="catalog-name-en">{resolveLocale() !== 'en' ? exercise.name_en || '—' : '—'}</div>
       </div>
       <div role="cell"><span className={`catalog-tag ${exercise.exercise_type}`}>{EXERCISE_TYPE_SHORT_LABEL[exercise.exercise_type]}</span></div>
       <div className="catalog-muted" role="cell">{exercise.equipment.length ? exercise.equipment.map((item) => EQUIPMENT_LABEL[item]).join(' · ') : '—'}</div>
@@ -411,7 +411,7 @@ function ExerciseDetailDrawer({ exercise, displayName, custom, owned, deleting, 
   const synergists = exercise.muscle_groups.slice(1)
   return <aside className="writing-panel catalog-drawer" role="dialog" aria-label={S.catalog.detailsAria(displayName)}>
     <header className="catalog-drawer-header">
-      <div><h2>{displayName}</h2>{resolveLocale() === 'zh' && exercise.name_en && <small>{exercise.name_en}</small>}</div>
+      <div><h2>{displayName}</h2>{resolveLocale() !== 'en' && exercise.name_en && <small>{exercise.name_en}</small>}</div>
       <button type="button" aria-label={S.catalog.closeDetails} onClick={onClose}>✕</button>
       <div className="catalog-drawer-badges">
         <span className={`catalog-tag ${exercise.exercise_type}`}>{EXERCISE_TYPE_LABEL[exercise.exercise_type]}</span>
@@ -428,7 +428,7 @@ function ExerciseDetailDrawer({ exercise, displayName, custom, owned, deleting, 
         <div><dt>{S.common.equipment}</dt><dd><MetaTags values={exercise.equipment} labels={EQUIPMENT_LABEL} /></dd></div>
         <div><dt>{S.catalog.primaryMuscle}</dt><dd>{primaryMuscle ? <span className="catalog-meta-tag primary">{MUSCLE_LABEL[primaryMuscle]}</span> : <span className="catalog-muted">{S.common.nonePlain}</span>}</dd></div>
         <div><dt>{S.catalog.synergistMuscles}</dt><dd><MetaTags values={synergists} labels={MUSCLE_LABEL} /></dd></div>
-        <div><dt>{S.catalog.aliases}</dt><dd>{aliases.length ? aliases.map((alias) => <span key={alias} className="catalog-meta-tag">{alias}</span>) : <span className="catalog-muted">{S.common.nonePlain}</span>}</dd></div>
+        <div><dt>{S.catalog.aliases}</dt><dd>{aliases.length ? aliases.map((alias) => <span key={alias} className="catalog-meta-tag">{fmt.exerciseName({ name: alias, custom: false })}</span>) : <span className="catalog-muted">{S.common.nonePlain}</span>}</dd></div>
       </dl>
       <div className="catalog-drawer-note">{exercise.adopted ? S.catalog.adoptedNote : owned
         ? <><b>{S.catalog.myCustomExercise}</b>{S.catalog.customAvailable}</>
@@ -580,7 +580,7 @@ function CreateExerciseDrawer({ initialName, exercise, index, exerciseList, onCl
         <span>{S.catalog.possibleExisting}</span>
         <div>{candidates.map((candidate) => <button key={candidate.id} type="button" onClick={() => onSelectExisting(candidate)}>
           <b>{fmt.exerciseName(candidate)}</b>
-          {resolveLocale() === 'zh' && candidate.name_en && <small>{candidate.name_en}</small>}
+          {resolveLocale() !== 'en' && candidate.name_en && <small>{candidate.name_en}</small>}
           <em>{S.catalog.useExisting}</em>
         </button>)}</div>
       </div>}

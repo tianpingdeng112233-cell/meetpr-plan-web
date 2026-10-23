@@ -1,3 +1,4 @@
+import { normalizeTraditionalInput } from '../../i18n/stable-zh'
 import { useEffect, useMemo, useRef, useState, type RefObject } from 'react'
 import type { CoachView } from './CoachShell'
 import { useGlobalKeyboardHandler } from './globalKeyboard'
@@ -41,7 +42,7 @@ const screenCommands = (): Array<{ view: CoachView; label: string; aliases: stri
   { view: 'tracking', label: S.workspace.nav.tracking, aliases: S.workspace.command.trackingKeywords },
 ]
 
-const normalized = (value: string) => value.trim().toLocaleLowerCase('zh-CN')
+const normalized = (value: string) => normalizeTraditionalInput(value.trim()).toLocaleLowerCase('zh-CN')
 
 export function CommandPalette({
   open,

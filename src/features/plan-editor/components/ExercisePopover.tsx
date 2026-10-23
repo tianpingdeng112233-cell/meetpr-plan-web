@@ -34,8 +34,8 @@ export function ExercisePopover({ visible, x, y, index, query, activeIndex, onAc
             onMouseEnter={() => onActiveIndexChange(hitIndex)}
             onMouseDown={(e) => { e.preventDefault(); onPick(h) }}
             style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 11px', color: 'var(--txt)', background: activeIndex === hitIndex ? 'var(--ink-soft)' : undefined }}>
-            <span style={{ flex: 1 }}>{fmt.exerciseName({ name: h.name, name_en: h.name_en })}</span>
-            {resolveLocale() === 'zh' && h.via && h.via !== h.name && <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--mut)' }}>{S.editor.alias(h.via)}</span>}
+            <span style={{ flex: 1 }}>{fmt.exerciseName({ name: h.name, name_en: h.name_en, custom: h.custom })}</span>
+            {resolveLocale() !== 'en' && h.via && h.via !== h.name && <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--mut)' }}>{S.editor.alias(fmt.exerciseName({ name: h.via, custom: false }))}</span>}
           </div>
         ))}
         {hits.length === 0 && <div style={{ padding: '8px 11px', color: 'var(--mut)' }}>{S.editor.noMatchingExercise}</div>}

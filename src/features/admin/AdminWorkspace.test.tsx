@@ -17,6 +17,7 @@ vi.mock('../../api/admin', async (importOriginal) => ({
 
 import { AdminWorkspace } from './AdminWorkspace'
 import { setLocale } from '../../i18n/locale'
+import simplifiedOnly from '../../i18n/simplified-only.json'
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
@@ -70,6 +71,7 @@ describe('AdminWorkspace', () => {
     act(() => root.unmount())
     host.remove()
     vi.clearAllMocks()
+    vi.restoreAllMocks()
     vi.unstubAllGlobals()
     setLocale('zh')
   })
@@ -192,7 +194,7 @@ describe('AdminWorkspace', () => {
     data.adopted = []
     data.pending.push({ ...data.pending[1], key: 'restored', display_name: '比赛卧推', rows: [{ ...data.pending[1].rows[0], exercise_id: 'a1', name: '比赛卧推', coach_name: '刘教练' }] })
     await act(async () => { finish(new Response('{}')); await settle() })
-    expect(host.querySelector('[role="status"]')?.textContent).toBe('已撤销，刘教练 的「比赛卧推」恢复为自建动作')
+    expect(host.querySelector('[role="status"]')?.textContent).toBe('已撤销，刘教练的「比赛卧推」恢复为自建动作')
     expect(host.textContent).toContain('没有已收录的自建动作')
     await act(async () => { buttonContaining(host, '待处理').click() })
     expect(host.querySelector('[aria-label="待处理的自建动作"]')?.textContent).toContain('比赛卧推')
@@ -306,6 +308,109 @@ describe('AdminWorkspace', () => {
     expect(host.textContent).toContain('1 位教练的叫法挂在这里')
     expect(host.textContent).toContain('叫「比赛卧推」')
     expect(host.textContent).toContain('10-22 12:40')
+  })
+
+  it('renders Taiwan adoption copy and preserves coach names and aliases through creation and undo', async () => {
+    setLocale('zh-Hant')
+    const data = mockCustom()
+    // Ownership-free admin DTOs carry server-localized official names (018).
+    data.adopted[0].official.name = '競技臥推'
+    const userContent = ['卧推', ' 卧推 ', '李教练', '陈默', '猫牛式', '赵教练', '刘教练', '比赛卧推'].sort((a, b) => b.length - a.length)
+    const simplified = new Set(simplifiedOnly)
+    const expectTraditionalCopy = () => {
+      const copy = userContent.reduce((text, value) => text.replaceAll(value, ''), host.innerHTML)
+      expect([...new Set([...copy].filter(char => simplified.has(char)))]).toEqual([])
+    }
+    await act(async () => { root.render(<AdminWorkspace onLogout={vi.fn()}/>); await settle() })
+    await act(async () => { button(host, '動作庫').click(); await settle() })
+    await act(async () => { buttonContaining(host, '教練自建').click(); await settle() })
+    expect(host.textContent).toContain('課表數')
+    expect(host.textContent).toContain('王雪、李教练 等 3 位')
+    expectTraditionalCopy()
+    await act(async () => { button(host, '收錄').click() })
+    const dialog = host.querySelector<HTMLElement>('[role="dialog"]')!
+    expect(dialog.textContent).toContain('收錄「卧推」')
+    expect(dialog.textContent).toContain('3 位教練 · 2 種寫法 · 14 份課表')
+    expect(dialog.textContent).toContain('歸到「競技臥推」')
+    expectTraditionalCopy()
+    await act(async () => { button(dialog, '都不對，收錄為新的官方動作').click() })
+    expect(dialog.textContent).toContain('收錄為新的官方動作 · 已按用得最多的那條預填')
+    expect(dialog.querySelector<HTMLInputElement>('[aria-label="官方名稱"]')?.value).toBe(' 卧推 ')
+    expectTraditionalCopy()
+    vi.mocked(fetch).mockResolvedValueOnce(new Response('{}'))
+    await act(async () => { button(dialog, '收錄為新的官方動作').click(); await settle() })
+    expect(host.querySelector('[role="status"]')?.textContent).toBe('已把 3 位教練的「卧推」收錄為官方動作')
+    expect(host.textContent).toContain('叫「比赛卧推」')
+    expectTraditionalCopy()
+    vi.mocked(fetch).mockResolvedValueOnce(new Response('{}'))
+    await act(async () => { button(host, '復原').click(); await settle() })
+    expect(host.querySelector('[role="status"]')?.textContent).toBe('已復原，刘教练的「比赛卧推」恢復為自建動作')
+    expectTraditionalCopy()
+    const posts = vi.mocked(fetch).mock.calls.filter(([, init]) => init?.method === 'POST')
+    expect(posts).toHaveLength(2)
+    for (const [, init] of posts) expect(new Headers(init?.headers).get('X-MeetPR-Locale')).toBe('zh-Hant')
+  })
+
+  it('renders the redesigned admin pages and review flow in Taiwan Chinese while preserving applicant content', async () => {
+    setLocale('zh-Hant')
+    vi.spyOn(Date, 'now').mockReturnValue(new Date('2026-10-22T13:00:00Z').getTime())
+    const applicant = { id: 'app-1', name: '张教练', email: 'zhang@example.test', contact: '微信联系', student_count: 12, device: 'both', status: 'pending', created_at: '2026-10-22T12:58:00Z' }
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url.endsWith('/approve')) return new Response(JSON.stringify({ welcome_email_sent: false }))
+      if (url.endsWith('/resend')) return new Response(JSON.stringify({ welcome_email_sent: true }))
+      return new Response(JSON.stringify({ applications: [applicant] }))
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const user = { id: 'c1', displayName: 'Alex', role: 'coach', email: 'alex@example.test', phone: null, createdAt: '2026-10-22', relation: null }
+    api.users.mockResolvedValue({ users: [user] })
+    api.user.mockResolvedValue({ user, relations: [], plans: [{ name: 'Hidden plan' }] })
+    api.bindings.mockResolvedValue({ bindings: ['accepted', 'pending', 'rejected', 'expired', 'cancelled'].map((status, i) => ({ id: String(i), coachId: 'c1', coachName: 'Alex', studentId: `s${i}`, studentName: `Athlete ${i}`, status, submittedAt: '2026-10-21', respondedAt: null })) })
+    api.exerciseUsage.mockResolvedValue({ exercises: [{ exercise_id: 'e1', name: '競技深蹲', name_en: 'Competition Squat', exercise_type: 'main_lift', plan_count: 1, coach_count: 1 }] })
+    const simplified = new Set(simplifiedOnly)
+    const expectTraditionalCopy = () => {
+      // User-authored values must stay intact; scan only the surrounding UI copy.
+      const copy = host.innerHTML.replaceAll(applicant.name, '').replaceAll(applicant.contact, '')
+      expect([...new Set([...copy].filter(char => simplified.has(char)))]).toEqual([])
+    }
+    await act(async () => { root.render(<AdminWorkspace onLogout={vi.fn()}/>); await settle() })
+    expect(host.textContent).toContain('2 分鐘前提交')
+    expect(host.textContent).toContain('张教练 申請成為教練')
+    expectTraditionalCopy()
+    await act(async () => { buttonContaining(host.querySelector('nav')!, '教練申請').click(); await settle() })
+    expect(host.textContent).toContain('學員裝置')
+    expect(host.textContent).toContain('微信联系')
+    expectTraditionalCopy()
+    await act(async () => { button(host, '拒絕').click(); await settle() })
+    expect(host.querySelector('dialog')?.textContent).toContain('拒絕张教练的教練申請？')
+    expectTraditionalCopy()
+    await act(async () => { button(host, '取消').click(); button(host, '通過').click(); await settle() })
+    expect(host.querySelector('dialog')?.textContent).toContain('通過张教练的教練申請？')
+    expect(host.querySelector('dialog')?.textContent).toContain('用 zhang@example.test 建立教練帳號')
+    expectTraditionalCopy()
+    await act(async () => { button(host, '確認通過').click(); await settle() })
+    expect(host.textContent).toContain('沒有待處理的申請')
+    expectTraditionalCopy()
+    await act(async () => { buttonContaining(host, '已通過1').click(); await settle() })
+    expect(host.textContent).toContain('郵件未送達')
+    expectTraditionalCopy()
+    await act(async () => { button(host, '重發郵件').click(); await settle() })
+    expect(host.textContent).toContain('已重新發送郵件')
+    expect(host.textContent).not.toContain('郵件未送達')
+    for (const label of ['已拒絕0', '全部1']) {
+      await act(async () => { buttonContaining(host, label).click(); await settle() })
+      expectTraditionalCopy()
+    }
+    await act(async () => { button(host, '使用者').click(); await settle() })
+    expectTraditionalCopy()
+    await act(async () => { buttonContaining(host, 'Alex教練').click(); await settle() })
+    expect(host.textContent).toContain('繫結記錄生效 1 · 共 5 條')
+    expect(host.textContent).not.toContain('Hidden plan')
+    expect(host.textContent).toContain('2026-10-21')
+    expectTraditionalCopy()
+    await act(async () => { button(host, '動作庫').click(); await settle() })
+    expect(host.textContent).toContain('競技深蹲')
+    expectTraditionalCopy()
   })
 
   it('opens overview with four navigation items, shared pending counts and four key figures', async () => {

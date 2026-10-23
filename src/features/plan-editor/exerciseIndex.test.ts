@@ -22,6 +22,30 @@ function exercise(id: string, name: string): ExerciseResponse {
 }
 
 describe('ExerciseIndex', () => {
+  it('keeps exact catalog names ahead of colliding bar lookup spellings', () => {
+    const catalog = [exercise('gang', '安全杠深蹲'), exercise('gan', '安全杆深蹲')]
+    for (const ordered of [catalog, [...catalog].reverse()]) {
+      const index = new ExerciseIndex(ordered)
+      expect(index.resolveExact('安全杠深蹲')).toMatchObject({ id: 'gang' })
+      expect(index.resolveExact('安全杆深蹲')).toMatchObject({ id: 'gan' })
+    }
+  })
+
+  it('binds and searches Taiwan bar names without changing simplified catalog names', () => {
+    const index = new ExerciseIndex([
+      exercise('ez', 'EZ杆二头弯举'),
+      exercise('lever', '坐姿杠杆臂屈伸'),
+      exercise('safety', '扶手安全杆深蹲'),
+      exercise('low-bar', '低杠位深蹲'),
+    ])
+    expect(index.resolveExact('EZ槓二頭彎舉')).toMatchObject({ id: 'ez', name: 'EZ杆二头弯举' })
+    expect(index.search('EZ槓')).toEqual(expect.arrayContaining([expect.objectContaining({ id: 'ez' })]))
+    expect(index.search('ez槓')).toEqual(expect.arrayContaining([expect.objectContaining({ id: 'ez' })]))
+    expect(index.resolveExact('坐姿槓桿臂屈伸')).toMatchObject({ id: 'lever', name: '坐姿杠杆臂屈伸' })
+    expect(index.resolveExact('安全槓深蹲')).toMatchObject({ id: 'safety' })
+    expect(index.resolveExact('低槓深蹲')).toMatchObject({ id: 'low-bar' })
+  })
+
   it('renames dumbbell bench for display while keeping the old catalog id resolvable', () => {
     const index = new ExerciseIndex([exercise('db-bench', '哑铃卧推')])
 
@@ -190,4 +214,56 @@ describe('ExerciseIndex', () => {
 
     expect(dangling).toEqual([])
   })
+})
+
+it('binds and searches Traditional shorthand with Simplified canonical names', () => {
+  const index = new ExerciseIndex([
+    exercise('bench', '竞技卧推'), exercise('sumo', '相扑硬拉'), exercise('curl', '哑铃二头弯举'),
+  ])
+  for (const [hant, zh, id] of [['臥推', '卧推', 'bench'], ['相撲硬舉', '相扑硬拉', 'sumo'], ['二頭彎舉', '二头弯举', 'curl']]) {
+    expect(index.resolve(hant)).toEqual(index.resolve(zh))
+    expect(index.resolve(hant)?.id).toBe(id)
+  }
+  expect(index.search('臥推')).toEqual(index.search('卧推'))
+  expect(index.search('硬舉')).toEqual(index.search('硬拉'))
+})
+
+it('keeps canonical names when the API returns localized system names, but preserves custom names', () => {
+  const custom = { ...exercise('custom', '自訂臥推'), created_by_coach_id: 'coach' }
+  const index = new ExerciseIndex([exercise('bench', '競技臥推'), exercise('sumo', '相撲硬舉'), custom])
+  expect(index.resolve('臥推')).toMatchObject({ id: 'bench', name: '竞技卧推' })
+  expect(index.resolve('相撲硬舉')).toMatchObject({ id: 'sumo', name: '相扑硬拉' })
+  expect(index.resolve('自訂臥推')).toMatchObject({ id: 'custom', name: '自訂臥推' })
+})
+
+it('resolves and searches v2 Taiwan aliases, ignoring only trailing size specifications', () => {
+  const cases = [
+    ['滑輪下拉', '高位下拉'], ['窄臥推', '窄握卧推'], ['槓鈴窄臥推', '窄握卧推'],
+    ['不碰胸暫停臥推', 'spoto 卧推'], ['不碰胸暫停1秒臥推', 'spoto 卧推'],
+    ['不碰胸暫停1秒槓鈴臥推', 'spoto 卧推'], ['不碰胸臥推', 'spoto 卧推'],
+    ['保護槓重啟深蹲', '架上(PIN)深蹲'], ['保護槓重啟槓鈴深蹲', '架上(PIN)深蹲'],
+    ['彈力繩臥推', '弹力带卧推'], ['彈力繩槓鈴臥推', '弹力带卧推'],
+    ['彈力繩相撲硬舉', '弹力带辅助相扑硬拉'],
+    ['屈體划船', '杠铃划船'], ['槓鈴屈體划船', '杠铃划船'], ['槓鈴早安', '早安式'],
+    ['後腳抬高蹲', '后脚抬高分腿蹲'], ['啞鈴後腳抬高蹲', '后脚抬高分腿蹲'],
+  ]
+  const index = new ExerciseIndex([...new Set(cases.map(([, name]) => name))].map(name => exercise(name, name)))
+  for (const [alias, canonical] of cases) {
+    expect(index.resolveExact(alias)?.name, alias).toBe(canonical)
+    expect(index.search(alias)[0]?.name, alias).toBe(canonical)
+    expect(index.resolveExact(`${alias}（2cm)`)?.name, alias).toBe(canonical)
+  }
+  expect(index.resolveExact('架上(PIN)深蹲')?.name).toBe('架上(PIN)深蹲')
+  expect(index.resolveExact('Cable三頭伸展')).toBeNull()
+  expect(index.resolveExact('槓鈴上斜窄臥推')).toBeNull()
+})
+
+it('does not let a custom dimension-qualified name replace the base catalog binding', () => {
+  const index = new ExerciseIndex([
+    exercise('base', '高位下拉'),
+    { ...exercise('custom', '高位下拉（2cm)'), created_by_coach_id: 'synthetic-coach' },
+  ])
+  expect(index.resolveExact('高位下拉')?.id).toBe('base')
+  expect(index.resolveExact('高位下拉（2cm)')?.id).toBe('custom')
+  expect(index.resolveExact('滑輪下拉（2cm)')?.id).toBe('base')
 })

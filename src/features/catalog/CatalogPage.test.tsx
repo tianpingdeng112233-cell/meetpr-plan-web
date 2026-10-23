@@ -105,15 +105,16 @@ describe('CatalogPage', () => {
     expect(alert).toHaveBeenCalledWith('已收录为官方动作，不能删除')
   })
 
-  it('allows only the name to change on an adopted custom exercise and hides delete', async () => {
+  it.each(['zh', 'zh-Hant'] as const)('allows only the name to change on an adopted custom exercise and hides delete in %s', async (locale) => {
+    setLocale(locale)
     const adopted = { ...exercises[4], adopted: true, canonical_exercise_id: 'official', name_en: 'Official name', movement_pattern: ['squat', 'other'] as ExerciseResponse['movement_pattern'] }
     const update = vi.fn().mockResolvedValue({ ...adopted, name: '我的叫法' })
     act(() => root.render(<CatalogPage exerciseList={[adopted]} catalog={null} index={null} currentCoachId="coach-1" onCreateExercise={vi.fn()} onUpdateExercise={update} onDeleteExercise={vi.fn()} onUseExercise={vi.fn()}/>))
     act(() => host.querySelector<HTMLElement>('.catalog-row')!.click())
-    expect(host.querySelector('.catalog-drawer-footer')?.textContent).not.toContain('删除动作')
-    clickButton(host, '编辑动作')
+    expect(host.querySelector('.catalog-drawer-footer')?.textContent).not.toContain(locale === 'zh-Hant' ? '刪除動作' : '删除动作')
+    clickButton(host, locale === 'zh-Hant' ? '編輯動作' : '编辑动作')
     const dialog = host.querySelector<HTMLElement>('[role="dialog"]')!
-    expect(dialog.textContent).toContain('已收录为官方动作，属性以官方为准')
+    expect(dialog.textContent).toContain(locale === 'zh-Hant' ? '已收錄為官方動作，屬性以官方為準' : '已收录为官方动作，属性以官方为准')
     expect(dialog.textContent).toContain('Official name')
     expect(dialog.textContent).toContain('其他')
     const inputs = [...dialog.querySelectorAll('input')]
