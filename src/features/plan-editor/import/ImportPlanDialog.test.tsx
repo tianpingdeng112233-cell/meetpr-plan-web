@@ -100,7 +100,7 @@ it('defaults to the latest 12 consecutive weeks and sends cells without a filena
   await act(async () => boxes[13].click())
   expect(host.textContent).toContain('已选 11 周 / 最多 12 周')
 })
-const aiExercise = { name: 'Synthetic squat', sets: 1, reps: '5', mode: 'kg' as const, values: ['100'], note: '', family_guess: 'squat' as const, flags: ['inferred' as const] }
+const aiExercise = { name: 'Synthetic squat', sets: 1, reps: '5', intensity_kind: null, intensity_values: [], weight_values: ['100'], note: '', family_guess: 'squat' as const, flags: ['inferred' as const] }
 function threeWeeks() {
   vi.mocked(imports.outlineImport).mockResolvedValue({ import_id: 'run', sheet: 'Paste', truncated_rows: 0, header_region: { r1: 1, c1: 1, r2: 1, c2: 1 },
     weeks: Array.from({ length: 3 }, (_, index) => ({ index, label: `W${index + 1}`, start_date: '2026-10-19', training_days: 1, region: { r1: 1, c1: 1, r2: 1, c2: 3 } })) })
@@ -135,9 +135,10 @@ it('omits a failed middle week and reduces the imported week count', async () =>
   expect(host.textContent).toContain('2 周 · 1 个训练日 · 1 个动作')
 })
 
-it('creates a new draft, deduplicates custom lifts, saves the snapshot and never backfills during import', async () => {
+it('creates a new draft with both RPE and weight saved, deduplicates custom lifts and never backfills during import', async () => {
   threeWeeks()
-  vi.mocked(imports.recognizeImportWeeks).mockResolvedValue({ weeks: [0, 1, 2].map(index => ({ index, start_date: null, days: [{ weekday: 2, rest: false, exercises: [aiExercise, aiExercise] }] })) })
+  const dualTrack = { ...aiExercise, sets: 2, intensity_kind: 'rpe' as const, intensity_values: ['6', '6'], weight_values: ['227.5', '227.5'] }
+  vi.mocked(imports.recognizeImportWeeks).mockResolvedValue({ weeks: [0, 1, 2].map(index => ({ index, start_date: null, days: [{ weekday: 2, rest: false, exercises: [dualTrack, dualTrack] }] })) })
   const draft = { id: 'created', trainee_id: 'trainee', name: '导入计划', plan_weeks: 3, start_date: '2026-10-21', end_date: '2026-11-10', status: 'draft', days: [] }
   vi.mocked(plans.createPlan).mockResolvedValue(draft as never)
   vi.mocked(plans.getPlan).mockResolvedValue(draft as never)
@@ -151,6 +152,13 @@ it('creates a new draft, deduplicates custom lifts, saves the snapshot and never
   expect(catalog.createCustomExercise).toHaveBeenCalledTimes(1)
   expect(catalog.createCustomExercise).toHaveBeenCalledWith({ name: aiExercise.name, exerciseType: 'main_lift_variation', mainLiftFamily: 'squat' })
   expect(plans.batchDays).toHaveBeenCalled()
+  const savedExercises = vi.mocked(plans.batchDays).mock.calls.flatMap(([, body]) => body.upsert_days.flatMap(day => day.exercises))
+  expect(savedExercises).toHaveLength(6)
+  for (const saved of savedExercises) {
+    expect(saved.sets).toEqual([1, 2].map(set_number => expect.objectContaining({
+      set_number, target_reps: 5, load_mode: 'rpe', target_rpe: '6', target_weight: '227.5',
+    })))
+  }
   expect(plans.markImportedHistory).not.toHaveBeenCalled()
   expect(pending.putPendingRevision).toHaveBeenCalled()
   expect(onImported).toHaveBeenCalledOnce()

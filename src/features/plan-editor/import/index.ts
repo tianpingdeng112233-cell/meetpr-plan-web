@@ -1,6 +1,6 @@
 import type { ExerciseResponse } from '../../../api/types'
 import type { ExerciseIndex } from '../exerciseIndex'
-import type { DayCol, ExerciseRow, ImportDoubt, IntensityMode, SetBox, Week } from '../types'
+import type { DayCol, ExerciseRow, ImportDoubt, SetBox, Week } from '../types'
 import { currentPlanWeek, planDayDateLabel, planDayDowLabel, planWeekRangeLabel } from '../mapping'
 export { readWorkbook, workbookToSheets, pastedToSheets, regionCells } from './sheets'
 const DAYS = 7
@@ -10,8 +10,9 @@ export interface ParsedExercise {
   rawName: string
   setCount: number
   reps: string
-  mode: IntensityMode
-  values: string[]
+  intensityKind: 'rpe' | 'rir' | 'pct' | null
+  intensityValues: string[]
+  weightValues: string[]
   note: string
 }
 
@@ -30,14 +31,12 @@ export interface ParsedWeek {
 
 function rowFromParsed(exercise: ParsedExercise, resolved: ExerciseResponse | null, id: string): ExerciseRow {
   const custom = resolved?.created_by_coach_id != null
-  const values = exercise.values.length > 0
-    ? exercise.values
-    : Array.from({ length: exercise.setCount }, () => '')
-  const parsedBoxes: SetBox[] = values.map((value) => ({ val: value, empty: value.trim() === '' }))
-  const rpe = exercise.mode === 'rpe'
-  const boxes: SetBox[] = rpe
-    ? parsedBoxes.map(() => ({ val: '', empty: true }))
-    : parsedBoxes
+  const toBoxes = (values: string[]): SetBox[] => Array.from({ length: exercise.setCount }, (_, index) => {
+    const value = values[index] ?? ''
+    return { val: value, empty: value.trim() === '' }
+  })
+  const intensityBoxes = toBoxes(exercise.intensityValues)
+  const boxes = toBoxes(exercise.weightValues)
   return {
     id,
     serverRowId: null,
@@ -52,15 +51,15 @@ function rowFromParsed(exercise: ParsedExercise, resolved: ExerciseResponse | nu
     isMain: resolved ? resolved.is_competition_lift || resolved.main_lift_family != null : false,
     aux: boxes.length === 0,
     reps: exercise.reps,
-    mode: rpe ? 'kg' : exercise.mode,
-    ...(rpe ? {
-      intensity: { mode: 'rpe' as const, value: parsedBoxes[0]?.val ?? '', high: '' },
-      intensityMode: new Set(parsedBoxes.map((box) => box.empty ? '<empty>' : box.val)).size > 1
+    mode: 'kg',
+    ...(exercise.intensityKind && exercise.intensityValues.length > 0 ? {
+      intensity: { mode: exercise.intensityKind, value: intensityBoxes[0]?.val ?? '', high: '' },
+      intensityMode: new Set(intensityBoxes.map((box) => box.empty ? '<empty>' : box.val)).size > 1
         ? 'per_set' as const
         : 'uniform' as const,
-      intensityBoxes: parsedBoxes,
-      weightMode: 'uniform' as const,
-    } : { intensity: null, weightMode: 'per_set' as const }),
+      intensityBoxes,
+    } : { intensity: null }),
+    weightMode: new Set(boxes.map((box) => box.empty ? '<empty>' : box.val)).size > 1 ? 'per_set' : 'uniform',
     boxes,
     note: exercise.note,
     ...(exercise.importDoubts?.length ? { importDoubts: exercise.importDoubts } : {}),

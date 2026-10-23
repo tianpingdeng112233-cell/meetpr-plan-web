@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { ExerciseResponse } from '../../../api/types'
+import type { AIExercise } from '../../../api/planImports'
 import { ExerciseIndex } from '../exerciseIndex'
 import { buildWeeks } from './index'
 import { aiWeeksToParsed } from './aiWeeks'
@@ -25,12 +26,32 @@ function exercise(
   }
 }
 
-const ai = (name: string, overrides = {}) => ({ name, sets: 1, reps: '5', mode: 'kg' as const, values: ['100'], note: '', family_guess: null, flags: [], ...overrides })
+const ai = (name: string, overrides: Partial<AIExercise> = {}): AIExercise => ({ name, sets: 1, reps: '5', intensity_kind: null, intensity_values: [], weight_values: ['100'], note: '', family_guess: null, flags: [], ...overrides })
 const parsed = (exercises: ReturnType<typeof ai>[]) => aiWeeksToParsed([{ index: 0, start_date: '2025-12-29', days: [{ weekday: 0, rest: false, exercises }] }])
 describe('buildWeeks from AI adapter output', () => {
+  it.each([
+    { kind: 'rir' as const, values: ['2', '3'], weights: [], value: '2', intensityMode: 'per_set' },
+    { kind: 'pct' as const, values: ['75', '75'], weights: [], value: '75', intensityMode: 'uniform' },
+    { kind: null, values: [], weights: ['100', '100'], value: '', intensityMode: undefined },
+    { kind: null, values: [], weights: [], value: '', intensityMode: undefined },
+    { kind: 'rpe' as const, values: [], weights: ['100', '100'], value: '', intensityMode: undefined },
+    { kind: 'rpe' as const, values: [], weights: [], value: '', intensityMode: undefined },
+  ])('preserves the independent $kind prescription with weights $weights', ({ kind, values, weights, value, intensityMode }) => {
+    const { weeks } = buildWeeks(parsed([ai('Synthetic lift', {
+      sets: 2, intensity_kind: kind, intensity_values: values, weight_values: weights,
+    })]), new ExerciseIndex([]), '2099-01-01')
+    const row = weeks[0].days[0].rows[0]
+    expect(row.mode).toBe('kg')
+    expect(row.aux).toBe(false)
+    expect(row.intensity).toEqual(values.length ? { mode: kind, value, high: '' } : null)
+    expect(row.intensityMode).toBe(intensityMode)
+    expect(row.intensityBoxes).toEqual(values.length ? values.map(val => ({ val, empty: false })) : undefined)
+    expect(row.boxes).toEqual(weights.length ? [{ val: '100', empty: false }, { val: '100', empty: false }] : [{ val: '', empty: true }, { val: '', empty: true }])
+    expect(row.weightMode).toBe('uniform')
+  })
   it('keeps selected empty weeks and binds catalog hits and existing custom exercises', () => {
     const index = new ExerciseIndex([exercise('bench', '竞技卧推', { is_competition_lift: true }), exercise('custom', '自定义动作', { created_by_coach_id: 'coach-1' }), exercise('lowbar', '低杠位深蹲', { main_lift_family: 'squat' })])
-    const input = parsed([ai('卧推'), ai('自定义动作', { sets: 0, reps: '—', values: [], note: '4*12' }), ai('不存在'), ai('低杆深蹲')])
+    const input = parsed([ai('卧推'), ai('自定义动作', { sets: 0, reps: '—', weight_values: [], note: '4*12' }), ai('不存在'), ai('低杆深蹲')])
     input.push(...aiWeeksToParsed([{ index: 1, start_date: '2026-01-05', days: [] }], new Set(), new Set([1])))
     const { weeks } = buildWeeks(input, index, '2099-01-01')
     expect(weeks).toHaveLength(2)
@@ -43,7 +64,7 @@ describe('buildWeeks from AI adapter output', () => {
     expect(weeks[1].importDoubts).toEqual(['empty_week'])
   })
   it('keeps set-only rows without inventing intensity values', () => {
-    const { weeks } = buildWeeks(parsed([ai('Synthetic lift', { sets: 4, reps: '10-12', values: [] })]), new ExerciseIndex([]), '2099-01-01')
+    const { weeks } = buildWeeks(parsed([ai('Synthetic lift', { sets: 4, reps: '10-12', weight_values: [] })]), new ExerciseIndex([]), '2099-01-01')
     expect(weeks[0].days[0].rows[0]).toMatchObject({ reps: '10-12', aux: false, boxes: Array(4).fill({ val: '', empty: true }) })
   })
   it('preserves composite names instead of splitting AI output into extra exercises', () => {

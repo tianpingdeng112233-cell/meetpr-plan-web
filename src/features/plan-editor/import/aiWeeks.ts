@@ -13,8 +13,9 @@ export function aiWeeksToParsed(weeks: AIWeek[], newNames = new Set<string>(), e
       dateSerials: Array.from({ length: 7 }, (_, day) => serial == null ? null : serial + day),
       days: week.days.map(day => ({ dayOfWeek: day.weekday, rest: day.rest, exercises: day.exercises.map(exercise => ({
         rawName: exercise.name.trim(), setCount: exercise.sets, reps: exercise.reps,
-        mode: exercise.mode === 'none' ? 'kg' : exercise.mode,
-        values: exercise.values, note: exercise.note,
+        intensityKind: exercise.intensity_kind,
+        intensityValues: exercise.intensity_values,
+        weightValues: exercise.weight_values, note: exercise.note,
         importDoubts: [
           ...(newNames.has(exercise.name.trim()) ? ['new_exercise' as const] : []),
           ...exercise.flags, ...weekDoubts,

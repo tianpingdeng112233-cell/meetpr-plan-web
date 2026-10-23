@@ -1087,3 +1087,10 @@ npx vitest run src/features/plan-editor/block-grid-ui.test.tsx
 - 提交前验证：`npm test` exit 0，105 files / 1048 tests passed；`npx tsc --noEmit` exit 0，0 诊断；`npm run build` exit 0（仅既有 >500 kB chunk 提示）。日志 `/private/tmp/015-fix-{test,tsc,build}.log`；`git diff --check` 通过。
 - review-loop 独立只读审查一轮：Standards 0 findings；Spec 0 findings。开发验证不代替 Opus 收货。
 - 浏览器复验未完成：Vite 监听 `127.0.0.1:5195` 被沙箱以 `listen EPERM` 拒绝，证据 `/private/tmp/015-fix-browser.log`；中英文提示与按钮/API 行为已有组件测试覆盖。
+
+## 2026-10-23 · 015 FIX：强度与重量分两条线
+
+- 基线 `00e12d1`。AI 契约改用 `intensity_kind` / `intensity_values` / `weight_values`；adapter 与 buildWeeks 映射既有 spec-034 行字段，逐组强度、重量独立保留，空强度数组不生成结构化强度。摘要与存疑不变；未改 reconcile/mapping、未启停 dev server，所有夹具为合成数据。
+- 先红后绿：新契约 adapter/buildWeeks 14 failed，创建草稿保存断言 1 failed → 四文件 42 passed；覆盖 RPE 6 + 227.5 kg、RIR、pct、纯重量、两线皆空，并通过真实 reconcile 检查 batchDays 中每组的 `target_rpe` 和 `target_weight`。审查补充空强度数组两例：2 failed / 11 passed → 13 passed。日志 `/private/tmp/015-tracks-{contract-red,save-red,green,empty-red,empty-green}.log`。
+- review-loop 独立只读审查：Standards 0 findings；Spec 初审 1 项（有 kind 但强度数组为空），定向修复及复核后 0 未决项。未运行依赖缺失 tracker 的完整 code-review 流程。
+- 最终 `npm test` exit 0：105 files / 1055 tests passed；`npx tsc --noEmit` exit 0、0 诊断；`npm run build` exit 0，仅既有 >500 kB chunk 提示。日志 `/private/tmp/015-tracks-{test,tsc,build}.log`；`git diff --check` 通过。后端并行契约改动与真实教练表联调待 David/Opus 收货，本次不声明端到端验收完成。

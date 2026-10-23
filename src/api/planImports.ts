@@ -7,7 +7,11 @@ export interface OutlineWeek { index: number; label: string; start_date: string 
 export interface ImportOutline { import_id: string; sheet: string; truncated_rows: number; header_region: SheetRegion | null; weeks: OutlineWeek[] }
 export type ImportFailureReason = 'MODEL_BUSY' | 'OUTPUT_TOO_LONG' | 'BAD_OUTPUT' | 'REGION_SUSPECT'
 export interface AIExercise {
-  name: string; sets: number; reps: string; mode: 'kg' | 'rpe' | 'none'; values: string[]; note: string
+  name: string; sets: number; reps: string
+  intensity_kind: 'rpe' | 'rir' | 'pct' | null
+  intensity_values: string[]
+  weight_values: string[]
+  note: string
   family_guess: LiftFamily | null
   flags: ('note_fallback' | 'inferred')[]
 }
