@@ -50,7 +50,10 @@ export function ImportPlanDialog(p: ImportPlanDialogProps) {
       setFirstDate(defaultFirstDate(0))
       setOutline(result); setSelected(result.weeks.slice(-12).map(w => w.index)); setRemaining(Math.max(0, remaining - 1)); p.onRemainingChange?.(Math.max(0, remaining - 1))
       setName(filename.replace(/\.[^.]+$/, '').trim() || S.sheetImport.defaultName); setStage('weeks')
-    } catch (e) { setError(importError(e)); if (e instanceof ApiException && e.code === 'IMPORT_DAILY_LIMIT') { setRemaining(0); p.onRemainingChange?.(0) } }
+    } catch (e) {
+      setError(e instanceof ApiException && e.status === 400 && e.code === 'VALIDATION_ERROR' ? S.sheetImport.invalidFormat : importError(e))
+      if (e instanceof ApiException && e.code === 'IMPORT_DAILY_LIMIT') { setRemaining(0); p.onRemainingChange?.(0) }
+    }
     finally { setBusy('') }
   }
   const toggleWeek = (index: number) => {
@@ -143,7 +146,9 @@ export function ImportPlanDialog(p: ImportPlanDialogProps) {
     setBusy(S.sheetImport.readingFile); setFilename(''); setSheets([]); setError('')
     try {
       if (file.size > 10 * 1024 * 1024) throw new Error('WORKBOOK_TOO_LARGE')
-      setSheets(readWorkbook(await file.arrayBuffer())); setFilename(file.name); setPaste('')
+      const contentSheets = readWorkbook(await file.arrayBuffer())
+      setSheets(contentSheets); setFilename(file.name); setPaste('')
+      if (!contentSheets.length) setError(S.sheetImport.noContent)
     } catch (e) {
       setError(e instanceof Error && e.message in S.sheetImport.errors ? importError(e) : file.name.toLowerCase().endsWith('.et') ? S.sheetImport.etHint : S.sheetImport.invalidFile)
     } finally { setBusy('') }

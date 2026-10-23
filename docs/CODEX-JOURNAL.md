@@ -1079,3 +1079,11 @@ npx vitest run src/features/plan-editor/block-grid-ui.test.tsx
 - `npx tsc --noEmit`：exit 0、0 诊断（`/private/tmp/015-r1-tsc.log`）；`npm run build`：exit 0、244 modules（`/private/tmp/015-r1-build-final.log`），仅既有 >500 kB chunk 提示。`git diff --check` 通过。
 - 本轮补丁自审：Standards / Spec 均无新增问题；Impeccable detect 返回 `[]`。本轮补丁 `/private/tmp/015-r1.patch`，接手前副本 `/private/tmp/015-r1-before/`。
 - 浏览器自测阻塞：Vite 在 127.0.0.1:5195 启动被沙箱 `listen EPERM` 拒绝；未声明 1440×900 像素验收通过，留 Opus 复验三项。
+
+## 2026-10-23 · 015 FIX：跳过工作簿空页
+
+- 基线 `1160a6e`，按 David FIX CARD 修复：`workbookToSheets` 过滤零非空单元格页；全空文件显示「表格里没有内容」并禁用识别；仅 outline 的 400 `VALIDATION_ERROR` 显示另存为 .xlsx / 直接粘贴提示，均含英文。源码范围仅 import 与 strings-import；测试全部现场用 SheetJS 生成，无真实表格入库。
+- 先红后绿：空页读表/请求 3 failed → 24 passed；全空文件中英文 2 failed → 19 passed；格式错误中英文 2 failed → 最终两文件 28 passed。日志 `/private/tmp/015-empty-sheets-{red,green}.log`、`015-empty-file-{red,green}.log`、`015-validation-red.log`、`015-fix-green.log`；各有效红测 exit 1，绿测 exit 0。
+- 提交前验证：`npm test` exit 0，105 files / 1048 tests passed；`npx tsc --noEmit` exit 0，0 诊断；`npm run build` exit 0（仅既有 >500 kB chunk 提示）。日志 `/private/tmp/015-fix-{test,tsc,build}.log`；`git diff --check` 通过。
+- review-loop 独立只读审查一轮：Standards 0 findings；Spec 0 findings。开发验证不代替 Opus 收货。
+- 浏览器复验未完成：Vite 监听 `127.0.0.1:5195` 被沙箱以 `listen EPERM` 拒绝，证据 `/private/tmp/015-fix-browser.log`；中英文提示与按钮/API 行为已有组件测试覆盖。

@@ -8,6 +8,8 @@ import * as catalog from '../../../api/exercises'
 import * as pending from '../../../api/pendingRevision'
 import * as imports from '../../../api/planImports'
 import { ApiException } from '../../../api/client'
+import * as XLSX from 'xlsx'
+import { S, setLocale } from '../../../i18n/strings'
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 vi.mock('../../../api/planImports')
@@ -17,7 +19,7 @@ vi.mock('../../../api/pendingRevision')
 const onImported = vi.fn()
 let host: HTMLDivElement, root: Root
 beforeEach(() => { host = document.createElement('div'); document.body.append(host); root = createRoot(host); vi.clearAllMocks() })
-afterEach(() => { act(() => root.unmount()); host.remove() })
+afterEach(() => { act(() => root.unmount()); host.remove(); setLocale('zh') })
 async function render(index = new ExerciseIndex([])) {
   await act(async () => root.render(<NewPlanDialog open studentName="Synthetic trainee" traineeId="trainee" exerciseIndex={index} onImported={onImported} onClose={vi.fn()} onCreate={vi.fn()} />))
 }
@@ -35,6 +37,43 @@ it('hides import when disabled and disables recognition when the quota is zero',
 })
 
 async function click(text: string) { await act(async () => button(text).click()) }
+async function uploadWorkbook(hasContent: boolean) {
+  const workbook = XLSX.utils.book_new()
+  if (hasContent) XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([['Squat', 120]]), 'Sheet2')
+  for (const name of ['Sheet3', 'Sheet4', 'Sheet5', 'Sheet6']) {
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([]), name)
+  }
+  const buffer = XLSX.write(workbook, { type: 'array', bookType: 'xlsx' })
+  await act(async () => {
+    const input = host.querySelector<HTMLInputElement>('input[type=file]')!
+    Object.defineProperty(input, 'files', { configurable: true, value: [{ name: 'Synthetic.xlsx', size: buffer.byteLength, arrayBuffer: async () => buffer }] })
+    input.dispatchEvent(new Event('change', { bubbles: true }))
+  })
+}
+it.each([
+  ['zh', '表格里没有内容'],
+  ['en', 'This table is empty.'],
+] as const)('shows an all-empty file message in %s without calling outline', async (locale, message) => {
+  setLocale(locale)
+  vi.mocked(imports.getImportStatus).mockResolvedValue({ enabled: true, daily_limit: 3, remaining_today: 3 })
+  await render(); await click(S.sheetImport.title); await uploadWorkbook(true)
+  await uploadWorkbook(false)
+  expect(host.querySelector('[role=alert]')?.textContent).toBe(message)
+  expect(button(S.sheetImport.start).disabled).toBe(true)
+  await click(S.sheetImport.start)
+  expect(imports.outlineImport).not.toHaveBeenCalled()
+})
+it('sends only content sheets in the outline request for an uploaded workbook', async () => {
+  vi.mocked(imports.getImportStatus).mockResolvedValue({ enabled: true, daily_limit: 3, remaining_today: 3 })
+  threeWeeks()
+  await render(); await click('从表格导入'); await uploadWorkbook(true)
+  expect(button('开始识别').disabled).toBe(false)
+  await click('开始识别')
+  expect(imports.outlineImport).toHaveBeenCalledTimes(1)
+  expect(imports.outlineImport).toHaveBeenCalledWith({
+    trainee_id: 'trainee', source: 'file', sheets: [{ name: 'Sheet2', cells: [[1, 1, 'Squat'], [1, 2, '120']] }],
+  })
+})
 async function source(index = new ExerciseIndex([])) {
   vi.mocked(imports.getImportStatus).mockResolvedValue({ enabled: true, daily_limit: 3, remaining_today: 3 })
   await render(index); await click('从表格导入')
@@ -177,6 +216,18 @@ it.each([
   vi.mocked(imports.outlineImport).mockRejectedValueOnce(new ApiException(Number(status), String(code), { reason: 'MODEL_BUSY' }))
   await source()
   expect(host.querySelector('[role=alert]')?.textContent).toContain(message)
+  expect(plans.createPlan).not.toHaveBeenCalled()
+})
+
+it.each([
+  ['zh', '这张表的格式读不了，试试另存为 .xlsx 或直接粘贴'],
+  ['en', 'Unable to read this table format. Try saving it as .xlsx or pasting it directly.'],
+] as const)('explains outline validation errors in %s', async (locale, message) => {
+  setLocale(locale)
+  vi.mocked(imports.getImportStatus).mockResolvedValue({ enabled: true, daily_limit: 3, remaining_today: 3 })
+  vi.mocked(imports.outlineImport).mockRejectedValueOnce(new ApiException(400, 'VALIDATION_ERROR'))
+  await render(); await click(S.sheetImport.title); await uploadWorkbook(true); await click(S.sheetImport.start)
+  expect(host.querySelector('[role=alert]')?.textContent).toBe(message)
   expect(plans.createPlan).not.toHaveBeenCalled()
 })
 

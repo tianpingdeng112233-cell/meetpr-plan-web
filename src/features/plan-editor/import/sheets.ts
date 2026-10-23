@@ -27,7 +27,7 @@ export function workbookToSheets(workbook: XLSX.WorkBook): ImportSheet[] {
       cells.push([r + 1, c + 1, text])
     }
     return { name, cells: cells.sort((a, b) => a[0] - b[0] || a[1] - b[1]) }
-  })
+  }).filter(sheet => sheet.cells.length > 0)
 }
 
 /** Keep the byte-array read path: raw ArrayBuffers mis-parse WPS workbooks. */

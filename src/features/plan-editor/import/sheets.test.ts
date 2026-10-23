@@ -3,6 +3,17 @@ import * as XLSX from 'xlsx'
 import { workbookToSheets, readWorkbook, pastedToSheets, regionCells } from './sheets'
 
 describe('sheet import sources', () => {
+  it.each([true, false])('drops empty sheets from a written workbook (has content: %s)', hasContent => {
+    const workbook = XLSX.utils.book_new()
+    if (hasContent) XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([['Squat', 120]]), 'Sheet2')
+    for (const name of ['Sheet3', 'Sheet4', 'Sheet5', 'Sheet6']) {
+      XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([]), name)
+    }
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([['  ', '']]), 'Whitespace')
+    expect(readWorkbook(XLSX.write(workbook, { type: 'array', bookType: 'xlsx' }))).toEqual(
+      hasContent ? [{ name: 'Sheet2', cells: [[1, 1, 'Squat'], [1, 2, '120']] }] : [],
+    )
+  })
   it('reads synthetic workbooks sparsely, trims cells and sends formatted dates as ISO', () => {
     const workbook = XLSX.utils.book_new()
     const sheet = XLSX.utils.aoa_to_sheet([['  Squat  ', '  ', 46020, 120]])
