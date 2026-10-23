@@ -106,7 +106,7 @@ function threeWeeks() {
   vi.mocked(imports.outlineImport).mockResolvedValue({ import_id: 'run', sheet: 'Paste', truncated_rows: 0, header_region: { r1: 1, c1: 1, r2: 1, c2: 1 },
     weeks: Array.from({ length: 3 }, (_, index) => ({ index, label: `W${index + 1}`, start_date: '2026-10-19', training_days: 1, region: { r1: 1, c1: 1, r2: 1, c2: 3 } })) })
   vi.mocked(imports.recognizeImportWeeks).mockResolvedValue({ weeks: [
-    { index: 0, start_date: '2026-10-19', days: [{ weekday: 0, rest: false, exercises: [aiExercise] }] },
+    { index: 0, start_date: '2026-10-19', days: [{ weekday: 0, day_index: 1, rest: false, exercises: [aiExercise] }] },
     { index: 1, error: 'PARSE_FAILED', reason: 'REGION_SUSPECT' },
     { index: 2, error: 'PARSE_FAILED', reason: 'MODEL_BUSY' },
   ] })
@@ -122,7 +122,7 @@ it('shows failed source cells and sends only the edited failed week on retry', a
   expect(button('创建草稿计划').disabled).toBe(true)
   const cell = host.querySelector<HTMLInputElement>('[aria-label="W2 C1"]')!
   await act(async () => inputValue(cell, '125'))
-  vi.mocked(imports.recognizeImportWeeks).mockResolvedValueOnce({ weeks: [{ index: 1, start_date: null, days: [{ weekday: 2, rest: false, exercises: [aiExercise] }] }] })
+  vi.mocked(imports.recognizeImportWeeks).mockResolvedValueOnce({ weeks: [{ index: 1, start_date: null, days: [{ weekday: 2, day_index: 1, rest: false, exercises: [aiExercise] }] }] })
   await click('改好了，重新识别')
   expect(imports.recognizeImportWeeks).toHaveBeenLastCalledWith('run', { weeks: [{ index: 1, cells: [[1, 1, 'Squat'], [1, 2, '4*8'], [1, 3, '125']] }], header_cells: [[1, 1, 'Squat']] })
   await click('这周先空着，进编辑器填')
@@ -139,7 +139,7 @@ it('omits a failed middle week and reduces the imported week count', async () =>
 it('creates a new draft with both RPE and weight saved, deduplicates custom lifts and never backfills during import', async () => {
   threeWeeks()
   const dualTrack = { ...aiExercise, sets: 2, intensity_kind: 'rpe' as const, intensity_values: ['6', '6'], weight_values: ['227.5', '227.5'] }
-  vi.mocked(imports.recognizeImportWeeks).mockResolvedValue({ weeks: [0, 1, 2].map(index => ({ index, start_date: null, days: [{ weekday: 2, rest: false, exercises: [dualTrack, dualTrack] }] })) })
+  vi.mocked(imports.recognizeImportWeeks).mockResolvedValue({ weeks: [0, 1, 2].map(index => ({ index, start_date: null, days: [{ weekday: 2, day_index: 1, rest: false, exercises: [dualTrack, dualTrack] }] })) })
   const draft = { id: 'created', trainee_id: 'trainee', name: '导入计划', plan_weeks: 3, start_date: '2026-10-21', end_date: '2026-11-10', status: 'draft', days: [] }
   vi.mocked(plans.createPlan).mockResolvedValue(draft as never)
   vi.mocked(plans.getPlan).mockResolvedValue(draft as never)
@@ -251,7 +251,7 @@ it('excludes deselected empty weeks from the summary', async () => {
 
 it('reuses an existing coach custom exercise and never creates a duplicate', async () => {
   threeWeeks()
-  vi.mocked(imports.recognizeImportWeeks).mockResolvedValue({ weeks: [0,1,2].map(index => ({ index, start_date: '2026-10-19', days: [{ weekday: 0, rest: false, exercises: [aiExercise] }] })) })
+  vi.mocked(imports.recognizeImportWeeks).mockResolvedValue({ weeks: [0,1,2].map(index => ({ index, start_date: '2026-10-19', days: [{ weekday: 0, day_index: 1, rest: false, exercises: [aiExercise] }] })) })
   const existing = { id: 'existing-custom', name: aiExercise.name, created_by_coach_id: 'coach', main_lift_family: 'squat' } as never
   const draft = { id: 'reuse', trainee_id: 'trainee', name: 'Synthetic', plan_weeks: 3, start_date: '2026-10-19', end_date: '2026-11-08', status: 'draft', days: [] } as never
   vi.mocked(plans.createPlan).mockResolvedValue(draft); vi.mocked(plans.getPlan).mockResolvedValue(draft); vi.mocked(plans.batchDays).mockResolvedValue(draft)
@@ -277,7 +277,7 @@ it.each([
   setLocale(locale)
   threeWeeks()
   vi.mocked(imports.recognizeImportWeeks).mockResolvedValue({ weeks: [
-    { index: 0, start_date: null, days: [{ weekday: 0, rest: false, exercises: [{ ...aiExercise, flags: ['inferred', 'note_fallback'], note: 'tempo' }] }] },
+    { index: 0, start_date: null, days: [{ weekday: 0, day_index: 1, rest: false, exercises: [{ ...aiExercise, flags: ['inferred', 'note_fallback'], note: 'tempo' }] }] },
     { index: 1, error: 'PARSE_FAILED', reason: 'BAD_OUTPUT' },
     { index: 2, error: 'PARSE_FAILED', reason: 'BAD_OUTPUT' },
   ] })
@@ -303,4 +303,81 @@ it.each([
   expect(weeks[2].importDoubts).toEqual(['empty_week'])
   const saved = vi.mocked(pending.putPendingRevision).mock.calls.at(-1)![1].content.weeks
   expect(saved[0].days.flatMap(day => day.rows)[0].importDoubts ?? []).toEqual(undo ? ['inferred'] : [])
+})
+
+function ordinalWeeks(count = 4, weekdayKnown = false, dated = false) {
+  vi.mocked(imports.outlineImport).mockResolvedValue({ import_id: 'ordinal', sheet: 'Paste', truncated_rows: 0, header_region: null,
+    weeks: [{ index: 0, label: 'W1', start_date: dated ? '2026-10-19' : null, training_days: count, region: { r1: 1, c1: 1, r2: 1, c2: 3 } }] })
+  vi.mocked(imports.recognizeImportWeeks).mockResolvedValue({ weeks: [{ index: 0, start_date: dated ? '2026-10-19' : null,
+    days: Array.from({ length: count }, (_, index) => ({ weekday: weekdayKnown ? index : null, day_index: index + 1, rest: false, exercises: [{ ...aiExercise, note: `Day${index + 1}` }] })).reverse(),
+  }] })
+}
+function selectedWeekdays() {
+  return [...host.querySelectorAll<HTMLButtonElement>('[data-training-weekday][aria-pressed=true]')].map(button => Number(button.dataset.trainingWeekday))
+}
+it.each([
+  [2, [0, 3]], [3, [0, 2, 4]], [4, [0, 2, 4, 5]], [5, [0, 1, 3, 4, 5]], [6, [0, 1, 2, 3, 4, 5]],
+])('offers the default spread for %i ordinal training days and requires an exact count', async (count, expected) => {
+  ordinalWeeks(count as number); await source(); await click(S.sheetImport.recognize(1))
+  expect(host.textContent).toContain(`表里只写了 Day1–Day${count}，没写星期几`)
+  expect(host.textContent).toContain('① 每周哪几天练')
+  expect(host.textContent).toContain('② 哪天是 D1')
+  expect(selectedWeekdays()).toEqual(expected)
+  expect(button(S.sheetImport.create).disabled).toBe(false)
+  await act(async () => host.querySelector<HTMLButtonElement>('[data-training-weekday="0"]')!.click())
+  expect(button(S.sheetImport.create).disabled).toBe(true)
+  await click(S.sheetImport.create)
+  expect(plans.createPlan).not.toHaveBeenCalled()
+  await act(async () => host.querySelector<HTMLButtonElement>('[data-training-weekday="0"]')!.click())
+  expect(button(S.sheetImport.create).disabled).toBe(false)
+  await act(async () => host.querySelector<HTMLButtonElement>('[data-training-weekday="6"]')!.click())
+  expect(button(S.sheetImport.create).disabled).toBe(true)
+})
+it.each([false, true])('does not offer a weekday picker for known weekdays (dated=%s)', async dated => {
+  ordinalWeeks(4, true, dated); await source(); await click(S.sheetImport.recognize(1))
+  expect(host.querySelector('[data-training-weekday]')).toBeNull()
+  expect(host.querySelector('input[type=date]') !== null).toBe(!dated)
+  expect(button(S.sheetImport.create).disabled).toBe(false)
+})
+
+it.each([
+  ['zh', false, '2026-10-19', [0, 2, 4, 5], ['10/19', '10/21', '10/23', '10/24']],
+  ['en', true, '2026-10-22', [3, 6, 0, 1], ['Oct 22', 'Oct 25', 'Oct 26', 'Oct 27']],
+] as const)('saves ordinal days on the chosen weekdays and dates in %s (custom=%s)', async (locale, custom, date, weekdays, dates) => {
+  setLocale(locale)
+  ordinalWeeks()
+  const draft = { id: 'ordinal-created', trainee_id: 'trainee', name: 'Synthetic', plan_weeks: 1, start_date: date, status: 'draft', days: [] } as never
+  vi.mocked(plans.createPlan).mockResolvedValue(draft); vi.mocked(plans.getPlan).mockResolvedValue(draft); vi.mocked(plans.batchDays).mockResolvedValue(draft)
+  vi.mocked(catalog.createCustomExercise).mockResolvedValue({ id: 'custom', name: aiExercise.name, created_by_coach_id: 'coach' } as never)
+  await source(); await click(S.sheetImport.recognize(1))
+  if (locale === 'en') expect(host.textContent).toContain('The table only says Day1–Day4, without weekdays.')
+  if (custom) {
+    for (const day of [2, 4, 5, 1, 3, 6]) await act(async () => host.querySelector<HTMLButtonElement>(`[data-training-weekday="${day}"]`)!.click())
+    await act(async () => host.querySelector<HTMLButtonElement>('[data-d1="3"]')!.click())
+  }
+  await act(async () => inputValue(host.querySelector<HTMLInputElement>('input[type=date]')!, date))
+  await click(S.sheetImport.create)
+  expect(plans.createPlan).toHaveBeenCalledWith(expect.objectContaining({ start_date: date, anchor_weekday: weekdays[0] + 1, plan_weeks: 1 }))
+  expect(onImported).toHaveBeenCalledOnce()
+  const result = onImported.mock.calls[0][0]
+  expect(result.weekdays).toEqual(weekdays)
+  const training = (result.weeks as Week[])[0].days.filter(day => day.rows.length)
+  expect(training.map(day => day.rows[0].note)).toEqual(['Day1', 'Day2', 'Day3', 'Day4'])
+  expect(training.map(day => day.dateLabel)).toEqual(dates)
+  const saved = vi.mocked(plans.batchDays).mock.calls.flatMap(([, body]) => body.upsert_days)
+  expect(saved.map(day => [day.week_number, day.day_of_week, day.exercises[0].notes])).toEqual(custom
+    ? [[1, 1, 'Day1'], [1, 4, 'Day2'], [1, 5, 'Day3'], [1, 6, 'Day4']]
+    : [[1, 1, 'Day1'], [1, 3, 'Day2'], [1, 5, 'Day3'], [1, 6, 'Day4']])
+})
+it('requires the first training date to match D1 and resets its date when D1 changes', async () => {
+  ordinalWeeks(); await source(); await click(S.sheetImport.recognize(1))
+  const date = host.querySelector<HTMLInputElement>('input[type=date]')!
+  await act(async () => inputValue(date, '2026-10-20'))
+  expect(button(S.sheetImport.create).disabled).toBe(true)
+  expect(host.querySelector('[role=alert]')?.textContent).toBe(S.block.invalidDate)
+  await click(S.sheetImport.create)
+  expect(plans.createPlan).not.toHaveBeenCalled()
+  await act(async () => host.querySelector<HTMLButtonElement>('[data-d1="4"]')!.click())
+  expect(new Date(`${date.value}T12:00:00`).getDay()).toBe(5)
+  expect(button(S.sheetImport.create).disabled).toBe(false)
 })

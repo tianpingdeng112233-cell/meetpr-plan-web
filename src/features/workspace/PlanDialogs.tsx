@@ -1,3 +1,4 @@
+import { WeekdayPicker } from '../plan-editor/import/WeekdayPicker'
 import { getImportStatus, type ImportStatus } from '../../api/planImports'
 import { ImportPlanDialog, type ImportedPlan } from '../plan-editor/import/ImportPlanDialog'
 import type { ExerciseIndex } from '../plan-editor/exerciseIndex'
@@ -125,18 +126,7 @@ export function NewPlanDialog({ open, studentName, onClose, onCreate, settings, 
           {settings && (weeks < 3 || weeks > 12) && <small>{S.common.countWeeks(weeks)}</small>}
         </fieldset>
       </div>
-      <fieldset disabled={creating}><legend>{S.block.trainingDays}</legend><div className="block-training-days">
-        {S.common.weekdaysMondayFirst.map((label, day) => <button key={day} type="button" data-training-weekday={day}
-          aria-pressed={days.includes(day)} className={day === first && days.includes(day) ? 'first' : ''}
-          onClick={() => {
-            const next = days.includes(day) ? days.filter(value => value !== day) : [...days, day]
-            setDays(next)
-            if (next.length && !next.includes(first)) chooseFirst(next[0])
-          }}>{label}<small>{days.includes(day) ? `D${ordered.indexOf(day) + 1}` : '—'}</small></button>)}
-      </div></fieldset>
-      <fieldset disabled={creating}><legend>{S.block.firstDay}</legend><div className="block-first-days">
-        {[...days].sort((a,b) => a-b).map(day => <button key={day} type="button" data-d1={day} aria-pressed={day === first} onClick={() => chooseFirst(day)}>{S.common.weekdaysMondayFirst[day]}</button>)}
-      </div></fieldset>
+      <WeekdayPicker days={days} first={first} disabled={creating} onDaysChange={setDays} onFirstChange={chooseFirst} />
       <label className="block-first-date"><span style={calendarFieldLabel}>{S.block.firstDate}</span>
         <input type="date" aria-label={S.block.firstDate} value={startDate} title={calendarLocked ? calendarLockedHint : undefined} disabled={calendarLocked || creating}
           onChange={event => { setStartDate(event.target.value); setError('') }} style={calendarInputStyle} />

@@ -27,7 +27,7 @@ function exercise(
 }
 
 const ai = (name: string, overrides: Partial<AIExercise> = {}): AIExercise => ({ name, sets: 1, reps: '5', intensity_kind: null, intensity_values: [], weight_values: ['100'], note: '', family_guess: null, flags: [], ...overrides })
-const parsed = (exercises: ReturnType<typeof ai>[]) => aiWeeksToParsed([{ index: 0, start_date: '2025-12-29', days: [{ weekday: 0, rest: false, exercises }] }])
+const parsed = (exercises: ReturnType<typeof ai>[]) => aiWeeksToParsed([{ index: 0, start_date: '2025-12-29', days: [{ weekday: 0, day_index: 1, rest: false, exercises }] }])
 describe('buildWeeks from AI adapter output', () => {
   it.each([
     { kind: 'rir' as const, values: ['2', '3'], weights: [], value: '2', intensityMode: 'per_set' },

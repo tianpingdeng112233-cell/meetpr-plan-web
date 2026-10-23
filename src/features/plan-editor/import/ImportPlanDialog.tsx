@@ -1,4 +1,4 @@
-import { useRef, useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { outlineImport, recognizeImportWeeks, type AIWeekResult, type AIWeek, type ImportOutline, type ImportStatus } from '../../../api/planImports'
 import type { PlanWithChildren, PlanResponse, ExerciseResponse } from '../../../api/types'
 import type { ExerciseIndex } from '../exerciseIndex'
@@ -10,13 +10,14 @@ import { createCustomExercise } from '../../../api/exercises'
 import { createDraftMirror, saveDraftMirror } from '../draftMirror'
 import { putPendingRevision } from '../../../api/pendingRevision'
 import { reconcileImportedPlan } from '../reconcile'
-import { aiWeeksToParsed } from './aiWeeks'
+import { aiWeeksToParsed, defaultImportWeekdays, placeAIWeekdays } from './aiWeeks'
 import { buildWeeks } from './index'
 import { mmdd, planEndISO, weekdayIndex } from '../components/PlanCalendarControls'
 import { shiftISODate } from '../mapping'
 import { ApiException } from '../../../api/client'
 import { FailedWeekCells } from './FailedWeekCells'
-import { defaultFirstDate } from '../../workspace/blockPlanSettings'
+import { defaultFirstDate, orderedWeekdays } from '../../workspace/blockPlanSettings'
+import { WeekdayPicker } from './WeekdayPicker'
 import './import.css'
 
 function importError(error: unknown): string {
@@ -47,7 +48,7 @@ export function ImportPlanDialog(p: ImportPlanDialogProps) {
     try {
       const result = await outlineImport({ trainee_id: p.traineeId, source: filename ? 'file' : 'paste', sheets })
       setResults([]); setEditedCells({}); setEmptyWeeks(new Set()); createdRef.current = null; addedRef.current = []
-      setFirstDate(defaultFirstDate(0)); setInferredConfirmed(false)
+      setFirstDate(defaultFirstDate(0)); setInferredConfirmed(false); setChosenDays(null); setFirst(0)
       setOutline(result); setSelected(result.weeks.slice(-12).map(w => w.index)); setRemaining(Math.max(0, remaining - 1)); p.onRemainingChange?.(Math.max(0, remaining - 1))
       setName(filename.replace(/\.[^.]+$/, '').trim() || S.sheetImport.defaultName); setStage('weeks')
     } catch (e) {
@@ -67,6 +68,8 @@ export function ImportPlanDialog(p: ImportPlanDialogProps) {
   const [editedCells, setEditedCells] = useState<Record<number, SheetCell[]>>({})
   const [inferredConfirmed, setInferredConfirmed] = useState(false)
   const [firstDate, setFirstDate] = useState(defaultFirstDate(0))
+  const [chosenDays, setChosenDays] = useState<number[] | null>(null)
+  const [first, setFirst] = useState(0)
   const cells = sheets.find(sheet => sheet.name === outline?.sheet)?.cells ?? []
   const cellsFor = (index: number) => editedCells[index] ?? regionCells(cells, outline!.weeks.find(w => w.index === index)!.region)
   const recognize = async (indexes: number[]) => {
@@ -94,6 +97,14 @@ export function ImportPlanDialog(p: ImportPlanDialogProps) {
   }
   const activeResults = selected.map(index => results.find(w => w.index === index)).filter((w): w is AIWeekResult => !!w)
   const goodWeeks = activeResults.filter((w): w is AIWeek => !('error' in w))
+  const ordinalWeeks = goodWeeks.filter(w => w.days.some(d => d.weekday === null))
+  const trainingDayCount = ordinalWeeks[0]?.days.filter(d => !d.rest).length ?? 0
+  const days = chosenDays ?? defaultImportWeekdays(trainingDayCount)
+  useEffect(() => {
+    setChosenDays(null); setFirst(0)
+    if (trainingDayCount) setFirstDate(defaultFirstDate(0))
+  }, [trainingDayCount])
+  const weekdayCountValid = ordinalWeeks.every(w => w.days.filter(d => !d.rest).length === days.length)
   const failures = activeResults.filter(w => 'error' in w)
   const exercises = goodWeeks.flatMap(w => w.days.flatMap(d => d.exercises))
   const newNames = [...new Set(exercises.filter(e => !p.exerciseIndex.resolve(e.name)).map(e => e.name.trim()))]
@@ -104,14 +115,17 @@ export function ImportPlanDialog(p: ImportPlanDialogProps) {
     no_date: goodWeeks.filter(w => !w.start_date).length,
     empty_week: selected.filter(index => emptyWeeks.has(index)).length,
   }
+  const needsFirstDate = counts.no_date > 0 || ordinalWeeks.length > 0
+  const dateMatchesFirst = !ordinalWeeks.length || (!!firstDate && days.includes(first) && weekdayIndex(firstDate) === first)
   const createdRef = useRef<PlanResponse | null>(null)
   const addedRef = useRef<ExerciseResponse[]>([])
   const creatingRef = useRef(false)
   const create = async () => {
-    if (busy || creatingRef.current || failures.length || goodWeeks.length !== selected.length) return
+    if (busy || creatingRef.current || failures.length || goodWeeks.length !== selected.length || !weekdayCountValid || !dateMatchesFirst || !firstDate) return
     creatingRef.current = true; setBusy(S.editor.saving); setError('')
     try {
-      const startDate = counts.no_date ? firstDate : goodWeeks[0].start_date!
+      const placed = placeAIWeekdays(goodWeeks, days, first)
+      const startDate = needsFirstDate ? firstDate : goodWeeks[0].start_date!
       const anchor = weekdayIndex(startDate)
       if (!createdRef.current) createdRef.current = await createPlan({
         trainee_id: p.traineeId, name: name.trim(), plan_weeks: selected.length, start_date: startDate,
@@ -124,7 +138,7 @@ export function ImportPlanDialog(p: ImportPlanDialogProps) {
         addedRef.current.push(created); index = index.withAdded(created)
       }
       // No-date weeks now have an explicit calendar. Rotate weekday positions relative to D1.
-      const scheduled = goodWeeks.map((w, position) => ({ ...w, start_date: shiftISODate(startDate, position * 7), days: w.days.map(d => ({ ...d, weekday: (d.weekday - anchor + 7) % 7 })) }))
+      const scheduled = placed.map((w, position) => ({ ...w, start_date: shiftISODate(startDate, position * 7), days: w.days.map(d => ({ ...d, weekday: (d.weekday! - anchor + 7) % 7 })) }))
       const parsed = aiWeeksToParsed(scheduled, emptyWeeks, inferredConfirmed)
       const built = buildWeeks(parsed, index, startDate)
       const planId = createdRef.current.id
@@ -137,7 +151,7 @@ export function ImportPlanDialog(p: ImportPlanDialogProps) {
       saveDraftMirror(planId, saved)
       await putPendingRevision(planId, createDraftMirror(planId, saved))
       const plan = await getPlan(planId)
-      const weekdays = [...new Set(goodWeeks.flatMap(w => w.days.filter(d => !d.rest).map(d => d.weekday)))].sort((a,b) => (a - anchor + 7) % 7 - (b - anchor + 7) % 7)
+      const weekdays = ordinalWeeks.length ? orderedWeekdays(days, first) : orderedWeekdays(placed.flatMap(w => w.days.filter(d => !d.rest).map(d => d.weekday!)), anchor)
       await p.onCreated({ plan, weeks: result.weeks, weekdays, exercises: addedRef.current })
     } catch (e) { setError(`${importError(e)}${createdRef.current ? ` · ${S.sheetImport.createdRetry}` : ''}`) }
     finally { creatingRef.current = false; setBusy('') }
@@ -208,10 +222,15 @@ export function ImportPlanDialog(p: ImportPlanDialogProps) {
         </span><b>{counts[kind]}</b>
         {kind === 'new_exercise' && <small>{newNames.join(' · ')}</small>}
       </div>)}</div>
-      {counts.no_date > 0 && <label>{S.block.firstDate}<input type="date" aria-label={S.block.firstDate} value={firstDate} onChange={e => setFirstDate(e.target.value)} /></label>}
+      {ordinalWeeks.length > 0 && <div className="block-plan-dialog import-weekday-picker">
+        <p>{S.sheetImport.noWeekdays(trainingDayCount)}</p>
+        <WeekdayPicker days={days} first={first} onDaysChange={setChosenDays} onFirstChange={value => { setFirst(value); setFirstDate(defaultFirstDate(value)) }} />
+      </div>}
+      {needsFirstDate && <label>{S.block.firstDate}<input type="date" aria-label={S.block.firstDate} value={firstDate} onChange={e => setFirstDate(e.target.value)} /></label>}
+      {firstDate && !dateMatchesFirst && <p role="alert">{S.block.invalidDate}</p>}
       {error && <p role="alert">{error}</p>}
       {failures[0] && <small>{S.sheetImport.handleFirst(failures[0].index + 1)}</small>}
-      <footer><button disabled={!!createdRef.current} onClick={() => { setStage('weeks'); setError('') }}>{S.sheetImport.reselect}</button><button className="primary" onClick={() => void create()} disabled={!selected.length || !!failures.length || goodWeeks.length !== selected.length || !firstDate}>{S.sheetImport.create}</button></footer>
+      <footer><button disabled={!!createdRef.current} onClick={() => { setStage('weeks'); setError('') }}>{S.sheetImport.reselect}</button><button className="primary" onClick={() => void create()} disabled={!selected.length || !!failures.length || goodWeeks.length !== selected.length || !firstDate || !weekdayCountValid || !dateMatchesFirst}>{S.sheetImport.create}</button></footer>
     </>}
     </fieldset>
   </section></div>

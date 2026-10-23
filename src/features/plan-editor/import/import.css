@@ -66,3 +66,5 @@
 
 .import-confirm-all { display: block; margin-top: 6px; padding: 3px 7px; border: 1px solid #d1d5db; border-radius: 4px; background: white; font-size: 12px; }
 .import-confirm-all[aria-pressed=true] { background: #fef3c7; border-color: #fde68a; }
+
+.import-weekday-picker { display: grid; gap: 14px; }

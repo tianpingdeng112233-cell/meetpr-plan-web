@@ -15,7 +15,7 @@ export interface AIExercise {
   family_guess: LiftFamily | null
   flags: ('note_fallback' | 'inferred')[]
 }
-export interface AIWeek { index: number; start_date: string | null; days: { weekday: number; rest: boolean; exercises: AIExercise[] }[] }
+export interface AIWeek { index: number; start_date: string | null; days: { weekday: number | null; day_index: number; rest: boolean; exercises: AIExercise[] }[] }
 export interface FailedAIWeek { index: number; error: 'PARSE_FAILED'; reason: ImportFailureReason }
 export type AIWeekResult = AIWeek | FailedAIWeek
 export const getImportStatus = (traineeId: string) => api.get<ImportStatus>(`/coach/plan-imports/status?trainee_id=${encodeURIComponent(traineeId)}`, { retryRateLimit: false })

@@ -1103,3 +1103,12 @@ npx vitest run src/features/plan-editor/block-grid-ui.test.tsx
 - 验证：`npm test` exit 0，105 files / 1062 tests passed；`npx tsc --noEmit` exit 0、0 诊断；`npm run build` exit 0、244 modules，仅既有 >500 kB chunk 提示。日志 `/private/tmp/015-doubts-{test,tsc,build}.log`；`git diff --check` exit 0。Impeccable detector 返回 `[]`。
 - 浏览器复验未完成：CUA 权限策略拒绝读取已有 `http://localhost:5180` 标签页（origin approval 未获准）；未换通道绕过，未声明视觉或真实导入端到端验收通过。
 - Git：`git add` exit 128，主仓 `.git/worktrees/meetpr-plan-web-wt-015/index.lock` 被沙箱拒写；按卡保留未提交改动，未 commit/push。完整补丁 `/private/tmp/015-doubts.patch`。
+
+## 2026-10-23 · 015 §2.1：Day1–DayN 自选星期
+
+- 基线 `5ba0b27`。AI day 契约增加必填 `day_index`、允许 `weekday: null`；摘要复用从手动新建抽出的 `WeekdayPicker`，按 2–6 天指定默认分布，少选/多选及第一练日期不匹配 D1 时禁用创建。按 `day_index` 排序后从 D1 映射至选择的星期，再走既有 buildWeeks/reconcile；plan weekdays 返回所选顺序。补中英文，weekday-known 路径保持原行为。仅修改卡片授权范围，未启停 dev server。
+- 指定 seam 先红后绿：aiWeeks 映射 1 failed → 4 passed；picker 默认分布 5 failed → 定向 41 passed；创建/日期校验 3 failed → 最终定向 3 files / 44 passed。覆盖四天默认/自选跨周回绕、乱序 day_index、rest、不改原输入、2–6 默认分布、少选/多选、已知星期不展示 picker、双语创建动作/日期及实际 batch day_of_week。测试期修正日期显示格式和 API 1-based 日序号的预期，未改现有实现口径。日志 `/private/tmp/015-weekdays-{map,picker,create}-{red,green}.log`。
+- 验证：`npm test` exit 0，105 files / 1074 tests passed；`npx tsc --noEmit` exit 0、0 诊断；`npm run build` exit 0（245 modules，仅既有 >500 kB chunk 提示）。日志 `/private/tmp/015-weekdays-{test,tsc,build}.log`；`git diff --check` 通过；Impeccable detect 返回 `[]`。
+- review-loop 独立只读审查一轮：Standards 0 findings；Spec 0 findings。缺 tracker 配置，未声称执行完整 code-review 流程。SPEC §6 摘录尚无 day_index，按任务卡新契约实现，未改正典 spec。后端联调与 Opus 收货不在本次开发自测结论内。
+- 浏览器复验受限：CUA 拒绝读取现有 `http://localhost:5180/` 页面（origin approval 未获准），未绕过权限；本轮没有视觉通过结论。
+- Git：`git add` exit 128，主仓 `.git/worktrees/meetpr-plan-web-wt-015/index.lock` 被沙箱拒写；按卡保留 **uncommitted**，未 commit/push。完整补丁（含新增共享组件）`/private/tmp/015-weekdays.patch`。
