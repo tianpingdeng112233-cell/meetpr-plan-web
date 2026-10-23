@@ -60,7 +60,8 @@
 
 - `GET /coach/plan-imports/status?trainee_id=` → `{ enabled, daily_limit, remaining_today }`
 - `POST /coach/plan-imports` `{ trainee_id, source, sheets:[{name, cells:[[r,c,text]]}] }` → `{ import_id, sheet, truncated_rows, header_region, weeks:[{index,label,start_date,training_days,region}] }`；422 `NO_TRAINING_WEEKS`；429 `IMPORT_DAILY_LIMIT`。
-- `POST /coach/plan-imports/:id/weeks` `{ weeks:[{index, cells}], header_cells }` → `{ weeks:[{index,start_date,days:[{weekday,rest,exercises:[{name,sets,reps,mode,values,note,family_guess,flags}]}]}] }`，单周失败 `{index, error:'PARSE_FAILED'}`。
+- `POST /coach/plan-imports/:id/weeks` `{ weeks:[{index, cells}], header_cells }` → `{ weeks:[{index,start_date,days:[{weekday,rest,exercises:[{name,sets,reps,intensity_kind,intensity_values,weight_values,note,family_guess,flags}]}]}] }`，单周失败 `{index, error:'PARSE_FAILED', reason}`。
+- **强度与重量分两条线**（2026-10-23 本地实测补：教练表常同时写 RPE 和预期重量，旧的单一 `mode/values` 让模型二选一失败、整行降成零组占位）：`intensity_kind` ∈ `rpe | rir | pct | null`，`intensity_values` 逐组（长度 = sets 或 0）；`weight_values` 逐组公斤（长度 = sets 或 0）。两条线都有就都填。前端映射到编辑器行的 `intensity`/`intensityBoxes`（spec 034 行级强度）与 `boxes`（重量）。上限写法如「≤6」填 6、原文留备注；区间「8-9」取下限并留备注。
 - 前端负责：单元格只发非空、trim；Excel 日期序列转 ISO；按 `region` 从原表截出每周 cells 与 `header_cells`；**不发文件名**。
 
 ## 7. 测试 seam（先红后绿）
