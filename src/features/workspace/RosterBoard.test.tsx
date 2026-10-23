@@ -1,3 +1,4 @@
+import { StudentPlanCursorBadges } from '../plan-editor/components/StudentPlanCursorBadges'
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest'
@@ -9,6 +10,7 @@ import type {
   StudentOnboardingProfile,
   StudentVideo,
 } from '../../api/types'
+import { deriveOverviewBoard } from './overviewBoard'
 import { RosterBoard, RosterE1rmBadges, ROSTER_GRID_COLUMNS } from './StatsViews'
 import { competitionDistance, FAILED_ROSTER_DATUM, type RosterDataByStudent } from './rosterOverview'
 
@@ -81,13 +83,6 @@ const conversation: ChatConversation = {
   other_last_read: null,
 }
 
-function tab(host: HTMLElement, label: string): HTMLButtonElement {
-  const match = [...host.querySelectorAll<HTMLButtonElement>('[role="tab"]')]
-    .find((button) => button.textContent?.startsWith(label))
-  if (!match) throw new Error(`tab not found: ${label}`)
-  return match
-}
-
 describe('RosterBoard overview', () => {
   let host: HTMLDivElement
   let root: Root
@@ -120,12 +115,13 @@ describe('RosterBoard overview', () => {
           conversations={[conversation]}
           onSelect={onSelect}
           onOpen={onOpen}
+          board={deriveOverviewBoard({ students, dataByStudent, plansByStudent: { a: [], b: [plan({})], c: [] }, conversations: [conversation], alerts: { status: 'unavailable' } })}
         />,
       )
     })
   }
 
-  it('013 shows actionable counts, removes name dots, and sorts each count descending on first click', async () => {
+  it('019 keeps video and chat counts actionable as reminder tags', async () => {
     const onOpenVideos = vi.fn(), onOpenChat = vi.fn()
     await act(async () => root.render(<RosterBoard students={students} selectedStudentId="a"
       dataByStudent={dataByStudent} plansByStudent={{ a: [], b: [], c: [] }}
@@ -138,42 +134,50 @@ describe('RosterBoard overview', () => {
     const names = () => [...host.querySelectorAll('.roster-overview-student b')].map(n => n.textContent)
     expect(names()).toEqual(['甲', '乙', '丙'])
     expect(host.querySelector('.roster-overview-student i')).toBeNull()
-    expect(host.querySelector('[data-student-id="b"] [data-count="videos"]')?.textContent).toBe('—')
-    expect(host.querySelector('[data-student-id="c"] [data-count="videos"] button')?.textContent).toBe('▶ 2')
-    const sort = (label: string) => [...host.querySelectorAll<HTMLButtonElement>('.roster-overview-head button')].find(b => b.textContent?.includes(label))!
-    await act(async () => sort('待看视频').click())
-    expect(names()).toEqual(['丙', '甲', '乙'])
-    await act(async () => sort('未读消息').click())
-    expect(names()).toEqual(['乙', '甲', '丙'])
-    await act(async () => host.querySelector<HTMLButtonElement>('[data-student-id="a"] [data-count="videos"] button')!.click())
-    await act(async () => host.querySelector<HTMLButtonElement>('[data-student-id="b"] [data-count="messages"] button')!.click())
+    expect(host.querySelector('[data-student-id="b"] [data-alert-kind="videos"]')).toBeNull()
+    expect(host.querySelector('[data-student-id="c"] [data-alert-kind="videos"]')?.textContent).toBe('视频 2')
+    await act(async () => host.querySelector<HTMLButtonElement>('[data-student-id="a"] [data-alert-kind="videos"]')!.click())
+    await act(async () => host.querySelector<HTMLButtonElement>('[data-student-id="b"] [data-alert-kind="chat"]')!.click())
     expect(onOpenVideos).toHaveBeenCalledWith('a')
     expect(onOpenChat).toHaveBeenCalledWith('b')
     expect(onSelect).not.toHaveBeenCalled()
     expect(onOpen).not.toHaveBeenCalled()
   })
 
-  it('derives tab counts and filters the actual rows', async () => {
+  it('019 shows all overflow tags in a viewport popover outside the scroll container', async () => {
+    onTestFinished(() => { vi.restoreAllMocks() })
+    vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(110)
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({ x: 100, y: 700, left: 100, right: 180, top: 700, bottom: 722, width: 80, height: 22, toJSON() {} })
     await renderBoard()
-    expect(tab(host, '全部学员').textContent).toBe('全部学员3')
-    expect(tab(host, '待排').textContent).toBe('待排2')
-    expect(tab(host, '需关注').textContent).toBe('需关注2')
-    expect(host.querySelectorAll('.roster-overview-row')).toHaveLength(3)
-
-    await act(async () => { tab(host, '待排').click() })
-    expect([...host.querySelectorAll('.roster-overview-student b')].map((node) => node.textContent)).toEqual(['甲', '丙'])
-
-    await act(async () => { tab(host, '需关注').click() })
-    expect([...host.querySelectorAll('.roster-overview-student b')].map((node) => node.textContent)).toEqual(['乙', '丙'])
+    const more = [...host.querySelectorAll<HTMLButtonElement>('.overview-overflow button')].find(button => button.textContent?.startsWith('+'))!
+    expect(more).toBeTruthy()
+    await act(async () => more.focus())
+    const popover = document.body.querySelector<HTMLElement>('.overview-tag-popover')!
+    expect(popover).not.toBeNull()
+    expect(host.querySelector('.roster-overview-scroll')?.contains(popover)).toBe(false)
+    expect(popover.querySelectorAll('button')).toHaveLength(2)
+    expect(Number.parseFloat(popover.style.top)).toBeLessThan(700)
+    await act(async () => popover.querySelector<HTMLButtonElement>('[data-alert-kind="plan_ending"]')!.click())
+    expect(onOpen).toHaveBeenCalledWith('a')
   })
 
-  it('shows the write action only on pending rows', async () => {
+  it('019 groups the actual rows into attention and normal without filter tabs', async () => {
     await renderBoard()
-    expect(host.querySelectorAll('.roster-write')).toHaveLength(2)
-    expect(host.querySelector('[data-student-id="b"] .roster-write')).toBeNull()
+    expect(host.querySelector('[role="tablist"]')).toBeNull()
+    expect(host.querySelector('.overview-section.attention .overview-section-head')?.textContent).toBe('需要注意2')
+    expect(host.querySelector('.overview-section.normal .overview-section-head')?.textContent).toBe('正常1')
+    expect(host.querySelectorAll('.roster-overview-row')).toHaveLength(3)
+    expect([...host.querySelectorAll('.overview-section.attention .roster-overview-student b')].map(node => node.textContent)).toEqual(['甲', '丙'])
+    expect([...host.querySelectorAll('.overview-section.normal .roster-overview-student b')].map(node => node.textContent)).toEqual(['乙'])
+  })
+
+  it('019 fallback planning tags remain actionable only for pending students', async () => {
+    await renderBoard()
+    expect(host.querySelectorAll('[data-alert-kind="plan_ending"]')).toHaveLength(2)
+    expect(host.querySelector('[data-student-id="b"] [data-alert-kind="plan_ending"]')).toBeNull()
 
     await act(async () => {
-      host.querySelector<HTMLButtonElement>('[data-student-id="a"] .roster-write')?.click()
+      host.querySelector<HTMLButtonElement>('[data-student-id="a"] [data-alert-kind="plan_ending"]')?.click()
     })
     expect(onOpen).toHaveBeenCalledWith('a')
     expect(onSelect).not.toHaveBeenCalled()
@@ -194,29 +198,12 @@ describe('RosterBoard overview', () => {
     }
   })
 
-  it('renders progress and lag badges only when cursor metadata is trustworthy', async () => {
+  it('preserves trustworthy cursor badges for editor consumers after their removal from the board', async () => {
     await act(async () => {
       root.render(
-        <RosterBoard
-          students={students}
-          selectedStudentId="a"
-          dataByStudent={{
-            a: {
-              ...dataByStudent.a,
-              planCursor: {
-                kind: 'day', dayId: 'cursor', weekNumber: 2, dayOrdinal: 3,
-                calendarDate: '2026-07-23', lagDays: 4,
-              },
-            },
-            b: { ...dataByStudent.b, planCursor: { kind: 'completed' } },
-            // Legacy/missing completed_at is represented by no derived cursor.
-            c: dataByStudent.c,
-          }}
-          plansByStudent={{ a: [], b: [plan({})], c: [] }}
-          conversations={[conversation]}
-          onSelect={onSelect}
-          onOpen={onOpen}
-        />,
+        <><span data-student-id="a"><StudentPlanCursorBadges cursor={{ kind: 'day', dayId: 'cursor', weekNumber: 2, dayOrdinal: 3, calendarDate: '2026-07-23', lagDays: 4 }} compact /></span>
+          <span data-student-id="b"><StudentPlanCursorBadges cursor={{ kind: 'completed' }} compact /></span>
+          <span data-student-id="c"><StudentPlanCursorBadges cursor={undefined} compact /></span></>,
       )
     })
 
@@ -272,7 +259,7 @@ describe('RosterBoard overview', () => {
     })
     expect(host.querySelectorAll('[data-student-id="a"] .state-cell-skeleton')).toHaveLength(0)
     await act(async () => vi.advanceTimersByTime(150))
-    expect(host.querySelectorAll('[data-student-id="a"] .state-cell-skeleton').length).toBeGreaterThanOrEqual(5)
+    expect(host.querySelectorAll('[data-student-id="a"] .state-cell-skeleton').length).toBeGreaterThanOrEqual(4)
     expect(host.querySelector<HTMLElement>('[data-student-id="a"]')?.classList.contains('roster-overview-row')).toBe(true)
   })
 
@@ -327,7 +314,7 @@ describe('RosterBoard overview', () => {
     await act(async () => {
       window.dispatchEvent(new KeyboardEvent('keydown', { key: 'j', bubbles: true }))
     })
-    expect(onSelect).toHaveBeenLastCalledWith('b')
+    expect(onSelect).toHaveBeenLastCalledWith('c')
 
     await act(async () => {
       root.render(
@@ -348,7 +335,7 @@ describe('RosterBoard overview', () => {
     await act(async () => {
       window.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', bubbles: true }))
     })
-    expect(onSelect).toHaveBeenLastCalledWith('a')
+    expect(onSelect).toHaveBeenLastCalledWith('c')
     await act(async () => {
       root.render(
         <>
@@ -400,7 +387,7 @@ describe('RosterBoard overview', () => {
     await renderBoard()
 
     const badge = (row: number, family: string) => host
-      .querySelectorAll('.roster-overview-row')[row]!
+      .querySelector(`[data-student-id="${students[row].id}"]`)!
       .querySelector(`[data-testid="roster-e1rm-${family}"]`)!
     expect(badge(0, 'squat').textContent).toBe('S155↓')
     expect(badge(0, 'squat').querySelector('.trend-down')).not.toBeNull()

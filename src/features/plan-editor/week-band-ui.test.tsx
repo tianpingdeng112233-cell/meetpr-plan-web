@@ -49,7 +49,7 @@ it('keeps eight actions and every note in one expanding edit card, with only tit
   const edit = host.querySelector('.is-editing')!
   expect(edit.querySelectorAll('.exrow')).toHaveLength(8)
   expect(edit.querySelectorAll('input[placeholder="备注"]')).toHaveLength(8)
-  expect(edit.querySelectorAll('.block-edit-head > button')).toHaveLength(1)
+  expect(edit.querySelectorAll('.block-edit-head .block-edit-actions > button')).toHaveLength(1)
   expect(edit.querySelector('.block-edit-footer')?.textContent).toContain('⌘C')
   expect(blockCell(host, 1, 2).querySelector('.daygrid')).toBeNull()
   expect(blockCell(host, 3, 2).querySelector('.daygrid')).toBeNull()

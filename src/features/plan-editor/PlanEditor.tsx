@@ -113,7 +113,16 @@ export const UPDATE_RETRY_DELAY = 1500
 interface Switcher { id: string; label: string; tag?: string }
 interface RecoveryMirror { mirror: DraftMirror; source: 'local' | 'remote' }
 
+export interface PlanDayIntent {
+  token: number
+  planDayId: string
+  planExerciseId?: string
+  /** Backend set_index matches the zero-based set-log index. */
+  setIndex?: number
+  openShift?: boolean
+}
 export interface PlanEditorProps {
+  dayIntent?: PlanDayIntent | null
   coachId?: string
   videos?: StudentVideo[] | null
   onRefreshVideos?: (studentId: string) => Promise<void>
@@ -578,6 +587,21 @@ export function PlanEditor(props: PlanEditorProps) {
   const [colW, setColW] = useState<ColWidths[]>(() => Array.from({ length: 7 }, () => ({ ...COL_DEFAULTS })))
   const [blockLayout, setBlockLayout] = useBlockLayout()
   const [editingDay, setEditingDay] = useState<Sel | null>(null)
+  const handledDayIntent = useRef<number | null>(null)
+  useEffect(() => {
+    const intent = props.dayIntent
+    if (!intent || handledDayIntent.current === intent.token) return
+    const week = weeks.find(week => week.days.some(day => day.serverDayId === intent.planDayId))
+    const day = week?.days.find(day => day.serverDayId === intent.planDayId)
+    if (!week || !day) return
+    handledDayIntent.current = intent.token
+    setEditingDay({ wnum: week.num, dow: day.dow })
+    setSel({ wnum: week.num, dow: day.dow })
+    const timer = window.setTimeout(() => {
+      rootRef.current?.querySelector(`[data-block-day-id="${intent.planDayId}"]`)?.scrollIntoView?.({ block: 'center', inline: 'nearest' })
+    }, 0)
+    return () => window.clearTimeout(timer)
+  }, [props.dayIntent, weeks])
   const [blockMenu, setBlockMenu] = useState<{ x: number; y: number } | null>(null)
   const [sel, setSel] = useState<Sel | null>(null)
   // SPEC-038:学员实际完成组,serverRowId → sets。失败静默(编排主流程不受影响)。
@@ -2902,6 +2926,7 @@ export function PlanEditor(props: PlanEditorProps) {
       return date > latest ? date : latest
     }, anchorDate)
     return {
+      openToken: props.dayIntent?.openShift && props.dayIntent.planDayId === day.serverDayId ? props.dayIntent.token : undefined,
       anchorDate,
       weekNumber: week.num,
       dayOrdinal,
@@ -3079,6 +3104,7 @@ export function PlanEditor(props: PlanEditorProps) {
                           },
                         }}
                         day={day}
+                        highlightedSet={props.dayIntent?.planDayId === day.serverDayId ? props.dayIntent ?? undefined : undefined}
                         colW={colW[day.dow]}
                         selected={daySelection.days.has(planDayKey({ wnum: wk.num, dow: day.dow }))}
                         selectedRowId={selectedRow?.wnum === wk.num && selectedRow.dow === day.dow ? selectedRow.rowId : null}

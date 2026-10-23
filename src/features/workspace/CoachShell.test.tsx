@@ -50,12 +50,10 @@ function ShellHarness({
       onChange={setView}
       me={me}
       exerciseCount={exerciseCount}
-      pendingStudents={[]}
-      pendingCount={0}
+      attentionCount={3}
       unreadCount={unreadCount}
       requestCount={requestCount}
       videoCount={videoCount}
-      onPickPending={() => undefined}
       lastSyncedAt={new Date(2026, 6, 27, 9, 12)}
       onLogout={onLogout}
       onConfirmLeave={onConfirmLeave}
@@ -113,7 +111,7 @@ describe('CoachShell', () => {
     expect(host.querySelectorAll('.coach-nav-item.active')).toHaveLength(1)
     expect(host.querySelector('.coach-nav-item.active')?.firstElementChild?.textContent).toBe('动作库')
     expect(host.querySelector('[data-testid="content"]')?.textContent).toBe('catalog')
-    expect(host.querySelectorAll('.coach-nav-item')).toHaveLength(5)
+    expect(host.querySelectorAll('.coach-nav-item')).toHaveLength(4)
     expect(navButton(host, '追踪')).not.toBeNull()
     await act(async () => { host.querySelector<HTMLButtonElement>('.coach-search-shell')?.click() })
     expect(host.querySelector('[role="listbox"]')?.textContent).not.toContain('反馈工作区')
@@ -127,8 +125,20 @@ describe('CoachShell', () => {
     expect(navButton(host, '计划编排').querySelector('.coach-nav-badge.danger')?.textContent).toBe('8')
     expect(navButton(host, '计划编排').querySelector('.coach-nav-badge')?.getAttribute('aria-label'))
       .toBe('5 条未读，3 段待看视频')
-    expect(navButton(host, '学员申请').querySelector('.coach-nav-badge.danger')?.textContent).toBe('2')
+    expect(navButton(host, '总览').querySelector('.coach-nav-badge.danger')?.textContent).toBe('5')
     expect(navButton(host, '动作库').querySelector('.coach-nav-badge.muted')?.textContent).toBe('1')
+  })
+
+  it.each(['申请', '学员申请', '邀请'])('019 command %s opens overview', async query => {
+    await act(async () => root.render(<ShellHarness />))
+    await act(async () => host.querySelector<HTMLButtonElement>('.coach-search-shell')!.click())
+    const input = host.querySelector<HTMLInputElement>('.command-palette input')!
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, query)
+      input.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+    await act(async () => input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })))
+    expect(host.querySelector('[data-testid="content"]')?.textContent).toBe('board')
   })
 
   it('renders the main workspace full-width beside the navigation on every screen', async () => {

@@ -1,3 +1,4 @@
+import { createPortal } from 'react-dom'
 import { useEffect, useState } from 'react'
 import QRCode from 'qrcode'
 import { text, zhText } from './text'
@@ -25,7 +26,7 @@ export async function copyText(value: string) {
   try { if (!document.execCommand('copy')) throw new Error('CLIPBOARD_UNAVAILABLE') }
   finally { field.remove(); focused?.focus() }
 }
-export function QrImage({ value, label, downloadable = false }: { value: string; label: string; downloadable?: boolean }) {
+export function QrImage({ value, label, downloadable = false, downloadLabel, downloadContainer }: { value: string; label: string; downloadable?: boolean; downloadLabel?: string; downloadContainer?: HTMLElement | null }) {
   const [url, setUrl] = useState('')
   const [failed, setFailed] = useState(false)
   useEffect(() => {
@@ -35,7 +36,8 @@ export function QrImage({ value, label, downloadable = false }: { value: string;
     }, () => { if (!cancelled) setFailed(true) })
     return () => { cancelled = true }
   }, [value])
-  return <div className="onboarding-qr">{url ? <img src={url} alt={label} width={192} height={192} /> : <span>{failed ? text('二维码暂不可用，请复制链接。', 'QR unavailable. Copy the link instead.') : text('正在生成二维码…', 'Generating QR…')}</span>}{downloadable && url && <a href={url} download="meetpr-invite.svg">{text('保存二维码图片', 'Save QR image')}</a>}</div>
+  const download = downloadable && url ? <a href={url} download="meetpr-invite.svg">{downloadLabel ?? text('保存二维码图片', 'Save QR image')}</a> : null
+  return <div className="onboarding-qr">{url ? <img src={url} alt={label} width={192} height={192} /> : <span>{failed ? text('二维码暂不可用，请复制链接。', 'QR unavailable. Copy the link instead.') : text('正在生成二维码…', 'Generating QR…')}</span>}{downloadContainer ? createPortal(download, downloadContainer) : download}</div>
 }
 export function InstallOptions({ code }: { code?: string }) {
   const { device, inWechat } = visitorDevice()

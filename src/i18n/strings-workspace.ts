@@ -2,6 +2,18 @@ import type { Translations } from './types'
 import { countUnit } from './plural'
 
 export const zhWorkspace = {
+  overview: {
+    setNumber: (n: number) => `第 ${n} 组`, invite: '邀请学员', attention: '需要注意', normal: '正常', reminders: '提醒',
+    steps: ['把邀请消息或二维码发给学员', '学员装 App、注册账号', '在「输入邀请码」页粘贴邀请码并提交', '申请出现在右边，你点「接受」'],
+    codeHint: '邀请码 · 长期有效，可发给所有学员', copyLink: '复制链接', linkCopied: '链接已复制', downloadQr: '下载二维码',
+    requestsEmpty: '暂无新申请', requestsHint: '学员提交后会出现在这里，点卡片能看入驻资料',
+    refresh: '每 60 秒自动刷新', empty: '接受申请后，学员会出现在这里', failed: '提醒加载失败',
+    rpeOver: (n: number) => `RPE 超标 ${n}`, incomplete: (n: number) => `未完成 ${n}`,
+    remaining: (n: number) => `计划剩 ${n} 天`, ended: (n: number) => `已结束 ${n} 天`,
+    messages: (n: number) => `留言 ${n}`, videos: (n: number) => `视频 ${n}`, behind: (n: number) => `落后 ${n}`,
+    nextWeekMissing: '下周未排', targetMissing: '未找到提醒对应的训练日，请刷新总览后重试。',
+    keywords: '申请 学员申请 邀请 requests invite',
+  },
   backAllStudents: '← 全体学员',
   today: '今天', yesterday: '昨天',
   squatStyleHigh: '高杠', squatStyleLow: '低杠', deadliftConventional: '传统', deadliftSumo: '相扑',
@@ -98,6 +110,18 @@ export const zhWorkspace = {
 } as const
 
 export const enWorkspace = {
+  overview: {
+    setNumber: (n: number) => `Set ${n}`, invite: 'Invite students', attention: 'Needs attention', normal: 'Normal', reminders: 'Reminders',
+    steps: ['Send the invitation or QR to your student', 'Student installs the app and registers', 'Paste the code on the invite code screen and submit', 'Accept the request on the right'],
+    codeHint: 'Invite code · Permanent, for all students', copyLink: 'Copy link', linkCopied: 'Link copied', downloadQr: 'Download QR',
+    requestsEmpty: 'No new requests', requestsHint: 'Requests appear here after students submit. Open a card to see their profile.',
+    refresh: 'Refreshes every 60 seconds', empty: 'Students appear here after you accept their requests', failed: 'Could not load reminders',
+    rpeOver: (n: number) => `RPE over ${n}`, incomplete: (n: number) => `Incomplete ${n}`,
+    remaining: (n: number) => `Plan: ${n} days left`, ended: (n: number) => `Ended ${n} days ago`,
+    messages: (n: number) => `Messages ${n}`, videos: (n: number) => `Videos ${n}`, behind: (n: number) => `Behind ${n}`,
+    nextWeekMissing: 'Next week not planned', targetMissing: 'The training day could not be found. Refresh the overview and try again.',
+    keywords: '申请 学员申请 邀请 requests invite',
+  },
   backAllStudents: '← All athletes', today: 'Today', yesterday: 'Yesterday', squatStyleHigh: 'High bar', squatStyleLow: 'Low bar',
   deadliftConventional: 'Conventional', deadliftSumo: 'Sumo', deadliftBoth: 'Conventional / Sumo', benchNarrow: 'Narrow', benchStandard: 'Standard', benchWide: 'Wide',
   nav: { overview: 'Overview', overviewShort: 'O', editor: 'Plan editor', editorShort: 'P', catalog: 'Exercise library', catalogShort: 'E', requests: 'Athlete requests', requestsShort: 'R', tracking: 'Tracking', trackingShort: 'T' },
