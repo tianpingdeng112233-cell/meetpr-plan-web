@@ -71,6 +71,7 @@ export function customExercisePatchBody(
   const patch: Partial<CreateCustomExerciseBody> = {}
   const name = input.name.trim()
   if (name && name !== original.name) patch.name = name
+  if (original.adopted) return patch
   if (input.nameEn !== undefined) {
     const nameEn = input.nameEn?.trim() || null
     if (nameEn !== original.name_en) patch.name_en = nameEn

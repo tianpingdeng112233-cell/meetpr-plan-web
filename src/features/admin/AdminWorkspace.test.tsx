@@ -76,6 +76,281 @@ describe('AdminWorkspace', () => {
     setLocale('zh')
   })
 
+  function customFixture() {
+    const attributes = { name_en: 'Coach Press', exercise_type: 'accessory', main_lift_family: null, is_competition_lift: false, muscle_groups: ['chest'], equipment: ['barbell'], movement_pattern: ['horizontal_push'] }
+    return {
+      pending: [{ key: 'press', display_name: '卧推', coach_count: 3, plan_count: 14, rows: [
+        { ...attributes, exercise_id: 'c1', name: '卧推', coach_id: 'coach1', coach_name: '王雪', plan_count: 2 },
+        { ...attributes, exercise_id: 'c2', name: ' 卧推 ', coach_id: 'coach2', coach_name: '李教练', plan_count: 9, name_en: 'Most Used Press' },
+        { ...attributes, exercise_id: 'c3', name: '卧推', coach_id: 'coach3', coach_name: '陈默', plan_count: 3 },
+      ] }, { key: 'novel', display_name: '猫牛式', coach_count: 1, plan_count: 1, rows: [
+        { ...attributes, exercise_id: 'c4', name: '猫牛式', coach_id: 'coach4', coach_name: '赵教练', plan_count: 1 },
+      ] }],
+      adopted: [{ official: { id: 'o1', name: '竞技卧推', name_en: 'Competition Bench Press' }, rows: [
+        { exercise_id: 'a1', name: '比赛卧推', coach_id: 'coach5', coach_name: '刘教练', plan_count: 7, adopted_at: '2026-10-22T12:40:00' },
+      ] }],
+    }
+  }
+
+  function mockCustom(data = customFixture()) {
+    const official = { id: 'o1', name: '竞技卧推', name_en: 'Competition Bench Press', exercise_type: 'main_lift', main_lift_family: 'bench', is_competition_lift: true, muscle_groups: ['chest'], equipment: ['barbell'], movement_pattern: ['horizontal_push'], created_by_coach_id: null }
+    vi.stubGlobal('fetch', vi.fn(async (url) => {
+      if (String(url).endsWith('/admin/custom-exercises')) return new Response(JSON.stringify(data))
+      if (String(url).endsWith('/exercises')) return new Response(JSON.stringify({ exercises: [official, { ...official, id: 'o2', name: '传统硬拉', name_en: 'Deadlift' }] }))
+      return new Response(JSON.stringify({ applications: [] }))
+    }))
+    return data
+  }
+
+  async function openCustom() {
+    await act(async () => { root.render(<AdminWorkspace onLogout={vi.fn()}/>); await settle() })
+    await act(async () => { button(host, '动作库').click(); await settle() })
+    await act(async () => { buttonContaining(host, '教练自建').click(); await settle() })
+  }
+
+  it('retries failed conflict refreshes inside the dialog without another mutation or losing the draft', async () => {
+    mockCustom()
+    await openCustom()
+    await act(async () => { button(host, '收录').click() })
+    const dialog = host.querySelector<HTMLElement>('[role="dialog"]')!
+    await act(async () => { button(dialog, '都不对，收录为新的官方动作').click() })
+    await act(async () => { type(dialog.querySelector('[aria-label="官方名称"]')!, '保留输入') })
+    const normalFetch = vi.mocked(fetch).getMockImplementation()!
+    let failRefresh = true
+    vi.mocked(fetch).mockImplementation(async (url, init) => {
+      if (init?.method === 'POST') return new Response(JSON.stringify({ error: 'EXERCISE_ADOPTION_CONFLICT' }), { status: 409 })
+      if (failRefresh && String(url).endsWith('/admin/custom-exercises')) throw new Error('offline')
+      return normalFetch(url, init)
+    })
+    await act(async () => { button(dialog, '收录为新的官方动作').click(); await settle() })
+    expect(button(dialog, '收录为新的官方动作').disabled).toBe(true)
+    failRefresh = false
+    await act(async () => { button(dialog, '重试').click(); await settle() })
+    expect(dialog.querySelector<HTMLInputElement>('[aria-label="官方名称"]')?.value).toBe('保留输入')
+    expect(button(dialog, '收录为新的官方动作').disabled).toBe(false)
+    expect(vi.mocked(fetch).mock.calls.filter(([, init]) => init?.method === 'POST')).toHaveLength(1)
+    vi.mocked(fetch).mockResolvedValueOnce(new Response('{}'))
+    await act(async () => { button(dialog, '收录为新的官方动作').click(); await settle() })
+    expect(host.querySelector('[role="dialog"]')).toBeNull()
+  })
+
+  it('retries a conflict against refreshed pending IDs without losing the new official draft', async () => {
+    const data = mockCustom()
+    await openCustom()
+    await act(async () => { button(host, '收录').click() })
+    const dialog = host.querySelector<HTMLElement>('[role="dialog"]')!
+    await act(async () => { button(dialog, '都不对，收录为新的官方动作').click() })
+    await act(async () => { type(dialog.querySelector('[aria-label="官方名称"]')!, '保留输入') })
+    data.pending[0] = { ...data.pending[0], rows: data.pending[0].rows.slice(1), coach_count: 2 }
+    vi.mocked(fetch).mockResolvedValueOnce(new Response(JSON.stringify({ error: 'EXERCISE_ADOPTION_CONFLICT' }), { status: 409 }))
+    await act(async () => { button(dialog, '收录为新的官方动作').click(); await settle() })
+    vi.mocked(fetch).mockResolvedValueOnce(new Response(JSON.stringify({ error: 'EXERCISE_ADOPTION_CONFLICT' }), { status: 409 }))
+    data.pending.shift()
+    await act(async () => { button(dialog, '收录为新的官方动作').click(); await settle() })
+    const posts = vi.mocked(fetch).mock.calls.filter(([, init]) => init?.method === 'POST')
+    expect(JSON.parse(posts[1][1]!.body as string)).toMatchObject({ exercise_ids: ['c2', 'c3'], new_official: { name: '保留输入' } })
+    expect(button(dialog, '收录为新的官方动作').disabled).toBe(true)
+    expect(dialog.textContent).toContain('这组动作已全部处理')
+    expect(dialog.querySelector<HTMLInputElement>('[aria-label="官方名称"]')?.value).toBe('保留输入')
+  })
+
+  it('renders English adoption controls, form, success and undo messages', async () => {
+    setLocale('en')
+    const data = customFixture()
+    data.pending = [{ ...data.pending[0], display_name: 'Bench', rows: data.pending[0].rows.map((row, index) => ({ ...row, name: 'Bench', coach_name: `Coach ${index}` })) }]
+    data.adopted = [{ ...data.adopted[0], rows: [{ ...data.adopted[0].rows[0], name: 'My bench', coach_name: 'Alex' }] }]
+    mockCustom(data)
+    await act(async () => { root.render(<AdminWorkspace onLogout={vi.fn()}/>); await settle() })
+    await act(async () => { button(host, 'Exercise library').click(); await settle() })
+    await act(async () => { buttonContaining(host, 'Coach-created').click(); await settle() })
+    await act(async () => { button(host, 'Adopt').click() })
+    const dialog = host.querySelector<HTMLElement>('[role="dialog"]')!
+    expect(dialog.textContent).toContain('Check for an existing official exercise first')
+    await act(async () => { buttonContaining(dialog, 'None match').click() })
+    expect(dialog.textContent).toContain('Official name')
+    expect(dialog.textContent).not.toMatch(/[一-鿿]/)
+    vi.mocked(fetch).mockResolvedValueOnce(new Response('{}'))
+    await act(async () => { button(dialog, 'Adopt as a new official exercise').click(); await settle() })
+    expect(host.querySelector('[role="status"]')?.textContent).toBe('Adopted “Bench” from 3 coaches as an official exercise')
+    expect(host.querySelector('[aria-label="Adopted custom exercises"]')?.textContent).not.toMatch(/[一-鿿]/)
+    vi.mocked(fetch).mockResolvedValueOnce(new Response('{}'))
+    await act(async () => { button(host, 'Undo').click(); await settle() })
+    expect(host.querySelector('[role="status"]')?.textContent).toBe('Undone. Alex’s “My bench” is a custom exercise again.')
+  })
+
+  it('undoes one alias without confirmation or duplicate requests and returns it to pending', async () => {
+    const data = mockCustom()
+    const confirm = vi.spyOn(window, 'confirm')
+    await openCustom()
+    await act(async () => { buttonContaining(host, '已收录').click() })
+    let finish!: (response: Response) => void
+    vi.mocked(fetch).mockImplementationOnce(() => new Promise(resolve => { finish = resolve }))
+    await act(async () => { button(host, '撤销').click(); button(host, '撤销').click() })
+    expect(confirm).not.toHaveBeenCalled()
+    const posts = vi.mocked(fetch).mock.calls.filter(([, init]) => init?.method === 'POST')
+    expect(posts).toHaveLength(1)
+    expect(String(posts[0][0])).toContain('/admin/custom-exercises/unadopt')
+    expect(JSON.parse(posts[0][1]!.body as string)).toEqual({ exercise_ids: ['a1'] })
+    data.adopted = []
+    data.pending.push({ ...data.pending[1], key: 'restored', display_name: '比赛卧推', rows: [{ ...data.pending[1].rows[0], exercise_id: 'a1', name: '比赛卧推', coach_name: '刘教练' }] })
+    await act(async () => { finish(new Response('{}')); await settle() })
+    expect(host.querySelector('[role="status"]')?.textContent).toBe('已撤销，刘教练的「比赛卧推」恢复为自建动作')
+    expect(host.textContent).toContain('没有已收录的自建动作')
+    await act(async () => { buttonContaining(host, '待处理').click() })
+    expect(host.querySelector('[aria-label="待处理的自建动作"]')?.textContent).toContain('比赛卧推')
+    confirm.mockRestore()
+  })
+
+  it('opens new directly without candidates and keeps the draft on errors, refreshing conflicts', async () => {
+    mockCustom()
+    await openCustom()
+    await act(async () => { type(host.querySelector('[aria-label="搜索动作名或教练"]')!, '猫牛式') })
+    await act(async () => { button(host, '收录').click() })
+    const dialog = host.querySelector<HTMLElement>('[role="dialog"]')!
+    expect(dialog.textContent).toContain('没找到相近的官方动作')
+    expect(dialog.textContent).not.toContain('返回推荐')
+    await act(async () => { type(dialog.querySelector('[aria-label="官方名称"]')!, '新的猫牛式') })
+    vi.mocked(fetch).mockResolvedValueOnce(new Response(JSON.stringify({ error: 'VALIDATION_ERROR' }), { status: 400 }))
+    await act(async () => { button(dialog, '收录为新的官方动作').click(); await settle() })
+    expect(dialog.querySelector<HTMLInputElement>('[aria-label="官方名称"]')?.value).toBe('新的猫牛式')
+    expect(dialog.querySelector('[role="alert"]')?.textContent).toContain('请检查填写内容后重试')
+    vi.mocked(fetch).mockResolvedValueOnce(new Response(JSON.stringify({ error: 'EXERCISE_ADOPTION_CONFLICT' }), { status: 409 }))
+    await act(async () => { button(dialog, '收录为新的官方动作').click(); await settle() })
+    expect(host.querySelector('[role="status"]')?.textContent).toBe('有动作刚被别处处理过，已刷新列表')
+    expect(host.querySelector<HTMLInputElement>('[aria-label="官方名称"]')?.value).toBe('新的猫牛式')
+    expect(vi.mocked(fetch).mock.calls.filter(([url]) => String(url).endsWith('/admin/custom-exercises'))).toHaveLength(2)
+  })
+
+  it('prefills the most used row, preserves edits across modes and validates new official attributes before one POST', async () => {
+    mockCustom()
+    await openCustom()
+    await act(async () => { button(host, '收录').click() })
+    const dialog = host.querySelector<HTMLElement>('[role="dialog"]')!
+    await act(async () => { button(dialog, '都不对，收录为新的官方动作').click() })
+    expect(dialog.querySelector<HTMLInputElement>('[aria-label="英文名"]')?.value).toBe('Most Used Press')
+    await act(async () => { type(dialog.querySelector('[aria-label="官方名称"]')!, '新官方卧推') })
+    await act(async () => { buttonContaining(dialog, '返回推荐的官方动作').click() })
+    await act(async () => { button(dialog, '都不对，收录为新的官方动作').click() })
+    expect(dialog.querySelector<HTMLInputElement>('[aria-label="官方名称"]')?.value).toBe('新官方卧推')
+    expect(dialog.querySelector('[aria-label="主项家族"]')).toBeNull()
+    await act(async () => { button(dialog, '主项').click() })
+    expect(dialog.querySelector('[aria-label="主项家族"]')).not.toBeNull()
+    const competition = dialog.querySelector<HTMLInputElement>('[aria-label="竞技动作"]')!
+    await act(async () => { competition.click(); button(dialog, '卧推').click() })
+    await act(async () => { button(dialog, '主项变式').click() })
+    expect(dialog.querySelector('[aria-label="竞技动作"]')).toBeNull()
+    await act(async () => { button(dialog, '辅助动作').click() })
+    expect(dialog.querySelector('[aria-label="主项家族"]')).toBeNull()
+    await act(async () => { button(dialog, '胸').click() })
+    expect(button(dialog, '收录为新的官方动作').disabled).toBe(true)
+    await act(async () => { button(dialog, '胸').click(); button(dialog, '杠铃').click() })
+    expect(button(dialog, '收录为新的官方动作').disabled).toBe(true)
+    await act(async () => { button(dialog, '哑铃').click() })
+    vi.mocked(fetch).mockResolvedValueOnce(new Response('{}'))
+    await act(async () => { button(dialog, '收录为新的官方动作').click(); button(dialog, '收录为新的官方动作').click(); await settle() })
+    const posts = vi.mocked(fetch).mock.calls.filter(([, init]) => init?.method === 'POST')
+    expect(posts).toHaveLength(1)
+    expect(JSON.parse(posts[0][1]!.body as string)).toEqual({ exercise_ids: ['c1', 'c2', 'c3'], new_official: {
+      name: '新官方卧推', name_en: 'Most Used Press', exercise_type: 'accessory', main_lift_family: null, is_competition_lift: false, muscle_groups: ['chest'], equipment: ['dumbbell'], movement_pattern: ['horizontal_push'],
+    } })
+    expect(host.querySelector('[role="status"]')?.textContent).toBe('已把 3 位教练的「卧推」收录为官方动作')
+  })
+
+  it('adopts all grouped rows into the selected official once, then refreshes both tables and counts', async () => {
+    const data = mockCustom()
+    await openCustom()
+    await act(async () => { button(host, '收录').click(); await settle() })
+    const dialog = host.querySelector<HTMLElement>('[role="dialog"]')!
+    expect(dialog).not.toBeNull()
+    expect(dialog.textContent).toContain('3 位教练 · 2 种写法 · 14 份计划')
+    expect(dialog.querySelector<HTMLInputElement>('input[type="radio"]')?.checked).toBe(true)
+    expect(dialog.textContent).toContain('最像')
+    await act(async () => { type(dialog.querySelector('[aria-label="搜索其他官方动作"]')!, '不存在') })
+    expect(buttonContaining(dialog, '归到').disabled).toBe(true)
+    await act(async () => { type(dialog.querySelector('[aria-label="搜索其他官方动作"]')!, 'Deadlift') })
+    const radio = dialog.querySelector<HTMLInputElement>('input[type="radio"]')!
+    await act(async () => { radio.click() })
+    let finish!: (response: Response) => void
+    vi.mocked(fetch).mockImplementationOnce(() => new Promise(resolve => { finish = resolve }))
+    await act(async () => { button(dialog, '归到「传统硬拉」').click(); button(dialog, '归到「传统硬拉」').click() })
+    const posts = vi.mocked(fetch).mock.calls.filter(([, init]) => init?.method === 'POST')
+    expect(posts).toHaveLength(1)
+    expect(String(posts[0][0])).toContain('/admin/custom-exercises/adopt')
+    expect(JSON.parse(posts[0][1]!.body as string)).toEqual({ exercise_ids: ['c1', 'c2', 'c3'], target_exercise_id: 'o2' })
+    data.pending.shift()
+    data.adopted.push({ official: { id: 'o2', name: '传统硬拉', name_en: 'Deadlift' }, rows: [{ exercise_id: 'c1', name: '卧推', coach_id: 'coach1', coach_name: '王雪', plan_count: 2, adopted_at: '2026-10-22T12:40:00' }] })
+    await act(async () => { finish(new Response('{}')); await settle() })
+    expect(host.querySelector('[role="dialog"]')).toBeNull()
+    expect(host.querySelector('[role="status"]')?.textContent).toBe('已把 3 位教练的「卧推」归到「传统硬拉」')
+    expect(buttonContaining(host, '已收录').getAttribute('aria-pressed')).toBe('true')
+    expect(buttonContaining(host, '待处理').textContent).toBe('待处理 1')
+    expect(buttonContaining(host, '已收录').textContent).toBe('已收录 2')
+    expect(api.exerciseUsage).toHaveBeenCalledTimes(2)
+    expect(vi.mocked(fetch).mock.calls.filter(([url]) => String(url).endsWith('/exercises'))).toHaveLength(2)
+  })
+
+  it('shows adoption segments, grouped spellings in server order, coach search and adopted aliases', async () => {
+    mockCustom()
+    await openCustom()
+    expect(buttonContaining(host, '官方').textContent).toBe('官方 2')
+    expect(buttonContaining(host, '教练自建').textContent).toBe('教练自建 3')
+    expect(buttonContaining(host, '待处理').textContent).toBe('待处理 2')
+    expect(buttonContaining(host, '已收录').textContent).toBe('已收录 1')
+    const table = host.querySelector('[aria-label="待处理的自建动作"]')!
+    expect(table.textContent).toContain('2 种写法：卧推、 卧推 ')
+    expect(table.textContent).toContain('王雪、李教练 等 3 位')
+    expect(table.textContent).toContain('1 种写法')
+    expect(table.textContent!.indexOf('卧推')).toBeLessThan(table.textContent!.indexOf('猫牛式'))
+    await act(async () => { type(host.querySelector('[aria-label="搜索动作名或教练"]')!, '陈默') })
+    expect(table.textContent).toContain('卧推')
+    expect(table.textContent).not.toContain('猫牛式')
+    await act(async () => { type(host.querySelector('[aria-label="搜索动作名或教练"]')!, ''); buttonContaining(host, '已收录').click() })
+    expect(host.textContent).toContain('1 位教练的叫法挂在这里')
+    expect(host.textContent).toContain('叫「比赛卧推」')
+    expect(host.textContent).toContain('10-22 12:40')
+  })
+
+  it('renders Taiwan adoption copy and preserves coach names and aliases through creation and undo', async () => {
+    setLocale('zh-Hant')
+    const data = mockCustom()
+    // Ownership-free admin DTOs carry server-localized official names (018).
+    data.adopted[0].official.name = '競技臥推'
+    const userContent = ['卧推', ' 卧推 ', '李教练', '陈默', '猫牛式', '赵教练', '刘教练', '比赛卧推'].sort((a, b) => b.length - a.length)
+    const simplified = new Set(simplifiedOnly)
+    const expectTraditionalCopy = () => {
+      const copy = userContent.reduce((text, value) => text.replaceAll(value, ''), host.innerHTML)
+      expect([...new Set([...copy].filter(char => simplified.has(char)))]).toEqual([])
+    }
+    await act(async () => { root.render(<AdminWorkspace onLogout={vi.fn()}/>); await settle() })
+    await act(async () => { button(host, '動作庫').click(); await settle() })
+    await act(async () => { buttonContaining(host, '教練自建').click(); await settle() })
+    expect(host.textContent).toContain('課表數')
+    expect(host.textContent).toContain('王雪、李教练 等 3 位')
+    expectTraditionalCopy()
+    await act(async () => { button(host, '收錄').click() })
+    const dialog = host.querySelector<HTMLElement>('[role="dialog"]')!
+    expect(dialog.textContent).toContain('收錄「卧推」')
+    expect(dialog.textContent).toContain('3 位教練 · 2 種寫法 · 14 份課表')
+    expect(dialog.textContent).toContain('歸到「競技臥推」')
+    expectTraditionalCopy()
+    await act(async () => { button(dialog, '都不對，收錄為新的官方動作').click() })
+    expect(dialog.textContent).toContain('收錄為新的官方動作 · 已按用得最多的那條預填')
+    expect(dialog.querySelector<HTMLInputElement>('[aria-label="官方名稱"]')?.value).toBe(' 卧推 ')
+    expectTraditionalCopy()
+    vi.mocked(fetch).mockResolvedValueOnce(new Response('{}'))
+    await act(async () => { button(dialog, '收錄為新的官方動作').click(); await settle() })
+    expect(host.querySelector('[role="status"]')?.textContent).toBe('已把 3 位教練的「卧推」收錄為官方動作')
+    expect(host.textContent).toContain('叫「比赛卧推」')
+    expectTraditionalCopy()
+    vi.mocked(fetch).mockResolvedValueOnce(new Response('{}'))
+    await act(async () => { button(host, '復原').click(); await settle() })
+    expect(host.querySelector('[role="status"]')?.textContent).toBe('已復原，刘教练的「比赛卧推」恢復為自建動作')
+    expectTraditionalCopy()
+    const posts = vi.mocked(fetch).mock.calls.filter(([, init]) => init?.method === 'POST')
+    expect(posts).toHaveLength(2)
+    for (const [, init] of posts) expect(new Headers(init?.headers).get('X-MeetPR-Locale')).toBe('zh-Hant')
+  })
+
   it('renders the redesigned admin pages and review flow in Taiwan Chinese while preserving applicant content', async () => {
     setLocale('zh-Hant')
     vi.spyOn(Date, 'now').mockReturnValue(new Date('2026-10-22T13:00:00Z').getTime())

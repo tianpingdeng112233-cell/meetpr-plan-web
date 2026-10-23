@@ -406,6 +406,8 @@ export interface PlanWithChildren extends PlanResponse {
 }
 
 export interface ExerciseResponse {
+  canonical_exercise_id?: string | null
+  adopted?: boolean
   id: string
   name: string
   name_en: string | null

@@ -9,7 +9,8 @@ const adminApi = vi.hoisted(() => ({
   exerciseUsage: vi.fn(),
 }))
 
-vi.mock('../api/admin', () => ({
+vi.mock('../api/admin', async (importOriginal) => ({
+  ...await importOriginal<typeof import('../api/admin')>(),
   getAdminOverview: adminApi.overview,
   getAdminUsers: adminApi.users,
   getAdminUser: adminApi.user,

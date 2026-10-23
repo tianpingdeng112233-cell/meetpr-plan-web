@@ -1,7 +1,9 @@
+import { CustomExercisesPage } from './CustomExercisesPage'
+import { useResource, type ResourceState } from './useAdminResource'
 import { ApplicationsPage, applicationDevice } from './ApplicationsPage'
 import { getCoachApplications, type CoachApplication } from '../../api/onboarding'
 import { normalizeTraditionalInput } from '../../i18n/stable-zh'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   getAdminBindings,
   getAdminExerciseUsage,
@@ -15,41 +17,17 @@ import {
   type AdminUserDetailResponse,
 } from '../../api/admin'
 import { fmt, resolveLocale, S } from '../../i18n/strings'
-import { EmptyState, ErrorState, SkeletonRows, useDelayedLoading } from '../../components/states'
+import { EmptyState, ErrorState, SkeletonRows } from '../../components/states'
 
 interface Props { onLogout: () => void }
 
 type AdminPage = 'applications' | 'overview' | 'users' | 'userDetail' | 'exercises'
 type RootPage = 'applications' | 'overview' | 'users' | 'exercises'
-type ResourceState<T> = { data: T | null; loading: boolean; error: boolean; retry: () => void; updatedAt: Date | null }
 type BadgeSpec = { label: string; color: string; background: string; border: string; weight?: number }
 
 export const ADMIN_WRITE_ENABLED = false
 
 const pageTitle = (page: RootPage) => S.admin.page[page]
-
-function useResource<T>(key: string | null, load: () => Promise<T>): ResourceState<T> {
-  const loader = useRef(load)
-  loader.current = load
-  const [attempt, setAttempt] = useState(0)
-  const [state, setState] = useState<Omit<ResourceState<T>, 'retry'> & { key: string | null }>({
-    key: null, data: null, loading: false, error: false, updatedAt: null,
-  })
-
-  useEffect(() => {
-    if (!key) return
-    let cancelled = false
-    setState(previous => ({ key, data: previous.key === key ? previous.data : null, updatedAt: previous.key === key ? previous.updatedAt : null, loading: true, error: false }))
-    void loader.current().then(
-      (data) => { if (!cancelled) setState({ key, data, loading: false, error: false, updatedAt: new Date() }) },
-      () => { if (!cancelled) setState(previous => ({ ...previous, loading: false, error: true })) },
-    )
-    return () => { cancelled = true }
-  }, [key, attempt])
-
-  const visibleSkeleton = useDelayedLoading(state.loading)
-  return { ...state, data: state.key === key ? state.data : null, loading: !!key && (state.key !== key || state.loading || visibleSkeleton), retry: () => setAttempt((value) => value + 1) }
-}
 
 function roleBadge(role: AdminManagedRole): BadgeSpec {
   if (role === 'admin') {
@@ -306,7 +284,7 @@ function ExerciseUsagePage({ state }: { state: ResourceState<Awaited<ReturnType<
       .map(({ exercise }) => exercise)
   }, [search, state.data])
   return (
-    <div className="flex max-w-[1200px] flex-col gap-5" data-testid="admin-exercises"><PageHeader title={S.admin.page.exercises} subtitle={state.data ? S.admin.exercises.count(rows.length) : '—'} loading={state.loading} refresh={state.retry}/>
+    <div className="flex max-w-[1200px] flex-col gap-5" data-testid="admin-exercises">
       <div className="flex flex-wrap items-center gap-3">
         <SearchBox value={search} onChange={setSearch} placeholder={S.admin.exercises.search}/>
 
@@ -385,7 +363,7 @@ export function AdminWorkspace({ onLogout }: Props) {
         {page === 'overview' && <OverviewPage state={overview} applications={applications} applicationsLoading={applicationState.loading} applicationsError={applicationState.error} retryApplications={applicationState.retry} users={users} openUser={openUser} navigate={navigate}/>}
         {page === 'users' && <UsersPage state={users} openUser={openUser}/>}
         {page === 'userDetail' && <UserDetailPage state={userDetail} bindings={bindings} openUser={openUser} onToast={setToast}/>}
-        {page === 'exercises' && <ExerciseUsagePage state={exercises}/>}
+        {page === 'exercises' && <CustomExercisesPage refreshUsage={exercises.retry} onToast={setToast}><ExerciseUsagePage state={exercises}/></CustomExercisesPage>}
       </main>
     </div>
     {toast && <div role="status" className="fixed bottom-7 left-1/2 z-[60] max-w-[calc(100vw-48px)] -translate-x-1/2 rounded-lg border border-border-strong bg-[#111827] px-[18px] py-[11px] text-[13px] text-[#FFFFFF]">{toast}</div>}

@@ -13,20 +13,25 @@ const simplified = new Set(simplifiedOnly)
 afterEach(() => setLocale('zh'))
 it('covers every simplified key, preserves interpolation values, and contains no simplified-only characters', () => {
   setLocale('zh')
-  const walk = (zh: unknown, hant: unknown) => {
+  const arrayArguments: Record<string, unknown[][]> = {
+    'admin.adoption.spellings': [[['__A__']], [['__A__', '__B__']]],
+    'admin.adoption.coachNames': [[['__A__'], 1], [['__A__', '__B__', '__C__'], 3]],
+  }
+  const walk = (zh: unknown, hant: unknown, path: string) => {
     expect(typeof hant).toBe(typeof zh)
     if (typeof zh === 'object' && zh !== null) {
       expect(Object.keys(hant as object)).toEqual(Object.keys(zh))
-      for (const key of Object.keys(zh)) walk((zh as Record<string, unknown>)[key], (hant as Record<string, unknown>)[key])
+      for (const key of Object.keys(zh)) walk((zh as Record<string, unknown>)[key], (hant as Record<string, unknown>)[key], `${path}.${key}`)
     } else {
-      const args = ['__A__', '__B__', '__C__', '__D__', '__E__', '__F__']
-      const evaluate = (value: unknown) => typeof value === 'function' ? String(value(...args)) : String(value)
-      const original = evaluate(zh), result = evaluate(hant)
-      expect(result.match(/__[A-F]__/g)).toEqual(original.match(/__[A-F]__/g))
-      expect([...result].filter(c => simplified.has(c))).toEqual([])
+      for (const args of arrayArguments[path] ?? [['__A__', '__B__', '__C__', '__D__', '__E__', '__F__']]) {
+        const evaluate = (value: unknown) => typeof value === 'function' ? String(value(...args)) : String(value)
+        const original = evaluate(zh), result = evaluate(hant)
+        expect(result.match(/__[A-F]__/g)).toEqual(original.match(/__[A-F]__/g))
+        expect([...result].filter(c => simplified.has(c))).toEqual([])
+      }
     }
   }
-  for (const key of Object.keys(zhHant) as Array<keyof typeof zhHant>) walk(S[key], zhHant[key])
+  for (const key of Object.keys(zhHant) as Array<keyof typeof zhHant>) walk(S[key], zhHant[key], key)
   for (const text of [...Object.values(exerciseNames), ...Object.values(glossary), ...Object.values(onboarding)]) expect([...text].filter(c => simplified.has(c))).toEqual([])
   expect(glossary).toMatchObject({ '力量举': '健力', '硬拉': '硬舉', '退出登录': '登出', '训练计划': '課表', '视频反馈': '影片反饋', '邮箱': '電子郵件' })
 })
