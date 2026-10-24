@@ -1,5 +1,11 @@
 import type { Translations } from './types'
 export const zhImport = {
+  groupedTexts: '同类写法',
+  groupFields: { reps: '次数', intensity: '强度', weight: '重量' },
+  textGroup: (field: string, text: string, n: number) => `${field}写的是『${text}』· ${n} 个动作`,
+  unresolvedGroups: (n: number) => `还有 ${n} 类写法没处理`,
+  noIntensity: '不设强度', noWeight: '不设重量', fixed: '已处理',
+
   manual: '手动新建', title: '从表格导入', drop: '把训练表拖到这里，或 ', chooseFile: '选择文件',
   formats: '.xlsx · .xls · .csv · WPS 表格 · 任何教练的排法都可以', orPaste: '或者直接粘贴', paste: '粘贴表格',
   pasteHint: '在 WPS / Excel / 金山文档 / Google Sheets 里选中整份计划，⌘C 复制，在这里 ⌘V 粘贴',
@@ -39,6 +45,12 @@ export const zhImport = {
   planActions: (name: string) => `${name} · 更多操作`, emptyWeek: (n: number) => `W${n} · 无内容周`,
 } as const
 export const enImport: Translations<typeof zhImport> = {
+  groupedTexts: 'Repeated text',
+  groupFields: { reps: 'Reps', intensity: 'Intensity', weight: 'Weight' },
+  textGroup: (field, text, n) => `${field} says “${text}” · ${n} exercises`,
+  unresolvedGroups: n => `${n} text groups still need a fix`,
+  noIntensity: 'No intensity', noWeight: 'No weight', fixed: 'Handled',
+
   manual: 'Create manually', title: 'Import from a sheet', drop: 'Drop your training sheet here, or ', chooseFile: 'Choose a file',
   formats: '.xlsx · .xls · .csv · WPS · Any training sheet layout', orPaste: 'Or paste directly', paste: 'Paste a table',
   pasteHint: 'Copy your plan from WPS / Excel / Google Sheets and paste it here', privacy: 'AI will read the table content. The filename is not uploaded.',

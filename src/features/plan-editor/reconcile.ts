@@ -107,6 +107,7 @@ function fmtNum(v: string | number): string {
 }
 
 function parseReps(reps: string): { reps: number; repsMax: number | null; amrap: boolean } {
+  if (reps.trim() === STABLE_ZH.failureReps) return { reps: 1, repsMax: null, amrap: false }
   const range = reps.match(STABLE_ZH.patterns.repRange)
   if (range) {
     const lo = Math.min(Math.max(Number(range[1]), 1), 50)
@@ -164,6 +165,8 @@ function rememberDesiredSets(row: ExerciseRow, sets: CreatePlanSetBody[]): void 
 function rowToDesired(row: ExerciseRow): DesiredExercise | null {
   if (!row.exerciseId) return null
   const { reps, repsMax, amrap } = parseReps(row.reps)
+  const setTypeAt = (index: number): SetType => row.reps.trim() === STABLE_ZH.failureReps
+    ? 'failed' : amrap && index === row.boxes.length - 1 ? 'amrap' : 'working'
   let sets: CreatePlanSetBody[]
   const sourceSets = row.opaqueSets
   const opaqueUnchanged = sourceSets !== undefined
@@ -177,7 +180,7 @@ function rowToDesired(row: ExerciseRow): DesiredExercise | null {
       target_reps_max: repsMax,
       intensity_mode: 'rpe',
       target_value: '10',
-      set_type: (amrap && i === row.boxes.length - 1 ? 'amrap' : 'working') as SetType,
+      set_type: setTypeAt(i),
       coach_note: STABLE_ZH.bodyweight,
     }))
   } else {
@@ -193,7 +196,7 @@ function rowToDesired(row: ExerciseRow): DesiredExercise | null {
           target_reps_max: repsMax,
           intensity_mode: 'rpe',
           target_value: numNullable(legacyRpeValues[i]?.val ?? '') ?? '',
-          set_type: (amrap && i === row.boxes.length - 1 ? 'amrap' : 'working') as SetType,
+          set_type: setTypeAt(i),
         }
       }
       const setIntensity = intensity
@@ -217,7 +220,7 @@ function rowToDesired(row: ExerciseRow): DesiredExercise | null {
         weight_low: setIntensity?.mode === 'weight_range' ? numNullable(setIntensity.value) : null,
         weight_high: setIntensity?.mode === 'weight_range' ? numNullable(setIntensity.high) : null,
         target_weight: targetWeight,
-        set_type: (amrap && i === row.boxes.length - 1 ? 'amrap' : 'working') as SetType,
+        set_type: setTypeAt(i),
       }
     })
   }
@@ -465,7 +468,7 @@ function serverToRow(exercise: PlanExerciseResponse, local: ExerciseRow | undefi
     custom,
     isMain: exercise.is_main_lift,
     aux: sets.length === 0,
-    reps: sets.length === 0 ? '—' : repsMax != null && repsMax > baseReps
+    reps: sets.length === 0 ? '—' : sets.every(set => set.set_type === 'failed') ? STABLE_ZH.failureReps : repsMax != null && repsMax > baseReps
       ? `${baseReps}-${repsMax}`
       : `${baseReps}${amrap ? '+' : ''}`,
     mode: bodyweight ? 'bodyweight' : legacyRpeSource ? 'rpe' : 'kg',

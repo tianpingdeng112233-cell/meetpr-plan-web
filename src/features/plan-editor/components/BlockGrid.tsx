@@ -1,3 +1,4 @@
+import { STABLE_ZH } from '../../../i18n/stable-zh'
 import { activeImportDoubts } from '../import/doubts'
 import { actualShorthand } from '../actualShorthand'
 import type { ActualSet, StudentAddedExercise } from '../actuals'
@@ -54,7 +55,7 @@ function shorthand(row: ExerciseRow): string {
   const weight = row.mode === 'bodyweight' ? S.common.bodyweight
     : intensity?.mode === 'weight_range' ? `${intensity.value}–${intensity.high}`
       : weights.some(w => w !== '—') ? (new Set(weights).size === 1 ? weights[0] : weights.join('/')) : ''
-  return [`${row.boxes.length || '—'}×${row.reps}`, load, weight ? `· ${weight}` : ''].filter(Boolean).join(' ')
+  return [`${row.boxes.length || '—'}×${row.reps === STABLE_ZH.failureReps ? S.editor.failureReps : row.reps}`, load, weight ? `· ${weight}` : ''].filter(Boolean).join(' ')
 }
 
 export function BlockGrid(props: Props) {

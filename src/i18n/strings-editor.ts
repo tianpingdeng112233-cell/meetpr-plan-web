@@ -2,6 +2,7 @@ import type { Translations } from './types'
 import { countUnit } from './plural'
 
 export const zhEditor = {
+  failureReps: '力竭',
   blockWeekday: '修改 Dx 星期',
   blockDone: '已练',
   blockClose: 'Esc 收起',
@@ -319,6 +320,7 @@ export const zhEditor = {
 } as const
 
 export const enEditor = {
+  failureReps: 'To failure',
   blockWeekday: 'Change Dx weekday',
   blockDone: 'Completed',
   blockClose: 'Esc Collapse',

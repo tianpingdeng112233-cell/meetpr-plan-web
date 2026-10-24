@@ -379,7 +379,7 @@ function mapExercise(ex: PlanExerciseResponse, catalog: Catalog): ExerciseRow {
   const baseReps = sets[0].target_reps
   const repsMax = sets[0].target_reps_max
   const hasAmrap = sets.some((s) => s.set_type === 'amrap')
-  const reps = repsMax != null && repsMax > baseReps
+  const reps = sets.every(set => set.set_type === 'failed') ? STABLE_ZH.failureReps : repsMax != null && repsMax > baseReps
     ? `${baseReps}-${repsMax}`
     : hasAmrap ? `${baseReps}+` : String(baseReps)
   return withOpaqueSets({

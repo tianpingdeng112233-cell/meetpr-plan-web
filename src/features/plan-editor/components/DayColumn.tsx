@@ -1140,21 +1140,26 @@ export function DayColumn({
                   data-c="reps"
                   data-plan-cell="reps"
                   data-plan-cell-key={planCellKey({ weekNumber, dow: day.dow, rowId: row.id, field: 'reps' })}
-                  style={{ width: colW.reps }}
+                  style={{ width: colW.reps, display: 'flex', alignItems: 'center', gap: 4 }}
                 >
-                  <GuardedInput value={row.reps === '—' ? '' : row.reps} inputMode="text" placeholder="—"
+                  <GuardedInput value={row.reps === STABLE_ZH.failureReps ? S.editor.failureReps : row.reps === '—' ? '' : row.reps} inputMode="text" placeholder="—"
                     className={inputIssue?.invalidReps ? 'guard-invalid' : undefined}
                     data-guard-field="reps" data-input-invalid={inputIssue?.invalidReps ? 'true' : undefined}
                     aria-invalid={inputIssue?.invalidReps || undefined}
                     title={inputIssue?.invalidReps ? INPUT_GUARD_REASONS.reps : undefined}
-                    disabled={readOnly || row.hasLogs}
+                    disabled={readOnly || row.hasLogs || row.reps === STABLE_ZH.failureReps}
                     filter={filterRepsInput}
                     onFocus={() => selectCell(row.id, 'reps')}
                     onClick={(event) => { stop(event); selectCell(row.id, 'reps') }}
                     onValue={(value) => {
                       edit((r) => ({ ...r, reps: value === '' ? '—' : value }))
                     }}
-                    style={{ ...baseInput, width: '100%', textAlign: 'center', color: 'var(--txt)', fontFamily: 'var(--font-mono)', fontWeight: 500 }} />
+                    style={{ ...baseInput, width: '100%', minWidth: 0, textAlign: 'center', color: 'var(--txt)', fontFamily: 'var(--font-mono)', fontWeight: 500 }} />
+                  <button type="button" className="reps-failure-toggle" aria-pressed={row.reps === STABLE_ZH.failureReps}
+                    disabled={readOnly || row.hasLogs} onClick={event => {
+                      stop(event); selectCell(row.id, 'reps')
+                      edit(r => ({ ...r, reps: r.reps === STABLE_ZH.failureReps ? '—' : STABLE_ZH.failureReps }))
+                    }}>{S.editor.failureReps}</button>
                 </div>
 
                 <EditableIntensity

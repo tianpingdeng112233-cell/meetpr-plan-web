@@ -56,7 +56,7 @@
 .block-edit-date { position: relative; display: inline-flex; gap: 6px; align-items: center; margin-left: 12px; font: 12px var(--font-mono); color: #5c6371; }
 .block-edit-date input { position: absolute; top: 24px; left: 0; z-index: 20; padding: 8px; border: 1px solid var(--bd); border-radius: 6px; background: white; color: var(--txt); width: 150px; font: inherit; }
 .block-edit-head button { color: #5c6371; font-size: 12px; border: 0; background: none; white-space: nowrap; cursor: pointer; }
-.block-cell .gridhead, .block-cell .exercise-row-main, .block-cell .student-added-row { display: grid !important; grid-template-columns: 22px minmax(100px,1.6fr) 48px 48px minmax(150px,1.3fr) minmax(116px,1fr) minmax(64px,1fr); }
+.block-cell .gridhead, .block-cell .exercise-row-main, .block-cell .student-added-row { display: grid !important; grid-template-columns: 22px minmax(100px,1.6fr) 48px 116px minmax(150px,1.3fr) minmax(116px,1fr) minmax(64px,1fr); }
 .block-cell .gcell { width: auto !important; min-width: 0; border: 0; position: static; }
 .block-cell .exrow { border: 1px solid #eef0f3; border-radius: 8px; background: #f5f6f8; margin: 4px 10px; min-height: 38px; }
 .block-cell .exercise-row-main { width: 100%; min-height: 38px; }
@@ -132,3 +132,7 @@
 .block-topbar .show-actuals[aria-checked="true"] i::after { left:14px; }
 .block-brick[data-hint],.block-video-marker[data-hint] { position:relative; }
 .block-brick[data-hint]:hover::after,.block-video-marker[data-hint]:hover::after { content:attr(data-hint); position:absolute; bottom:calc(100% + 5px); right:0; z-index:35; width:max-content; max-width:320px; border-radius:6px; background:#111827; color:white; padding:6px 8px; font:12px/1.5 var(--font-mono); white-space:normal; pointer-events:none; }
+
+.reps-failure-toggle { flex: 0 0 auto; padding: 4px; border: 1px solid var(--bd); border-radius: 4px; background: white; color: var(--txt); font: inherit; font-size: 11px; cursor: pointer; }
+.reps-failure-toggle[aria-pressed=true] { background: #fef3c7; border-color: #fde68a; }
+.reps-failure-toggle:disabled { opacity: .45; cursor: default; }

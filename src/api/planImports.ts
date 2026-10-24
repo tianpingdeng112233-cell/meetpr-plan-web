@@ -17,6 +17,8 @@ export type UnreadableExercise = {
   | { reason: 'MISSING_NAME' | 'MISSING_SETS' | 'OTHER'; detail: Record<string, unknown> }
 )
 export interface AIExercise {
+  // Optional while the backend rollout is in progress.
+  unparsed?: { field: 'reps' | 'intensity' | 'weight'; text: string }[]
   source_cells: SourceCell[]
   name: string; sets: number; reps: string
   intensity_kind: 'rpe' | 'rir' | 'pct' | null

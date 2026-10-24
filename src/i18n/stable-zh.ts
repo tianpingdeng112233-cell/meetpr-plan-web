@@ -1,6 +1,7 @@
 // Chinese parsing and canonical-name tokens are protocol data, not display copy.
 // They intentionally never depend on the current locale.
 export const STABLE_ZH = {
+  failureReps: '力竭',
   bodyweight: '自重',
   unknownExercise: '未知动作',
   liftNameTokens: { squat: '深蹲', bench: '卧推', deadlift: '硬拉' },

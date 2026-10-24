@@ -19,6 +19,8 @@ import { FailedWeekCells } from './FailedWeekCells'
 import { defaultFirstDate, orderedWeekdays } from '../../workspace/blockPlanSettings'
 import { WeekdayPicker } from './WeekdayPicker'
 import { readableWeek, unreadableMessage } from './unreadable'
+import { GroupedTextFixes } from './GroupedTextFixes'
+import { applyTextFixes, groupUnparsed, validTextFix, type TextFixes } from './groupedFixes'
 import './import.css'
 
 function defaultWeekSelection(weeks: ImportOutline['weeks']): number[] {
@@ -56,7 +58,7 @@ export function ImportPlanDialog(p: ImportPlanDialogProps) {
     setBusy(S.sheetImport.reading); setError('')
     try {
       const result = await outlineImport({ trainee_id: p.traineeId, source: filename ? 'file' : 'paste', sheets })
-      setResults([]); setEditedCells({}); setSkippedUnreadable(new Set()); setEmptyWeeks(new Set()); createdRef.current = null; addedRef.current = []
+      setResults([]); setTextFixes({}); setEditedCells({}); setSkippedUnreadable(new Set()); setEmptyWeeks(new Set()); createdRef.current = null; addedRef.current = []
       setFirstDate(defaultFirstDate(0)); setInferredConfirmed(false); setChosenDays(null); setFirst(0)
       setOutline(result); setSelected(defaultWeekSelection(result.weeks)); setRemaining(Math.max(0, remaining - 1)); p.onRemainingChange?.(Math.max(0, remaining - 1))
       setName(filename.replace(/\.[^.]+$/, '').trim() || S.sheetImport.defaultName); setStage('weeks')
@@ -72,6 +74,7 @@ export function ImportPlanDialog(p: ImportPlanDialogProps) {
     if (next.length > 12 || (positions.length && positions.at(-1)! - positions[0] + 1 !== positions.length)) { setError(S.sheetImport.selectionError); return }
     setSelected(outline!.weeks.filter(w => next.includes(w.index)).map(w => w.index)); setError('')
   }
+  const [textFixes, setTextFixes] = useState<TextFixes>({})
   const [results, setResults] = useState<AIWeekResult[]>([])
   const [skippedUnreadable, setSkippedUnreadable] = useState(new Set<number>())
   const [emptyWeeks, setEmptyWeeks] = useState(new Set<number>())
@@ -104,6 +107,8 @@ export function ImportPlanDialog(p: ImportPlanDialogProps) {
       setResults(prev => [...prev.filter(w => !received.some(r => r.index === w.index)), ...received])
       setError(importError(e))
     } finally {
+      // Fresh recognition may change group membership or the meaning of a source cell.
+      if (received.length) setTextFixes({})
       setSkippedUnreadable(prev => new Set([...prev].filter(index => !received.some(w => w.index === index))))
       setBusy('')
     }
@@ -114,6 +119,8 @@ export function ImportPlanDialog(p: ImportPlanDialogProps) {
       : w)
   const recognizedWeeks = activeResults.filter((w): w is AIWeek => !('error' in w))
   const goodWeeks = recognizedWeeks.map(readableWeek)
+  const textGroups = groupUnparsed(goodWeeks)
+  const unresolvedGroups = textGroups.filter(group => !validTextFix(textFixes[group.key])).length
   const unreadableWeeks = recognizedWeeks.filter(w => w.unreadable?.length)
   const unresolvedWeeks = unreadableWeeks.filter(w => !skippedUnreadable.has(w.index))
   const ordinalWeeks = goodWeeks.filter(w => w.days.some(d => d.weekday === null))
@@ -140,10 +147,10 @@ export function ImportPlanDialog(p: ImportPlanDialogProps) {
   const addedRef = useRef<ExerciseResponse[]>([])
   const creatingRef = useRef(false)
   const create = async () => {
-    if (busy || creatingRef.current || !exercises.length || unresolvedWeeks.length || failures.length || goodWeeks.length !== selected.length || !weekdayCountValid || !dateMatchesFirst || !firstDate) return
+    if (busy || creatingRef.current || unresolvedGroups || !exercises.length || unresolvedWeeks.length || failures.length || goodWeeks.length !== selected.length || !weekdayCountValid || !dateMatchesFirst || !firstDate) return
     creatingRef.current = true; setBusy(S.editor.saving); setError('')
     try {
-      const placed = placeAIWeekdays(goodWeeks, days, first)
+      const placed = placeAIWeekdays(applyTextFixes(goodWeeks, textFixes), days, first)
       const startDate = needsFirstDate ? firstDate : goodWeeks[0].start_date!
       const anchor = weekdayIndex(startDate)
       if (!createdRef.current) createdRef.current = await createPlan({
@@ -226,6 +233,7 @@ export function ImportPlanDialog(p: ImportPlanDialogProps) {
     {stage === 'summary' && outline && <>
       <small>{name} · W{(selected[0] ?? 0) + 1}–W{(selected.at(-1) ?? 0) + 1} · {mmdd(goodWeeks[0]?.start_date ?? firstDate)}</small>
       <div className="import-summary">{S.sheetImport.summary(selected.length, goodWeeks.reduce((n,w) => n + w.days.filter(d => !d.rest).length, 0), exercises.length).split(' · ').map((stat, index) => <span key={index}>{index > 0 && <span className="import-stat-divider"> · </span>}{stat}</span>)}</div>
+      <GroupedTextFixes groups={textGroups} fixes={textFixes} onFix={(key, fix) => setTextFixes(prev => ({ ...prev, [key]: fix }))} />
       {failures.map(w => <div key={w.index} className="import-failure">
         <b>{S.sheetImport.failed(w.index + 1, S.sheetImport.reasons[w.reason])}</b>
         <p>{S.sheetImport.editFailed(w.index + 1)}</p>
@@ -258,9 +266,10 @@ export function ImportPlanDialog(p: ImportPlanDialogProps) {
       {firstDate && !dateMatchesFirst && <p role="alert">{S.block.invalidDate}</p>}
       {error && <p role="alert">{error}</p>}
       {!exercises.length && <p role="alert">{S.sheetImport.noTrainingContent}</p>}
+      {unresolvedGroups > 0 && <small role="status">{S.sheetImport.unresolvedGroups(unresolvedGroups)}</small>}
       {unresolvedWeeks.map(w => <small key={w.index}>{S.sheetImport.unresolvedUnreadable(w.index + 1, w.unreadable!.length)}</small>)}
       {failures[0] && <small>{S.sheetImport.handleFirst(failures[0].index + 1)}</small>}
-      <footer><button disabled={!!createdRef.current} onClick={() => { setStage('weeks'); setError('') }}>{S.sheetImport.reselect}</button><button className="primary" onClick={() => void create()} disabled={!exercises.length || !selected.length || !!failures.length || !!unresolvedWeeks.length || goodWeeks.length !== selected.length || !firstDate || !weekdayCountValid || !dateMatchesFirst}>{S.sheetImport.create}</button></footer>
+      <footer><button disabled={!!createdRef.current} onClick={() => { setStage('weeks'); setError('') }}>{S.sheetImport.reselect}</button><button className="primary" onClick={() => void create()} disabled={unresolvedGroups > 0 || !exercises.length || !selected.length || !!failures.length || !!unresolvedWeeks.length || goodWeeks.length !== selected.length || !firstDate || !weekdayCountValid || !dateMatchesFirst}>{S.sheetImport.create}</button></footer>
     </>}
     </fieldset>
   </section></div>

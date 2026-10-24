@@ -573,3 +573,59 @@ it('resolves each unreadable week independently and resets skip when new unreada
     expect(button(S.sheetImport.create).disabled).toBe(true)
   } finally { confirm.mockRestore() }
 })
+
+it.each([
+  ['zh', 'failed', 'rpe', '8', null],
+  ['en', '6', 'rir', '2', '80'],
+  ['zh', '6', 'pct', '75', '80'],
+  ['zh', '6', null, '', '80'],
+] as const)('groups repeated texts across selected weeks and applies every fix to every set (%s, %s, %s)', async (locale, reps, kind, value, weight) => {
+  setLocale(locale); threeWeeks()
+  const exercise = { ...aiExercise, reps: '', sets: 2, note: '原备注', unparsed: [
+    { field: 'reps' as const, text: '尽力' }, { field: 'intensity' as const, text: '随意' }, { field: 'weight' as const, text: '随意' },
+  ] }
+  vi.mocked(imports.recognizeImportWeeks).mockResolvedValue({ weeks: [0, 1, 2].map(index => ({ index, start_date: '2026-10-19', days: [{ weekday: 0, day_index: 1, rest: false, exercises: [exercise, exercise] }] })) })
+  const draft = { id: 'created', plan_weeks: 3, start_date: '2026-10-19', status: 'draft', days: [] }
+  vi.mocked(plans.createPlan).mockResolvedValue(draft as never)
+  vi.mocked(plans.getPlan).mockResolvedValue(draft as never)
+  vi.mocked(plans.batchDays).mockResolvedValue(draft as never)
+  vi.mocked(catalog.createCustomExercise).mockResolvedValue({ id: 'custom', name: aiExercise.name, created_by_coach_id: 'coach' } as never)
+  await source(); await click(S.sheetImport.recognize(3))
+  const groups = () => [...host.querySelectorAll<HTMLElement>('[role=group]')].filter(g => g.hasAttribute('data-unparsed-field'))
+  expect(groups()).toHaveLength(3)
+  expect(groups()[0].textContent).toContain(locale === 'zh' ? '次数写的是『尽力』· 6 个动作' : 'Reps says “尽力” · 6 exercises')
+  expect(host.textContent).toContain(locale === 'zh' ? '还有 3 类写法没处理' : '3 text groups still need a fix')
+  expect(button(S.sheetImport.create).disabled).toBe(true)
+  await click(S.sheetImport.create)
+  expect(plans.createPlan).not.toHaveBeenCalled()
+  const group = (field: string) => host.querySelector<HTMLElement>(`[data-unparsed-field=${field}]`)!
+  const choose = async (field: string, text: string) => act(async () => [...group(field).querySelectorAll('button')].find(b => b.textContent === text)!.click())
+  const fill = async (field: string, value: string) => act(async () => inputValue(group(field).querySelector('input')!, value))
+  if (reps === 'failed') await choose('reps', locale === 'zh' ? '力竭' : 'To failure')
+  else {
+    await fill('reps', '0'); expect(button(S.sheetImport.create).disabled).toBe(true)
+    await fill('reps', reps)
+  }
+  expect(button(S.sheetImport.create).disabled).toBe(true)
+  if (kind) {
+    await act(async () => { const select = group('intensity').querySelector('select')!; select.value = kind; select.dispatchEvent(new Event('change', { bubbles: true })) })
+    await fill('intensity', value)
+  } else await choose('intensity', locale === 'zh' ? '不设强度' : 'No intensity')
+  expect(button(S.sheetImport.create).disabled).toBe(true)
+  if (weight) await fill('weight', weight)
+  else await choose('weight', locale === 'zh' ? '不设重量' : 'No weight')
+  expect(button(S.sheetImport.create).disabled).toBe(false)
+  await click(S.sheetImport.create)
+  const saved = vi.mocked(plans.batchDays).mock.calls.flatMap(([, body]) => body.upsert_days.flatMap(day => day.exercises))
+  expect(saved).toHaveLength(6)
+  for (const exercise of saved) {
+    expect(exercise.notes).toContain('原备注')
+    expect(exercise.notes).toContain('尽力')
+    expect(exercise.notes).toContain('随意')
+    expect(exercise.sets).toEqual([1, 2].map(set_number => expect.objectContaining({
+      set_number, target_reps: reps === 'failed' ? 1 : 6, set_type: reps === 'failed' ? 'failed' : 'working',
+      load_mode: kind, target_rpe: kind === 'rpe' ? value : null, rir_target: kind === 'rir' ? value : null,
+      target_pct: kind === 'pct' ? value : null, target_weight: weight,
+    })))
+  }
+})

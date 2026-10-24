@@ -1,3 +1,4 @@
+import { STABLE_ZH } from '../../i18n/stable-zh'
 import type { IntensityModeWire, LoadModeWire, PctAnchorWire, SetType } from '../../api/types'
 
 export type IntensityMode = 'kg' | 'rpe' | 'bodyweight'
@@ -151,7 +152,7 @@ export function hasOpaqueSetSettings(row: ExerciseRow): boolean {
     || set.target_reps_max !== first.target_reps_max
     || set.rest_seconds != null
     || (row.mode !== 'bodyweight' && set.coach_note != null)
-    || set.set_type !== (row.reps.includes('+') && index === lastIndex ? 'amrap' : 'working')
+    || set.set_type !== (row.reps === STABLE_ZH.failureReps ? 'failed' : row.reps.includes('+') && index === lastIndex ? 'amrap' : 'working')
   ))
 }
 

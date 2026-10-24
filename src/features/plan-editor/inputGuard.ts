@@ -75,6 +75,7 @@ export function isValidStrengthValue(value: string, mode: Exclude<IntensityMode,
 }
 
 export function isValidReps(value: string): boolean {
+  if (value.trim() === STABLE_ZH.failureReps) return true
   const match = value.trim().match(REPS_PATTERN)
   if (!match) return false
   const values = [match[1], match[2]].filter((part): part is string => part != null).map(Number)

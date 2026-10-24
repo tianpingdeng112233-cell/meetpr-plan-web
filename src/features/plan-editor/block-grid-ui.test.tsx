@@ -938,3 +938,29 @@ it.each(['replacement-empty', 'old-empty'])('does not transfer an old Delete act
     expect(onSave.mock.calls[1][4]).not.toContain(savedId)
   } finally { vi.useRealTimers() }
 })
+
+
+it('toggles 力竭 in the edit card and shows it in the shorthand without a 待填全 issue', async () => {
+  act(() => root.render(<PlanEditor initialWeeks={fixture(1)} weeksCount={1} studentName="学员" planName="计划" />))
+  click(cell(1, 0))
+  const repsCell = () => cell(1, 0).querySelector('[data-rowid="w1-0-0"] [data-c="reps"]')!
+  const toggle = () => repsCell().querySelector<HTMLButtonElement>('button')!
+  expect(toggle()?.textContent).toBe('力竭')
+  click(toggle())
+  expect(toggle().getAttribute('aria-pressed')).toBe('true')
+  expect(repsCell().querySelector<HTMLInputElement>('input')?.value).toBe('力竭')
+  expect(repsCell().querySelector<HTMLInputElement>('input')?.disabled).toBe(true)
+  expect(cell(1, 0).querySelector('[data-rowid="w1-0-0"]')?.textContent).not.toContain('待填全')
+  await key('Escape')
+  expect(cell(1, 0).querySelector('[data-rowid="w1-0-0"]')?.textContent).toContain('1×力竭')
+  click(cell(1, 0)); click(toggle())
+  const input = repsCell().querySelector<HTMLInputElement>('input')!
+  expect(toggle().getAttribute('aria-pressed')).toBe('false')
+  expect(input.disabled).toBe(false)
+  act(() => {
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, '8')
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+  })
+  await key('Escape')
+  expect(cell(1, 0).querySelector('[data-rowid="w1-0-0"]')?.textContent).toContain('1×8')
+})

@@ -1435,3 +1435,23 @@ describe('reconcilePlan — scoped 409 merge', () => {
     })
   })
 })
+
+
+describe('力竭 reps round trip', () => {
+  it.each(['kg', 'bodyweight', 'rpe'] as const)('saves every %s set as failed and reads it back as 力竭', async mode => {
+    vi.clearAllMocks()
+    vi.mocked(plans.getPlan).mockResolvedValue(serverPlan([], 'draft'))
+    mockBatchEcho()
+    const weeks = [weekWithMondayRows([boundRow('failure', null, 'ex1', '100', {
+      reps: '力竭', mode, boxes: [1, 2].map(() => ({ val: mode === 'rpe' ? '8' : '100', empty: false })),
+    })])]
+    const saved = await reconcilePlan('p', weeks)
+    const body = vi.mocked(plans.batchDays).mock.calls[0][1]
+    expect(body.upsert_days[0].exercises[0].sets).toEqual([1, 2].map(set_number => expect.objectContaining({
+      set_number, set_type: 'failed', target_reps: 1, target_reps_max: null,
+    })))
+    expect(saved.weeks[0].days[0].rows[0].reps).toBe('力竭')
+    const reread = mapPlanToWeeks(serverPlan(serverDaysFromBatch(body.upsert_days)), new Map([['ex1', { name: 'Squat', custom: false }]]))
+    expect(reread[0].days[0].rows[0].reps).toBe('力竭')
+  })
+})
