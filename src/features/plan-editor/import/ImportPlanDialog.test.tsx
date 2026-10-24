@@ -75,12 +75,12 @@ it('sends only content sheets in the outline request for an uploaded workbook', 
     trainee_id: 'trainee', source: 'file', sheets: [{ name: 'Sheet2', cells: [[1, 1, 'Squat'], [1, 2, '120']] }],
   })
 })
-async function source(index = new ExerciseIndex([])) {
+async function source(index = new ExerciseIndex([]), text = 'Squat\t4*8\t100') {
   vi.mocked(imports.getImportStatus).mockResolvedValue({ enabled: true, daily_limit: 3, remaining_today: 3 })
   await render(index); await click(S.sheetImport.title)
   await act(async () => {
     const event = new Event('paste', { bubbles: true, cancelable: true })
-    Object.defineProperty(event, 'clipboardData', { value: { getData: (type: string) => type === 'text/plain' ? 'Squat\t4*8\t100' : '' } })
+    Object.defineProperty(event, 'clipboardData', { value: { getData: (type: string) => type === 'text/plain' ? text : '' } })
     host.querySelector('textarea')!.dispatchEvent(event)
   })
   await click(S.sheetImport.start)
@@ -101,7 +101,7 @@ it('defaults to the latest 12 consecutive weeks and sends cells without a filena
   await act(async () => boxes[13].click())
   expect(host.textContent).toContain('已选 11 周 / 最多 12 周')
 })
-const aiExercise = { name: 'Synthetic squat', sets: 1, reps: '5', intensity_kind: null, intensity_values: [], weight_values: ['100'], note: '', family_guess: 'squat' as const, flags: ['inferred' as const] }
+const aiExercise = { source_cells: [] as imports.SourceCell[], name: 'Synthetic squat', sets: 1, reps: '5', intensity_kind: null, intensity_values: [], weight_values: ['100'], note: '', family_guess: 'squat' as const, flags: ['inferred' as const] }
 it.each([
   [[1, 1, 0, 1, 1, 0, 0], [false, false, false, true, true, false, false]],
   [[...Array(14).fill(1), ...Array(12).fill(0)], [false, false, ...Array(12).fill(true), ...Array(12).fill(false)]],
@@ -436,4 +436,140 @@ it('requires the first training date to match D1 and resets its date when D1 cha
   await act(async () => host.querySelector<HTMLButtonElement>('[data-d1="4"]')!.click())
   expect(new Date(`${date.value}T12:00:00`).getDay()).toBe(5)
   expect(button(S.sheetImport.create).disabled).toBe(false)
+})
+
+function unreadableWeek(unreadable: imports.UnreadableExercise[], exercises: imports.AIExercise[] = [aiExercise]) {
+  vi.mocked(imports.outlineImport).mockResolvedValue({ import_id: 'rows', sheet: 'Paste', truncated_rows: 0, header_region: null,
+    weeks: [{ index: 18, label: 'W19', start_date: '2026-10-19', training_days: 1, region: { r1: 1, c1: 1, r2: 20, c2: 4 } }] })
+  vi.mocked(imports.recognizeImportWeeks).mockResolvedValue({ weeks: [{ index: 18, start_date: '2026-10-19',
+    days: [{ weekday: 1, day_index: 1, rest: false, exercises }], unreadable,
+  }] })
+}
+
+it.each([
+  ['zh', 'W19 周二 · 负重山羊挺身 4×15 rpe 6789 —— 写的是 4 组，但只认出 3 个 RPE'],
+  ['en', 'W19 Tue · 负重山羊挺身 4×15 rpe 6789 —— Expected 4 sets, but only recognized 3 RPE values'],
+] as const)('locates unreadable set counts using original local cells in %s', async (locale, message) => {
+  setLocale(locale)
+  unreadableWeek([{ day_index: 1, weekday: 1, source_cells: [[1,1], [1,2], [1,3]], reason: 'SETS_VALUES_MISMATCH', detail: { track: 'intensity', sets: 4, got: 3 } }])
+  await source(new ExerciseIndex([]), '负重山羊挺身\t4×15\trpe 6789'); await click(S.sheetImport.recognize(1))
+  expect(host.textContent).toContain(message)
+  expect(host.querySelector('.import-failure')).toBeNull()
+})
+
+it.each([
+  ['zh', 'INVALID_NUMBER', { track: 'weight', value: '10O' }, 'W19 Day 2 · 无名 10O —— 10O 不是有效的数字'],
+  ['en', 'INVALID_NUMBER', { track: 'weight', value: '10O' }, 'W19 Day 2 · 无名 10O —— 10O is not a valid number'],
+  ['zh', 'MISSING_NAME', {}, 'W19 Day 2 · 无名 10O —— 没找到动作名'],
+  ['en', 'MISSING_NAME', {}, 'W19 Day 2 · 无名 10O —— No exercise name found'],
+  ['zh', 'MISSING_SETS', {}, 'W19 Day 2 · 无名 10O —— 没找到组数'],
+  ['en', 'MISSING_SETS', {}, 'W19 Day 2 · 无名 10O —— No set count found'],
+  ['zh', 'OTHER', {}, 'W19 Day 2 · 无名 10O —— 这一行没读懂'],
+  ['en', 'OTHER', {}, 'W19 Day 2 · 无名 10O —— This row could not be understood'],
+] as const)('explains unreadable %s %s with ordinal day and local text', async (locale, reason, detail, message) => {
+  setLocale(locale)
+  unreadableWeek([{ day_index: 2, weekday: null, source_cells: [[1,1], [1,3]], reason, detail } as imports.UnreadableExercise])
+  await source(new ExerciseIndex([]), '无名\tignored\t10O'); await click(S.sheetImport.recognize(1))
+  expect(host.textContent).toContain(message)
+})
+
+it('highlights and scrolls exactly to unreadable source cells, then replaces only the edited week', async () => {
+  unreadableWeek([{ day_index: 1, weekday: 1, source_cells: [[12,1], [12,3]], reason: 'INVALID_NUMBER', detail: { track: 'weight', value: '10O' } }])
+  const scroll = vi.fn()
+  Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', { configurable: true, value: scroll })
+  try {
+    await source(new ExerciseIndex([]), ['Squat\t4*8\t100', ...Array(10).fill('heading'), 'Press\t4*8\t10O'].join('\n'))
+    await click(S.sheetImport.recognize(1))
+    expect([...host.querySelectorAll('[aria-invalid=true]')].map(e => e.getAttribute('aria-label'))).toEqual(['W19 A12', 'W19 C12'])
+    expect(scroll.mock.contexts[0]).toBe(host.querySelector('[aria-label="W19 A12"]'))
+    expect(host.textContent).toContain('W19 还有 1 个动作没读懂')
+    expect(button(S.sheetImport.create).disabled).toBe(true)
+    await click(S.sheetImport.create); expect(plans.createPlan).not.toHaveBeenCalled()
+    await act(async () => inputValue(host.querySelector<HTMLInputElement>('[aria-label="W19 C12"]')!, '100'))
+    expect(scroll).toHaveBeenCalledTimes(1)
+    vi.mocked(imports.recognizeImportWeeks).mockResolvedValueOnce({ weeks: [{ index: 18, start_date: '2026-10-19', days: [{ weekday: 1, day_index: 1, rest: false, exercises: [aiExercise] }] }] })
+    await click('重新识别这一周')
+    expect(imports.recognizeImportWeeks).toHaveBeenLastCalledWith('rows', { weeks: [{ index: 18, cells: expect.arrayContaining([[12,3,'100']]) }], header_cells: [] })
+    expect(host.querySelector('.import-unreadable')).toBeNull()
+    expect(button(S.sheetImport.create).disabled).toBe(false)
+  } finally { delete (HTMLElement.prototype as Partial<HTMLElement>).scrollIntoView }
+})
+
+it.each(['zh', 'en'] as const)('confirms and undoes skipping unreadable exercises in %s without importing them', async locale => {
+  setLocale(locale)
+  const bad = { ...aiExercise, name: 'Unreadable lift', source_cells: [[1,1], [1,3]] as imports.SourceCell[] }
+  unreadableWeek([{ day_index: 1, weekday: 1, source_cells: [[1,1], [1,3]], reason: 'MISSING_SETS', detail: {} }], [aiExercise, bad])
+  const confirm = vi.spyOn(window, 'confirm').mockReturnValueOnce(false).mockReturnValue(true)
+  const draft = { id: 'skip', trainee_id: 'trainee', name: 'Synthetic', plan_weeks: 1, start_date: '2026-10-19', status: 'draft', days: [] } as never
+  vi.mocked(plans.createPlan).mockResolvedValue(draft); vi.mocked(plans.getPlan).mockResolvedValue(draft); vi.mocked(plans.batchDays).mockResolvedValue(draft)
+  try {
+    await source(new ExerciseIndex([{ id: 'good', name: aiExercise.name } as never])); await click(S.sheetImport.recognize(1))
+    const skip = locale === 'zh' ? '跳过这几个动作' : 'Skip these exercises'
+    const undo = locale === 'zh' ? '已跳过这几个动作 · 撤销' : 'Exercises skipped · Undo'
+    expect(button(S.sheetImport.create).disabled).toBe(true)
+    await click(skip); expect(button(S.sheetImport.create).disabled).toBe(true)
+    await click(skip); expect(button(S.sheetImport.create).disabled).toBe(false)
+    await click(undo); expect(button(S.sheetImport.create).disabled).toBe(true)
+    await click(skip); await click(S.sheetImport.create)
+    expect(catalog.createCustomExercise).not.toHaveBeenCalled()
+    expect(onImported).toHaveBeenCalledOnce()
+    const rows = (onImported.mock.calls[0][0].weeks as Week[]).flatMap(w => w.days.flatMap(d => d.rows))
+    expect(rows.map(row => row.name)).toEqual([aiExercise.name])
+    expect(vi.mocked(plans.batchDays).mock.calls.flatMap(([, body]) => body.upsert_days.flatMap(d => d.exercises)).map(e => e.exercise_id)).toEqual(['good'])
+  } finally { confirm.mockRestore() }
+})
+
+it('keeps an all-unreadable week in its own editable block and never creates an empty plan after skip', async () => {
+  unreadableWeek([{ day_index: 1, weekday: 1, source_cells: [[1,1]], reason: 'MISSING_NAME', detail: {} }], [])
+  const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
+  try {
+    await source(); await click(S.sheetImport.recognize(1))
+    expect(host.querySelector('.import-failure')).toBeNull()
+    expect(host.textContent).toContain('W19 周二 · Squat —— 没找到动作名')
+    await click('跳过这几个动作')
+    expect(button(S.sheetImport.create).disabled).toBe(true)
+    expect(host.textContent).toContain('这几周没有训练内容')
+    await click('创建草稿计划'); expect(plans.createPlan).not.toHaveBeenCalled()
+  } finally { confirm.mockRestore() }
+})
+
+
+it.each([
+  ['zh', 'rpe', 'intensity', 'RPE'], ['zh', 'rir', 'intensity', 'RIR'], ['zh', 'pct', 'intensity', '百分比'],
+  ['zh', null, 'intensity', '强度'], ['zh', 'rpe', 'weight', '重量'],
+  ['en', 'pct', 'intensity', 'percentage'], ['en', null, 'intensity', 'intensity'], ['en', null, 'weight', 'weight'],
+] as const)('names unreadable track in %s (kind=%s, track=%s)', async (locale, intensity_kind, track, label) => {
+  setLocale(locale)
+  unreadableWeek([{ day_index: 1, weekday: 1, source_cells: [[1,1]], reason: 'SETS_VALUES_MISMATCH', detail: { track, sets: 4, got: 3 } }], [{ ...aiExercise, intensity_kind, source_cells: [[1,1]] }])
+  await source(); await click(S.sheetImport.recognize(1))
+  expect(host.textContent).toContain(locale === 'zh' ? `写的是 4 组，但只认出 3 个 ${label}` : `Expected 4 sets, but only recognized 3 ${label} values`)
+})
+
+it('resolves each unreadable week independently and resets skip when new unreadable results arrive', async () => {
+  threeWeeks()
+  const unreadable: imports.UnreadableExercise[] = [{ day_index: 1, weekday: 0, source_cells: [[1,1]], reason: 'MISSING_NAME', detail: {} }]
+  const good = { index: 0, start_date: '2026-10-19', days: [{ weekday: 0, day_index: 1, rest: false, exercises: [aiExercise] }] }
+  vi.mocked(imports.recognizeImportWeeks).mockResolvedValueOnce({ weeks: [good, { ...good, index: 1, unreadable }, { ...good, index: 2, unreadable }] })
+  const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
+  try {
+    await source(); await click(S.sheetImport.recognize(3))
+    expect(host.querySelectorAll('.import-unreadable')).toHaveLength(2)
+    await click('跳过这几个动作')
+    expect(host.textContent).not.toContain('W2 还有 1 个动作没读懂')
+    expect(host.textContent).toContain('W3 还有 1 个动作没读懂')
+    expect(button(S.sheetImport.create).disabled).toBe(true)
+    vi.mocked(imports.recognizeImportWeeks).mockResolvedValueOnce({ weeks: [{ ...good, index: 1, unreadable }] })
+    await click('重新识别这一周')
+    expect(host.textContent).toContain('W2 还有 1 个动作没读懂')
+    await click('跳过这几个动作'); await click('跳过这几个动作')
+    expect(button(S.sheetImport.create).disabled).toBe(false)
+    expect(host.textContent).toContain('3 周 · 3 个训练日 · 3 个动作')
+    await click(S.sheetImport.reselect); await click(S.sheetImport.changeSource)
+    await click(S.sheetImport.start)
+    vi.mocked(imports.recognizeImportWeeks).mockResolvedValueOnce({ weeks: [good, { ...good, index: 1, unreadable }, { ...good, index: 2, unreadable }] })
+    await click(S.sheetImport.recognize(3))
+    expect(host.textContent).toContain('W2 还有 1 个动作没读懂')
+    expect(host.textContent).toContain('W3 还有 1 个动作没读懂')
+    expect(button(S.sheetImport.create).disabled).toBe(true)
+  } finally { confirm.mockRestore() }
 })

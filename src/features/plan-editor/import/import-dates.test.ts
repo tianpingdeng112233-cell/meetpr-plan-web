@@ -8,7 +8,7 @@ import type { Week } from '../types'
 const STUB = { resolve: () => null } as unknown as ExerciseIndex
 
 function weekAt(serialBase: number): ParsedWeek {
-  return aiWeeksToParsed([{ index: 0, start_date: excelSerialToISODate(serialBase), days: [{ weekday: 0, day_index: 1, rest: false, exercises: [{ name: 'Synthetic squat', sets: 1, reps: '5', intensity_kind: null, intensity_values: [], weight_values: ['100'], note: '', family_guess: null, flags: [] }] }] }])[0]
+  return aiWeeksToParsed([{ index: 0, start_date: excelSerialToISODate(serialBase), days: [{ weekday: 0, day_index: 1, rest: false, exercises: [{ name: 'Synthetic squat', sets: 1, reps: '5', intensity_kind: null, source_cells: [], intensity_values: [], weight_values: ['100'], note: '', family_guess: null, flags: [] }] }] }])[0]
 }
 function emptyWeekAt(serialBase: number): ParsedWeek {
   return aiWeeksToParsed([{ index: 0, start_date: excelSerialToISODate(serialBase), days: [] }])[0]

@@ -6,7 +6,18 @@ export interface ImportStatus { enabled: boolean; daily_limit: number; remaining
 export interface OutlineWeek { index: number; label: string; start_date: string | null; training_days: number; region: SheetRegion }
 export interface ImportOutline { import_id: string; sheet: string; truncated_rows: number; header_region: SheetRegion | null; weeks: OutlineWeek[] }
 export type ImportFailureReason = 'MODEL_BUSY' | 'OUTPUT_TOO_LONG' | 'BAD_OUTPUT' | 'REGION_SUSPECT'
+export type SourceCell = [row: number, col: number]
+export type UnreadableExercise = {
+  day_index: number
+  weekday: number | null
+  source_cells: SourceCell[]
+} & (
+  | { reason: 'SETS_VALUES_MISMATCH'; detail: { track: 'intensity' | 'weight'; sets: number; got: number } }
+  | { reason: 'INVALID_NUMBER'; detail: { track: 'intensity' | 'weight'; value: string | number } }
+  | { reason: 'MISSING_NAME' | 'MISSING_SETS' | 'OTHER'; detail: Record<string, unknown> }
+)
 export interface AIExercise {
+  source_cells: SourceCell[]
   name: string; sets: number; reps: string
   intensity_kind: 'rpe' | 'rir' | 'pct' | null
   intensity_values: string[]
@@ -15,7 +26,7 @@ export interface AIExercise {
   family_guess: LiftFamily | null
   flags: ('note_fallback' | 'inferred')[]
 }
-export interface AIWeek { index: number; start_date: string | null; days: { weekday: number | null; day_index: number; rest: boolean; exercises: AIExercise[] }[] }
+export interface AIWeek { unreadable?: UnreadableExercise[]; index: number; start_date: string | null; days: { weekday: number | null; day_index: number; rest: boolean; exercises: AIExercise[] }[] }
 export interface FailedAIWeek { index: number; error: 'PARSE_FAILED'; reason: ImportFailureReason }
 export type AIWeekResult = AIWeek | FailedAIWeek
 export const getImportStatus = (traineeId: string) => api.get<ImportStatus>(`/coach/plan-imports/status?trainee_id=${encodeURIComponent(traineeId)}`, { retryRateLimit: false })

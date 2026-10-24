@@ -6,7 +6,7 @@ import { ExerciseIndex } from '../exerciseIndex'
 it('keeps RPE and target weight as independent per-set tracks', () => {
   const parsed = aiWeeksToParsed([{ index: 0, start_date: '2026-10-19', days: [{ weekday: 0, day_index: 1, rest: false, exercises: [{
     name: 'Synthetic lift', sets: 2, reps: '5', intensity_kind: 'rpe',
-    intensity_values: ['6', '6'], weight_values: ['227.5', '227.5'],
+    source_cells: [], intensity_values: ['6', '6'], weight_values: ['227.5', '227.5'],
     note: '', family_guess: null, flags: [],
   }] }] }])
   const row = buildWeeks(parsed, new ExerciseIndex([]), '2026-10-19').weeks[0].days[0].rows[0]
@@ -20,7 +20,7 @@ it('keeps RPE and target weight as independent per-set tracks', () => {
 
 it('adapts AI weeks, preserving blank weeks, original names, RPE and only inferred/empty-week doubts', () => {
   const parsed = aiWeeksToParsed([
-    { index: 4, start_date: '2026-10-19', days: [{ weekday: 2, day_index: 1, rest: false, exercises: [{ name: 'Synthetic lift', sets: 2, reps: '8+', intensity_kind: 'rpe', intensity_values: ['7', '8'], weight_values: [], note: 'tempo', family_guess: 'squat', flags: ['note_fallback', 'inferred'] }] }] },
+    { index: 4, start_date: '2026-10-19', days: [{ weekday: 2, day_index: 1, rest: false, exercises: [{ name: 'Synthetic lift', sets: 2, reps: '8+', intensity_kind: 'rpe', source_cells: [], intensity_values: ['7', '8'], weight_values: [], note: 'tempo', family_guess: 'squat', flags: ['note_fallback', 'inferred'] }] }] },
     { index: 5, start_date: null, days: [] },
   ], new Set([5]))
   const built = buildWeeks(parsed, new ExerciseIndex([]), '2099-01-01')
@@ -32,7 +32,7 @@ it('adapts AI weeks, preserving blank weeks, original names, RPE and only inferr
 })
 
 it('does not mark undated weeks or note-only rows as import doubts', () => {
-  const weeks = buildWeeks(aiWeeksToParsed([{ index: 0, start_date: null, days: [{ weekday: 0, day_index: 1, rest: false, exercises: [{ name: 'Synthetic', sets: 1, reps: '5', intensity_kind: null, intensity_values: [], weight_values: ['10'], note: 'tempo', family_guess: null, flags: ['note_fallback'] }] }] }]), new ExerciseIndex([]), '2026-10-19').weeks
+  const weeks = buildWeeks(aiWeeksToParsed([{ index: 0, start_date: null, days: [{ weekday: 0, day_index: 1, rest: false, exercises: [{ name: 'Synthetic', sets: 1, reps: '5', intensity_kind: null, source_cells: [], intensity_values: [], weight_values: ['10'], note: 'tempo', family_guess: null, flags: ['note_fallback'] }] }] }]), new ExerciseIndex([]), '2026-10-19').weeks
   expect(weeks[0].days[0].rows[0].importDoubts ?? []).toEqual([])
   expect(weeks[0].importDoubts ?? []).toEqual([])
 })
@@ -42,7 +42,7 @@ it('places four Day-indexed training days on Mon/Wed/Fri/Sat in day_index order'
   const weeks = [{ index: 0, start_date: null, days: [3, 1, 4, 2].map(day_index => ({
     weekday: null, day_index, rest: false, exercises: [{
       name: `Lift ${day_index}`, sets: 1, reps: '5', intensity_kind: null,
-      intensity_values: [], weight_values: ['100'], note: '', family_guess: null, flags: [],
+      source_cells: [], intensity_values: [], weight_values: ['100'], note: '', family_guess: null, flags: [],
     }],
   })) }]
   const placed = placeAIWeekdays(weeks, [0, 2, 4, 5], 0)

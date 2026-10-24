@@ -17,7 +17,7 @@
 .import-dialog textarea { height: 96px; resize: vertical; }
 .import-footnote, .import-dialog footer { display: flex; justify-content: space-between; gap: 12px; }
 .import-dialog footer { justify-content: flex-end; }
-.import-dialog footer button, .import-failure button { border: 1px solid #d1d5db; background: white; border-radius: 7px; padding: 9px 12px; }
+.import-dialog footer button, .import-failure button, .import-unreadable button { border: 1px solid #d1d5db; background: white; border-radius: 7px; padding: 9px 12px; }
 .import-dialog button.primary { background: #111827; color: white; border-color: #111827; }
 .import-dialog [role=alert] { color: #b91c1c; margin: 0; font-size: 13px; }
 .import-fields { border: 0; padding: 0; margin: 0; min-width: 0; display: grid; gap: 18px; }
@@ -68,3 +68,6 @@
 .import-confirm-all[aria-pressed=true] { background: #fef3c7; border-color: #fde68a; }
 
 .import-weekday-picker { display: grid; gap: 14px; }
+
+.import-unreadable { padding: 14px; border: 1px solid #e5e7eb; border-radius: 8px; font-size: 12px; }
+.import-cell-scroll input[aria-invalid=true] { background: #fef2f2; box-shadow: inset 0 0 0 1px #dc2626; color: #991b1b; }

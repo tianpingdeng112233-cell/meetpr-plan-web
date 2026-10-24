@@ -18,6 +18,7 @@ import { ApiException } from '../../../api/client'
 import { FailedWeekCells } from './FailedWeekCells'
 import { defaultFirstDate, orderedWeekdays } from '../../workspace/blockPlanSettings'
 import { WeekdayPicker } from './WeekdayPicker'
+import { readableWeek, unreadableMessage } from './unreadable'
 import './import.css'
 
 function defaultWeekSelection(weeks: ImportOutline['weeks']): number[] {
@@ -55,7 +56,7 @@ export function ImportPlanDialog(p: ImportPlanDialogProps) {
     setBusy(S.sheetImport.reading); setError('')
     try {
       const result = await outlineImport({ trainee_id: p.traineeId, source: filename ? 'file' : 'paste', sheets })
-      setResults([]); setEditedCells({}); setEmptyWeeks(new Set()); createdRef.current = null; addedRef.current = []
+      setResults([]); setEditedCells({}); setSkippedUnreadable(new Set()); setEmptyWeeks(new Set()); createdRef.current = null; addedRef.current = []
       setFirstDate(defaultFirstDate(0)); setInferredConfirmed(false); setChosenDays(null); setFirst(0)
       setOutline(result); setSelected(defaultWeekSelection(result.weeks)); setRemaining(Math.max(0, remaining - 1)); p.onRemainingChange?.(Math.max(0, remaining - 1))
       setName(filename.replace(/\.[^.]+$/, '').trim() || S.sheetImport.defaultName); setStage('weeks')
@@ -72,6 +73,7 @@ export function ImportPlanDialog(p: ImportPlanDialogProps) {
     setSelected(outline!.weeks.filter(w => next.includes(w.index)).map(w => w.index)); setError('')
   }
   const [results, setResults] = useState<AIWeekResult[]>([])
+  const [skippedUnreadable, setSkippedUnreadable] = useState(new Set<number>())
   const [emptyWeeks, setEmptyWeeks] = useState(new Set<number>())
   const [editedCells, setEditedCells] = useState<Record<number, SheetCell[]>>({})
   const [inferredConfirmed, setInferredConfirmed] = useState(false)
@@ -101,13 +103,19 @@ export function ImportPlanDialog(p: ImportPlanDialogProps) {
       // Retain completed batches. A retry only needs the unresolved weeks.
       setResults(prev => [...prev.filter(w => !received.some(r => r.index === w.index)), ...received])
       setError(importError(e))
-    } finally { setBusy('') }
+    } finally {
+      setSkippedUnreadable(prev => new Set([...prev].filter(index => !received.some(w => w.index === index))))
+      setBusy('')
+    }
   }
   const activeResults = selected.map(index => results.find(w => w.index === index)).filter((w): w is AIWeekResult => !!w)
-    .map(w => !('error' in w) && !emptyWeeks.has(w.index) && !w.days.some(d => d.exercises.length > 0)
+    .map(w => !('error' in w) && !emptyWeeks.has(w.index) && !w.unreadable?.length && !w.days.some(d => d.exercises.length > 0)
       ? { index: w.index, error: 'PARSE_FAILED' as const, reason: 'EMPTY_WEEK' as const }
       : w)
-  const goodWeeks = activeResults.filter((w): w is AIWeek => !('error' in w))
+  const recognizedWeeks = activeResults.filter((w): w is AIWeek => !('error' in w))
+  const goodWeeks = recognizedWeeks.map(readableWeek)
+  const unreadableWeeks = recognizedWeeks.filter(w => w.unreadable?.length)
+  const unresolvedWeeks = unreadableWeeks.filter(w => !skippedUnreadable.has(w.index))
   const ordinalWeeks = goodWeeks.filter(w => w.days.some(d => d.weekday === null))
   const trainingDayCount = ordinalWeeks[0]?.days.filter(d => !d.rest).length ?? 0
   const days = chosenDays ?? defaultImportWeekdays(trainingDayCount)
@@ -132,7 +140,7 @@ export function ImportPlanDialog(p: ImportPlanDialogProps) {
   const addedRef = useRef<ExerciseResponse[]>([])
   const creatingRef = useRef(false)
   const create = async () => {
-    if (busy || creatingRef.current || !exercises.length || failures.length || goodWeeks.length !== selected.length || !weekdayCountValid || !dateMatchesFirst || !firstDate) return
+    if (busy || creatingRef.current || !exercises.length || unresolvedWeeks.length || failures.length || goodWeeks.length !== selected.length || !weekdayCountValid || !dateMatchesFirst || !firstDate) return
     creatingRef.current = true; setBusy(S.editor.saving); setError('')
     try {
       const placed = placeAIWeekdays(goodWeeks, days, first)
@@ -226,6 +234,15 @@ export function ImportPlanDialog(p: ImportPlanDialogProps) {
           <button onClick={() => { setEmptyWeeks(prev => new Set(prev).add(w.index)); setResults(prev => prev.map(r => r.index === w.index ? { index: w.index, start_date: outline.weeks.find(o => o.index === w.index)?.start_date ?? null, days: [] } : r)) }}>{S.sheetImport.leaveEmpty}</button>
           <button onClick={() => { setSelected(prev => prev.filter(i => i !== w.index)); setResults(prev => prev.filter(r => r.index !== w.index)) }}>{S.sheetImport.omit}</button></div>
       </div>)}
+      {unreadableWeeks.map(w => <div key={w.index} className="import-unreadable">
+        {w.unreadable!.map((item, index) => <p key={index}>{unreadableMessage(w, item, cellsFor(w.index))}</p>)}
+        <FailedWeekCells index={w.index} cells={cellsFor(w.index)} highlights={w.unreadable!.flatMap(item => item.source_cells)} onChange={next => setEditedCells(prev => ({ ...prev, [w.index]: next }))} />
+        <div className="import-failure-actions"><button className="primary" onClick={() => void recognize([w.index])}>{S.sheetImport.retryUnreadable}</button>
+          <button aria-pressed={skippedUnreadable.has(w.index)} onClick={() => {
+            if (!skippedUnreadable.has(w.index) && !window.confirm(S.sheetImport.confirmSkipUnreadable(w.index + 1, w.unreadable!.length))) return
+            setSkippedUnreadable(prev => { const next = new Set(prev); if (next.has(w.index)) next.delete(w.index); else next.add(w.index); return next })
+          }}>{skippedUnreadable.has(w.index) ? S.sheetImport.undoSkipUnreadable : S.sheetImport.skipUnreadable}</button></div>
+      </div>)}
       <div className="import-footnote"><b>{S.sheetImport.attention}</b><small>{S.sheetImport.attentionHint}</small></div>
       <div className="import-doubts">{(Object.keys(counts) as (keyof typeof counts)[]).filter(kind => kind !== 'empty_week' || counts[kind]).map(kind => <div key={kind} data-doubt-count={kind}>
         <span className="import-doubt-label">{S.sheetImport.doubts[kind]}</span><span>{kind === 'no_date' && !counts.no_date ? S.sheetImport.allDated : S.sheetImport.doubtHints[kind]}
@@ -241,8 +258,9 @@ export function ImportPlanDialog(p: ImportPlanDialogProps) {
       {firstDate && !dateMatchesFirst && <p role="alert">{S.block.invalidDate}</p>}
       {error && <p role="alert">{error}</p>}
       {!exercises.length && <p role="alert">{S.sheetImport.noTrainingContent}</p>}
+      {unresolvedWeeks.map(w => <small key={w.index}>{S.sheetImport.unresolvedUnreadable(w.index + 1, w.unreadable!.length)}</small>)}
       {failures[0] && <small>{S.sheetImport.handleFirst(failures[0].index + 1)}</small>}
-      <footer><button disabled={!!createdRef.current} onClick={() => { setStage('weeks'); setError('') }}>{S.sheetImport.reselect}</button><button className="primary" onClick={() => void create()} disabled={!exercises.length || !selected.length || !!failures.length || goodWeeks.length !== selected.length || !firstDate || !weekdayCountValid || !dateMatchesFirst}>{S.sheetImport.create}</button></footer>
+      <footer><button disabled={!!createdRef.current} onClick={() => { setStage('weeks'); setError('') }}>{S.sheetImport.reselect}</button><button className="primary" onClick={() => void create()} disabled={!exercises.length || !selected.length || !!failures.length || !!unresolvedWeeks.length || goodWeeks.length !== selected.length || !firstDate || !weekdayCountValid || !dateMatchesFirst}>{S.sheetImport.create}</button></footer>
     </>}
     </fieldset>
   </section></div>

@@ -26,7 +26,7 @@ function exercise(
   }
 }
 
-const ai = (name: string, overrides: Partial<AIExercise> = {}): AIExercise => ({ name, sets: 1, reps: '5', intensity_kind: null, intensity_values: [], weight_values: ['100'], note: '', family_guess: null, flags: [], ...overrides })
+const ai = (name: string, overrides: Partial<AIExercise> = {}): AIExercise => ({ name, sets: 1, reps: '5', intensity_kind: null, source_cells: [], intensity_values: [], weight_values: ['100'], note: '', family_guess: null, flags: [], ...overrides })
 const parsed = (exercises: ReturnType<typeof ai>[]) => aiWeeksToParsed([{ index: 0, start_date: '2025-12-29', days: [{ weekday: 0, day_index: 1, rest: false, exercises }] }])
 describe('buildWeeks from AI adapter output', () => {
   it.each([
@@ -38,7 +38,7 @@ describe('buildWeeks from AI adapter output', () => {
     { kind: 'rpe' as const, values: [], weights: [], value: '', intensityMode: undefined },
   ])('preserves the independent $kind prescription with weights $weights', ({ kind, values, weights, value, intensityMode }) => {
     const { weeks } = buildWeeks(parsed([ai('Synthetic lift', {
-      sets: 2, intensity_kind: kind, intensity_values: values, weight_values: weights,
+      sets: 2, intensity_kind: kind, source_cells: [], intensity_values: values, weight_values: weights,
     })]), new ExerciseIndex([]), '2099-01-01')
     const row = weeks[0].days[0].rows[0]
     expect(row.mode).toBe('kg')
