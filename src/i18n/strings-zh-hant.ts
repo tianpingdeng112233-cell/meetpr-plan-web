@@ -767,6 +767,18 @@ const hantVideo = {
 } as const satisfies Translations<typeof zhVideo>
 
 const hantWorkspace = {
+    overview: {
+        setNumber: (n: number) => `\u7B2C ${n} \u7D44`, invite: "\u9080\u8ACB\u5B78\u54E1", attention: "\u9700\u8981\u6CE8\u610F", normal: "\u6B63\u5E38", reminders: "\u63D0\u9192",
+        steps: ["\u628A\u9080\u8ACB\u8A0A\u606F\u6216QR Code\u767C\u7D66\u5B78\u54E1", "\u5B78\u54E1\u88DD App\u3001\u8A3B\u518A\u5E33\u865F", "\u5728\u300C\u8F38\u5165\u9080\u8ACB\u78BC\u300D\u9801\u8CBC\u4E0A\u9080\u8ACB\u78BC\u4E26\u63D0\u4EA4", "\u7533\u8ACB\u51FA\u73FE\u5728\u53F3\u908A\uFF0C\u4F60\u9EDE\u300C\u63A5\u53D7\u300D"],
+        codeHint: "\u9080\u8ACB\u78BC \u00B7 \u9577\u671F\u6709\u6548\uFF0C\u53EF\u767C\u7D66\u6240\u6709\u5B78\u54E1", copyLink: "\u8907\u88FD\u9023\u7D50", linkCopied: "\u9023\u7D50\u5DF2\u8907\u88FD", downloadQr: "\u4E0B\u8F09QR Code",
+        requestsEmpty: "\u66AB\u7121\u65B0\u7533\u8ACB", requestsHint: "\u5B78\u54E1\u63D0\u4EA4\u5F8C\u6703\u51FA\u73FE\u5728\u9019\u88E1\uFF0C\u9EDE\u5361\u7247\u80FD\u770B\u5165\u99D0\u8CC7\u6599",
+        refresh: "\u6BCF 60 \u79D2\u81EA\u52D5\u91CD\u65B0\u6574\u7406", empty: "\u63A5\u53D7\u7533\u8ACB\u5F8C\uFF0C\u5B78\u54E1\u6703\u51FA\u73FE\u5728\u9019\u88E1", failed: "\u63D0\u9192\u8F09\u5165\u5931\u6557",
+        rpeOver: (n: number) => `RPE \u8D85\u6A19 ${n}`, incomplete: (n: number) => `\u672A\u5B8C\u6210 ${n}`,
+        remaining: (n: number) => `\u8AB2\u8868\u5269 ${n} \u5929`, ended: (n: number) => `\u5DF2\u7D50\u675F ${n} \u5929`,
+        messages: (n: number) => `\u7559\u8A00 ${n}`, videos: (n: number) => `\u5F71\u7247 ${n}`, behind: (n: number) => `\u843D\u5F8C ${n}`,
+        nextWeekMissing: "\u4E0B\u9031\u672A\u6392", targetMissing: "\u672A\u627E\u5230\u63D0\u9192\u5C0D\u61C9\u7684\u8A13\u7DF4\u65E5\uFF0C\u8ACB\u91CD\u65B0\u6574\u7406\u7E3D\u89BD\u5F8C\u91CD\u8A66\u3002",
+        keywords: "\u7533\u8ACB \u5B78\u54E1\u7533\u8ACB \u9080\u8ACB requests invite",
+    },
     backAllStudents: "\u2190 \u5168\u9AD4\u5B78\u54E1",
     today: "\u4ECA\u5929", yesterday: "\u6628\u5929",
     squatStyleHigh: "\u9AD8\u69D3", squatStyleLow: "\u4F4E\u69D3", deadliftConventional: "\u50B3\u7D71", deadliftSumo: "\u76F8\u64B2",

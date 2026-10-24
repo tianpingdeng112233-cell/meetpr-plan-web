@@ -2,7 +2,8 @@ import type { CoachView } from './CoachShell'
 
 // Retired persisted view names are accepted only at this compatibility boundary.
 export function normalizeCoachView(value: string | null): CoachView {
-  return value === 'board' || value === 'catalog' || value === 'requests' || value === 'tracking' ? value : 'editor'
+  if (value === 'requests') return 'board'
+  return value === 'board' || value === 'catalog' || value === 'tracking' ? value : 'editor'
 }
 
 export function legacyStudentFromLocation(): string | null {

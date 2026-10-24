@@ -1,3 +1,4 @@
+import { installLocalStorageMock } from '../../test/localStorageMock'
 import { openBlockDay } from './blockGridTestUtils'
 import { act, useState } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
@@ -130,6 +131,18 @@ describe('coach plan shift UI', () => {
     document.querySelectorAll('[data-plan-shift-panel]').forEach((element) => element.remove())
     vi.restoreAllMocks()
     vi.useRealTimers()
+  })
+
+  it.each(['by-week', 'by-day'])('019 opens a day and its shift panel from a deep link in %s layout', async layout => {
+    installLocalStorageMock()
+    localStorage.setItem('meetpr.plan-editor.block-layout', layout)
+    await act(async () => root.render(<PlanEditor initialWeeks={[week()]} weeksCount={1} studentName="学员" planName="计划"
+      currentPlanId="plan" planStartDate="2026-07-20" planStatus="published" initialPublished
+      dayIntent={{ token: 1, planDayId: 'day-4', openShift: true }} />))
+    expect(host.querySelector('.block-edit-head .day-shift-action')).not.toBeNull()
+    expect(host.querySelector('.block-edit-footer .day-shift-action')).toBeNull()
+    expect(host.querySelector('.block-edit-head')?.textContent).toContain('7/24')
+    expect(document.querySelector('[data-plan-shift-panel]')).not.toBeNull()
   })
 
   it('offers shifting for a newly saved day after the plan is published', async () => {

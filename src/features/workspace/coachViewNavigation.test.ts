@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { navigateCoachView } from './coachViewNavigation'
+import { navigateCoachView, normalizeCoachView } from './coachViewNavigation'
 
 function deferred<T>() {
   let resolve!: (value: T) => void
@@ -80,3 +80,5 @@ describe('navigateCoachView', () => {
     expect(commitView).not.toHaveBeenCalled()
   })
 })
+
+it('normalizes the retired requests view to board', () => { expect(normalizeCoachView('requests')).toBe('board') })

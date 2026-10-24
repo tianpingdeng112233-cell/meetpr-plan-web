@@ -3609,3 +3609,66 @@ textarea {
 .chat-video-caption b { font-size:13px; font-weight:600; }
 .chat-video-caption small { font-size:12px; color:#6B7280; }
 .chat-video-capsule em { margin-left:auto; flex-shrink:0; padding:2px 4px; font-size:10px; font-style:normal; background:#FEF3C7; color:#713F12; border-radius:4px; }
+
+/* SPEC 019: overview invitations, requests, and the two-section roster. */
+.overview-page { height: 100%; min-height: 0; display: flex; flex-direction: column; background: var(--page-bg); }
+.overview-top { padding: 12px 16px; border-bottom: 1px solid var(--bd); display: grid; grid-template-columns: 1.15fr 1fr; gap: 12px; flex: none; max-height: 48%; overflow: auto; }
+.overview-invite,.overview-requests { min-width: 0; background: var(--card-bg); border: 1px solid var(--bd); border-radius: var(--r-md); padding: 12px; }
+.overview-invite h2,.overview-requests h1 { font-size: 13px; font-weight: 600; margin: 0; }
+.overview-invite ol { padding: 0; list-style: none; display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin: 12px 0; }
+.overview-invite li { display: flex; align-items: flex-start; gap: 6px; color: var(--sec); font-size: 12px; }
+.overview-invite li b { flex: 0 0 18px; height: 18px; border-radius: 50%; background: var(--ink); color: white; text-align: center; font: 11px/18px var(--font-mono); }
+.overview-invitation { border-top: 1px dashed var(--bd); padding-top: 12px; display: grid; grid-template-columns: minmax(0, 1fr) 104px; gap: 12px; }
+.overview-invitation-copy { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.overview-invitation-copy small { font: 11px var(--font-mono); color: var(--faint); }
+.overview-invitation-copy strong { font: 700 22px var(--font-mono); letter-spacing: .14em; }
+.overview-invitation-copy>a { font: 12px var(--font-mono); color: var(--sec); text-decoration: underline; overflow-wrap: anywhere; }
+.overview-invitation-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.overview-invite button,.overview-invitation .onboarding-qr a { display: inline-flex; align-items: center; justify-content: center; min-height: 28px; padding: 0 8px; background: white; border: 1px solid var(--bd); border-radius: var(--r-sm); color: var(--txt); font: 12px inherit; cursor: pointer; text-decoration: none; }
+.overview-invite button.primary { background: var(--ink); color: white; border-color: var(--ink); }
+.overview-invitation .onboarding-qr { margin: 0; width: 104px; display: flex; flex-direction: column; gap: 6px; }
+.overview-invitation .onboarding-qr img { width: 104px; height: 104px; border: 1px solid var(--bd); box-sizing: border-box; }
+.overview-invite p { font-size: 12px; color: var(--sec); margin: 8px 0 0; }
+.overview-requests .requests-head { margin-bottom: 10px; }
+.overview-requests .request-list { gap: 6px; }
+.overview-requests .request-row { min-height: 56px; padding: 6px 10px; }
+.overview-requests .requests-empty { padding: 28px 8px; }
+.overview-page .roster-overview { flex: 1; min-height: 0; height: auto; }
+.overview-page .empty-page { flex: 1; height: auto; }
+.roster-overview-grid { column-gap: 14px; padding: 0 16px; min-width: 1000px; }
+.roster-overview-head { height: 28px; flex-basis: 28px; }
+.roster-overview-head>span:nth-child(5) { text-align: left; }
+.roster-overview-row { height: 44px; }
+.roster-overview-profile { font: 11px var(--font-mono); color: var(--faint); }
+.overview-section-head { position: sticky; top: 0; z-index: 2; height: 30px; display: flex; align-items: center; gap: 8px; padding: 0 16px; background: var(--card-bg); font-size: 12px; font-weight: 600; border-bottom: 1px solid var(--line); }
+.overview-section-head i { width: 6px; height: 6px; border-radius: 50%; background: var(--bad); }
+.overview-section-head small { color: var(--faint); font: 11px var(--font-mono); }
+.overview-section.normal .overview-section-head { color: var(--mut); }
+.overview-section.normal .overview-section-head i { background: var(--ok); }
+.overview-section.normal .roster-overview-student b,.overview-section.normal .roster-number,.overview-section.normal .roster-e1rm b { color: var(--mut); }
+.overview-section.normal .roster-completion i em { background: var(--mut); }
+.overview-tags { position: relative; min-width: 0; display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+.overview-tags-measure { position: absolute; visibility: hidden; pointer-events: none; display: flex; gap: 6px; }
+.overview-tag { box-sizing: border-box; height: 22px; flex: none; display: inline-flex; align-items: center; padding: 0 6px; border-radius: var(--r-sm); font-size: 12px; border: 1px solid var(--bd); color: var(--txt); background: white; cursor: pointer; }
+.overview-tag.red { color: var(--bad); background: color-mix(in srgb, var(--bad) 8%, white); border-color: color-mix(in srgb, var(--bad) 25%, white); }
+.overview-tag.yellow,.overview-set-highlight,[data-alert-highlight="true"] { color: var(--txt); background: #FEF3C7 !important; border-color: #F5E3A3; }
+.overview-tag.gray { color: var(--faint); border-style: dashed; background: transparent; }
+.overview-overflow { position: relative; }
+.overview-tag-popover { display: none; position: absolute; right: 0; top: 100%; z-index: 5; padding: 8px; background: var(--card-bg); border: 1px solid var(--bd); border-radius: var(--r-sm); gap: 6px; flex-direction: column; }
+.overview-overflow:hover .overview-tag-popover,.overview-overflow:focus-within .overview-tag-popover { display: flex; }
+.overview-alert-error { padding: 6px 16px; color: var(--bad); font-size: 12px; }
+.overview-alert-error button { color: var(--txt); background: white; border: 1px solid var(--bd); border-radius: var(--r-sm); cursor: pointer; }
+.block-edit-actions { display: flex; align-items: center; gap: 8px; }
+.block-edit-actions .day-shift-action { height: 26px; border: 1px solid var(--bd); border-radius: var(--r-sm); }
+.overview-set-label { padding: 2px 4px; border-radius: var(--r-sm); font: 11px var(--font-mono); }
+.overview-invitation-actions a[download] { display: inline-flex; align-items: center; min-height: 28px; padding: 0 8px; box-sizing: border-box; border: 1px solid var(--bd); border-radius: var(--r-sm); color: var(--txt); background: white; font-size: 12px; text-decoration: none; }
+.overview-requests .requests-head { height: 24px; flex-basis: 24px; padding: 0; border: 0; }
+.overview-requests .requests-count { color: var(--bad); background: color-mix(in srgb, var(--bad) 8%, white); padding: 2px 6px; border-radius: var(--r-pill); font: 11px var(--font-mono); }
+.overview-requests .request-list { padding: 0; background: var(--card-bg); }
+.roster-completion i { width: 56px; flex: 0 0 56px; }
+.roster-overview-head { position: sticky; top: 0; z-index: 3; }
+.overview-section-head { top: 28px; }
+.overview-tag { font-family: inherit; gap: 3px; }
+.overview-tag b { font: 600 11px var(--font-mono); }
+.overview-tag-popover { display: flex; position: fixed; right: auto; z-index: 150; max-height: calc(100vh - 16px); max-width: 232px; overflow: auto; }
+.overview-tags-measure { width: 0; height: 0; overflow: hidden; }

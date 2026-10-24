@@ -1416,3 +1416,83 @@ worktree 文件可写，但实际 Git 元数据在可写根之外；本会话禁
 - Spec：独立审查确认 017 与 main 016/018 接线和原有测试均保留，017 繁中 key 齐全，撤销空格修复符合要求；新增 partial mock 定向复核无问题。
 - 浏览器实看未完成：`npm run dev -- --host 127.0.0.1 --port 5194` 被沙箱拒绝 `listen EPERM`，见 `/tmp/017-merge-vite.log`。未绕过权限或向真实后端写请求；DOM 测试不等同浏览器/真实 staging 验收。
 - 两个冲突文件的工作区内容已解冲突，但依用户要求没有暂存，所以 Git 索引仍显示 `UU`；合并尚未提交，交 reviewer 后续处理。
+
+## 2026-10-22 — SPEC 019 / CARD-A：总览看板实装（待浏览器验收）
+
+- 工作树 `/Users/david/Projects/apps/meetpr-plan-web-wt-019-impl`，分支 `feat/019-overview-board`，基准 `baff260`。开工第一条命令在本目录 `mktemp ./.__codex_write_check.XXXXXX` 后删除，exit 0；开工工作树干净。完整读取 CONTEXT、CLAUDE、CARD-A、SPEC 019（含屏幕稿），054 §2–§3 只读参考；未改后端、锁文件、正典 spec，未 commit、push、开 PR、部署。
+- 总览顶部复用邀请接口、消息函数和二维码组件；申请卡、接受/拒绝、60 秒可见轮询及防旧响应复活继续保留。下方六列按需要注意/正常分段，七类标签、溢出菜单和连续 J/K/Enter；导航删除申请和待排队列，红计数为申请数加需要注意学员数，旧 requests 值和命令搜索落总览。
+- 提醒 GET 支持可见轮询、回总览刷新、失败重试、404 降级；进入学员编排 POST plan-viewed，失败静默。训练提醒先按训练日 ID 查到所属计划再挂载编辑器，避免查找期间暴露另一个可编辑计划；RPE/未完成定位与组高亮、计划结束预填新建日期、落后直开后移；后移按钮挪到展开卡头。
+
+### 改动文件
+
+- API：新增 `src/api/overviewAlerts.ts`。
+- 共用邀请：新增 `src/features/onboarding/invitation.ts`；修改 `CoachWelcomePage.tsx`、`install.tsx`。
+- 总览：新增 `src/features/workspace/overviewBoard.ts`、`OverviewInvite.tsx`、`OverviewTags.tsx`；修改同目录 `PlanWorkspace.tsx`、`CoachShell.tsx`、`StatsViews.tsx`、`RequestsPage.tsx`、`CommandPalette.tsx`、`coachViewNavigation.ts`、`PlanDialogs.tsx`。
+- 编排：`src/features/plan-editor/PlanEditor.tsx`、`components/DayColumn.tsx`。
+- 文案/样式：`src/i18n/strings-workspace.ts`、生成的 `strings-zh-hant.ts`、`src/index.css`。执行既有 `npm run gen:zh-hant`；其他生成文件无差异。
+- 测试：新增 `src/features/workspace/overviewBoard.test.ts`；修改同目录 `PlanWorkspace.test.tsx`、`CoachShell.test.tsx`、`coachViewNavigation.test.ts`、`RosterBoard.test.tsx`、`RequestsPage.test.tsx`，以及 `src/features/plan-editor/plan-shift-ui.test.tsx`、`week-band-ui.test.tsx`。本段追加于 `docs/CODEX-JOURNAL.md`。
+- 旧申请页测试迁到总览申请卡/邀请卡；接受后刷新、拒绝、防轮询旧响应、剪贴板成功/失败、视频聊天、完成率/e1RM/吨位及键盘业务断言保留。五项导航、筛选/旧列及旧后移 DOM 结构断言按 019 新界面迁位；旧游标徽章本体断言继续直接覆盖共享组件，编排里的游标行为未改。
+
+### 红 → 绿证据
+
+| 行为 / 命令 | 实际红灯 | 转绿 |
+| --- | --- | --- |
+| `npm test -- src/features/workspace/overviewBoard.test.ts src/features/workspace/PlanWorkspace.test.tsx -t 'overview board\|019'` | 2 files failed：新纯函数模块尚不存在导致 1 suite 收集失败；总览顶部 1 test failed、38 skipped | 首轮 2 files / 2 tests passed、38 skipped |
+| `npm test -- src/features/plan-editor/plan-shift-ui.test.tsx -t '019'` | 修正测试 storage fixture 后，按周/按天布局均因未展开目标卡而红：2 failed、17 skipped | 2 passed、17 skipped；后续整个文件 19 passed，含原后移与撤销 |
+| `npm test -- src/features/workspace/PlanWorkspace.test.tsx -t '019 keeps the board'` | 慢请求查另一份计划时过早进入编辑器：1 failed、47 skipped | 修复后包含在 `-t '019'` 的 10 passed、38 skipped |
+| `npm test -- src/features/workspace/PlanWorkspace.test.tsx -t '019 opens the alert'` | 使用真实零基首组 `set_index: 0` 后 RPE/未完成显示第 0 组：2 failed、1 passed、45 skipped | 同上 10 passed，首组显示第 1 组且落在对应训练日 |
+| `npm test -- src/features/workspace/overviewBoard.test.ts -t 'orders plan-ending'` | 未来截止日错误排在今日留言前：1 failed、4 skipped | 全文件 5 passed，最终全量亦包含 |
+
+原始日志：`/private/tmp/019-red-initial.log`、`019-green-initial.log`、`019-red-shift.log`、`019-green-shift.log`、`019-red-race.log`、`019-red-set-index.log`、`019-green-races.log`、`019-red-sort.log`、`019-green-review.log`。最后一份定向复跑 61/61 通过；其后新增可见轮询、申请拒绝、发布后消失、命令兼容、末行溢出等断言由最终全量覆盖。
+
+### 最终命令结果
+
+- `npm test`：**106 files / 1143 tests passed，0 failed，exit 0**，11.71s。日志 `/private/tmp/019-full-test-final.log`。首次全量 1133 passed / 1 failed，为旧后移按钮 DOM 选择器；迁位后全绿。没有超时，没有降低断言、skip 或延长配置；无需长超时重跑。
+- `npx tsc --noEmit`：**exit 0**，日志 `/private/tmp/019-types-final.log`。过程中修正了新类型和测试清理回调的返回值类型错误，最终重新执行通过。
+- `npm run build`：**exit 0**，247 modules，Vite 1.52s；仅大于 500 kB 的 chunk 提示，未改阈值。日志 `/private/tmp/019-build-final.log`。
+- `git diff --check` 通过；`package-lock.json` 无差异。上述三条结果来自最后代码树，不是 CI 或线上验收。
+
+### 独立自审与待确认边界
+
+- 仓内缺 `docs/agents/issue-tracker.md`，未私建 tracker，未冒称已跑 tracker 流程；沿用 `code-review` 双轴方法、`review-loop` 的本地批准 spec 流程。若后续需要 tracker 工作流，由 David 运行 `$setup-matt-pocock-skills`。
+- **Standards**：独立只读 reviewer 初审 2 项（深链异步替换可编辑计划、溢出菜单被滚动区裁剪），另指出表头横滚不同步；均修正。定向复审无遗留 finding。
+- **Spec**：独立只读 reviewer 初审 3 项（组索引、屏幕稿细节、排序时间）。索引、橙色完成率、申请计数、下载按钮位置均修正；复审发现 56px width 仍被旧 48px flex-basis 覆盖，最后同时设置 `width:56px; flex:0 0 56px`，主代理核对，之后三条命令全绿。
+- **排序待确认**：054 的 `plan_ending` 没有提醒发生时间，也不含学员时区。当前替代值为「结束日减 3 天的 UTC 零点」与对应计划 `updated_at` 中较晚者，且不晚于 `generated_at`；不会把未来截止日当发生时间。完成率低沿用 overview 的 `last_trained_at`，留言/视频用现有时间字段。若要求精确到事件发生时刻，需要后端补时间契约；本轮未改 054。
+- **深链**：054 没有 parent plan ID，前端在点击时串行查该学员计划，已发布优先，按 `plan_day_id` 定位后再挂载；找不到或请求失败保持总览并提示重试。后端现实现与现有 set-log 使用零基 `set_index`（只读核对 054 `src/domain/overview-alerts.ts`），仅显示组号加一。逐组输入/实际组高亮；统一值或辅助动作没有独立组格时，用动作旁浅黄「第 N 组」标记定位，不改变处方显示模式或内容。
+- **welcome 抽取**：`loadCoachInvitation` 保持 `/me + invite-codes + public invite` 同源逻辑；`invitationMessage` 原文和繁体片段不改；welcome 保持原下载位置与行为，总览通过可选下载容器放在左侧按钮行。
+- **404**：仅 404 启用既有 `isStudentPendingNextWeek` 口径，标签显示「下周未排」；不显示 RPE/未完成/落后。普通失败不伪造计划结束提醒，保留留言、视频、完成率低与独立邀请/申请。
+- **浏览器验收未做**：尝试 `npm run dev -- --host 127.0.0.1 --port 5199` 被文件会话沙箱拒绝监听，原始错误 `Error: listen EPERM: operation not permitted 127.0.0.1:5199`。未换 checkout、未绕过权限。按 CARD-A，由 Claude 在沙箱外验证屏幕稿、真实老用户第一屏及 SPEC 019 验收 1–16；本轮 jsdom 和构建不等于浏览器或真实后端验收。
+
+## 2026-10-23 — SPEC 019 / CARD-A：第 1 轮定向返修
+
+- 范围以 David 本轮四点指令为准，覆盖 SPEC §1 原「记住上次页面」的错误表述；不修改正典 spec。基线为本次进场未提交树（HEAD `baff260`，分支 `feat/019-overview-board`），快照 `/tmp/019-r1-before`，代码增量 `/tmp/019-r1-final.patch`。原有 WIP 保留，未 commit、push、部署或改锁文件。
+- 仅改：`src/features/workspace/PlanWorkspace.tsx`、`PlanWorkspace.test.tsx`、`OverviewInvite.tsx`、`RequestsPage.tsx`、`RequestsPage.test.tsx`；`src/i18n/strings-workspace.ts`、生成的 `strings-zh-hant.ts`；以及本 JOURNAL。
+- 删除 `mpw.coachView` 的读取与写入，启动固定计划编排；既有 `normalizeCoachView('requests') → 'board'` 未动。旧总览测试改为点击导航进入，业务断言保留。
+- 将 plan-viewed 从 editor 状态 effect 移至显式打开动作：双击 / Enter、提醒标签、学员切换器、⌘K（含当前学员）；显式打开失败后的成功重试也计入。初次自动加载、legacy 地址初载、总览单击选中不清提醒；POST 失败继续静默。
+- 复制链接成功反馈为「链接已复制」/ “Link copied” /「連結已複製」，完整邀请消息反馈保留。邀请请求 Promise 由当前 PlanWorkspace 持有，进入总览才请求、跨页面复用成功及在途结果；失败释放缓存可重试，卸载 / 退出登录结束本次缓存。welcome 页与共用加载函数未改。
+- RequestsPanel 在零申请时不渲染计数，非零与空态提示保留。对应接受申请和防旧轮询响应复活的旧 `0 条` 断言同步为计数元素不存在。
+
+### 逐项红 → 绿（均先运行失败测试，再改实现）
+
+| 项目 | 命令 | 实际红灯 | 转绿 |
+| --- | --- | --- | --- |
+| 1 启动视图 | `npm test -- src/features/workspace/PlanWorkspace.test.tsx -t '019 R1 always'` | 3 failed / 51 skipped：恢复了存储页面或仍写入 board | 3 passed / 51 skipped |
+| 2 显式打开才确认查看 | `npm test -- src/features/workspace/PlanWorkspace.test.tsx -t '019 R1 marks\|019 opens the alert'` | 8 failed / 51 skipped：初载已调用 markPlanViewed | 扩大为同文件 `-t '019'`：21 passed / 38 skipped，覆盖双击、Enter、切换器、⌘K、三类训练标签 |
+| 3a 复制链接三语提示 | `npm test -- src/features/workspace/RequestsPage.test.tsx -t '019 R1'` | 3 failed / 3 skipped：仍显示邀请消息反馈 | 整文件 6 passed |
+| 3b 会话邀请缓存 | `npm test -- src/features/workspace/PlanWorkspace.test.tsx -t '019 R1.*invitation'` | 2 failed / 59 skipped：再次进入多发请求，失败重试成功后仍重复请求 | 2 passed / 59 skipped，另断言新工作区会话重新请求 |
+| 4 零申请隐藏计数 | `npm test -- src/features/workspace/RequestsPage.test.tsx -t '019 R1 hides'` | 1 failed / 6 skipped：仍渲染 `0 条` | 整文件 7 passed，覆盖 0 → 1 → 0 |
+
+红绿原始日志按组存于 `/tmp/019-r1-{view,viewed,copy,cache,count}-{red,green}.log`。最后 PlanWorkspace 整文件为 **61 passed**（`/tmp/019-r1-workspace-green.log`），额外核对 legacy 初载不确认查看，并让原 POST 失败测试通过显式双击真正触发失败，保留静默降级断言。
+
+### 最终三条命令结果
+
+- `npm test`：**Test Files 106 passed (106)；Tests 1157 passed (1157)；exit 0**，16.78s。日志 `/tmp/019-r1-test-final.log`。首轮全量 2 failed / 1155 passed，都是旧接受申请用例仍期待 `0 条`；按新契约迁移三处断言后重跑全绿，无删除测试、skip 或延长超时。
+- `npx tsc --noEmit`：**exit 0**，无输出。日志 `/tmp/019-r1-tsc-final.log`。
+- `npm run build`：**exit 0；✓ built in 4.42s**。日志 `/tmp/019-r1-build-final.log`。保留既有 chunk >500 kB 提示，未调整阈值。
+- `npm run gen:zh-hant -- --check`、`git diff --check` 通过。测试日志有既有 Node localstorage 路径提示与其他视频用例的 jsdom `HTMLMediaElement.load/pause` 未实现输出，未导致失败，本轮未扩大修复范围。
+
+### 审查与限制
+
+- 按 `review-loop` 以进场快照做只读独立双轴增量审查：**Standards 0 项代码 finding；Spec 0 项实现 finding**。两位 reviewer 均指出首轮全量旧零计数断言需迁移，已修并以上述最终全量验证。未运行依赖缺失 tracker 的流程；需要该流程时仍由 David 调用 `$setup-matt-pocock-skills`。
+- `src/mock/overviewHarness.tsx` 与 `mock-overview.html` 对比进场快照逐字节相同，未触碰。
+- 浏览器实看仍未完成：`npm run dev -- --host 127.0.0.1 --port 5199` 被沙箱拒绝监听，`Error: listen EPERM: operation not permitted 127.0.0.1:5199`（`/tmp/019-r1-browser.log`）。未绕过权限；按 CARD-A 保留 Claude 沙箱外视觉验收，本轮仅声明开发自测结果。

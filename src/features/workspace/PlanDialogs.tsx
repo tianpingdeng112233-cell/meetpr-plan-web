@@ -47,11 +47,12 @@ const primaryButton: CSSProperties = {
 
 export interface BlockPlanSettings { name: string; weeks: number; startDate: string; weekdays: number[] }
 
-export function NewPlanDialog({ open, studentName, onClose, onCreate, settings, calendarLocked = false, calendarLockedHint, weeksLocked = false }: {
+export function NewPlanDialog({ open, studentName, onClose, onCreate, settings, initialStartDate, calendarLocked = false, calendarLockedHint, weeksLocked = false }: {
   open: boolean
   studentName: string
   onClose: () => void
   onCreate: (name: string, weeks: number, startDate: string, anchorWeekday: number, weekdays: number[]) => Promise<void>
+  initialStartDate?: string
   settings?: BlockPlanSettings
   calendarLockedHint?: string
   calendarLocked?: boolean
@@ -71,9 +72,10 @@ export function NewPlanDialog({ open, studentName, onClose, onCreate, settings, 
     if (!open) return
     setName(settings?.name ?? S.workspace.dialogs.newPlan)
     setWeeks(settings?.weeks ?? 4)
-    setDays(settings?.weekdays ?? [0, 2, 4, 5])
-    setFirst(settings?.weekdays[0] ?? 0)
-    setStartDate(settings?.startDate ?? defaultFirstDate(0))
+    const firstDay = initialStartDate ? weekdayIndex(initialStartDate) : 0
+    setDays(settings?.weekdays ?? [0, 2, 4, 5].map(day => (day + firstDay) % 7))
+    setFirst(settings?.weekdays[0] ?? firstDay)
+    setStartDate(settings?.startDate ?? initialStartDate ?? defaultFirstDate(0))
     setCreating(false); setError('')
   }, [open])
   if (!open) return null

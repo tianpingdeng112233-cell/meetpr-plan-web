@@ -92,7 +92,9 @@ interface Props {
   e1rmForRow?: (row: ExerciseRow) => number | null
   studentAdded?: StudentAddedExercise[]
   exerciseName?: (exerciseId: string) => string
+  highlightedSet?: { planExerciseId?: string; setIndex?: number }
   shiftControl?: {
+    openToken?: number
     anchorDate: string
     weekNumber: number
     dayOrdinal: number
@@ -154,7 +156,14 @@ function PlanShiftControl({ control, dayName }: {
   control: NonNullable<Props['shiftControl']>
   dayName: string
 }) {
-  const [open, setOpen] = useState(false)
+  const [open, setOpen] = useState(control.openToken != null)
+  const openedToken = useRef(control.openToken)
+  useLayoutEffect(() => {
+    if (control.openToken != null && openedToken.current !== control.openToken) {
+      openedToken.current = control.openToken
+      setOpen(true)
+    }
+  }, [control.openToken])
   const [draft, setDraft] = useState('1')
   const [applying, setApplying] = useState(false)
   const [error, setError] = useState('')
@@ -169,7 +178,7 @@ function PlanShiftControl({ control, dayName }: {
   useLayoutEffect(() => {
     if (!open) return
     const updatePosition = () => {
-      const rect = buttonRef.current?.closest('.dayhead,.block-edit-footer')?.getBoundingClientRect()
+      const rect = buttonRef.current?.closest('.dayhead,.block-edit-head')?.getBoundingClientRect()
       if (!rect) return
       setPanelPosition({
         top: rect.bottom + 6,
@@ -429,11 +438,12 @@ function intensityPlaceholder(intensity: RowIntensity): string {
 
 /** SPEC-038 §3.2: 学员实际完成 chips,渲染在目标格正下方。
  * tone-off = 超阈红,tone-ok = 阈内黄,力竭强制红,未完成灰。 */
-function ActualLine({ row, actuals, kind, e1rm = null }: {
+function ActualLine({ row, actuals, kind, e1rm = null, highlightedSetIndex }: {
   row?: ExerciseRow
   actuals: ActualSet[]
   kind: 'intensity' | 'weight'
   e1rm?: number | null
+  highlightedSetIndex?: number
 }) {
   // opaqueSets is the original server prescription, not the editable grid count.
   // Legacy rows without provenance are locked once logged and retain that count.
@@ -446,7 +456,7 @@ function ActualLine({ row, actuals, kind, e1rm = null }: {
         : { text: rpe == null ? '–' : `@${rpe}`, tone: 'added' }
     const tone = set.failed ? 'off' : !set.completed ? 'missed' : chip.tone
     return (
-      <span key={set.set_index} className={`actual-chip tone-${tone}`}
+      <span key={set.set_index} className={`actual-chip tone-${tone}${set.set_index === highlightedSetIndex ? ' overview-set-highlight' : ''}`}
         title={kind === 'weight' ? set.failed ? S.common.failure : set.completed ? undefined : S.common.notCompleted : undefined}>
         {chip.text}{kind === 'weight' && set.failed ? ` ${S.common.failure}` : ''}
       </span>
@@ -467,7 +477,7 @@ function ActualLine({ row, actuals, kind, e1rm = null }: {
   )
 }
 
-function EditableIntensity({ row, width, edit, selectedCell, selectCell, cellKey, readOnly, actuals, e1rm }: {
+function EditableIntensity({ row, width, edit, selectedCell, selectCell, cellKey, readOnly, actuals, e1rm, highlightedSetIndex }: {
   row: ExerciseRow
   width: number
   edit: (u: (r: ExerciseRow) => ExerciseRow) => void
@@ -475,11 +485,12 @@ function EditableIntensity({ row, width, edit, selectedCell, selectCell, cellKey
   selectCell: (setIndex?: number) => void
   cellKey: (setIndex?: number) => string
   readOnly?: boolean
+  highlightedSetIndex?: number
   actuals?: ActualSet[] | null
   e1rm?: number | null
 }) {
   const actualLine = actuals && actuals.length > 0
-    ? <ActualLine kind="intensity" row={row} actuals={actuals} e1rm={e1rm ?? null} />
+    ? <ActualLine highlightedSetIndex={highlightedSetIndex} kind="intensity" row={row} actuals={actuals} e1rm={e1rm ?? null} />
     : null
   if (row.aux) {
     return (
@@ -592,7 +603,7 @@ function EditableIntensity({ row, width, edit, selectedCell, selectCell, cellKey
                   <GuardedInput key={sourceIndex}
                     value={box.empty ? '' : box.val} inputMode="decimal" placeholder={intensityPlaceholder(intensity)}
                     className={`${boxInvalid ? 'guard-invalid ' : ''}plan-cell${selectedCell(sourceIndex) ? ' plan-cell-selected' : ''}`}
-                    data-guard-field="intensity" data-set-index={sourceIndex}
+                    data-guard-field="intensity" data-set-index={sourceIndex} data-alert-highlight={sourceIndex === highlightedSetIndex || undefined}
                     data-plan-cell="intensity" data-plan-cell-key={cellKey(sourceIndex)}
                     data-input-invalid={boxInvalid ? 'true' : undefined}
                     aria-label={intensityMode === 'uniform' ? S.editor.uniformIntensityValue : S.editor.setIntensityValue(sourceIndex + 1)}
@@ -662,7 +673,7 @@ function EditableIntensity({ row, width, edit, selectedCell, selectCell, cellKey
   )
 }
 
-function EditableWeight({ row, width, edit, selectedCell, selectCell, cellKey, readOnly, actuals }: {
+function EditableWeight({ row, width, edit, selectedCell, selectCell, cellKey, readOnly, actuals, highlightedSetIndex }: {
   row: ExerciseRow
   width: number
   edit: (u: (r: ExerciseRow) => ExerciseRow) => void
@@ -670,10 +681,11 @@ function EditableWeight({ row, width, edit, selectedCell, selectCell, cellKey, r
   selectCell: (setIndex: number) => void
   cellKey: (setIndex: number) => string
   readOnly?: boolean
+  highlightedSetIndex?: number
   actuals?: ActualSet[] | null
 }) {
   const actualLine = actuals && actuals.length > 0
-    ? <ActualLine kind="weight" row={row} actuals={actuals} />
+    ? <ActualLine highlightedSetIndex={highlightedSetIndex} kind="weight" row={row} actuals={actuals} />
     : null
   if (row.aux) {
     return (
@@ -784,7 +796,7 @@ function EditableWeight({ row, width, edit, selectedCell, selectCell, cellKey, r
             key={sourceIndex} value={box.empty ? '' : box.val} inputMode="decimal" placeholder="kg"
             className={`${invalid ? 'guard-invalid ' : ''}plan-cell${selectedCell(sourceIndex) ? ' plan-cell-selected' : ''}`}
             data-guard-field="weight" data-input-invalid={invalid ? 'true' : undefined}
-            data-plan-cell="weight" data-set-index={sourceIndex} data-plan-cell-key={cellKey(sourceIndex)}
+            data-plan-cell="weight" data-set-index={sourceIndex} data-alert-highlight={sourceIndex === highlightedSetIndex || undefined} data-plan-cell-key={cellKey(sourceIndex)}
             aria-invalid={invalid || undefined} title={invalid ? INPUT_GUARD_REASONS.kg : undefined}
             disabled={readOnly || row.hasLogs} filter={filterStrengthInput}
             onFocus={() => selectCell(sourceIndex)} onClick={(event) => { stop(event); selectCell(sourceIndex) }}
@@ -837,6 +849,7 @@ export function DayColumn({
   exerciseName,
   e1rmForRow,
   shiftControl,
+  highlightedSet,
 }: Props) {
   const [dateOpen, setDateOpen] = useState(false)
   const [dragRowId, setDragRowId] = useState<string | null>(null)
@@ -1009,7 +1022,7 @@ export function DayColumn({
                 onChange={event => { blockView.onDate(event.target.value); setDateOpen(false) }} />}
             </span>
           </div>
-          <button type="button" onClick={event => { stop(event); blockView.onClose() }}>{S.editor.blockClose}</button>
+          <div className="block-edit-actions">{shiftAction}<button type="button" onClick={event => { stop(event); blockView.onClose() }}>{S.editor.blockClose}</button></div>
         </div>
       </> : <>
       <div className="dayhead" data-day-move-handle="" title={dayMoveTitle} onMouseDown={onDayMoveStart}
@@ -1043,6 +1056,7 @@ export function DayColumn({
 
         {(() => {
         const renderRow = (row: ExerciseRow, rowNumber?: number) => {
+          const highlightedSetIndex = row.serverRowId === highlightedSet?.planExerciseId ? highlightedSet?.setIndex : undefined
           const edit = (u: (r: ExerciseRow) => ExerciseRow) => onEditRow(row.id, u)
           const inputIssue = getBoundRowInputIssue(row)
           const isSelectedRow = selectedRowIds?.has(row.id) ?? selectedRowId === row.id
@@ -1052,6 +1066,7 @@ export function DayColumn({
             <div
               key={row.id}
               data-rowid={row.id}
+              data-alert-set-index={highlightedSetIndex}
               data-locked={row.hasLogs ? 'true' : 'false'}
               data-drag-disabled={dragDisabled ? 'true' : 'false'}
               className={`exrow${highlightedVideo?.rowId === row.id ? ' video-highlight' : ''}${resolveTier(row) === 'aux' ? ' aux' : ''}${row.hasLogs ? ' locked' : ''}${(actualsForRow?.(row)?.length ?? 0) > 0 ? ' has-actuals' : ''}${isSelectedRow ? ' row-sel' : ''}${dragRowId === row.id ? ' row-dragging' : ''}${dropPosition ? ` row-drop-${dropPosition}` : ''}`}
@@ -1112,6 +1127,7 @@ export function DayColumn({
                   {row.hasLogs && (
                     <span className="row-mark locked" title={row.conflictMessage ?? S.editor.rowLocked}>{S.editor.lockedMark}</span>
                   )}
+                  {highlightedSetIndex != null && <span className="overview-set-highlight overview-set-label">{S.workspace.overview.setNumber(highlightedSetIndex + 1)}</span>}
                   {videoMarker?.(row)}
                   {row.conflictMessage && <span className="row-mark conflict" title={row.conflictMessage}>!</span>}
                 </div>
@@ -1163,6 +1179,7 @@ export function DayColumn({
                     weekNumber, dow: day.dow, rowId: row.id, field: 'intensity', setIndex,
                   })}
                   readOnly={readOnly}
+                  highlightedSetIndex={highlightedSetIndex}
                   actuals={actualsForRow?.(row) ?? null}
                   e1rm={e1rmForRow?.(row) ?? null}
                 />
@@ -1181,6 +1198,7 @@ export function DayColumn({
                     setIndex,
                   })}
                   readOnly={readOnly}
+                  highlightedSetIndex={highlightedSetIndex}
                   actuals={actualsForRow?.(row) ?? null}
                 />
 
@@ -1276,7 +1294,7 @@ export function DayColumn({
             onMouseDown={(e) => onResizeStart(d.col, e)} onClick={(e) => e.stopPropagation()} />
         ))}
       </div>
-      {blockView && <div className="block-edit-footer"><span>{S.editor.blockGestures}</span>{shiftAction}</div>}
+      {blockView && <div className="block-edit-footer"><span>{S.editor.blockGestures}</span></div>}
     </div>
   )
 }
