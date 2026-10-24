@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs'
+import { setLocale, S } from '../../i18n/strings'
 import { act, useEffect } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -24,6 +26,7 @@ const api = vi.hoisted(() => ({
   getStudentOnboarding: vi.fn(),
   getBindRequests: vi.fn(),
   getStudentVideos: vi.fn(),
+  getStudentFeedback: vi.fn(),
   getExerciseStatsOverview: vi.fn(),
   getExerciseStats: vi.fn(),
   refreshCoachStudents: vi.fn(),
@@ -78,6 +81,7 @@ vi.mock('../../api/coach', () => ({
   getStudentSetLogs: api.getStudentSetLogs,
   getBindRequests: api.getBindRequests,
   getStudentVideos: api.getStudentVideos,
+  getStudentFeedback: api.getStudentFeedback,
   getExerciseStatsOverview: api.getExerciseStatsOverview,
   getExerciseStats: api.getExerciseStats,
   refreshCoachStudents: api.refreshCoachStudents,
@@ -298,6 +302,247 @@ describe('PlanWorkspace editor remount', () => {
   let host: HTMLDivElement
   let root: Root
 
+  it('020 sends whole-day feedback with the actual date, appends the response and restores it after reopening', async () => {
+    api.realEditor = true
+    const trained = plan('初始计划', 'published')
+    trained.days[0].completed_at = '2026-01-07T20:00:00Z'
+    api.getPlan.mockResolvedValue(trained)
+    api.getStudentSetLogs.mockResolvedValue([{ id: 'log', plan_exercise_id: 'plan-exercise', plan_day_id: 'day', logged_date: '2026-01-06', logged_at: '2026-01-06T21:00:00Z', completed: true, weight_kg: '100', reps: 5, set_index: 0 }])
+    const existing = { id: 'old', student_id: 'student', day_date: null, plan_exercise_id: 'plan-exercise', video_id: 'seen', text: '按组反馈', posted_at: '2026-01-06T22:00:00Z', read_at: '2026-01-07T01:00:00Z' }
+    api.getStudentVideos.mockResolvedValue([video('seen', '深蹲', '2026-01-07')])
+    api.getStudentFeedback.mockResolvedValue([existing])
+    const sent = { id: 'new', student_id: 'student', day_date: '2026-01-06', plan_exercise_id: null, video_id: null, text: '整体节奏很好', posted_at: '2026-01-07T22:00:00Z', read_at: null }
+    api.postCoachFeedback.mockResolvedValue(sent)
+    await act(async () => { root.render(<PlanWorkspace onLogout={vi.fn()} me={me} />); await settle() })
+    expect(host.querySelector('[data-day-feedback-marker="day"]')?.textContent).toContain('已反馈')
+    await act(async () => { host.querySelector<HTMLButtonElement>('[data-feedback-toggle]')!.click(); await settle() })
+    const day = host.querySelector<HTMLButtonElement>('[data-feedback-day="day"]')
+    expect(day?.textContent).toContain('周二')
+    expect(day?.textContent).toContain('已反馈 1')
+    await act(async () => { day!.click(); await settle() })
+    expect(host.querySelector('video')).toBeNull()
+    expect(host.querySelector('.day-feedback-detail')?.textContent).toContain('按组反馈')
+    expect(host.querySelector('.day-feedback-detail')?.textContent).toContain('第 2 组')
+    const reply = host.querySelector<HTMLTextAreaElement>('.day-feedback-detail textarea')!
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!.call(reply, '整体节奏很好')
+      reply.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+    await act(async () => { reply.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', metaKey: true, bubbles: true })); await settle() })
+    expect(api.postCoachFeedback).toHaveBeenCalledWith({ student_id: 'student', day_date: '2026-01-06', plan_exercise_id: null, video_id: null, text: '整体节奏很好' })
+    expect(reply.value).toBe('')
+    expect(host.querySelector('.day-feedback-detail')?.textContent).toContain('整体节奏很好')
+    expect(host.querySelector('[data-day-feedback-marker="day"]')?.textContent).toContain('已反馈 2')
+    await act(async () => { host.querySelector<HTMLButtonElement>('[data-feedback-toggle]')!.click(); await settle() })
+    await act(async () => { host.querySelector<HTMLButtonElement>('[data-day-feedback-marker="day"]')!.click(); await settle() })
+    expect(host.querySelector('.day-feedback-detail')?.textContent).toContain('整体节奏很好')
+    api.getStudentFeedback.mockResolvedValue([existing, sent])
+    await act(async () => { clickNav(host, '总览'); await settle() })
+    await act(async () => { clickNav(host, '计划编排'); await settle() })
+    expect(host.querySelector('[data-day-feedback-marker="day"]')?.textContent).toContain('已反馈 2')
+  })
+
+  it('020 historical viewed video outside the plan stays selected and exits to the original history level', async () => {
+    api.realEditor = true
+    api.getPlan.mockResolvedValue(plan('history'))
+    api.getStudentVideos.mockResolvedValue([{ ...video('old', '旧计划深蹲', '2026-01-05'), plan_exercise_id: 'old-block-exercise' }])
+    const session = { date: '2025-12-20', prescribed: { sets: 1, reps: 5 }, sets: [{ set_index: 0, weight_kg: '100', reps: 5, rpe: '8', completed: true, failed: false, assumed: false, has_video: true, video_id: 'old' }] }
+    api.getExerciseStats.mockResolvedValue({ recent_sessions: [session], filtered_sessions: [session], rep_prs: [], by_set_count: {} })
+    await act(async () => { root.render(<PlanWorkspace onLogout={vi.fn()} me={me} />); await settle() })
+    await act(async () => { host.querySelector<HTMLElement>('[data-block-week]')!.click(); await settle() })
+    await act(async () => { host.querySelector<HTMLInputElement>('[data-c="reps"] input')!.focus(); await settle() })
+    const before = host.querySelector('.history-breadcrumbs')!.textContent
+    await act(async () => { host.querySelector<HTMLButtonElement>('.history-session summary button')!.click(); await settle() })
+    expect(host.querySelector('[data-feedback-mode]')).not.toBeNull()
+    expect(host.querySelector('[data-feedback-video="old"]')?.classList.contains('selected')).toBe(true)
+    expect(host.querySelector('.feedback-queue')?.textContent).toContain('不在本计划')
+    expect(host.querySelector('.video-feedback textarea')).not.toBeNull()
+    expect(host.querySelector('.video-highlight')).toBeNull()
+    await act(async () => { clickButton(host, '← 历史'); await settle() })
+    expect(host.querySelector('.history-breadcrumbs')?.textContent).toBe(before)
+    expect(host.querySelector('video')).toBeNull()
+  })
+
+  it('020 keeps training days on read failure, retries, preserves a failed send and switches between day and video replies', async () => {
+    api.realEditor = true
+    const trained = plan('初始计划', 'published')
+    trained.days[0].completed_at = '2026-01-06T20:00:00Z'
+    api.getStudentSetLogs.mockResolvedValue([{ id: 'log', plan_exercise_id: 'plan-exercise', logged_date: '2026-01-06', logged_at: '2026-01-06T20:00:00Z', weight_kg: '100', reps: 5, set_index: 0 }])
+    api.getPlan.mockResolvedValue(trained)
+    api.getStudentVideos.mockResolvedValue([video('v1', '深蹲')])
+    api.getStudentFeedback.mockRejectedValueOnce(new Error('offline'))
+    await act(async () => { root.render(<PlanWorkspace onLogout={vi.fn()} me={me} />); await settle() })
+    await act(async () => { host.querySelector<HTMLButtonElement>('[data-feedback-toggle]')!.click(); await settle() })
+    expect(host.querySelector('video')).not.toBeNull()
+    expect(host.querySelector('[data-feedback-day="day"]')).not.toBeNull()
+    expect(host.querySelector('[data-feedback-day="day"]')?.textContent).not.toContain('未反馈')
+    expect(host.querySelector('.feedback-days [role="alert"]')?.textContent).toContain('反馈读取失败')
+    await act(async () => { host.querySelector<HTMLButtonElement>('.feedback-days button')!.click(); await settle() })
+    expect(host.querySelector('[data-feedback-day="day"]')?.textContent).toContain('未反馈')
+    await act(async () => { host.querySelector<HTMLButtonElement>('[data-feedback-day="day"]')!.click(); await settle() })
+    expect(host.querySelector('video')).toBeNull()
+    const reply = host.querySelector<HTMLTextAreaElement>('.day-feedback-detail textarea')!
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!.call(reply, '保留输入')
+      reply.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+    api.postCoachFeedback.mockRejectedValueOnce(new Error('offline'))
+    await act(async () => { host.querySelector<HTMLButtonElement>('.day-feedback-detail footer button')!.click(); await settle() })
+    expect(reply.value).toBe('保留输入')
+    expect(host.querySelector('.day-feedback-detail [role="alert"]')).not.toBeNull()
+    api.postCoachFeedback.mockResolvedValue({ id: 'day-fb', student_id: 'student', day_date: '2026-01-06', plan_exercise_id: null, video_id: null, text: '保留输入', posted_at: '2026-01-07T00:00:00Z', read_at: null })
+    await act(async () => { host.querySelector<HTMLButtonElement>('.day-feedback-detail footer button')!.click(); await settle() })
+    expect(reply.value).toBe('')
+    await act(async () => { host.querySelector<HTMLButtonElement>('[data-feedback-video="v1"]')!.click(); await settle() })
+    expect(host.querySelector('.day-feedback-detail')).toBeNull()
+    expect(host.querySelector('[data-feedback-day="day"]')?.getAttribute('aria-pressed')).toBe('false')
+    expect(host.querySelector('video')).not.toBeNull()
+    expect(host.querySelector('.video-feedback')?.textContent).toContain('回复这段视频')
+    const videoReply = host.querySelector<HTMLTextAreaElement>('.video-feedback textarea')!
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!.call(videoReply, '按组回复')
+      videoReply.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+    api.postCoachFeedback.mockResolvedValue({ id: 'video-fb', student_id: 'student', day_date: '2026-01-06', plan_exercise_id: 'plan-exercise', video_id: 'v1', text: '按组回复', posted_at: '2026-01-07T01:00:00Z', read_at: null })
+    const reads = api.getStudentFeedback.mock.calls.length
+    await act(async () => { host.querySelector<HTMLButtonElement>('.video-feedback footer button')!.click(); await settle() })
+    expect(api.getStudentFeedback.mock.calls.length).toBeGreaterThan(reads)
+    expect(host.querySelector('[data-feedback-day="day"]')?.textContent).toContain('已反馈 2')
+  })
+
+  it('020 reads the server items envelope through the real API adapter on the first screen', async () => {
+    api.realEditor = true
+    const trained = plan('初始计划', 'completed')
+    trained.days[0].completed_at = '2026-01-06T20:00:00Z'
+    api.getStudentSetLogs.mockResolvedValue([{ id: 'log', plan_exercise_id: 'plan-exercise', logged_date: '2026-01-06', logged_at: '2026-01-06T20:00:00Z', weight_kg: '100', reps: 5, set_index: 0 }])
+    api.getPlan.mockResolvedValue(trained)
+    const realCoach = await vi.importActual<typeof import('../../api/coach')>('../../api/coach')
+    api.getStudentFeedback.mockImplementation(realCoach.getStudentFeedback)
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({ items: [{
+      id: 'feedback', student_id: 'student', day_date: '2026-01-06', plan_exercise_id: null, video_id: null,
+      text: '第一屏反馈', posted_at: '2026-01-07T00:00:00Z', read_at: null,
+    }] }), { status: 200 }))
+    await act(async () => { root.render(<PlanWorkspace onLogout={vi.fn()} me={me} />); await settle() })
+    expect(fetchSpy).toHaveBeenCalledWith('/api/students/student/feedback', expect.anything())
+    expect(host.querySelector('[data-day-feedback-marker="day"]')?.textContent).toContain('已反馈')
+    expect(host.querySelector('[data-feedback-toggle]')).not.toBeNull()
+  })
+
+  it('020 waits for actual dates and shows a successful send even while the feedback read remains failed', async () => {
+    api.realEditor = true
+    const trained = plan('初始计划', 'published')
+    trained.days[0].completed_at = '2026-01-07T20:00:00Z'
+    api.getPlan.mockResolvedValue(trained)
+    let resolveLogs!: (logs: unknown[]) => void
+    api.getStudentSetLogs.mockImplementation(() => new Promise(resolve => { resolveLogs = resolve }))
+    api.getStudentFeedback.mockRejectedValue(new Error('offline'))
+    await act(async () => { root.render(<PlanWorkspace onLogout={vi.fn()} me={me} />); await settle() })
+    await act(async () => { host.querySelector<HTMLButtonElement>('[data-feedback-toggle]')!.click(); await settle() })
+    await act(async () => { host.querySelector<HTMLButtonElement>('[data-feedback-day="day"]')!.click(); await settle() })
+    expect(host.querySelector<HTMLTextAreaElement>('.day-feedback-detail textarea')?.disabled).toBe(true)
+    expect(host.querySelector('.day-feedback-detail')?.textContent).not.toContain('1/7')
+    expect(api.postCoachFeedback).not.toHaveBeenCalled()
+    await act(async () => { resolveLogs([{ id: 'log', plan_day_id: 'day', plan_exercise_id: 'plan-exercise', logged_date: '2026-01-06', logged_at: '2026-01-07T20:00:00Z', weight_kg: '100', reps: 5, set_index: 0 }]); await settle() })
+    const reply = host.querySelector<HTMLTextAreaElement>('.day-feedback-detail textarea')!
+    expect(reply.disabled).toBe(false)
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!.call(reply, '读取失败也能成功发送')
+      reply.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+    api.postCoachFeedback.mockResolvedValue({ id: 'sent', student_id: 'student', day_date: '2026-01-06', plan_exercise_id: null, video_id: null, text: '读取失败也能成功发送', posted_at: '2026-01-08T00:00:00Z', read_at: null })
+    await act(async () => { host.querySelector<HTMLButtonElement>('.day-feedback-detail footer button')!.click(); await settle() })
+    expect(api.postCoachFeedback).toHaveBeenCalledWith(expect.objectContaining({ day_date: '2026-01-06' }))
+    expect(host.querySelector('.day-feedback-cards')?.textContent).toContain('读取失败也能成功发送')
+    expect(host.querySelector('[data-day-feedback-marker="day"]')?.textContent).toContain('已反馈')
+    expect(host.querySelector('.feedback-days [role="alert"]')).not.toBeNull()
+  })
+
+  it('020 topbar preserves the open edit card and the history level through real pointer events', async () => {
+    api.realEditor = true
+    api.getPlan.mockResolvedValue(plan('history'))
+    await act(async () => { root.render(<PlanWorkspace onLogout={vi.fn()} me={me} />); await settle() })
+    await act(async () => { host.querySelector<HTMLElement>('[data-block-week]')!.click(); await settle() })
+    await act(async () => { host.querySelector<HTMLInputElement>('[data-c="reps"] input')!.focus(); await settle() })
+    const before = host.querySelector('.history-breadcrumbs')!.textContent
+    const toggle = host.querySelector<HTMLButtonElement>('[data-feedback-toggle]')!
+    const toggleWithPointer = async () => act(async () => {
+      toggle.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }))
+      toggle.click(); await settle()
+    })
+    await toggleWithPointer()
+    expect(host.querySelector('.daygrid')).not.toBeNull()
+    await toggleWithPointer()
+    expect(host.querySelector('.history-breadcrumbs')?.textContent).toBe(before)
+  })
+
+  it('020 resolves a completed day logged before the plan’s recommended start', async () => {
+    api.realEditor = true
+    const trained = plan('提前训练', 'published')
+    trained.days[0].completed_at = '2026-01-07T20:00:00Z'
+    api.getPlan.mockResolvedValue(trained)
+    api.getStudentSetLogs.mockImplementation((_student, from) => Promise.resolve(from < '2026-01-04' ? [{ id: 'log', plan_exercise_id: 'plan-exercise', plan_day_id: 'day', logged_date: '2026-01-04', logged_at: '2026-01-07T20:00:00Z', weight_kg: '100', reps: 5, set_index: 0 }] : []))
+    await act(async () => { root.render(<PlanWorkspace onLogout={vi.fn()} me={me} />); await settle() })
+    await act(async () => { host.querySelector<HTMLButtonElement>('[data-feedback-toggle]')!.click(); await settle() })
+    expect(host.querySelector('[data-feedback-day="day"]')?.textContent).toContain('1/4')
+  })
+
+  it.each(['by-week', 'by-day'] as const)('020 day selection and hover link both ways and retain the marker in edit mode: %s', async layout => {
+    api.realEditor = true
+    localStorage.setItem('meetpr.plan-editor.block-layout', layout)
+    const trained = plan('初始计划', 'published')
+    trained.days[0].completed_at = '2026-01-06T20:00:00Z'
+    api.getPlan.mockResolvedValue(trained)
+    api.getStudentSetLogs.mockResolvedValue([{ id: 'log', plan_exercise_id: 'plan-exercise', logged_date: '2026-01-06', logged_at: '2026-01-06T20:00:00Z', weight_kg: '100', reps: 5, set_index: 0 }])
+    api.getStudentFeedback.mockResolvedValue([{ id: 'f1', student_id: 'student', day_date: '2026-01-06', plan_exercise_id: null, video_id: null, text: '整日内容', posted_at: '2026-01-07T00:00:00Z', read_at: null }])
+    await act(async () => { root.render(<PlanWorkspace onLogout={vi.fn()} me={me} />); await settle() })
+    const style = document.createElement('style')
+    style.textContent = readFileSync('src/features/plan-editor/components/block-grid.css', 'utf8')
+    host.append(style)
+    const cell = host.querySelector<HTMLElement>('[data-block-day-id="day"]')!
+    await act(async () => { cell.querySelector<HTMLButtonElement>('[data-day-feedback-marker]')!.click(); await settle() })
+    expect(cell.classList.contains('day-feedback-highlight')).toBe(true)
+    expect(host.querySelector('[data-feedback-day="day"]')?.getAttribute('aria-pressed')).toBe('true')
+    expect(cell.querySelector('[role="tooltip"]')?.textContent).toContain('整日内容')
+    await act(async () => { cell.click(); await settle() })
+    const marker = cell.querySelector<HTMLElement>('.block-edit-head [data-day-feedback-marker]')!
+    expect(marker).not.toBeNull()
+    expect(getComputedStyle(marker).backgroundColor).toBe('rgb(249, 250, 251)')
+    expect(getComputedStyle(marker).borderTopWidth).toBe('1px')
+    for (const locale of ['zh', 'en', 'zh-Hant'] as const) {
+      await act(async () => { setLocale(locale); root.render(<PlanWorkspace onLogout={vi.fn()} me={me} />); await settle() })
+      expect(host.querySelector('[data-feedback-toggle]')?.textContent).toContain(S.block.feedback)
+      expect(host.querySelector('.day-feedback-detail')?.textContent).toContain(S.block.wholeDay)
+    }
+    await act(async () => { host.querySelector<HTMLButtonElement>('[data-feedback-toggle]')!.click(); await settle() })
+    await act(async () => { host.querySelector<HTMLButtonElement>('[data-feedback-toggle]')!.click(); await settle() })
+    await act(async () => cell.dispatchEvent(new MouseEvent('mouseover', { bubbles: true })))
+    expect(host.querySelector('[data-feedback-day="day"]')?.classList.contains('hovered')).toBe(true)
+    await act(async () => cell.dispatchEvent(new MouseEvent('mouseout', { bubbles: true })))
+    const day = host.querySelector<HTMLElement>('[data-feedback-day="day"]')!
+    await act(async () => day.dispatchEvent(new MouseEvent('mouseover', { bubbles: true })))
+    expect(cell.classList.contains('day-feedback-highlight')).toBe(true)
+  })
+
+  it.each([0, 1])('020 topbar feedback opens and closes even with a collapsed rail, pending count %s', async count => {
+    api.realEditor = true
+    api.getPlan.mockResolvedValue(plan('初始计划'))
+    api.getStudentVideos.mockResolvedValue(count ? [video('v1', '深蹲')] : [])
+    localStorage.setItem('meetpr.plan-editor.rail-mode', 'collapsed')
+    await act(async () => { root.render(<PlanWorkspace onLogout={vi.fn()} me={me} />); await settle() })
+    const toggle = host.querySelector<HTMLButtonElement>('[data-feedback-toggle]')
+    expect(toggle).not.toBeNull()
+    expect(toggle?.getAttribute('aria-pressed')).toBe('false')
+    expect(toggle?.querySelector('[data-feedback-count]')?.textContent ?? null).toBe(count ? '1' : null)
+    expect(toggle?.nextElementSibling?.getAttribute('role')).toBe('switch')
+    await act(async () => { toggle!.click(); await settle() })
+    expect(host.querySelector('[data-feedback-mode]')).not.toBeNull()
+    expect(toggle?.getAttribute('aria-pressed')).toBe('true')
+    expect(!!host.querySelector('video')).toBe(!!count)
+    await act(async () => { toggle!.click(); await settle() })
+    expect(host.querySelector('[data-feedback-mode]')).toBeNull()
+    expect(host.querySelector('video')).toBeNull()
+  })
+
   it('013 overview waits for the target plan and videos, then opens the first in-plan pending video', async () => {
     api.realEditor = true
     api.getPlan.mockResolvedValue(plan('初始计划'))
@@ -434,7 +679,7 @@ describe('PlanWorkspace editor remount', () => {
     expect(host.querySelector('[data-feedback-video="v1"]')).toBeNull()
   })
 
-  it('013 repair 1 historical play waits until halfway and updates the brick once', async () => {
+  it('020 historical play enters feedback, waits until halfway and updates the brick once', async () => {
     api.realEditor = true
     api.getPlan.mockResolvedValue(plan('history'))
     api.getStudentVideos.mockResolvedValue([video('v1', '深蹲')])
@@ -444,8 +689,8 @@ describe('PlanWorkspace editor remount', () => {
     await act(async () => { host.querySelector<HTMLElement>('[data-block-week]')!.click(); await settle() })
     await act(async () => { host.querySelector<HTMLInputElement>('[data-c="reps"] input')!.focus(); await settle() })
     await act(async () => { host.querySelector<HTMLButtonElement>('.history-session summary button')!.click(); await settle() })
-    expect(host.querySelector('[data-feedback-mode]')).toBeNull()
-    expect(host.querySelector('.video-rpe-calibration')).toBeNull()
+    expect(host.querySelector('[data-feedback-mode]')).not.toBeNull()
+    expect(host.querySelector('.video-feedback textarea')).not.toBeNull()
     expect(api.markVideoViewed).not.toHaveBeenCalled()
     await playback(host, 9.99)
     expect(api.markVideoViewed).not.toHaveBeenCalled()
@@ -657,6 +902,7 @@ describe('PlanWorkspace editor remount', () => {
     api.getStudentOnboarding.mockResolvedValue(null)
     api.publishPlan.mockResolvedValue(plan('发布完成'))
     api.getBindRequests.mockResolvedValue([])
+    api.getStudentFeedback.mockResolvedValue([])
     api.getStudentVideos.mockResolvedValue([])
     api.getExerciseStatsOverview.mockResolvedValue({
       exercises: [],
@@ -701,6 +947,7 @@ describe('PlanWorkspace editor remount', () => {
     act(() => root.unmount())
     host.remove()
     vi.useRealTimers()
+    setLocale(undefined)
     vi.clearAllMocks()
     vi.restoreAllMocks()
   })

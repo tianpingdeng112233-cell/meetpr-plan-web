@@ -15,8 +15,10 @@ import { BlockGrid } from './components/BlockGrid'
 import { blockFillTargets, insertBlockDay, deleteBlockDay, blockDayDeletionLocked, isBlockTrainingDay, buildBlockGrid, changeBlockPattern, blockTargetDay, fillBlockDays, changeBlockDate, changeBlockWeekday, type BlockAddress } from './blockGridModel'
 import { NewPlanDialog } from '../workspace/PlanDialogs'
 import { loadBlockExtraWeekdays, saveBlockExtraWeekdays, loadBlockWeekdays, saveBlockWeekdays } from '../workspace/blockPlanSettings'
-import { deriveVideoFeedback, type FeedbackEntry } from './feedbackModel'
+import { deriveDayFeedback, deriveVideoFeedback, type FeedbackDay, type FeedbackEntry } from './feedbackModel'
 import type { EditorFeedbackHandle, FeedbackSession } from './feedbackSession'
+import { useStudentFeedback } from './useStudentFeedback'
+import { DayFeedbackMarker } from './components/DayFeedback'
 import { VideoMarker } from './components/VideoMarker'
 import { BlockHistory } from './components/BlockHistory'
 import './components/block-history.css'
@@ -605,6 +607,8 @@ export function PlanEditor(props: PlanEditorProps) {
   const [blockMenu, setBlockMenu] = useState<{ x: number; y: number } | null>(null)
   const [sel, setSel] = useState<Sel | null>(null)
   // SPEC-038:学员实际完成组,serverRowId → sets。失败静默(编排主流程不受影响)。
+  const [setLogsRetry, setSetLogsRetry] = useState(0)
+  const [setLogsFailed, setSetLogsFailed] = useState(false)
   const [setLogs, setSetLogs] = useState<StudentSetLog[]>([])
   const [actualsByExercise, setActualsByExercise] = useState<Map<string, ActualSet[]>>(() => new Map())
   const [studentAddedByDay, setStudentAddedByDay] = useState<Map<string, StudentAddedExercise[]>>(() => new Map())
@@ -612,20 +616,33 @@ export function PlanEditor(props: PlanEditorProps) {
   const anyRowHasLogs = weeks.some((week) => week.days.some((day) => day.rows.some((row) => row.hasLogs)))
   useEffect(() => {
     const studentId = props.studentId
-    const from = planStartDate
     const today = isoDate(new Date())
+    const hasCompletedDay = weeks.some(week => week.days.some(day => day.completedAt))
+    const from = hasCompletedDay && planStartDate && planStartDate > today ? today : planStartDate
     if (!studentId || !from || (!anyRowHasLogs && !hasServerDay) || from > today) return
     let cancelled = false
+    setSetLogsFailed(false)
+    const applyLogs = (logs: StudentSetLog[]) => {
+      setSetLogs(logs)
+      setActualsByExercise(groupActualsByExercise(logs))
+      setStudentAddedByDay(groupStudentAddedByDay(logs))
+    }
     void getStudentSetLogs(studentId, from, isoDate(addDays(today, 1)))
-      .then((logs) => {
+      .then(async (logs) => {
         if (cancelled) return
-        setSetLogs(logs)
-        setActualsByExercise(groupActualsByExercise(logs))
-        setStudentAddedByDay(groupStudentAddedByDay(logs))
+        applyLogs(logs)
+        const missingDate = weeks.some(week => week.days.some(day => day.completedAt && day.serverDayId
+          && !logs.some(log => log.plan_day_id === day.serverDayId || day.rows.some(row => row.serverRowId && row.serverRowId === log.plan_exercise_id))))
+        // A recommendation is not a lower bound for training: a student can train early.
+        if (missingDate) {
+          const earlier = await getStudentSetLogs(studentId, '1970-01-01', from)
+          if (cancelled) return
+          applyLogs([...new Map([...earlier, ...logs].map(log => [log.id, log])).values()])
+        }
       })
-      .catch(() => {})
+      .catch(() => { if (!cancelled) setSetLogsFailed(true) })
     return () => { cancelled = true }
-  }, [props.studentId, planStartDate, anyRowHasLogs, hasServerDay])
+  }, [props.studentId, planStartDate, anyRowHasLogs, hasServerDay, setLogsRetry])
   const actualsPreferenceKey = `meetpr:show-actuals:${props.coachId ?? 'local'}`
   const [showActuals, setShowActuals] = useState(() => { try { return localStorage.getItem(actualsPreferenceKey) === 'true' } catch { return false } })
   const toggleActuals = () => {
@@ -633,15 +650,23 @@ export function PlanEditor(props: PlanEditorProps) {
     setShowActuals(next)
     try { localStorage.setItem(actualsPreferenceKey, String(next)) } catch { /* Session preference still works. */ }
   }
+  const studentFeedback = useStudentFeedback(props.studentId)
+  const dayFeedback = useMemo(() => deriveDayFeedback(displayWeeks, setLogs, studentFeedback.items ?? [], props.videos ?? [], planStartDate), [displayWeeks, setLogs, studentFeedback.items, studentFeedback.failed, props.videos, planStartDate])
   const videoFeedback = useMemo(() => deriveVideoFeedback(displayWeeks, props.videos ?? [], setLogs, planStartDate), [displayWeeks, props.videos, setLogs, planStartDate])
   const [localFeedback, setLocalFeedback] = useState<FeedbackSession | null>(null)
   const feedback = props.feedbackSession === undefined ? localFeedback : props.feedbackSession
-  const changeFeedback = (next: FeedbackSession | null) => { setLocalFeedback(next); props.onFeedbackSessionChange?.(next) }
+  const changeFeedback = (next: FeedbackSession | null) => { setHoveredFeedbackDay(null); setLocalFeedback(next); props.onFeedbackSessionChange?.(next) }
+  const [hoveredFeedbackDay, setHoveredFeedbackDay] = useState<string | null>(null)
   const [highlightedVideo, setHighlightedVideo] = useState<FeedbackEntry | null>(null)
   const openFeedbackVideo = (videoId?: string) => {
     const id = videoId ?? videoFeedback.entries.find(entry => entry.video.viewed_at == null)?.video.id ?? null
-    changeFeedback({ videoId: id, playerOpen: !!id, includeViewed: feedback?.includeViewed ?? false })
+    changeFeedback({ videoId: id, pinnedVideoId: videoFeedback.entries.find(entry => entry.video.id === id)?.video.viewed_at != null ? id : null, playerOpen: !!id, includeViewed: feedback?.includeViewed ?? false })
   }
+  const openFeedbackDay = (day: FeedbackDay) => {
+    setHighlightedVideo(null)
+    changeFeedback({ dayId: day.dayId, videoId: null, playerOpen: false, includeViewed: feedback?.includeViewed ?? false })
+  }
+  const feedbackDayMarker = (day: DayCol) => <DayFeedbackMarker day={day.serverDayId ? dayFeedback.byDay.get(day.serverDayId) : undefined} onOpen={openFeedbackDay} />
   useImperativeHandle(props.feedbackRef, () => ({ openFeedbackVideo }))
   const rowVideoMarker = (row: ExerciseRow) => <VideoMarker group={videoFeedback.rows.get(row.id)} onOpen={openFeedbackVideo} />
   const addedVideoMarker = (dayId: string | null | undefined, exerciseId: string) => <VideoMarker group={dayId ? videoFeedback.studentAdded.get(dayId)?.get(exerciseId) : undefined} onOpen={openFeedbackVideo} />
@@ -2956,7 +2981,7 @@ export function PlanEditor(props: PlanEditorProps) {
   return (
     <div ref={rootRef} onMouseDownCapture={event => {
       const target = event.target as HTMLElement
-      if (!target.closest('.block-layout-switch,.show-actuals,.block-history,.block-cell,.block-context-menu,.ex-popover,[data-popover],[role="dialog"]')) {
+      if (!target.closest('.block-layout-switch,.show-actuals,.feedback-toggle,.block-history,.block-cell,.block-context-menu,.ex-popover,[data-popover],[role="dialog"]')) {
         closeBlockEditor(); setBlockMenu(null)
       }
     }} className="plan-editor" style={{
@@ -2964,7 +2989,7 @@ export function PlanEditor(props: PlanEditorProps) {
       overflow: 'hidden', background: 'var(--page-bg)', color: 'var(--txt)',
       fontFamily: 'var(--font-sans)', fontSize: 13, WebkitFontSmoothing: 'antialiased',
     }}>
-      <TopBar showActuals={showActuals} onToggleActuals={toggleActuals}
+      <TopBar feedbackOpen={!!feedback} pendingVideoCount={videoFeedback.entries.filter(entry => entry.video.viewed_at == null).length} onToggleFeedback={() => feedback ? changeFeedback(null) : openFeedbackVideo()} showActuals={showActuals} onToggleActuals={toggleActuals}
         studentName={studentName} planName={planName} published={published} publishedDirty={publishedDirty}
         readOnly={readOnly} statusText={visibleStatusText} onPublish={handlePublish}
         students={props.students} currentStudentId={props.currentStudentId} onSwitchStudent={guardLeaveId(props.onSwitchStudent)}
@@ -3028,6 +3053,8 @@ export function PlanEditor(props: PlanEditorProps) {
               rowTier={rowTier} onClose={closeBlockEditor}
               showActuals={showActuals} actualsForRow={actualsForRow} studentAddedByDay={studentAddedByDay}
               exerciseName={id => { const names = props.exerciseIndex?.namesById(id); return names ? fmt.exerciseName(names) : id }}
+              feedbackDayMarker={feedbackDayMarker} highlightedDayId={feedback ? hoveredFeedbackDay ?? feedback.dayId : null}
+              onHoverDay={id => { if (feedback) setHoveredFeedbackDay(id) }}
               addedVideoMarker={addedVideoMarker}
               videoMarker={rowVideoMarker} highlightedVideo={highlightedVideo}
               addedDayMarkers={day => day.serverDayId && [...(videoFeedback.studentAdded.get(day.serverDayId) ?? [])].map(([id, group]) => <span className="added-video-marker" key={id}>{S.block.added} <VideoMarker group={group} onOpen={openFeedbackVideo} /></span>)}
@@ -3080,6 +3107,7 @@ export function PlanEditor(props: PlanEditorProps) {
               }}
               renderDay={(wk, day, dx, dayNumber) => (
                       <DayColumn
+                        feedbackMarker={feedbackDayMarker(day)}
                         key={day.dow}
                         weekNumber={wk.num}
                         blockView={{ dx: dayNumber - 1, date: planStartDate ? recommendedDateForDay(planStartDate, wk.num, day) : '',
@@ -3149,7 +3177,10 @@ export function PlanEditor(props: PlanEditorProps) {
             />
           </div>
         </div>
-        <BlockHistory videos={props.videos} entries={videoFeedback.entries} feedback={feedback} onFeedbackChange={changeFeedback}
+        <BlockHistory datesFailed={setLogsFailed} onRetryDates={() => setSetLogsRetry(value => value + 1)} days={dayFeedback.days} feedbackFailed={studentFeedback.failed} feedbackLoaded={!!studentFeedback.items && !studentFeedback.failed}
+          onRetryFeedback={studentFeedback.refresh} onFeedbackSent={item => { studentFeedback.append(item); if (studentFeedback.failed) void studentFeedback.refresh() }} onRefreshFeedback={studentFeedback.refresh}
+          onOpenDay={openFeedbackDay} hoveredDayId={hoveredFeedbackDay} onHoverDay={setHoveredFeedbackDay}
+          videos={props.videos} entries={videoFeedback.entries} feedback={feedback} onFeedbackChange={changeFeedback}
           onVideoViewed={props.onVideoViewed} onRefreshVideos={props.onRefreshVideos} onHighlight={setHighlightedVideo} studentId={props.studentId} studentName={studentName}
           row={(() => {
             const row = editingDay && cellSelection ? resolvePlanCell(displayWeeks, cellSelection)?.row ?? null : null

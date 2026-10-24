@@ -182,3 +182,32 @@
 .history-player .history-transport[lang="en"] .video-speeds button { padding:0 4px; }
 .history-player .history-transport[lang="en"] .video-frame-step { width:24px; }
 .history-player .history-transport[lang="en"] .video-stage-actions { flex-shrink:0; }
+
+.feedback-days { margin:0 12px; flex:0 1 auto; min-height:72px; }
+.feedback-days h4,.feedback-queue-heading { margin:0; padding:6px 0; font-size:12px; }
+.feedback-days h4 small,.feedback-queue-heading small { display:block; font-size:11px; font-weight:400; opacity:.65; line-height:1.5; }
+.feedback-days p { margin:0 0 4px; }
+.feedback-earlier { display:block; font-size:10px; opacity:.65; }
+.feedback-day-list { max-height:192px; overflow:auto; }
+.feedback-day-list button { display:grid; grid-template-columns:auto 1fr auto; align-items:center; gap:6px; width:100%; min-height:32px; background:white; border:0; border-radius:0; text-align:left; font-size:11px; }
+.feedback-day-list code { font:11px var(--font-mono); white-space:nowrap; }
+.feedback-day-list time { white-space:nowrap; }
+.feedback-day-list button > span { opacity:.55; font-size:10px; text-align:right; }
+.feedback-day-list button > .has-feedback { opacity:1; }
+.feedback-day-list button.selected,.feedback-day-list button.hovered,.feedback-day-list button:hover { background:#FEF3C7; }
+.feedback-day-list button.selected code { font-weight:700; }
+.feedback-queue-heading { margin:4px 12px 0; flex-shrink:0; }
+.feedback-queue { flex:0 1 160px; }
+.feedback-queue button { grid-template-columns:16px 52px minmax(0,1fr) auto; }
+.feedback-queue button > span { overflow-wrap:anywhere; }
+.feedback-queue button > small { white-space:nowrap; }
+.feedback-play-icon { display:inline-flex; align-items:center; justify-content:center; flex-shrink:0; width:16px; height:16px; border-radius:50%; background:#111827; color:white; font-size:9px; font-style:normal; }
+.block-history > header .pending-entry { display:inline-flex; gap:4px; align-items:center; }
+.day-feedback-detail { padding-top:10px; gap:8px; }
+.day-feedback-detail h4 { margin:0; font-size:12px; line-height:1.6; }
+.day-feedback-cards article { background:#F9FAFB; padding:8px; border-radius:6px; margin-bottom:6px; }
+.day-feedback-cards header { display:flex; gap:6px; justify-content:space-between; font-size:10px; line-height:1.5; }
+.day-feedback-cards small { flex-shrink:0; }
+.day-feedback-cards p { margin:4px 0 0; color:#111827; white-space:pre-wrap; overflow-wrap:anywhere; }
+.day-feedback-detail textarea { margin-top:auto; flex-shrink:0; }
+.day-feedback-detail footer { padding-bottom:2px; }

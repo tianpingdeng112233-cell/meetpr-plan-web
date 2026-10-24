@@ -30,7 +30,7 @@ afterEach(() => { act(() => root.unmount()); host.remove(); vi.unstubAllGlobals(
 const click = async (el: Element) => act(async () => { el.dispatchEvent(new MouseEvent('mousedown', { bubbles: true })); el.dispatchEvent(new MouseEvent('click', { bubbles: true })); await Promise.resolve() })
 const button = (text: string) => [...host.querySelectorAll('button')].find(el => el.textContent === text)!
 
-it('floats one video beside unchanged history, highlights the playing set and closes before the edit card', async () => {
+it('020 floats one video beside feedback, selects the historical video and restores history before closing the edit card', async () => {
   const style = document.createElement('style'); style.textContent = readFileSync('src/features/plan-editor/components/block-history.css', 'utf8')
   const second = { ...session, date: '2026-10-09', sets: [session.sets[0], { ...session.sets[0], set_index: 1, video_id: 'video-2', weight_kg: '190' }] }
   vi.stubGlobal('fetch', vi.fn(async (url: string) => new Response(JSON.stringify(url.includes('/uploads/')
@@ -52,30 +52,34 @@ it('floats one video beside unchanged history, highlights the playing set and cl
   expect(rail.contains(player)).toBe(false)
   expect(getComputedStyle(player).position).toBe('fixed')
   expect(getComputedStyle(rail).width).toBe(width)
-  expect(records.map(record => record.textContent)).toEqual(text)
-  expect(rail.querySelectorAll('.history-session')).toHaveLength(2)
-  expect(getComputedStyle(records[0]).backgroundColor).toBe('rgb(255, 251, 235)')
-  expect(getComputedStyle(records[0].querySelector('.history-set')!).backgroundColor).toBe('rgb(254, 243, 199)')
+  expect(rail.hasAttribute('data-feedback-mode')).toBe(true)
+  expect(rail.querySelectorAll('.history-session')).toHaveLength(0)
+  expect(rail.querySelector('[data-feedback-video="video-1"]')?.classList.contains('selected')).toBe(true)
+  expect(rail.querySelector('.video-feedback textarea')).not.toBeNull()
   expect(player.textContent).toContain('10/16 · 相扑硬拉 · 第 1 组')
   expect(player.textContent).toContain('210×3 @8')
   expect(player.querySelector('video')?.src).toContain('/first.mp4')
-  await click(records[1].querySelector('summary')!)
-  await click(records[1].querySelectorAll('.history-set button')[1])
+  await click(button('← 历史'))
+  const restored = [...rail.querySelectorAll<HTMLDetailsElement>('.history-session')]
+  expect(restored.map(record => record.textContent)).toEqual(text)
+  await click(restored[1].querySelector('summary')!)
+  await click(restored[1].querySelectorAll('.history-set button')[1])
   expect(host.querySelectorAll('[role="dialog"][aria-label="训练视频"]')).toHaveLength(1)
-  expect(host.querySelector('[role="dialog"]')).toBe(player)
-  expect(player.querySelector('video')?.src).toContain('/second.mp4')
-  expect(player.textContent).toContain('10/09 · 相扑硬拉 · 第 2 组')
-  expect(records[0].classList.contains('is-playing')).toBe(false)
-  expect(records[1].classList.contains('is-playing')).toBe(true)
-  expect(records[1].querySelectorAll('.history-set.is-playing')).toHaveLength(1)
-  expect(records[1].querySelector('.history-set.is-playing')?.textContent).toContain('190×3 @8')
-  expect(records[1].querySelector('.history-set.is-playing button')?.classList.contains('playing')).toBe(true)
+  const nextPlayer = host.querySelector('[role="dialog"]')!
+  expect(nextPlayer.querySelector('video')?.src).toContain('/second.mp4')
+  expect(nextPlayer.textContent).toContain('10/09 · 相扑硬拉 · 第 2 组')
+  expect(nextPlayer.textContent).toContain('190×3 @8')
+  expect(rail.querySelectorAll('[data-feedback-video].selected')).toHaveLength(1)
+  expect(rail.querySelector('[data-feedback-video="video-2"]')?.classList.contains('selected')).toBe(true)
   await act(async () => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })))
   expect(host.querySelector('video')).toBeNull()
   expect(host.querySelector('.daygrid')).not.toBeNull()
   expect(document.activeElement).toBe(input)
   expect(input.selectionStart).toBe(0)
   expect(input.selectionEnd).toBe(1)
+  await act(async () => input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })))
+  expect(host.querySelector('[data-feedback-mode]')).toBeNull()
+  expect(host.querySelector('.daygrid')).not.toBeNull()
   await act(async () => input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })))
   expect(host.querySelector('.daygrid')).toBeNull()
 })
@@ -132,6 +136,9 @@ it.each([
   expect(host.querySelector('.daygrid')).not.toBeNull()
   expect(document.activeElement).toBe(input)
   await act(async () => input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })))
+  expect(host.querySelector('[data-feedback-mode]')).toBeNull()
+  expect(host.querySelector('.daygrid')).not.toBeNull()
+  await act(async () => input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })))
   expect(host.querySelector('.daygrid')).toBeNull()
 })
 
@@ -155,10 +162,13 @@ it.each(['before', 'after', 'progress'])('closes the video before a name field c
   expect(host.querySelector('.daygrid')).not.toBeNull()
   expect(document.activeElement).toBe(input)
   await act(async () => input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })))
+  expect(host.querySelector('[data-feedback-mode]')).toBeNull()
+  expect(host.querySelector('.daygrid')).not.toBeNull()
+  await act(async () => input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })))
   expect(host.querySelector('.daygrid')).toBeNull()
 })
 
-it('highlights only the playing video among separate prescriptions on the same date', async () => {
+it('020 selects only the opened historical video among separate prescriptions on the same date', async () => {
   const sameDate = { ...session, sets: [{ ...session.sets[0], video_id: 'other-video' }] }
   vi.stubGlobal('fetch', vi.fn(async (url: string) => new Response(JSON.stringify(url.includes('/uploads/') ? { url: '/training.mp4' }
     : { recent_sessions: [session, sameDate], filtered_sessions: [session, sameDate], rep_prs: [], by_set_count: {} }), { status: 200 })))
@@ -167,10 +177,10 @@ it('highlights only the playing video among separate prescriptions on the same d
   await act(async () => host.querySelector<HTMLInputElement>('[data-c="reps"] input')!.focus())
   const records = host.querySelectorAll('.history-session')
   await click(records[1].querySelector('summary button')!)
-  expect(host.querySelectorAll('.history-session.is-playing')).toHaveLength(1)
-  expect(records[1].classList.contains('is-playing')).toBe(true)
-  expect(host.querySelectorAll('.history-set.is-playing')).toHaveLength(1)
-  expect(records[0].querySelector('.playing')).toBeNull()
+  expect(host.querySelector('[data-feedback-mode]')).not.toBeNull()
+  expect(host.querySelectorAll('[data-feedback-video].selected')).toHaveLength(1)
+  expect(host.querySelector('[data-feedback-video="other-video"]')?.classList.contains('selected')).toBe(true)
+  expect(host.querySelector('[data-feedback-video="video-1"].selected')).toBeNull()
 })
 
 it('keeps history open for a complete row, filters, caches and plays without closing the edit card', async () => {
@@ -188,6 +198,7 @@ it('keeps history open for a complete row, filters, caches and plays without clo
   expect(host.querySelector('.daygrid')).not.toBeNull()
   await click(host.querySelector('[aria-label="关闭播放"]')!)
   expect(document.activeElement).toBe(input)
+  await click(button('← 历史'))
   await click(button('4 组'))
   expect(requests.some(url => url.endsWith('exercise_id=sumo&sets=4'))).toBe(true)
   await act(async () => { input.focus(); input.dispatchEvent(new FocusEvent('focusin', { bubbles: true })) })

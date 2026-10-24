@@ -164,3 +164,19 @@
 .block-grid[data-layout="by-day"] .fill-preview { border-color: #111827; background: #f5f6f8; }
 .block-grid[data-layout="by-day"] .block-fill-ghost { background: #f5f6f8; }
 .block-grid[data-layout="by-day"] .block-fill-ghost small { background: #fef3c7; color: #111827; border: 1px solid #111827; }
+
+.block-topbar .feedback-toggle { display:inline-flex; align-items:center; gap:6px; height:32px; border:1.5px solid #111827; background:white; color:#111827; border-radius:7px; font-size:12px; }
+.feedback-toggle [data-feedback-count] { background:#111827; color:white; border-radius:8px; padding:1px 5px; font:10px var(--font-mono); }
+.block-topbar .feedback-toggle[aria-pressed="true"] { background:#111827; color:white; }
+.feedback-toggle[aria-pressed="true"] [data-feedback-count] { background:white; color:#111827; }
+
+.block-cell.day-feedback-highlight { background:#FFFBEB; outline:1.5px solid #111827; outline-offset:-1.5px; }
+.day-feedback-marker-wrap { position:relative; display:inline-flex; margin-left:auto; flex-shrink:0; }
+.day-feedback-marker,.block-edit-head .day-feedback-marker { display:inline-flex; align-items:center; gap:3px; padding:2px 4px; border:1px solid #E5E7EB; background:#F9FAFB; color:#111827; border-radius:4px; font:10px var(--font-sans); cursor:pointer; white-space:nowrap; }
+.day-feedback-tooltip { display:none; position:absolute; z-index:55; top:100%; right:0; width:268px; max-height:300px; overflow:auto; padding:10px; border-radius:6px; background:#111827; color:white; box-shadow:0 6px 20px #11182733; font:12px var(--font-sans); white-space:normal; }
+.day-feedback-marker-wrap:hover .day-feedback-tooltip,.day-feedback-marker-wrap:focus-within .day-feedback-tooltip { display:block; }
+.day-feedback-tooltip > b { display:block; font-size:11px; line-height:1.5; margin-bottom:6px; }
+.day-feedback-tooltip > span { display:block; padding-top:6px; }
+.day-feedback-tooltip small { display:block; opacity:.7; margin-bottom:3px; }
+.day-feedback-tooltip > span > span { display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden; line-height:1.5; }
+.block-edit-head > .day-feedback-marker-wrap { margin-left:auto; }

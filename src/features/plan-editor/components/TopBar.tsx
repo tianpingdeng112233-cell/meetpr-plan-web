@@ -8,6 +8,9 @@ import { S } from '../../../i18n/strings'
 interface Option { id: string; label: string; tag?: string; sub?: string }
 
 interface Props {
+  feedbackOpen?: boolean
+  pendingVideoCount?: number
+  onToggleFeedback?: () => void
   showActuals?: boolean
   onToggleActuals?: () => void
   studentName: string
@@ -84,6 +87,10 @@ export function TopBar(p: Props) {
       <button ref={planAnchor} data-plan-menu-trigger="" aria-expanded={menu === 'plan'} aria-haspopup="menu" onClick={() => setMenu(menu === 'plan' ? null : 'plan')}><small>{S.block.plan}</small> {p.planName}{p.planStartDate ? ` · ${mmdd(p.planStartDate)}` : ''}{p.weeksCount ? ` · ${S.common.countWeeks(p.weeksCount)}` : ''} ▾</button>
       <span className="plan-context-spacer" />
       {(p.issueCount ?? 0) > 0 && <button title={p.issueHint} onClick={p.onJumpIssue}>{S.editor.issuesToReview(p.issueCount!)}</button>}
+      <button type="button" className="feedback-toggle" data-feedback-toggle="" aria-label={S.block.feedback} aria-pressed={p.feedbackOpen ?? false} onClick={p.onToggleFeedback}>
+        <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" aria-hidden="true"><path d="M3 2h10v8H7l-4 3V2Z" /></svg>
+        {S.block.feedback}{!!p.pendingVideoCount && <span data-feedback-count="">{p.pendingVideoCount}</span>}
+      </button>
       <button type="button" className="show-actuals" role="switch" aria-label={S.block.showActuals} aria-checked={p.showActuals ?? false} onClick={p.onToggleActuals}>{S.block.showActuals}<i aria-hidden="true" /></button>
       <span className={`plan-autosave-status${p.publishedDirty ? ' published-dirty' : ''}`} data-testid="plan-save-status" role="status"><span className={p.published ? 'published' : ''} aria-hidden="true" />{p.statusText}</span>
       {!p.published && !p.readOnly && p.draftSaveFailed && p.onSave && <button type="button" disabled={p.saving} onClick={p.onSave}>{S.block.retrySave}</button>}

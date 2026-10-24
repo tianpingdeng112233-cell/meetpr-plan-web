@@ -49,6 +49,7 @@ export interface WeekBandDayView {
 }
 
 interface Props {
+  feedbackMarker?: React.ReactNode
   videoMarker?: (row: ExerciseRow) => React.ReactNode
   addedVideoMarker?: (exerciseId: string) => React.ReactNode
   highlightedVideo?: FeedbackEntry | null
@@ -812,7 +813,7 @@ function EditableWeight({ row, width, edit, selectedCell, selectCell, cellKey, r
 }
 
 export function DayColumn({
-  videoMarker, addedVideoMarker, highlightedVideo,
+  feedbackMarker, videoMarker, addedVideoMarker, highlightedVideo,
   blockView,
   weekNumber = 0,
   columnLetter,
@@ -1022,6 +1023,7 @@ export function DayColumn({
                 onChange={event => { blockView.onDate(event.target.value); setDateOpen(false) }} />}
             </span>
           </div>
+          {feedbackMarker}
           <div className="block-edit-actions">{shiftAction}<button type="button" onClick={event => { stop(event); blockView.onClose() }}>{S.editor.blockClose}</button></div>
         </div>
       </> : <>

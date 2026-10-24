@@ -1,0 +1,235 @@
+020 CARD-A command output excerpts. Full commands and limitations: 2026-10-24-020-card-a.md
+
+$ npm test -- src/features/plan-editor/feedbackModel.test.ts (slice 1 red)
+     → deriveDayFeedback is not a function
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+ FAIL  src/features/plan-editor/feedbackModel.test.ts > 020 lists only completed training days in actual-date order with weekdays, independently of the recommendation
+TypeError: deriveDayFeedback is not a function
+ Test Files  1 failed (1)
+      Tests  1 failed | 2 passed (3)
+   Start at  14:19:20
+   Duration  3.67s (transform 578ms, setup 66ms, collect 778ms, tests 19ms, environment 933ms, prepare 349ms)
+
+$ same command (slice 1 green)
+ ✓ src/features/plan-editor/feedbackModel.test.ts (3 tests) 8ms
+ Test Files  1 passed (1)
+      Tests  3 passed (3)
+   Start at  14:19:39
+   Duration  3.92s (transform 368ms, setup 49ms, collect 476ms, tests 8ms, environment 1.77s, prepare 292ms)
+
+$ same command (slice 2 red)
+     → expected [ +0, +0 ] to deeply equal [ 2, 1 ]
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+ FAIL  src/features/plan-editor/feedbackModel.test.ts > 020 joins mixed feedback chronologically, prefers day_date, falls back to this plan’s exercise, and drops unrelated feedback
+AssertionError: expected [ +0, +0 ] to deeply equal [ 2, 1 ]
+ Test Files  1 failed (1)
+      Tests  1 failed | 3 passed (4)
+   Start at  14:19:56
+   Duration  2.09s (transform 331ms, setup 40ms, collect 408ms, tests 16ms, environment 644ms, prepare 112ms)
+
+$ same command (slice 2 green)
+ ✓ src/features/plan-editor/feedbackModel.test.ts (4 tests) 7ms
+ Test Files  1 passed (1)
+      Tests  4 passed (4)
+   Start at  14:20:19
+   Duration  3.71s (transform 737ms, setup 90ms, collect 1.08s, tests 7ms, environment 1.19s, prepare 389ms)
+
+$ npm test -- src/features/workspace/PlanWorkspace.test.tsx -t '020 topbar' (red)
+     → expected null not to be null
+     → expected null not to be null
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+ FAIL  src/features/workspace/PlanWorkspace.test.tsx > PlanWorkspace editor remount > 020 topbar feedback opens and closes even with a collapsed rail, pending count 0
+ FAIL  src/features/workspace/PlanWorkspace.test.tsx > PlanWorkspace editor remount > 020 topbar feedback opens and closes even with a collapsed rail, pending count 1
+AssertionError: expected null not to be null
+ Test Files  1 failed (1)
+      Tests  2 failed | 61 skipped (63)
+   Start at  14:20:33
+   Duration  5.81s (transform 2.11s, setup 39ms, collect 2.76s, tests 510ms, environment 1.32s, prepare 153ms)
+
+$ same command (green)
+ ✓ src/features/workspace/PlanWorkspace.test.tsx (63 tests | 61 skipped) 343ms
+ Test Files  1 passed (1)
+      Tests  2 passed | 61 skipped (63)
+   Start at  14:20:55
+   Duration  3.86s (transform 1.58s, setup 42ms, collect 2.22s, tests 343ms, environment 530ms, prepare 117ms)
+
+$ npm test -- src/features/workspace/PlanWorkspace.test.tsx -t '020 sends whole-day' (red)
+     → the given combination of arguments (undefined and string) is invalid for this assertion. You can use an array, a map, an object, a set, a string, or a weakset instead of a string
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+ FAIL  src/features/workspace/PlanWorkspace.test.tsx > PlanWorkspace editor remount > 020 sends whole-day feedback with the actual date, appends the response and restores it after reopening
+AssertionError: the given combination of arguments (undefined and string) is invalid for this assertion. You can use an array, a map, an object, a set, a string, or a weakset instead of a string
+ Test Files  1 failed (1)
+      Tests  1 failed | 63 skipped (64)
+   Start at  14:21:32
+   Duration  3.49s (transform 1.54s, setup 43ms, collect 2.09s, tests 154ms, environment 505ms, prepare 109ms)
+
+$ npm test -- src/features/workspace/PlanWorkspace.test.tsx -t '020 historical' (red)
+     → expected null not to be null
+     → expected null not to be null
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+ FAIL  src/features/workspace/PlanWorkspace.test.tsx > PlanWorkspace editor remount > 020 historical viewed video outside the plan stays selected and exits to the original history level
+AssertionError: expected null not to be null
+ FAIL  src/features/workspace/PlanWorkspace.test.tsx > PlanWorkspace editor remount > 020 historical play enters feedback, waits until halfway waits until halfway and updates the brick once
+AssertionError: expected null not to be null
+ Test Files  1 failed (1)
+      Tests  2 failed | 63 skipped (65)
+   Start at  14:24:54
+   Duration  9.21s (transform 4.37s, setup 93ms, collect 5.78s, tests 521ms, environment 1.38s, prepare 151ms)
+
+$ npm test -- src/features/workspace/PlanWorkspace.test.tsx -t '020' (green, 5 cases at that point)
+ ✓ src/features/workspace/PlanWorkspace.test.tsx (65 tests | 60 skipped) 927ms
+ Test Files  1 passed (1)
+      Tests  5 passed | 60 skipped (65)
+   Start at  14:25:42
+   Duration  5.74s (transform 2.14s, setup 65ms, collect 2.83s, tests 927ms, environment 998ms, prepare 132ms)
+
+$ npm test -- src/features/workspace/PlanWorkspace.test.tsx -t '020 reads the server' (red)
+     → the given combination of arguments (undefined and string) is invalid for this assertion. You can use an array, a map, an object, a set, a string, or a weakset instead of a string
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+ FAIL  src/features/workspace/PlanWorkspace.test.tsx > PlanWorkspace editor remount > 020 reads the server items envelope through the real API adapter on the first screen
+AssertionError: the given combination of arguments (undefined and string) is invalid for this assertion. You can use an array, a map, an object, a set, a string, or a weakset instead of a string
+ Test Files  1 failed (1)
+      Tests  1 failed | 66 skipped (67)
+   Start at  14:27:27
+   Duration  6.52s (transform 2.91s, setup 78ms, collect 3.94s, tests 241ms, environment 1.12s, prepare 156ms)
+
+$ npm test -- src/features/plan-editor/feedbackModel.test.ts src/features/workspace/PlanWorkspace.test.tsx -t '020 never substitutes|020 waits for actual' (red)
+     → expected '2026-10-24' to be null
+     → expected false to be true // Object.is equality
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+ FAIL  src/features/workspace/PlanWorkspace.test.tsx > PlanWorkspace editor remount > 020 waits for actual dates and shows a successful send even while the feedback read remains failed
+AssertionError: expected false to be true // Object.is equality
+ FAIL  src/features/plan-editor/feedbackModel.test.ts > 020 never substitutes completion time for a missing actual training date
+AssertionError: expected '2026-10-24' to be null
+ Test Files  2 failed (2)
+      Tests  2 failed | 71 skipped (73)
+   Start at  14:31:09
+   Duration  1.97s (transform 967ms, setup 50ms, collect 1.55s, tests 95ms, environment 680ms, prepare 116ms)
+
+$ npm test -- src/features/workspace/PlanWorkspace.test.tsx src/features/plan-editor/feedbackModel.test.ts src/features/plan-editor/block-history-ui.test.tsx --maxWorkers=1 --minWorkers=1 --testTimeout=30000 (green)
+ ✓ src/features/workspace/PlanWorkspace.test.tsx (68 tests) 1086ms
+ ✓ src/features/plan-editor/block-history-ui.test.tsx (15 tests) 605ms
+ ✓ src/features/plan-editor/feedbackModel.test.ts (5 tests) 3ms
+ Test Files  3 passed (3)
+      Tests  88 passed (88)
+   Start at  14:32:34
+   Duration  3.81s (transform 629ms, setup 17ms, collect 964ms, tests 1.69s, environment 561ms, prepare 98ms)
+
+$ npm test -- src/features/workspace/PlanWorkspace.test.tsx -t '020 topbar preserves' (red)
+     → expected null not to be null
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+ FAIL  src/features/workspace/PlanWorkspace.test.tsx > PlanWorkspace editor remount > 020 topbar preserves the open edit card and the history level through real pointer events
+AssertionError: expected null not to be null
+ Test Files  1 failed (1)
+      Tests  1 failed | 68 skipped (69)
+   Start at  14:32:59
+   Duration  2.86s (transform 867ms, setup 14ms, collect 2.18s, tests 102ms, environment 242ms, prepare 42ms)
+
+$ same command (green)
+ ✓ src/features/workspace/PlanWorkspace.test.tsx (69 tests | 68 skipped) 80ms
+ Test Files  1 passed (1)
+      Tests  1 passed | 68 skipped (69)
+   Start at  14:33:48
+   Duration  1.51s (transform 663ms, setup 15ms, collect 903ms, tests 80ms, environment 217ms, prepare 32ms)
+
+$ npm test -- src/features/workspace/PlanWorkspace.test.tsx -t '020 resolves a completed' (red)
+     → expected 'W1 · D1—未反馈' to contain '1/4'
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+ FAIL  src/features/workspace/PlanWorkspace.test.tsx > PlanWorkspace editor remount > 020 resolves a completed day logged before the plan’s recommended start
+AssertionError: expected 'W1 · D1—未反馈' to contain '1/4'
+ Test Files  1 failed (1)
+      Tests  1 failed | 69 skipped (70)
+   Start at  14:33:49
+   Duration  1.23s (transform 506ms, setup 12ms, collect 712ms, tests 71ms, environment 145ms, prepare 34ms)
+
+$ same command (green)
+ ✓ src/features/workspace/PlanWorkspace.test.tsx (70 tests | 69 skipped) 53ms
+ Test Files  1 passed (1)
+      Tests  1 passed | 69 skipped (70)
+   Start at  14:34:34
+   Duration  1.43s (transform 610ms, setup 15ms, collect 814ms, tests 53ms, environment 227ms, prepare 40ms)
+
+$ npm test -- src/features/workspace/PlanWorkspace.test.tsx -t '020 day selection' (green)
+ ✓ src/features/workspace/PlanWorkspace.test.tsx (72 tests | 70 skipped) 151ms
+ Test Files  1 passed (1)
+      Tests  2 passed | 70 skipped (72)
+   Start at  14:36:30
+   Duration  1.30s (transform 526ms, setup 12ms, collect 724ms, tests 151ms, environment 196ms, prepare 33ms)
+
+$ npm test (initial, default concurrency; timeout/performance failures)
+ FAIL  src/features/plan-editor/block-grid-ui.test.tsx > keeps explicit deletion intent through save, undo/save with a new server ID, and redo/save
+TypeError: Cannot read properties of null (reading 'dispatchEvent')
+ FAIL  src/features/plan-editor/block-grid-ui.test.tsx > binds a new server ID to an explicit Delete made while the empty-day autosave is in flight
+ FAIL  src/features/plan-editor/block-grid-ui.test.tsx > binds a new server ID to an explicit undo made while the empty-day autosave is in flight
+TypeError: Cannot read properties of null (reading 'dispatchEvent')
+ FAIL  src/features/plan-editor/block-grid-ui.test.tsx > does not transfer an old Delete action to a newly inserted empty day at the same date (replacement-empty)
+ FAIL  src/features/plan-editor/block-grid-ui.test.tsx > does not transfer an old Delete action to a newly inserted empty day at the same date (old-empty)
+TypeError: Cannot read properties of null (reading 'dispatchEvent')
+ FAIL  src/features/plan-editor/pinyin.test.ts > matchesPinyin > stays bounded on adversarial state-accumulating input
+AssertionError: expected 2058.5855420000003 to be less than 1000
+ Test Files  2 failed | 105 passed (107)
+      Tests  61 failed | 1120 passed (1181)
+   Start at  14:29:03
+   Duration  47.44s (transform 16.16s, setup 2.95s, collect 75.57s, tests 126.80s, environment 123.58s, prepare 19.17s)
+
+$ npm test -- --maxWorkers=1 --minWorkers=1 --testTimeout=30000 (final)
+ ✓ src/features/plan-editor/components/ContextBar.test.tsx (1 test) 8ms
+ ✓ src/features/workspace/videoPlayback.test.ts (4 tests) 1ms
+ ✓ src/features/workspace/VideoWorkbench.test.ts (2 tests) 1ms
+ ✓ src/features/plan-editor/calendar.test.ts (3 tests) 2ms
+ ✓ src/i18n/date-only.test.ts (1 test) 30ms
+ ✓ src/features/workspace/metricThresholds.test.ts (2 tests) 1ms
+ ✓ src/i18n/stable-zh.test.ts (11 tests) 1ms
+ ✓ src/i18n/plural.test.ts (2 tests) 1ms
+ ✓ src/features/workspace/blockPlanSettings.test.ts (1 test) 1ms
+ ✓ src/reloadSafety.test.ts (1 test) 1ms
+ Test Files  107 passed (107)
+      Tests  1187 passed (1187)
+   Start at  14:36:37
+   Duration  44.01s (transform 1.17s, setup 196ms, collect 5.77s, tests 10.73s, environment 13.69s, prepare 2.22s)
+
+$ npx tsc --noEmit (final, exit 0; no stdout)
+
+
+$ npm run build (final, exit 0)
+
+> meetpr-plan-web@0.1.0 build
+> tsc --noEmit && vite build
+
+vite v5.4.21 building for production...
+transforming...
+✓ 253 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                                  0.54 kB │ gzip:   0.37 kB
+dist/assets/IBMPlexMono-Regular-CAJ2AE84.ttf   112.14 kB
+dist/assets/IBMPlexMono-Medium-D78olgbW.ttf    113.39 kB
+dist/assets/IBMPlexMono-Bold-CavriqBd.ttf      114.39 kB
+dist/assets/IBMPlexMono-SemiBold--X10AUwW.ttf  116.88 kB
+dist/assets/IBMPlexSans-Regular-FfXo57ZH.ttf   180.45 kB
+dist/assets/IBMPlexSans-Bold-Bcj7HP2z.ttf      180.67 kB
+dist/assets/IBMPlexSans-Medium-8FFkTPub.ttf    182.09 kB
+dist/assets/IBMPlexSans-SemiBold-FI1ksKa3.ttf  182.21 kB
+dist/assets/index-BHbCoW8C.css                 180.78 kB │ gzip:  33.57 kB
+dist/assets/index-wjDvICqy.js                  376.72 kB │ gzip: 127.03 kB
+dist/assets/index-B0AzABjP.js                  902.13 kB │ gzip: 336.52 kB
+
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+✓ built in 3.41s
+
+
+$ npm run dev -- --host 127.0.0.1 --port 5187 (blocked by sandbox)
+
+> meetpr-plan-web@0.1.0 dev
+> vite --host 127.0.0.1 --port 5187
+
+error when starting dev server:
+Error: listen EPERM: operation not permitted 127.0.0.1:5187
+    at Server.setupListenHandle [as _listen2] (node:net:1986:21)
+    at listenInCluster (node:net:2065:12)
+    at node:net:2274:7
+    at process.processTicksAndRejections (node:internal/process/task_queues:90:21)
+
