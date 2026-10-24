@@ -23,6 +23,8 @@ export const rejectBindRequest = (id: string) =>
 export const getStudentVideos = (studentId: string) =>
   api.get<{ videos: StudentVideo[] }>(`/students/${studentId}/videos`).then((r) => r.videos)
 export const getUploadUrl = (id: string) => api.get<{ url: string; expires_in: number }>(`/uploads/${id}/url`)
+export const getStudentFeedback = (studentId: string) =>
+  api.get<{ items: CoachFeedbackResponse[] }>(`/students/${studentId}/feedback`).then(r => r.items)
 export const postCoachFeedback = (payload: CoachFeedbackPayload) => api.post<CoachFeedbackResponse>('/coach/feedback', payload)
 export const patchCoachRpe = (setLogId: string, coachRpe: number | null) =>
   api.patch<{ set_log_id: string; coach_rpe: string | null }>(`/coach/set-logs/${setLogId}/coach-rpe`, {

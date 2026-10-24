@@ -92,6 +92,8 @@ export function VideoWorkbench({
     anchor: RefObject<HTMLElement>
     sidebar?: HTMLElement | null
     studentName?: string
+    replyTitle?: string
+    onFeedbackSent?: (item: import('../../api/types').CoachFeedbackResponse) => void
     positionLabel?: string
     onVideoViewed?: (id: string) => Promise<void>
     onClose: () => void
@@ -751,13 +753,14 @@ export function VideoWorkbench({
     setFeedbackState('sending')
     setFeedbackError('')
     try {
-      await postCoachFeedback({
+      const result = await postCoachFeedback({
         student_id: studentId,
         day_date: videoDay(active),
         plan_exercise_id: active.plan_exercise_id,
         video_id: active.id,
         text,
       })
+      embedded.onFeedbackSent?.(result)
       if (request !== feedbackRequest.current) return
       void refreshVideos()
       if (draftRef.current !== draft) {
@@ -1097,7 +1100,7 @@ export function VideoWorkbench({
             </div>)
   const feedbackPanel = active && (<section className="video-feedback">
                 <header>
-                  <b>{embedded?.studentName ? S.block.replyTo(embedded.studentName) : S.video.feedbackTitle}</b>
+                  <b>{embedded.replyTitle ?? (embedded.studentName ? S.block.replyTo(embedded.studentName) : S.video.feedbackTitle)}</b>
                   <span>{videoAssociation(active)}</span>
                 </header>
                 <textarea
