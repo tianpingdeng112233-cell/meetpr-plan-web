@@ -1,6 +1,6 @@
 # 019 — 总览重做：邀请与申请并入总览 + 看板按「需要注意 / 正常」分段
 
-- **状态**: Implemented（2026-10-23 卡 A 返修 1 轮后收货，PR 等「放行」）
+- **状态**: Done（2026-10-24 #130 合并，经 backend #333 部署 staging `447d1ea`，入口 `assets/index-CpSWlOG0.js`）
 - **来源**: David 2026-10-22「把学员申请做进总览 tab 里，删掉学员申请 tab」「总览该有的提醒：计划快结束 / RPE 超 1 或未完成 / 留言」「下面的看板重做，能更清晰地看到需要注意的部分」「邀请码以及邀请流程都要放上」「标签点击要能跳转到对应的地方」。逐题记录 `~/Projects/scratch/overview-inbox-grill-20261022.md`。
 - **后端契约**: `MeetPR-backend` 仓 `specs/054-coach-overview-alerts/SPEC.md`（`GET /coach/overview-alerts`、`POST /coach/students/:id/plan-viewed`）。
 - **级别 / 节奏**: T2 / P1。网页卡等 018（繁体，#128）合入 main 后再派——同改 `src/i18n/strings-workspace.ts`。
