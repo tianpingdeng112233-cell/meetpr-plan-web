@@ -102,6 +102,17 @@ it('defaults to the latest 12 consecutive weeks and sends cells without a filena
   expect(host.textContent).toContain('已选 11 周 / 最多 12 周')
 })
 const aiExercise = { name: 'Synthetic squat', sets: 1, reps: '5', intensity_kind: null, intensity_values: [], weight_values: ['100'], note: '', family_guess: 'squat' as const, flags: ['inferred' as const] }
+it.each([
+  [[1, 1, 0, 1, 1, 0, 0], [false, false, false, true, true, false, false]],
+  [[...Array(14).fill(1), ...Array(12).fill(0)], [false, false, ...Array(12).fill(true), ...Array(12).fill(false)]],
+  [[0, 0], [false, false]],
+])('defaults to the latest contiguous content run and skips trailing empty weeks (%j)', async (trainingDays, expected) => {
+  vi.mocked(imports.outlineImport).mockResolvedValue({ import_id: 'run', sheet: 'Paste', truncated_rows: 0, header_region: null,
+    weeks: trainingDays.map((training_days, index) => ({ index, label: `W${index + 1}`, start_date: null, training_days, region: { r1: 1, c1: 1, r2: 1, c2: 3 } })) })
+  await source()
+  expect([...host.querySelectorAll<HTMLInputElement>('input[type=checkbox]')].map(box => box.checked)).toEqual(expected)
+  expect(button(S.sheetImport.recognize(expected.filter(Boolean).length)).disabled).toBe(!expected.some(Boolean))
+})
 function threeWeeks() {
   vi.mocked(imports.outlineImport).mockResolvedValue({ import_id: 'run', sheet: 'Paste', truncated_rows: 0, header_region: { r1: 1, c1: 1, r2: 1, c2: 1 },
     weeks: Array.from({ length: 3 }, (_, index) => ({ index, label: `W${index + 1}`, start_date: '2026-10-19', training_days: 1, region: { r1: 1, c1: 1, r2: 1, c2: 3 } })) })
@@ -131,6 +142,51 @@ it('shows failed source cells and sends only the edited failed week on retry', a
   expect(host.querySelector('input[type=date]')).not.toBeNull()
   expect(button('创建草稿计划').disabled).toBe(false)
 })
+it.each([
+  ['zh', '这一周没有训练内容'],
+  ['en', 'This week has no training content'],
+] as const)('treats recognized weeks with zero exercises as failed in %s and supports all recovery actions', async (locale, reason) => {
+  setLocale(locale); threeWeeks()
+  vi.mocked(imports.recognizeImportWeeks).mockResolvedValueOnce({ weeks: [
+    { index: 0, start_date: '2026-10-19', days: [] },
+    { index: 1, start_date: '2026-10-26', days: [{ weekday: 0, day_index: 1, rest: false, exercises: [] }] },
+    { index: 2, start_date: '2026-11-02', days: [{ weekday: 0, day_index: 1, rest: true, exercises: [] }] },
+  ] })
+  await source(); await click(S.sheetImport.recognize(3))
+  expect([...host.querySelectorAll('.import-failure b')].map(el => el.textContent)).toEqual([1, 2, 3].map(n => S.sheetImport.failed(n, reason)))
+  expect(button(S.sheetImport.create).disabled).toBe(true)
+  await act(async () => inputValue(host.querySelector<HTMLInputElement>('[aria-label="W1 C1"]')!, '125'))
+  vi.mocked(imports.recognizeImportWeeks).mockResolvedValueOnce({ weeks: [{ index: 0, start_date: '2026-10-19', days: [{ weekday: 0, day_index: 1, rest: false, exercises: [aiExercise] }] }] })
+  await click(S.sheetImport.retry)
+  expect(imports.recognizeImportWeeks).toHaveBeenLastCalledWith('run', { weeks: [{ index: 0, cells: [[1, 1, 'Squat'], [1, 2, '4*8'], [1, 3, '125']] }], header_cells: [[1, 1, 'Squat']] })
+  await click(S.sheetImport.leaveEmpty); await click(S.sheetImport.omit)
+  expect(host.querySelector('.import-failure')).toBeNull()
+  expect(host.querySelector('[data-doubt-count=empty_week] b')?.textContent).toBe('1')
+  expect(host.textContent).toContain(S.sheetImport.summary(2, 1, 1))
+  expect(button(S.sheetImport.create).disabled).toBe(false)
+})
+
+it.each([
+  ['zh', '这几周没有训练内容'],
+  ['en', 'These weeks have no training content'],
+] as const)('blocks creation for an all-empty selection in %s even after leaving weeks empty or omitting them', async (locale, message) => {
+  setLocale(locale); threeWeeks()
+  vi.mocked(imports.recognizeImportWeeks).mockResolvedValueOnce({ weeks: [0, 1, 2].map(index => ({ index, start_date: '2026-10-19', days: [] })) })
+  await source(); await click(S.sheetImport.recognize(3))
+  expect(host.textContent).toContain(message)
+  expect(button(S.sheetImport.create).disabled).toBe(true)
+  await click(S.sheetImport.create)
+  expect(plans.createPlan).not.toHaveBeenCalled()
+  await click(S.sheetImport.leaveEmpty); await click(S.sheetImport.leaveEmpty); await click(S.sheetImport.omit)
+  expect(host.querySelector('.import-failure')).toBeNull()
+  expect(host.textContent).toContain(message)
+  expect(button(S.sheetImport.create).disabled).toBe(true)
+  await click(S.sheetImport.create)
+  expect(plans.createPlan).not.toHaveBeenCalled()
+  expect(pending.putPendingRevision).not.toHaveBeenCalled()
+  expect(onImported).not.toHaveBeenCalled()
+})
+
 it('omits a failed middle week and reduces the imported week count', async () => {
   threeWeeks(); await source(); await click('识别这 3 周'); await click('不导这一周'); await click('这周先空着，进编辑器填')
   expect(host.textContent).toContain('2 周 · 1 个训练日 · 1 个动作')
@@ -187,11 +243,11 @@ it('isolates edited source cells and empty-week decisions when replacing a sprea
 it('retains completed batches and retries only unresolved weeks after a transport failure', async () => {
   vi.mocked(imports.outlineImport).mockResolvedValue({ import_id: 'run', sheet: 'Paste', truncated_rows: 0, header_region: null,
     weeks: Array.from({ length: 12 }, (_, index) => ({ index, label: `W${index + 1}`, start_date: null, training_days: 1, region: { r1: 1, c1: 1, r2: 1, c2: 3 } })) })
-  vi.mocked(imports.recognizeImportWeeks).mockImplementationOnce(async (_id, input) => ({ weeks: input.weeks.map(w => ({ index: w.index, start_date: null, days: [] })) }))
+  vi.mocked(imports.recognizeImportWeeks).mockImplementationOnce(async (_id, input) => ({ weeks: input.weeks.map(w => ({ index: w.index, start_date: null, days: [{ weekday: 0, day_index: 1, rest: false, exercises: [aiExercise] }] })) }))
     .mockRejectedValueOnce(new Error('network'))
   await source(); await click('识别这 12 周')
   expect(imports.recognizeImportWeeks).toHaveBeenCalledTimes(2)
-  vi.mocked(imports.recognizeImportWeeks).mockImplementation(async (_id, input) => ({ weeks: input.weeks.map(w => ({ index: w.index, start_date: null, days: [] })) }))
+  vi.mocked(imports.recognizeImportWeeks).mockImplementation(async (_id, input) => ({ weeks: input.weeks.map(w => ({ index: w.index, start_date: null, days: [{ weekday: 0, day_index: 1, rest: false, exercises: [aiExercise] }] })) }))
   await click('识别这 12 周')
   expect(imports.recognizeImportWeeks).toHaveBeenCalledTimes(4)
   expect(vi.mocked(imports.recognizeImportWeeks).mock.calls[2][1].weeks.map(w => w.index)).toEqual([4,5,6,7])

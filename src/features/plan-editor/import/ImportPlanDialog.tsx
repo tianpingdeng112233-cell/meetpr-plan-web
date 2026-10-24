@@ -20,6 +20,14 @@ import { defaultFirstDate, orderedWeekdays } from '../../workspace/blockPlanSett
 import { WeekdayPicker } from './WeekdayPicker'
 import './import.css'
 
+function defaultWeekSelection(weeks: ImportOutline['weeks']): number[] {
+  let end = weeks.length
+  while (end > 0 && !(weeks[end - 1].training_days > 0)) end--
+  let start = end
+  while (start > 0 && end - start < 12 && weeks[start - 1].training_days > 0) start--
+  return weeks.slice(start, end).map(w => w.index)
+}
+
 function importError(error: unknown): string {
   const code = error instanceof Error ? error.message : ''
   if (code in S.sheetImport.errors) return S.sheetImport.errors[code as keyof typeof S.sheetImport.errors]
@@ -49,7 +57,7 @@ export function ImportPlanDialog(p: ImportPlanDialogProps) {
       const result = await outlineImport({ trainee_id: p.traineeId, source: filename ? 'file' : 'paste', sheets })
       setResults([]); setEditedCells({}); setEmptyWeeks(new Set()); createdRef.current = null; addedRef.current = []
       setFirstDate(defaultFirstDate(0)); setInferredConfirmed(false); setChosenDays(null); setFirst(0)
-      setOutline(result); setSelected(result.weeks.slice(-12).map(w => w.index)); setRemaining(Math.max(0, remaining - 1)); p.onRemainingChange?.(Math.max(0, remaining - 1))
+      setOutline(result); setSelected(defaultWeekSelection(result.weeks)); setRemaining(Math.max(0, remaining - 1)); p.onRemainingChange?.(Math.max(0, remaining - 1))
       setName(filename.replace(/\.[^.]+$/, '').trim() || S.sheetImport.defaultName); setStage('weeks')
     } catch (e) {
       setError(e instanceof ApiException && e.status === 400 && e.code === 'VALIDATION_ERROR' ? S.sheetImport.invalidFormat : importError(e))
@@ -96,6 +104,9 @@ export function ImportPlanDialog(p: ImportPlanDialogProps) {
     } finally { setBusy('') }
   }
   const activeResults = selected.map(index => results.find(w => w.index === index)).filter((w): w is AIWeekResult => !!w)
+    .map(w => !('error' in w) && !emptyWeeks.has(w.index) && !w.days.some(d => d.exercises.length > 0)
+      ? { index: w.index, error: 'PARSE_FAILED' as const, reason: 'EMPTY_WEEK' as const }
+      : w)
   const goodWeeks = activeResults.filter((w): w is AIWeek => !('error' in w))
   const ordinalWeeks = goodWeeks.filter(w => w.days.some(d => d.weekday === null))
   const trainingDayCount = ordinalWeeks[0]?.days.filter(d => !d.rest).length ?? 0
@@ -121,7 +132,7 @@ export function ImportPlanDialog(p: ImportPlanDialogProps) {
   const addedRef = useRef<ExerciseResponse[]>([])
   const creatingRef = useRef(false)
   const create = async () => {
-    if (busy || creatingRef.current || failures.length || goodWeeks.length !== selected.length || !weekdayCountValid || !dateMatchesFirst || !firstDate) return
+    if (busy || creatingRef.current || !exercises.length || failures.length || goodWeeks.length !== selected.length || !weekdayCountValid || !dateMatchesFirst || !firstDate) return
     creatingRef.current = true; setBusy(S.editor.saving); setError('')
     try {
       const placed = placeAIWeekdays(goodWeeks, days, first)
@@ -229,8 +240,9 @@ export function ImportPlanDialog(p: ImportPlanDialogProps) {
       {needsFirstDate && <label>{S.block.firstDate}<input type="date" aria-label={S.block.firstDate} value={firstDate} onChange={e => setFirstDate(e.target.value)} /></label>}
       {firstDate && !dateMatchesFirst && <p role="alert">{S.block.invalidDate}</p>}
       {error && <p role="alert">{error}</p>}
+      {!exercises.length && <p role="alert">{S.sheetImport.noTrainingContent}</p>}
       {failures[0] && <small>{S.sheetImport.handleFirst(failures[0].index + 1)}</small>}
-      <footer><button disabled={!!createdRef.current} onClick={() => { setStage('weeks'); setError('') }}>{S.sheetImport.reselect}</button><button className="primary" onClick={() => void create()} disabled={!selected.length || !!failures.length || goodWeeks.length !== selected.length || !firstDate || !weekdayCountValid || !dateMatchesFirst}>{S.sheetImport.create}</button></footer>
+      <footer><button disabled={!!createdRef.current} onClick={() => { setStage('weeks'); setError('') }}>{S.sheetImport.reselect}</button><button className="primary" onClick={() => void create()} disabled={!exercises.length || !selected.length || !!failures.length || goodWeeks.length !== selected.length || !firstDate || !weekdayCountValid || !dateMatchesFirst}>{S.sheetImport.create}</button></footer>
     </>}
     </fieldset>
   </section></div>
