@@ -2702,7 +2702,7 @@ export function PlanEditor(props: PlanEditorProps) {
     setPublishConfirmOpen(false)
     publishing.current = true
     saver.current.cancelAutosave()
-    const snapshot = latestWeeks.current // to detect edits typed during the publish round-trip
+    const snapshot = latestWeeks.current // to re-arm autosave for edits if publication fails
     let becamePublished = false
     try {
       // saveNow persists the latest draft AND awaits any in-flight autosave reconcile, so no
@@ -2740,7 +2740,11 @@ export function PlanEditor(props: PlanEditorProps) {
         try { await props.onBackfillAfterPublish() } catch { window.alert(S.sheetImport.backfillFailed) }
       }
       // Edits typed during the round-trip aren't in the published plan — surface them, never drop silently.
-      setStatusText(latestWeeks.current !== snapshot
+      // Save responses and calendar projection replace objects without changing
+      // prescription content. Compare against what was actually published.
+      const hasUnpublishedEdits = draftContentHash(mirrorContent(latestWeeks.current, currentPlanStart.current))
+        !== draftContentHash(publishedBaseline)
+      setStatusText(hasUnpublishedEdits
         ? S.editor.publishedDirty(studentName)
         : S.editor.publishedTo(studentName))
     } catch (e) {

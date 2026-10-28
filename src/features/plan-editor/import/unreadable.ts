@@ -13,7 +13,11 @@ export function unreadableMessage(week: AIWeek, item: UnreadableExercise, cells:
   const kind = exercise?.intensity_kind ?? (/\brpe\b/i.test(original) ? 'rpe' : /\brir\b/i.test(original) ? 'rir' : /%|百分比/.test(original) ? 'pct' : 'intensity')
   const reason = item.reason === 'SETS_VALUES_MISMATCH'
     ? S.sheetImport.unreadableMismatch(item.detail.sets, item.detail.got, S.sheetImport.unreadableTracks[item.detail.track === 'weight' ? 'weight' : kind])
-    : item.reason === 'INVALID_NUMBER' ? S.sheetImport.unreadableInvalid(item.detail.value) : S.sheetImport.unreadableReasons[item.reason]
+    : item.reason === 'INVALID_NUMBER'
+      ? ((item.detail?.track === 'intensity' || item.detail?.track === 'weight')
+        && ((typeof item.detail.value === 'string' && item.detail.value.trim() !== '') || typeof item.detail.value === 'number')
+        ? S.sheetImport.unreadableInvalid(String(item.detail.value)) : S.sheetImport.unreadableReasons.OTHER)
+      : S.sheetImport.unreadableReasons[item.reason]
   return `W${week.index + 1} ${day} · ${original} —— ${reason}`
 }
 

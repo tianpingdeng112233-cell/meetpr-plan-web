@@ -8,7 +8,16 @@ export function FailedWeekCells({ index, cells, highlights = [], onChange }: { i
   const scrollRef = useRef<HTMLDivElement>(null)
   const highlightKey = highlights.map(([r, c]) => `${r}:${c}`).join(',')
   useEffect(() => {
-    scrollRef.current?.querySelector<HTMLInputElement>('[aria-invalid=true]')?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' })
+    const container = scrollRef.current
+    const cell = container?.querySelector<HTMLInputElement>('[aria-invalid=true]')
+    if (!container || !cell) return
+    // Scroll only the source grid: scrollIntoView also moves ancestor dialogs.
+    const viewport = container.getBoundingClientRect()
+    const target = cell.getBoundingClientRect()
+    container.scrollTo?.({
+      left: container.scrollLeft + (target.left < viewport.left ? target.left - viewport.left : Math.max(0, target.right - viewport.right)),
+      top: container.scrollTop + (target.top < viewport.top ? target.top - viewport.top : Math.max(0, target.bottom - viewport.bottom)),
+    })
   }, [highlightKey])
   const rows = [...new Set([...cells, ...highlights].map(c => c[0]))].sort((a, b) => a - b)
   const cols = [...new Set([...cells, ...highlights].map(c => c[1]))].sort((a, b) => a - b)

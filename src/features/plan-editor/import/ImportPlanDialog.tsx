@@ -219,7 +219,7 @@ export function ImportPlanDialog(p: ImportPlanDialogProps) {
     <footer><button onClick={p.onClose}>{S.common.cancel}</button><button className="primary" onClick={() => void start()} disabled={!sheets.some(s => s.cells.length) || remaining === 0}>{remaining === 0 ? S.sheetImport.exhausted : S.sheetImport.start}</button></footer>
     </>}
     {stage === 'weeks' && outline && <>
-      <small>{filename || S.sheetImport.pasted} · {S.sheetImport.found(outline.sheet, outline.weeks.length)}</small>
+      <small>{filename || S.sheetImport.pasted} · {S.sheetImport.found(filename ? outline.sheet : S.sheetImport.pasted, outline.weeks.length)}</small>
       <label>{S.workspace.dialogs.planName}<input value={name} onChange={e => setName(e.target.value)} /></label>
       <div className="import-footnote"><span>{S.sheetImport.selectionHint}</span><span>{S.sheetImport.selected(selected.length)}</span></div>
       {outline.truncated_rows > 0 && <small>{S.sheetImport.truncated}</small>}

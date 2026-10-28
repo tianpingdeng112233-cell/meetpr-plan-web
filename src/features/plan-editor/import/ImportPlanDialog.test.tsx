@@ -1,4 +1,4 @@
-import { act } from 'react'
+import { act, StrictMode } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { NewPlanDialog } from '../../workspace/PlanDialogs'
@@ -10,6 +10,13 @@ import * as imports from '../../../api/planImports'
 import { ApiException } from '../../../api/client'
 import * as XLSX from 'xlsx'
 import type { Week } from '../types'
+import { readFileSync } from 'node:fs'
+import { PlanEditor } from '../PlanEditor'
+import { mapPlanToWeeks } from '../mapping'
+import { saveBlockPlan } from '../saveBlockPlan'
+import { openBlockDay } from '../blockGridTestUtils'
+import type { PlanWithChildren } from '../../../api/types'
+import type { ImportedPlan } from './ImportPlanDialog'
 import { S, setLocale } from '../../../i18n/strings'
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
@@ -475,13 +482,22 @@ it.each([
 
 it('highlights and scrolls exactly to unreadable source cells, then replaces only the edited week', async () => {
   unreadableWeek([{ day_index: 1, weekday: 1, source_cells: [[12,1], [12,3]], reason: 'INVALID_NUMBER', detail: { track: 'weight', value: '10O' } }])
+  const ancestorScroll = vi.fn()
   const scroll = vi.fn()
-  Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', { configurable: true, value: scroll })
+  const bounds = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
+    const cell = this.getAttribute('aria-label') === 'W19 A12'
+    return { left: cell ? 700 : 0, right: cell ? 800 : 500, top: cell ? 300 : 0, bottom: cell ? 330 : 160, width: cell ? 100 : 500, height: cell ? 30 : 160, x: 0, y: 0, toJSON() {} }
+  })
+  Object.defineProperty(HTMLElement.prototype, 'scrollTo', { configurable: true, value: scroll })
+  Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', { configurable: true, value: ancestorScroll })
   try {
     await source(new ExerciseIndex([]), ['Squat\t4*8\t100', ...Array(10).fill('heading'), 'Press\t4*8\t10O'].join('\n'))
     await click(S.sheetImport.recognize(1))
     expect([...host.querySelectorAll('[aria-invalid=true]')].map(e => e.getAttribute('aria-label'))).toEqual(['W19 A12', 'W19 C12'])
-    expect(scroll.mock.contexts[0]).toBe(host.querySelector('[aria-label="W19 A12"]'))
+    expect(ancestorScroll).not.toHaveBeenCalled()
+    expect(scroll.mock.contexts[0]).toBe(host.querySelector('.import-cell-scroll'))
+    expect(scroll).toHaveBeenCalledWith({ left: 300, top: 170 })
+    expect(host.querySelector('.import-dialog')?.scrollLeft).toBe(0)
     expect(host.textContent).toContain('W19 还有 1 个动作没读懂')
     expect(button(S.sheetImport.create).disabled).toBe(true)
     await click(S.sheetImport.create); expect(plans.createPlan).not.toHaveBeenCalled()
@@ -492,7 +508,11 @@ it('highlights and scrolls exactly to unreadable source cells, then replaces onl
     expect(imports.recognizeImportWeeks).toHaveBeenLastCalledWith('rows', { weeks: [{ index: 18, cells: expect.arrayContaining([[12,3,'100']]) }], header_cells: [] })
     expect(host.querySelector('.import-unreadable')).toBeNull()
     expect(button(S.sheetImport.create).disabled).toBe(false)
-  } finally { delete (HTMLElement.prototype as Partial<HTMLElement>).scrollIntoView }
+  } finally {
+    bounds.mockRestore()
+    delete (HTMLElement.prototype as Partial<HTMLElement>).scrollIntoView
+    delete (HTMLElement.prototype as Partial<HTMLElement>).scrollTo
+  }
 })
 
 it.each(['zh', 'en'] as const)('confirms and undoes skipping unreadable exercises in %s without importing them', async locale => {
@@ -628,4 +648,180 @@ it.each([
       target_pct: kind === 'pct' ? value : null, target_weight: weight,
     })))
   }
+})
+
+
+it.each(['unreadable', 'failure'] as const)('W1 contains a wide %s table inside its own scroll container', async kind => {
+  const style = document.createElement('style')
+  style.textContent = readFileSync('src/features/plan-editor/import/import.css', 'utf8')
+  document.head.append(style)
+  try {
+    if (kind === 'unreadable') unreadableWeek([{ day_index: 1, weekday: 1, source_cells: [[1, 12]], reason: 'OTHER', detail: {} }])
+    else threeWeeks()
+    vi.mocked(imports.outlineImport).mockResolvedValue({ import_id: 'wide', sheet: 'Paste', truncated_rows: 0, header_region: null,
+      weeks: (kind === 'unreadable' ? [18] : [0, 1, 2]).map(index => ({
+        index, label: `W${index + 1}`, start_date: '2026-10-19', training_days: 1,
+        region: { r1: 1, c1: 1, r2: 1, c2: 20 },
+      })),
+    })
+    await source(new ExerciseIndex([]), Array(20).fill('very-long-source-text-without-spaces'.repeat(4)).join('\t'))
+    await click(S.sheetImport.recognize(kind === 'unreadable' ? 1 : 3))
+    const dialog = host.querySelector<HTMLElement>('.import-dialog')!
+    const block = host.querySelector<HTMLElement>(`.import-${kind}`)!
+    const scroller = block.querySelector<HTMLElement>('.import-cell-scroll')!
+    expect(scroller.querySelectorAll('thead th')).toHaveLength(21)
+    expect(getComputedStyle(dialog).width).toBe('620px')
+    expect(getComputedStyle(dialog).gridTemplateColumns).toBe('minmax(0, 1fr)')
+    expect(getComputedStyle(block).minWidth).toBe('0')
+    expect(getComputedStyle(block).overflowWrap).toBe('anywhere')
+    expect(getComputedStyle(scroller).minWidth).toBe('0')
+    expect(getComputedStyle(scroller).overflowX).toBe('auto')
+  } finally { style.remove() }
+})
+
+it.each(['zh', 'en'] as const)('W2 falls back for malformed INVALID_NUMBER details in %s', async locale => {
+  setLocale(locale)
+  const details = [
+    { track: 'weight', value: null }, { track: 'weight' },
+    { track: 'weight', value: '' }, { track: 'weight', value: '  ' },
+    { track: 'weight', value: false }, { track: 'weight', value: {} },
+    { track: 'weight', value: [] }, { track: 'reps', value: 'bad' },
+    { value: 'bad' },
+  ]
+  unreadableWeek(details.map(detail => ({ day_index: 1, weekday: 1, source_cells: [[1, 1]], reason: 'INVALID_NUMBER', detail } as unknown as imports.UnreadableExercise)))
+  await source(); await click(S.sheetImport.recognize(1))
+  expect([...host.querySelectorAll('.import-unreadable > p')].map(p => p.textContent?.split(' —— ')[1]))
+    .toEqual(details.map(() => S.sheetImport.unreadableReasons.OTHER))
+})
+
+it.each(['zh', 'en'] as const)('W2 preserves valid string and numeric INVALID_NUMBER details in %s', async locale => {
+  setLocale(locale)
+  unreadableWeek(['intensity', 'weight'].flatMap(track => ['10O', 0].map(value => ({
+    day_index: 1, weekday: 1, source_cells: [[1, 1]], reason: 'INVALID_NUMBER', detail: { track, value },
+  } as imports.UnreadableExercise))))
+  await source(); await click(S.sheetImport.recognize(1))
+  expect([...host.querySelectorAll('.import-unreadable > p')].map(p => p.textContent?.split(' —— ')[1]))
+    .toEqual(['10O', 0, '10O', 0].map(value => S.sheetImport.unreadableInvalid(String(value))))
+})
+
+
+// Known W3 regression: remove .fails when the separately authorized fix lands.
+it.fails('W3 retains the pending revision and 力竭 after importing degraded rows and remounting the editor', async () => {
+  vi.useFakeTimers()
+  const stored = new Map<string, string>()
+  vi.stubGlobal('localStorage', {
+    getItem: (key: string) => stored.get(key) ?? null,
+    setItem: (key: string, value: string) => { stored.set(key, value) },
+    removeItem: (key: string) => { stored.delete(key) },
+    clear: () => stored.clear(), key: (index: number) => [...stored.keys()][index] ?? null,
+    get length() { return stored.size },
+  } satisfies Storage)
+  let remote: pending.PendingRevisionResponse | null = null
+  const requests: string[] = []
+  vi.mocked(pending.putPendingRevision).mockImplementation(async (id, mirror) => {
+    requests.push('PUT')
+    remote = { plan_id: id, version: mirror.version, content_hash: mirror.contentHash,
+      content: structuredClone(mirror.content), saved_at: new Date().toISOString() }
+    return remote
+  })
+  vi.mocked(pending.getPendingRevision).mockImplementation(async () => { requests.push('GET'); return structuredClone(remote) })
+  vi.mocked(pending.deletePendingRevision).mockImplementation(async () => { requests.push('DELETE'); remote = null })
+  let tree: PlanWithChildren = {
+    id: 'w3-plan', trainee_id: 'trainee', coach_id: 'coach', name: '导入计划', plan_weeks: 1,
+    start_date: '2026-10-19', end_date: '2026-10-25', status: 'draft', days: [],
+    source: 'coach', source_template_id: null, kind: 'regular', created_at: '2026-10-19T00:00:00Z', updated_at: new Date().toISOString(),
+    total_shift_days: 0, latest_shift_created_at: null, latest_shift: null,
+  }
+  vi.mocked(plans.createPlan).mockImplementation(async () => structuredClone(tree))
+  vi.mocked(plans.getPlan).mockImplementation(async () => structuredClone(tree))
+  vi.mocked(plans.batchDays).mockImplementation(async (_id, body) => {
+    tree = { ...tree, ...body.plan_patch, days: body.upsert_days.map(day => ({
+      ...day, id: 'w3-day', plan_id: tree.id, shifted_to_date: null,
+      exercises: day.exercises.map(exercise => ({
+        ...exercise, id: 'w3-row', plan_day_id: 'w3-day', notes: exercise.notes ?? null,
+        target: null, has_logs: false, sets: [],
+      })),
+    })) }
+    return structuredClone(tree)
+  })
+  const exercise = { ...aiExercise, reps: '', sets: 2, weight_values: [], flags: [],
+    unparsed: [{ field: 'reps' as const, text: '尽力' }] }
+  unreadableWeek([], [exercise])
+  vi.mocked(catalog.createCustomExercise).mockResolvedValue({ id: 'custom', name: exercise.name, created_by_coach_id: 'coach' } as never)
+  const names = new Map([['custom', { name: exercise.name, custom: true }]])
+  const mountEditor = async (initialWeeks: Week[]) => {
+    await act(async () => root.render(<StrictMode><PlanEditor initialWeeks={initialWeeks} weeksCount={1}
+      planStartDate={tree.start_date} studentName="Synthetic trainee" planName={tree.name}
+      currentPlanId={tree.id} planStatus="draft" planUpdatedAt={tree.updated_at}
+      onSave={(weeks, _start, _mark, progress, deletedDayIds) => saveBlockPlan(tree.id, weeks, progress, { catalog: names, deletedDayIds })} /></StrictMode>))
+    await act(async () => { await vi.advanceTimersByTimeAsync(3000) })
+  }
+  try {
+    await source(); await click(S.sheetImport.recognize(1)); await click('力竭'); await click(S.sheetImport.create)
+    expect(onImported).toHaveBeenCalledOnce()
+    const imported = onImported.mock.calls[0][0] as ImportedPlan
+    expect(imported.weeks[0].days.flatMap(d => d.rows)[0].reps).toBe('力竭')
+    expect(vi.mocked(plans.batchDays).mock.calls[0][1].upsert_days[0].exercises[0].sets).toEqual([])
+    expect(await pending.getPendingRevision(tree.id)).not.toBeNull()
+    await mountEditor(imported.weeks)
+    openBlockDay(host)
+    expect(host.querySelector<HTMLInputElement>('[data-c="reps"] input')?.value).toBe('力竭')
+    await act(async () => root.render(null))
+    await act(async () => { await vi.advanceTimersByTimeAsync(3000) })
+    await mountEditor(mapPlanToWeeks(await plans.getPlan(tree.id), names))
+    const recovery = [...host.querySelectorAll('button')].find(b => b.textContent === '恢复')
+    if (recovery) await act(async () => recovery.click())
+    openBlockDay(host)
+    expect.soft(await pending.getPendingRevision(tree.id), requests.join(' → ')).not.toBeNull()
+    expect.soft(host.querySelector<HTMLInputElement>('[data-c="reps"] input')?.value).toBe('力竭')
+  } finally {
+    await act(async () => root.render(null))
+    vi.useRealTimers()
+    vi.mocked(pending.getPendingRevision).mockReset()
+    vi.mocked(pending.putPendingRevision).mockReset()
+    vi.mocked(pending.deletePendingRevision).mockReset()
+    vi.unstubAllGlobals()
+  }
+})
+
+it.each(['zh', 'en'] as const)('W4 localizes the pasted sheet name in %s without changing the wire name', async locale => {
+  setLocale(locale); threeWeeks(); await source()
+  expect(host.textContent).toContain(S.sheetImport.found(locale === 'zh' ? '粘贴的表格' : 'Pasted sheet', 3))
+  expect(host.textContent).not.toContain(S.sheetImport.found('Paste', 3))
+  expect(vi.mocked(imports.outlineImport).mock.calls[0][0].sheets[0].name).toBe('Paste')
+})
+
+it('W4 reports a clean publication after save and calendar projection replace the weeks objects', async () => {
+  const { blockWeeks } = await import('../blockGridTestUtils')
+  const weeks = blockWeeks([[0]])
+  const publish = vi.fn(async () => {})
+  const save = vi.fn(async (saved: Week[]) => ({
+    changedDays: 1, degradedRows: 0, skippedRows: 0,
+    weeks: structuredClone(saved).map(week => ({ ...week, days: week.days.map(day => ({ ...day, serverDayId: day.dow === 0 ? 'saved-day' : null })) })),
+  }))
+  await act(async () => root.render(<PlanEditor initialWeeks={weeks} weeksCount={1} planStartDate="2026-10-19"
+    studentName="Synthetic trainee" planName="Synthetic plan" onSave={save} onPublish={publish} />))
+  await click('发布给学员')
+  expect(save).toHaveBeenCalledOnce()
+  expect(publish).toHaveBeenCalledOnce()
+  expect(host.querySelector('[data-testid="plan-save-status"]')?.textContent).toBe('已发布给 Synthetic trainee')
+  expect(host.querySelector('[data-testid="plan-save-status"]')?.classList.contains('published-dirty')).toBe(false)
+})
+
+it('W4 retains edits made while publication is pending and reports them as unpublished', async () => {
+  const { blockWeeks } = await import('../blockGridTestUtils')
+  let finishPublish!: () => void
+  const publishing = new Promise<void>(resolve => { finishPublish = resolve })
+  const weeks = blockWeeks([[0]])
+  await act(async () => root.render(<PlanEditor initialWeeks={weeks} weeksCount={1} planStartDate="2026-10-19"
+    studentName="Synthetic trainee" planName="Synthetic plan"
+    onSave={async saved => ({ changedDays: 1, degradedRows: 0, skippedRows: 0, weeks: structuredClone(saved) })}
+    onPublish={() => publishing} />))
+  await click('发布给学员')
+  openBlockDay(host)
+  await act(async () => inputValue(host.querySelector<HTMLInputElement>('[data-c="note"] input')!, 'edit during publication'))
+  await act(async () => finishPublish())
+  expect(host.querySelector<HTMLInputElement>('[data-c="note"] input')?.value).toBe('edit during publication')
+  expect(host.querySelector('[data-testid="plan-save-status"]')?.textContent).toBe(S.editor.publishedDirtyLocal('Synthetic trainee'))
+  expect(button('更新计划').disabled).toBe(false)
 })

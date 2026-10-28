@@ -55,7 +55,7 @@ export const enImport: Translations<typeof zhImport> = {
   formats: '.xlsx · .xls · .csv · WPS · Any training sheet layout', orPaste: 'Or paste directly', paste: 'Paste a table',
   pasteHint: 'Copy your plan from WPS / Excel / Google Sheets and paste it here', privacy: 'AI will read the table content. The filename is not uploaded.',
   remaining: (name, n) => `${n} imports remaining for ${name} today`, exhausted: 'Daily limit reached. Try again tomorrow.', start: 'Start recognition',
-  defaultName: 'Imported plan', pasted: 'Pasted table', readingFile: 'Reading table…', reading: 'Identifying structure…', selectWeeks: 'Select weeks to import', found: (sheet, n) => `${n} weeks found in “${sheet}”`,
+  defaultName: 'Imported plan', pasted: 'Pasted sheet', readingFile: 'Reading table…', reading: 'Identifying structure…', selectWeeks: 'Select weeks to import', found: (sheet, n) => `${n} weeks found in “${sheet}”`,
   selectionHint: 'Latest consecutive weeks selected · Select consecutive weeks only', selected: n => `${n} selected / 12 weeks maximum`, selectionError: 'Select up to 12 consecutive weeks',
   noDate: 'No date', trainingDays: n => `${n} training days`, truncated: 'This table is long. Only the last part was recognized.', changeSource: '← Choose another table', recognize: n => `Recognize ${n} weeks`,
   progress: (n, total) => `Reading content · Week ${n} / ${total}`, done: 'Recognition complete', summary: (w, d, e) => `${w} weeks · ${d} training days · ${e} exercises`,

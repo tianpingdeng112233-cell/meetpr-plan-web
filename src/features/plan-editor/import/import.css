@@ -1,6 +1,9 @@
 .import-overlay { position: fixed; inset: 0; z-index: 140; display: grid; place-items: center; background: color-mix(in srgb, var(--bg) 68%, transparent); }
 .import-dialog { width: 620px; max-width: calc(100vw - 32px); max-height: calc(100vh - 32px); overflow: auto; padding: 24px; border-radius: 14px; background: white; border: 1px solid #e5e7eb; box-shadow: var(--elev-modal); display: grid; gap: 18px; color: #111827; }
 .import-title { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.import-dialog { grid-template-columns: minmax(0, 1fr); }
+.import-dialog > *, .import-fields > * { min-width: 0; }
+.import-failure, .import-unreadable { min-width: 0; overflow-wrap: anywhere; }
 .import-title h3 { margin: 0; font-size: 20px; }
 .import-tabs { display: flex; background: #f3f4f6; border-radius: 8px; padding: 3px; }
 .import-tabs button { border: 0; background: transparent; padding: 7px 10px; font: inherit; font-size: 12px; border-radius: 6px; cursor: pointer; }
@@ -29,7 +32,7 @@
 .import-summary { padding: 20px; background: #f9fafb; border-radius: 8px; text-align: center; font-family: var(--font-mono); font-size: 20px; }
 .import-failure { padding: 14px; border: 1px solid #fecaca; background: #fef2f2; border-radius: 8px; font-size: 12px; }
 .import-failure-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
-.import-cell-scroll { max-height: 160px; overflow: auto; background: white; }
+.import-cell-scroll { min-width: 0; max-width: 100%; max-height: 160px; overflow-x: auto; overflow-y: auto; background: white; }
 .import-cell-scroll table { border-collapse: collapse; }
 .import-cell-scroll th { background: #f3f4f6; color: #6b7280; padding: 4px 8px; }
 .import-cell-scroll td { border: 1px solid #e5e7eb; min-width: 100px; }
