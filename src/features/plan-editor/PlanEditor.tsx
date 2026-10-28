@@ -122,6 +122,8 @@ export interface PlanEditorProps {
   onFeedbackSessionChange?: (session: FeedbackSession | null) => void
 
   initialWeeks: Week[]
+  /** Persisted tree baseline when imported editor content includes snapshot-only fields. */
+  initialServerWeeks?: Week[]
   weeksCount: number
   studentName: string
   studentId?: string
@@ -393,9 +395,9 @@ export function PlanEditor(props: PlanEditorProps) {
   latestDisplayWeeks.current = displayWeeks
   const mirrorPlanId = props.currentPlanId
   const initialServerMirrorContent = useRef(mirrorContent(
-    initialWeeks,
+    props.initialServerWeeks ?? initialWeeks,
     props.planStartDate ?? null,
-    initialWeeks.length || weeksCount,
+    (props.initialServerWeeks ?? initialWeeks).length || weeksCount,
   ))
   const lastSavedDraftContent = useRef(initialServerMirrorContent.current)
   const serverMirrorHash = useRef(draftContentHash(initialServerMirrorContent.current))

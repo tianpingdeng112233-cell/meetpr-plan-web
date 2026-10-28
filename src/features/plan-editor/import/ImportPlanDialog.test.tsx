@@ -705,9 +705,9 @@ it.each(['zh', 'en'] as const)('W2 preserves valid string and numeric INVALID_NU
 })
 
 
-// Known W3 regression: remove .fails when the separately authorized fix lands.
-it.fails('W3 retains the pending revision and 力竭 after importing degraded rows and remounting the editor', async () => {
+it.each([false, true])('W3 retains the pending revision and 力竭 after importing degraded rows and remounting the editor (import doubts: %s)', async withDoubts => {
   vi.useFakeTimers()
+  vi.setSystemTime(new Date('2026-10-28T10:00:00Z'))
   const stored = new Map<string, string>()
   vi.stubGlobal('localStorage', {
     getItem: (key: string) => stored.get(key) ?? null,
@@ -720,6 +720,8 @@ it.fails('W3 retains the pending revision and 力竭 after importing degraded ro
   const requests: string[] = []
   vi.mocked(pending.putPendingRevision).mockImplementation(async (id, mirror) => {
     requests.push('PUT')
+    // A completed snapshot write follows the preceding plan-tree write.
+    vi.setSystemTime(new Date(Date.now() + 1))
     remote = { plan_id: id, version: mirror.version, content_hash: mirror.contentHash,
       content: structuredClone(mirror.content), saved_at: new Date().toISOString() }
     return remote
@@ -744,13 +746,13 @@ it.fails('W3 retains the pending revision and 力竭 after importing degraded ro
     })) }
     return structuredClone(tree)
   })
-  const exercise = { ...aiExercise, reps: '', sets: 2, weight_values: [], flags: [],
+  const exercise = { ...aiExercise, reps: '', sets: 2, weight_values: [], flags: withDoubts ? ['inferred' as const] : [],
     unparsed: [{ field: 'reps' as const, text: '尽力' }] }
   unreadableWeek([], [exercise])
   vi.mocked(catalog.createCustomExercise).mockResolvedValue({ id: 'custom', name: exercise.name, created_by_coach_id: 'coach' } as never)
   const names = new Map([['custom', { name: exercise.name, custom: true }]])
   const mountEditor = async (initialWeeks: Week[]) => {
-    await act(async () => root.render(<StrictMode><PlanEditor initialWeeks={initialWeeks} weeksCount={1}
+    await act(async () => root.render(<StrictMode><PlanEditor initialWeeks={initialWeeks} initialServerWeeks={mapPlanToWeeks(tree, names)} weeksCount={1}
       planStartDate={tree.start_date} studentName="Synthetic trainee" planName={tree.name}
       currentPlanId={tree.id} planStatus="draft" planUpdatedAt={tree.updated_at}
       onSave={(weeks, _start, _mark, progress, deletedDayIds) => saveBlockPlan(tree.id, weeks, progress, { catalog: names, deletedDayIds })} /></StrictMode>))
@@ -774,6 +776,7 @@ it.fails('W3 retains the pending revision and 力竭 after importing degraded ro
     openBlockDay(host)
     expect.soft(await pending.getPendingRevision(tree.id), requests.join(' → ')).not.toBeNull()
     expect.soft(host.querySelector<HTMLInputElement>('[data-c="reps"] input')?.value).toBe('力竭')
+    expect.soft(host.querySelector('.import-doubt-label')?.textContent ?? '').toBe(withDoubts ? '推断数值' : '')
   } finally {
     await act(async () => root.render(null))
     vi.useRealTimers()

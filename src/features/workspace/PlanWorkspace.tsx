@@ -51,7 +51,7 @@ import {
 } from './rosterOverview'
 
 interface Props { onLogout: () => void | Promise<void>; me: AuthUser }
-type Loaded = { plan: PlanWithChildren; weeks: Week[]; weeksCount: number }
+type Loaded = { plan: PlanWithChildren; weeks: Week[]; weeksCount: number; serverWeeks?: Week[] }
 type WorkspaceRetry =
   | { kind: 'boot'; fallback: string }
   | { kind: 'student'; id: string; fallback: string; openEditor: boolean }
@@ -754,7 +754,8 @@ export function PlanWorkspace({ onLogout, me }: Props) {
     if (!saveBlockWeekdays(result.plan.id, result.weekdays)) window.alert(S.block.patternFailed)
     ++loadGeneration.current
     setPlanId(result.plan.id); localStorage.setItem(`${LAST_PLAN_PREFIX}${result.plan.trainee_id}`, result.plan.id)
-    setLoaded({ plan: result.plan, weeks: result.weeks, weeksCount: result.weeks.length })
+    setLoaded({ plan: result.plan, weeks: result.weeks, weeksCount: result.weeks.length,
+      serverWeeks: mapPlanToWeeks(result.plan, nextCatalog) })
     setNewPlanOpen(false)
   }
 
@@ -1028,6 +1029,7 @@ export function PlanWorkspace({ onLogout, me }: Props) {
         feedbackRef={editorFeedbackRef} feedbackSession={editorFeedback?.studentId === studentId ? editorFeedback.session : null}
         onFeedbackSessionChange={session => setEditorFeedback({ studentId, session })}
         initialWeeks={loaded?.weeks ?? []}
+        initialServerWeeks={loaded?.serverWeeks}
         weeksCount={loaded?.weeksCount ?? 0}
         studentName={studentName}
         studentId={studentId}
