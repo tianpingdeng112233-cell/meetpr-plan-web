@@ -86,7 +86,7 @@ describe('isBoundNoSets shared predicate regressions and exemptions', () => {
     expect(isBoundNoSets(row())).toBe(false)
     expect(isBoundNoSets(row({ reps: '8-10' }))).toBe(false)
     expect(isBoundNoSets(row({ reps: '8+' }))).toBe(false)
-    expect(isBoundNoSets(row({ boxes: [{ val: '', empty: true }] }))).toBe(true)
+    expect(isBoundNoSets(row({ boxes: [{ val: '', empty: true }] }))).toBe(false)
     expect(isBoundNoSets(row({ reps: '—' }))).toBe(true)
   })
 
@@ -126,7 +126,7 @@ describe('spec 034 dual intensity and weight guard', () => {
     }))).toBeNull()
   })
 
-  it('accepts weight-only rows and requires every set without a completing intensity', () => {
+  it('accepts weight-only rows with optional weights in each set', () => {
     expect(getBoundRowInputIssue(row({
       intensity: null,
       boxes: [{ val: '170', empty: false }, { val: '172.5', empty: false }],
@@ -134,7 +134,7 @@ describe('spec 034 dual intensity and weight guard', () => {
     expect(getBoundRowInputIssue(row({
       intensity: null,
       boxes: [{ val: '170', empty: false }, { val: '', empty: true }],
-    }))?.hasIncomplete).toBe(true)
+    }))).toBeNull()
   })
 
   it('completes and validates single-value intensity independently for each set', () => {
@@ -150,7 +150,7 @@ describe('spec 034 dual intensity and weight guard', () => {
       intensityMode: 'per_set',
       intensityBoxes: [{ val: '8', empty: false }, { val: '', empty: true }],
       boxes: [{ val: '', empty: true }, { val: '', empty: true }],
-    }))?.hasIncomplete).toBe(true)
+    }))).toBeNull()
 
     expect(getBoundRowInputIssue(row({
       intensity: { mode: 'rpe', value: '7.3', high: '' },
@@ -160,12 +160,12 @@ describe('spec 034 dual intensity and weight guard', () => {
     }))?.invalidIntensityIndexes).toEqual([0])
   })
 
-  it('keeps the any-intensity-or-weight gate without cross-column weight-mode rules', () => {
+  it('allows no load with fixed-weight mode and preserves independent weight-range validation', () => {
     const fixed = getBoundRowInputIssue(row({
       intensity: { mode: 'fixed_weight', value: '', high: '' },
       boxes: [{ val: '', empty: true }],
     }))
-    expect(fixed).toMatchObject({ hasIncomplete: true, reasons: [] })
+    expect(fixed).toBeNull()
 
     expect(getBoundRowInputIssue(row({
       intensity: { mode: 'fixed_weight', value: '', high: '' },
@@ -189,5 +189,23 @@ describe('spec 034 dual intensity and weight guard', () => {
       intensity: { ...intensity },
       boxes: [{ val: '', empty: true }],
     }))?.reasons).toContain(reason)
+  })
+})
+
+
+describe('spec 015 reps-only issue counting and cycling', () => {
+  it.each(['8', '8-12', '8+', '力竭'])('omits complete reps-only %s rows but retains missing sets/reps and unbound rows', reps => {
+    const complete = row({ id: 'complete', reps, intensity: null,
+      boxes: Array.from({ length: 3 }, () => ({ val: '', empty: true })) })
+    expect(findIssueRows([week({ dow: 0, dowLabel: '周一', dateLabel: '', rest: false, rows: [
+      complete,
+      { ...complete, id: 'no-reps', reps: '' },
+      { ...complete, id: 'no-sets', boxes: [] },
+      { ...complete, id: 'unbound', exerciseId: null },
+    ] })])).toEqual([
+      { rowId: 'no-reps', kind: 'noSets' },
+      { rowId: 'no-sets', kind: 'noSets' },
+      { rowId: 'unbound', kind: 'unbound' },
+    ])
   })
 })

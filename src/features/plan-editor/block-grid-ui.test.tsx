@@ -964,3 +964,16 @@ it('toggles 力竭 in the edit card and shows it in the shorthand without a 待�
   await key('Escape')
   expect(cell(1, 0).querySelector('[data-rowid="w1-0-0"]')?.textContent).toContain('1×8')
 })
+
+
+it.each(['8', '8-12', '8+', '力竭'])('shows reps-only %s as sets × reps without placeholders or issue badges', reps => {
+  const weeks = fixture(1)
+  const row = weeks[0].days[0].rows[0]
+  Object.assign(row, { reps, intensity: null, boxes: Array.from({ length: 3 }, () => ({ val: '', empty: true })) })
+  act(() => root.render(<PlanEditor initialWeeks={weeks} weeksCount={1} studentName="学员" planName="计划" />))
+  const shorthand = cell(1, 0).querySelector('[data-rowid="w1-0-0"]')!
+  expect(shorthand.textContent).toContain(`3×${reps}`)
+  expect(shorthand.textContent).not.toContain('—')
+  expect(shorthand.textContent).not.toContain('≠')
+  expect(host.textContent).not.toContain('待核对')
+})

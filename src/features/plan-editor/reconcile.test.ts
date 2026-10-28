@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import * as plans from '../../api/plans'
 import { ApiException } from '../../api/client'
 import { LockedRowMutationError, ReconcileConflict, reconcileImportedPlan, reconcilePlan } from './reconcile'
-import type { Week, ExerciseRow, DayCol } from './types'
+import { hasOpaqueSetSettings, isBoundNoSets, type Week, type ExerciseRow, type DayCol } from './types'
 import type { PlanDayResponse, PlanExerciseResponse, PlanWithChildren } from '../../api/types'
 import { mapPlanToWeeks } from './mapping'
 import { displayedWeightMode, materializeIntensityRow } from './intensityModel'
@@ -425,6 +425,39 @@ describe('reconcilePlan — skippedRows counts only contentful unbound rows', ()
     expect(res.skippedRows).toBe(0)
   })
 
+  it.each([
+    ['8', 8, null, 'working'],
+    ['8-12', 8, 12, 'working'],
+    ['8+', 8, null, 'amrap'],
+    ['力竭', 1, null, 'failed'],
+  ] as const)('saves reps-only %s as real sets and reads back a complete row', async (reps, targetReps, repsMax, lastType) => {
+    const result = await reconcilePlan('p', [weekWithMondayRows([
+      row({ exerciseId: 'ex', name: '深蹲', reps, intensity: null,
+        boxes: Array.from({ length: 3 }, () => ({ val: '', empty: true })) }),
+    ])])
+    expect(result).toMatchObject({ degradedRows: 0, skippedRows: 0, changedDays: 1 })
+    const body = vi.mocked(plans.batchDays).mock.calls[0][1]
+    const savedSets = body.upsert_days[0].exercises[0].sets
+    expect(savedSets).toEqual([1, 2, 3].map(set_number => ({
+      set_number, target_reps: targetReps, target_reps_max: repsMax,
+      set_type: reps === '力竭' ? 'failed' : set_number === 3 ? lastType : 'working',
+      load_mode: null, target_weight: null, target_pct: null, target_rpe: null,
+      rir_target: null, rpe_low: null, rpe_high: null, weight_low: null, weight_high: null,
+    })))
+    const days = serverDaysFromBatch(body.upsert_days)
+    // The empty legacy projection must not invent a weight or RPE on readback.
+    for (const set of days[0].exercises[0].sets) {
+      set.intensity_mode = 'weight'
+      set.target_value = ''
+    }
+    const mapped = mapPlanToWeeks(serverPlan(days, 'draft'), new Map([['ex', { name: '深蹲', custom: false }]]))
+    const restored = mapped[0].days[0].rows[0]
+    expect(restored.reps).toBe(reps)
+    expect(restored.boxes).toEqual(Array.from({ length: 3 }, () => ({ val: '', empty: true })))
+    expect(isBoundNoSets(restored)).toBe(false)
+    expect(hasOpaqueSetSettings(restored)).toBe(false)
+  })
+
   it('degrades incomplete bound rows to zero-set placeholders without mixing them into skipped rows', async () => {
     const rows = [
       row({
@@ -432,7 +465,7 @@ describe('reconcilePlan — skippedRows counts only contentful unbound rows', ()
         boxes: [], note: '保留备注',
       }),
       row({
-        id: 'half-filled', exerciseId: 'ex-half-filled', name: '卧推', reps: '12',
+        id: 'half-filled', exerciseId: 'ex-half-filled', name: '卧推', reps: '',
         boxes: Array.from({ length: 5 }, () => ({ val: '', empty: true })),
       }),
       row({ id: 'complete', exerciseId: 'ex-complete', name: '硬拉', boxes: [{ val: '100', empty: false }] }),
@@ -737,7 +770,7 @@ describe('reconcilePlan — skippedRows counts only contentful unbound rows', ()
     const incomplete = row({
       exerciseId: 'ex1',
       name: '深蹲',
-      reps: '5',
+      reps: '',
       boxes: [{ val: '', empty: true }],
     })
 

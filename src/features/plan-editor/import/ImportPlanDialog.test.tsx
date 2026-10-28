@@ -599,6 +599,8 @@ it.each([
   ['en', '6', 'rir', '2', '80'],
   ['zh', '6', 'pct', '75', '80'],
   ['zh', '6', null, '', '80'],
+  ['zh', '6', null, '', null],
+  ['zh', 'failed', null, '', null],
 ] as const)('groups repeated texts across selected weeks and applies every fix to every set (%s, %s, %s)', async (locale, reps, kind, value, weight) => {
   setLocale(locale); threeWeeks()
   const exercise = { ...aiExercise, reps: '', sets: 2, note: '原备注', unparsed: [

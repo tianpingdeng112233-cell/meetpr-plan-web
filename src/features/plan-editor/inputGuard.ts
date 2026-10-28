@@ -130,7 +130,7 @@ export interface BoundRowInputIssue {
   reasons: InputGuardReason[]
 }
 
-/** Single source of truth for spec-034 completion and matrix validation. */
+/** Shared completion (spec 015 §2.0.4) and filled-value validation. */
 export function getBoundRowInputIssue(row: ExerciseRow): BoundRowInputIssue | null {
   if (!row.exerciseId || row.hasLogs || row.aux) return null
 
@@ -167,17 +167,7 @@ export function getBoundRowInputIssue(row: ExerciseRow): BoundRowInputIssue | nu
   const invalidWeightIndexes = weights.flatMap((box, index) => (
     !box.empty && box.val.trim() !== '' && !isValidWeight(box.val) ? [index] : []
   ))
-  const rowIntensityPresent = intensity != null && !singleIntensity && intensity.mode !== 'fixed_weight'
-    && intensity.value.trim() !== ''
-    && (intensity.mode !== 'weight_range' && intensity.mode !== 'rpe_range' || intensity.high.trim() !== '')
-  const incompleteSet = row.boxes.some((_, index) => {
-    const hasIntensity = singleIntensity
-      ? !!intensityBoxes[index] && !intensityBoxes[index].empty && intensityBoxes[index].val.trim() !== ''
-      : rowIntensityPresent
-    const hasWeight = !!weights[index] && !weights[index].empty && weights[index].val.trim() !== ''
-    return !hasIntensity && !hasWeight
-  })
-  const hasIncomplete = missingReps || missingSets || incompleteSet
+  const hasIncomplete = missingReps || missingSets
   const allInvalidStrengthIndexes = [...new Set([...invalidWeightIndexes, ...invalidIntensityIndexes])]
 
   if (!hasIncomplete && !invalidReps && !invalidIntensity && invalidWeightIndexes.length === 0) return null

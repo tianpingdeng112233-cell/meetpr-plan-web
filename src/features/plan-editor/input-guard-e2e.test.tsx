@@ -50,6 +50,10 @@ describe('plan editor intensity-or-weight save and publish chain', () => {
   })
 
   it.each([
+    ['仅组×次 8', row({ reps: '8', boxes: Array.from({ length: 3 }, () => ({ val: '', empty: true })) })],
+    ['仅组×次 8-12', row({ reps: '8-12', boxes: Array.from({ length: 3 }, () => ({ val: '', empty: true })) })],
+    ['仅组×次 8+', row({ reps: '8+', boxes: Array.from({ length: 3 }, () => ({ val: '', empty: true })) })],
+    ['仅组×次 力竭', row({ reps: '力竭', boxes: Array.from({ length: 3 }, () => ({ val: '', empty: true })) })],
     ['纯强度无重量', row({
       intensity: { mode: 'rpe', value: '8', high: '' },
       intensityMode: 'per_set',
@@ -103,7 +107,6 @@ describe('plan editor intensity-or-weight save and publish chain', () => {
       />,
     ))
 
-    expect(host.textContent).not.toContain('待核对')
     expect(host.querySelector('.guard-invalid')).toBeNull()
     expect(host.querySelector('[aria-invalid="true"]')).toBeNull()
     expect(host.querySelector('[role="alert"]')).toBeNull()
@@ -124,6 +127,8 @@ describe('plan editor intensity-or-weight save and publish chain', () => {
     })
     expect(onSave).toHaveBeenCalledTimes(2)
     expect(onPublish).toHaveBeenCalledTimes(1)
+    expect(host.textContent).not.toContain('待核对')
+    expect(host.textContent).not.toContain('待填全或需修正')
     expect(alert).not.toHaveBeenCalled()
     expect(confirm).not.toHaveBeenCalled()
     expect(host.textContent).not.toContain('发布给学员')
