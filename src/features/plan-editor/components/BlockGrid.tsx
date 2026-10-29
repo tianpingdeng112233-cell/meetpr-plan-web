@@ -55,6 +55,7 @@ function shorthand(row: ExerciseRow): string {
         : intensity?.mode === 'rpe_range' ? `@${intensity.value}–${intensity.high}` : ''
   const weights = rowWeightBoxes(row).map(box => box.empty ? '—' : box.val)
   const weight = row.mode === 'bodyweight' ? S.common.bodyweight
+    : row.weightMode === 'free_weight' ? S.editor.freeWeightShort
     : intensity?.mode === 'weight_range' ? `${intensity.value}–${intensity.high}`
       : weights.some(w => w !== '—') ? (new Set(weights).size === 1 ? weights[0] : weights.join('/')) : ''
   return [`${row.boxes.length || '—'}×${row.reps}`, load, weight ? `· ${weight}` : ''].filter(Boolean).join(' ')

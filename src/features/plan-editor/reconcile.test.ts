@@ -162,7 +162,15 @@ describe('reconcilePlan — opaque legacy set passthrough', () => {
     return exercise
   }
 
-  function expectOldShape(sets: Parameters<typeof plans.batchDays>[1]['upsert_days'][number]['exercises'][number]['sets'], bodyweight: boolean) {
+  function expectCompatibleShape(sets: Parameters<typeof plans.batchDays>[1]['upsert_days'][number]['exercises'][number]['sets'], bodyweight: boolean) {
+    if (bodyweight) {
+      expect(sets).toHaveLength(2)
+      expect(sets.map(set => [set.load_mode, set.target_reps, set.target_reps_max, set.set_type, set.rest_seconds, set.coach_note])).toEqual([
+        ['bodyweight', 5, 7, 'working', 90, null], ['bodyweight', 4, null, 'amrap', 120, null],
+      ])
+      expect(sets.every(set => set.intensity_mode === undefined && set.target_value === undefined)).toBe(true)
+      return
+    }
     for (const set of sets) {
       for (const key of Object.keys(nullIntensity)) {
         expect(Object.prototype.hasOwnProperty.call(set, key), key).toBe(false)
@@ -178,7 +186,7 @@ describe('reconcilePlan — opaque legacy set passthrough', () => {
 
   it.each([
     ['bodyweight', true], ['legacy RPE', false],
-  ] as const)('preserves saved %s sets as pure old shape when another row changes', async (_label, bodyweight) => {
+  ] as const)('preserves saved %s settings while using its compatible wire shape', async (_label, bodyweight) => {
     const fixed = serverExercise('edited', 'edited-ex', 1)
     fixed.sets[0] = { ...fixed.sets[0], ...nullIntensity, target_weight: '100.00' }
     const baseline = serverPlan([serverDay([savedLegacyExercise(bodyweight), fixed])], 'draft')
@@ -191,10 +199,10 @@ describe('reconcilePlan — opaque legacy set passthrough', () => {
     expect(plans.batchDays).toHaveBeenCalledTimes(1)
     const exercises = vi.mocked(plans.batchDays).mock.calls[0][1].upsert_days[0].exercises
     expect(exercises[1].sets[0].target_weight).toBe('110')
-    expectOldShape(exercises[0].sets, bodyweight)
+    expectCompatibleShape(exercises[0].sets, bodyweight)
   })
 
-  it('preserves copied bodyweight sets as pure old shape in week 2', async () => {
+  it('copies legacy bodyweight with formal load mode and preserved per-set settings', async () => {
     const baseline = {
       ...serverPlan([serverDay([savedLegacyExercise(true)])], 'draft'),
       plan_weeks: 2, end_date: '2026-01-14',
@@ -222,7 +230,7 @@ describe('reconcilePlan — opaque legacy set passthrough', () => {
     const body = vi.mocked(plans.batchDays).mock.calls[0][1]
     expect(body.delete_day_ids).toEqual([])
     expect(body.upsert_days.map((day) => day.week_number)).toEqual([2])
-    expectOldShape(body.upsert_days[0].exercises[0].sets, true)
+    expectCompatibleShape(body.upsert_days[0].exercises[0].sets, true)
   })
 
   it.each([
@@ -688,7 +696,7 @@ describe('reconcilePlan — skippedRows counts only contentful unbound rows', ()
     ))).toBe(true)
   })
 
-  it('persists bodyweight rows as publishable sets with a bodyweight coach note', async () => {
+  it('persists bodyweight rows without synthetic RPE or a bodyweight note', async () => {
     const rows = [
       row({
         id: 'a',
@@ -705,14 +713,56 @@ describe('reconcilePlan — skippedRows counts only contentful unbound rows', ()
 
     const sets = vi.mocked(plans.batchDays).mock.calls[0][1].upsert_days[0].exercises[0].sets
     expect(sets).toHaveLength(4)
+    expect(sets.every(set => set.intensity_mode === undefined && set.target_value === undefined && set.coach_note == null)).toBe(true)
     expect(sets[0]).toEqual(expect.objectContaining({
       target_reps: 10,
       target_reps_max: 15,
-      intensity_mode: 'rpe',
-      target_value: '10',
-      coach_note: '自重',
+      load_mode: 'bodyweight',
       rest_seconds: null,
     }))
+  })
+
+  it.each([null, 'rpe', 'rir', 'pct'] as const)('writes free weight with optional %s intensity', async (mode) => {
+    const value = mode === 'rpe' ? '8' : mode === 'rir' ? '2' : '75'
+    await reconcilePlan('p', [weekWithMondayRows([row({
+      exerciseId: 'ex1', reps: '15', weightMode: 'free_weight',
+      intensity: mode ? { mode, value, high: '' } : null,
+      boxes: Array.from({ length: 3 }, () => ({ val: '', empty: true })),
+    })])])
+    const sets = vi.mocked(plans.batchDays).mock.calls[0][1].upsert_days[0].exercises[0].sets
+    expect(sets).toHaveLength(3)
+    expect(sets[0]).toMatchObject({
+      load_mode: 'free_weight', target_reps: 15, target_weight: null,
+      target_rpe: mode === 'rpe' ? '8' : null,
+      rir_target: mode === 'rir' ? '2' : null,
+      target_pct: mode === 'pct' ? '75' : null,
+    })
+    expect(sets[0].intensity_mode).toBeUndefined()
+    expect(sets[0].target_value).toBeUndefined()
+    expect(sets[0].coach_note).toBeNull()
+    expect(sets[0].pct_anchor).toBeUndefined()
+  })
+
+  it('writes every failure-reps set using the existing 015 contract, independently of load', async () => {
+    await reconcilePlan('p', [weekWithMondayRows([row({
+      exerciseId: 'ex1', reps: '力竭', mode: 'bodyweight', intensity: null,
+      boxes: Array.from({ length: 3 }, () => ({ val: '', empty: true })),
+    })])])
+    const sets = vi.mocked(plans.batchDays).mock.calls[0][1].upsert_days[0].exercises[0].sets
+    expect(sets).toHaveLength(3)
+    expect(sets.map(set => [set.load_mode, set.target_reps, set.set_type])).toEqual([
+      ['bodyweight', 1, 'failed'], ['bodyweight', 1, 'failed'], ['bodyweight', 1, 'failed'],
+    ])
+  })
+
+  it.each(['rpe_range', 'weight_range', 'fixed_weight', 'rpe', 'rir', 'pct'] as const)('ignores hidden legacy %s fields in bodyweight drafts', async (mode) => {
+    await reconcilePlan('p', [weekWithMondayRows([row({
+      exerciseId: 'ex1', reps: '15', mode: 'bodyweight', intensity: { mode, value: '7', high: '8' },
+      boxes: [{ val: '', empty: true }],
+    })])])
+    const sets = vi.mocked(plans.batchDays).mock.calls[0][1].upsert_days[0].exercises[0].sets
+    expect(sets).toHaveLength(1)
+    expect(sets[0]).toMatchObject({ load_mode: 'bodyweight', rpe_low: null, rpe_high: null, weight_low: null, weight_high: null, target_rpe: null, target_pct: null, rir_target: null })
   })
 
   it('does not impose a client-side status gate on published plans', async () => {
@@ -842,7 +892,7 @@ describe('reconcilePlan — skippedRows counts only contentful unbound rows', ()
       .toEqual([{ note: null, rest: 90, w: '100' }])
   })
 
-  it('keeps the bodyweight marker over old app notes when an edited row switches to bodyweight', async () => {
+  it('preserves app notes when an edited row switches to formal bodyweight', async () => {
     const richer = richerPerSetExercise()
     const baseline = serverPlan([serverDay([richer])], 'draft')
     vi.mocked(plans.getPlan).mockResolvedValue(baseline)
@@ -856,9 +906,9 @@ describe('reconcilePlan — skippedRows counts only contentful unbound rows', ()
     const written = vi.mocked(plans.batchDays).mock.calls[0][1].upsert_days[0].exercises[0].sets
     expect(written.map((set) => ({ note: set.coach_note, rest: set.rest_seconds })))
       .toEqual([
-        { note: '自重', rest: 180 },
-        { note: '自重', rest: 180 },
-        { note: '自重', rest: 180 },
+        { note: '第 1 组', rest: 180 },
+        { note: '第 2 组', rest: 180 },
+        { note: '第 3 组', rest: 180 },
       ])
   })
 })

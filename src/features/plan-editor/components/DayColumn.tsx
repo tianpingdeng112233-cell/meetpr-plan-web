@@ -1,3 +1,4 @@
+import { WeightModeSelect } from './WeightModeSelect'
 import { useLayoutEffect, useRef, useState } from 'react'
 import type { FeedbackEntry } from '../feedbackModel'
 import { createPortal } from 'react-dom'
@@ -557,9 +558,7 @@ function EditableIntensity({ row, width, edit, selectedCell, selectCell, cellKey
       onClick={(event) => { stop(event); selectCell(singleValue ? 0 : undefined) }}
       style={{ width, padding: '4px 4px', gap: 3, display: 'flex', flexWrap: 'wrap', alignItems: 'center' }}
     >
-      <div className={`intensity-controls${singleValue && intensityMode === 'per_set' ? ' is-per-set' : ''}`}>{row.mode === 'bodyweight' ? (
-        <span className="mode-badge bodyweight" title={row.hasLogs ? S.editor.rowLocked : S.editor.bodyweightNoIntensity}>{S.common.bodyweight}</span>
-      ) : (
+      <div className={`intensity-controls${singleValue && intensityMode === 'per_set' ? ' is-per-set' : ''}`}>{(
         <>
           <select
             aria-label={S.editor.intensityType}
@@ -575,6 +574,7 @@ function EditableIntensity({ row, width, edit, selectedCell, selectCell, cellKey
                 return {
                   ...materialized,
                   intensity: mode ? { mode, value: '', high: '' } : null,
+                  ...(materialized.mode === 'bodyweight' ? { bodyweightIntensity: true } : {}),
                   ...(mode === 'pct' ? { pctAnchor: 'one_rm' as const } : {}),
                   intensityMode: mode === 'pct' || mode === 'rpe' || mode === 'rir' ? 'uniform' : undefined,
                   intensityBoxes: mode === 'pct' || mode === 'rpe' || mode === 'rir'
@@ -585,7 +585,7 @@ function EditableIntensity({ row, width, edit, selectedCell, selectCell, cellKey
             }}
           >
             <option value="">{S.editor.noIntensity}</option>
-            {INTENSITY_OPTIONS.map((option) => <option value={option.mode} key={option.mode}>{option.label}</option>)}
+            {INTENSITY_OPTIONS.filter(option => !(row.mode === 'bodyweight' || row.weightMode === 'free_weight') || option.mode !== 'rpe_range').map((option) => <option value={option.mode} key={option.mode}>{option.label}</option>)}
           </select>
           {singleValue && intensity && (
             <>
@@ -622,7 +622,7 @@ function EditableIntensity({ row, width, edit, selectedCell, selectCell, cellKey
                   {pctAnchor === 'e1rm' ? '×e1RM' : S.editor.topSetMultiplier}
                 </span>
               )}
-              {intensity.mode === 'pct' && !readOnly && !row.hasLogs && (
+              {intensity.mode === 'pct' && row.mode !== 'bodyweight' && row.weightMode !== 'free_weight' && !readOnly && !row.hasLogs && (
                 <select
                   className="pct-anchor-select"
                   aria-label={S.editor.percentAnchor}
@@ -711,10 +711,17 @@ function EditableWeight({ row, width, edit, selectedCell, selectCell, cellKey, r
     return { ...materialized, boxes, weightMode: currentDisplayMode === 'per_set' ? 'per_set' : 'uniform' }
   })
   const setWeightMode = (next: ReturnType<typeof displayedWeightMode>) => edit((current) => {
-    if (displayedWeightMode(current) === next) return current
-    const materialized = materializeIntensityRow(current)
+    if (displayedWeightMode(current) === next) return { ...current, weightModeSelected: true }
+    const materialized = { ...materializeIntensityRow(current), weightModeSelected: true }
     const currentIntensity = rowIntensity(materialized)
-    if (next === 'bodyweight') return { ...clearPctAnchor(materialized), mode: 'bodyweight' }
+    if (next === 'bodyweight' || next === 'free_weight') return {
+      ...clearPctAnchor(materialized),
+      mode: next === 'bodyweight' ? 'bodyweight' : 'kg',
+      bodyweightIntensity: next === 'bodyweight',
+      weightMode: next === 'free_weight' ? 'free_weight' : 'uniform',
+      intensity: isSingleValueIntensity(currentIntensity) ? currentIntensity : null,
+      boxes: materialized.boxes.map(() => ({ val: '', empty: true })),
+    }
     if (next === 'weight_range') return {
       ...clearPctAnchor(materialized),
       mode: 'kg',
@@ -746,19 +753,9 @@ function EditableWeight({ row, width, edit, selectedCell, selectCell, cellKey, r
   return (
     <div className="gcell weightcell" data-c="weight" style={{ width, padding: '3px 4px', display: 'flex', flexWrap: 'wrap', alignItems: 'center' }}>
       <span className={`weight-controls${displayMode === 'per_set' ? ' is-per-set' : ''}`}>
-        <select
-          aria-label={S.editor.weightMode}
-          value={displayMode}
-          disabled={readOnly || row.hasLogs}
-          title={row.hasLogs ? S.editor.rowLocked : undefined}
-          onClick={stop}
-          onChange={(event) => setWeightMode(event.currentTarget.value as ReturnType<typeof displayedWeightMode>)}
-        >
-          <option value="fixed_weight">{S.editor.fixedWeight}</option>
-          <option value="per_set">{S.editor.perSetWeight}</option>
-          <option value="weight_range">{S.editor.weightRange}</option>
-          <option value="bodyweight">{S.common.bodyweight}</option>
-        </select>
+        <WeightModeSelect value={displayMode} disabled={!!readOnly || row.hasLogs}
+          title={row.hasLogs ? S.editor.rowLocked : undefined} onChange={setWeightMode} />
+
       {displayMode === 'bodyweight' && <span className="bodyweight-summary">{S.editor.eachSetBodyweight}</span>}
       {displayMode === 'weight_range' && range && (
         <span className="weight-range-inputs">
@@ -1169,6 +1166,11 @@ export function DayColumn({
                       edit((r) => ({ ...r, reps: value === '' ? '—' : value }))
                     }}
                     style={{ ...baseInput, width: '100%', textAlign: 'center', color: 'var(--txt)', fontFamily: 'var(--font-mono)', fontWeight: 500 }} />
+                  <button type="button" className="intensity-mode-toggle"
+                    aria-pressed={row.reps === '力竭'} disabled={readOnly || row.hasLogs}
+                    onClick={(event) => { stop(event); edit(r => ({ ...r, reps: r.reps === '力竭' ? '—' : '力竭' })) }}>
+                    {S.common.failure}
+                  </button>
                 </div>
 
                 <EditableIntensity

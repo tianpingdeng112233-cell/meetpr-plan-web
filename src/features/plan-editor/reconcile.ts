@@ -118,15 +118,32 @@ function parseReps(reps: string): { reps: number; repsMax: number | null; amrap:
   return { reps: Number.isFinite(n) ? Math.min(Math.max(n, 1), 50) : 1, repsMax: null, amrap }
 }
 
-function opaqueSetToDesired(set: OpaqueSetSpec): CreatePlanSetBody {
+function stripBodyweightMarker(note: string | null | undefined): string | null {
+  return note?.replace(/(^|\s)(自重|bodyweight)(?=\s|$)/gi, ' ').trim() || null
+}
+
+/** Legacy bodyweight provenance can change protocol without losing set detail. */
+function formalizeBodyweight(set: OpaqueSetSpec | CreatePlanSetBody) {
+  if (set.load_mode != null || !STABLE_ZH.patterns.bodyweight.test(set.coach_note ?? '')) return set
+  return {
+    ...set, load_mode: 'bodyweight' as const, intensity_mode: undefined, target_value: undefined,
+    target_weight: null, target_pct: null, pct_anchor: null, target_rpe: null, rir_target: null,
+    rpe_low: null, rpe_high: null, weight_low: null, weight_high: null,
+    coach_note: stripBodyweightMarker(set.coach_note),
+  }
+}
+
+function opaqueSetToDesired(source: OpaqueSetSpec): CreatePlanSetBody {
+  const set = formalizeBodyweight(source)
+  const noLoad = set.load_mode === 'bodyweight' || set.load_mode === 'free_weight'
   return {
     set_number: set.set_number,
     target_reps: set.target_reps,
     target_reps_max: set.target_reps_max,
-    ...(set.intensity_mode !== undefined ? { intensity_mode: set.intensity_mode } : {}),
-    ...(set.target_value !== undefined ? { target_value: set.target_value } : {}),
+    ...(!noLoad && set.intensity_mode !== undefined ? { intensity_mode: set.intensity_mode } : {}),
+    ...(!noLoad && set.target_value !== undefined ? { target_value: set.target_value } : {}),
     // Even null-valued keys select the backend's new intensity validator.
-    // Legacy RPE/bodyweight sets must keep a pure legacy request shape.
+    // Legacy non-bodyweight RPE sets must keep a pure legacy request shape.
     ...(set.load_mode != null || numNullable(set.target_weight) != null ? {
       load_mode: set.load_mode,
       target_pct: set.target_pct,
@@ -141,7 +158,7 @@ function opaqueSetToDesired(set: OpaqueSetSpec): CreatePlanSetBody {
     } : {}),
     set_type: set.set_type,
     rest_seconds: set.rest_seconds,
-    coach_note: set.coach_note,
+    coach_note: set.load_mode === 'bodyweight' ? stripBodyweightMarker(set.coach_note) : set.coach_note,
   }
 }
 
@@ -170,16 +187,6 @@ function rowToDesired(row: ExerciseRow): DesiredExercise | null {
     && row.opaqueSetBaseline === rowSetGridSignature(row)
   if (opaqueUnchanged) {
     sets = sourceSets.map(opaqueSetToDesired)
-  } else if (row.mode === 'bodyweight') {
-    sets = row.boxes.map((_, i) => ({
-      set_number: i + 1,
-      target_reps: reps,
-      target_reps_max: repsMax,
-      intensity_mode: 'rpe',
-      target_value: '10',
-      set_type: (amrap && i === row.boxes.length - 1 ? 'amrap' : 'working') as SetType,
-      coach_note: STABLE_ZH.bodyweight,
-    }))
   } else {
     const intensity = rowIntensity(row)
     const weights = rowWeightBoxes(row)
@@ -193,7 +200,7 @@ function rowToDesired(row: ExerciseRow): DesiredExercise | null {
           target_reps_max: repsMax,
           intensity_mode: 'rpe',
           target_value: numNullable(legacyRpeValues[i]?.val ?? '') ?? '',
-          set_type: (amrap && i === row.boxes.length - 1 ? 'amrap' : 'working') as SetType,
+          set_type: (row.reps === '力竭' ? 'failed' : amrap && i === row.boxes.length - 1 ? 'amrap' : 'working') as SetType,
         }
       }
       const setIntensity = intensity
@@ -205,9 +212,10 @@ function rowToDesired(row: ExerciseRow): DesiredExercise | null {
         set_number: i + 1,
         target_reps: reps,
         target_reps_max: repsMax,
-        load_mode: setIntensity?.mode ?? null,
+        load_mode: row.mode === 'bodyweight' ? 'bodyweight'
+          : row.weightMode === 'free_weight' ? 'free_weight' : setIntensity?.mode ?? null,
         target_pct: setIntensity?.mode === 'pct' ? numNullable(setIntensityValue) : null,
-        ...(setIntensity?.mode === 'pct' ? {
+        ...(setIntensity?.mode === 'pct' && row.mode !== 'bodyweight' && row.weightMode !== 'free_weight' ? {
           pct_anchor: row.pctAnchor === 'e1rm' || row.pctAnchor === 'top_set' ? row.pctAnchor : null,
         } : {}),
         target_rpe: setIntensity?.mode === 'rpe' ? numNullable(setIntensityValue) : null,
@@ -217,22 +225,15 @@ function rowToDesired(row: ExerciseRow): DesiredExercise | null {
         weight_low: setIntensity?.mode === 'weight_range' ? numNullable(setIntensity.value) : null,
         weight_high: setIntensity?.mode === 'weight_range' ? numNullable(setIntensity.high) : null,
         target_weight: targetWeight,
-        set_type: (amrap && i === row.boxes.length - 1 ? 'amrap' : 'working') as SetType,
+        set_type: (row.reps === '力竭' ? 'failed' : amrap && i === row.boxes.length - 1 ? 'amrap' : 'working') as SetType,
       }
     })
   }
   if (!opaqueUnchanged && sourceSets) {
-    // Edited row: the grid owns sets/reps/intensity/weight; rest and app notes
-    // ride along by set index. The bodyweight marker lives in coach_note and is
-    // a grid-owned weight-mode protocol (mapping.ts), so it must follow the
-    // row's current mode — never resurrect an old marker on a kg row, never let
-    // an old app note overwrite the marker on a bodyweight row.
+    // Keep real app notes/rest by set index; legacy bodyweight markers are protocol only.
     sets = sets.map((set, index) => {
       const oldNote = sourceSets[index]?.coach_note ?? null
-      const oldIsBodyweightMarker = oldNote != null && STABLE_ZH.patterns.bodyweight.test(oldNote)
-      const coachNote = row.mode === 'bodyweight'
-        ? set.coach_note ?? null
-        : oldIsBodyweightMarker ? null : oldNote
+      const coachNote = stripBodyweightMarker(oldNote)
       return {
         ...set,
         rest_seconds: sourceSets[index]?.rest_seconds ?? null,
@@ -248,8 +249,9 @@ function rowToDesired(row: ExerciseRow): DesiredExercise | null {
   }
 }
 
-function canonicalSet(set: CreatePlanSetBody | PlanExerciseResponse['sets'][number]): unknown[] {
-  const bodyweight = STABLE_ZH.patterns.bodyweight.test(set.coach_note ?? '')
+function canonicalSet(source: CreatePlanSetBody | PlanExerciseResponse['sets'][number]): unknown[] {
+  const set = formalizeBodyweight(source)
+  const bodyweight = set.load_mode == null && STABLE_ZH.patterns.bodyweight.test(set.coach_note ?? '')
   const useNewShape = !bodyweight && (
     set.load_mode != null
     || (set.intensity_mode === 'weight' && set.target_value !== undefined)
@@ -270,7 +272,8 @@ function canonicalSet(set: CreatePlanSetBody | PlanExerciseResponse['sets'][numb
       numNullable(set.weight_low), numNullable(set.weight_high),
       set.load_mode === 'pct' ? canonicalPctAnchor(set.pct_anchor) : null,
       numNullable(set.target_weight) ?? legacyWeight,
-      set.set_type, set.rest_seconds ?? null, canonCoachNote(set.coach_note),
+      set.set_type, set.rest_seconds ?? null, set.load_mode === 'bodyweight'
+        ? stripBodyweightMarker(set.coach_note) : canonCoachNote(set.coach_note),
     ]
   }
   return [

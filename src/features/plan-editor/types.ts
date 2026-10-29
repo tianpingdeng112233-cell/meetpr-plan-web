@@ -3,10 +3,10 @@ import type { IntensityModeWire, LoadModeWire, PctAnchorWire, SetType } from '..
 export type IntensityMode = 'kg' | 'rpe' | 'bodyweight'
 
 /** Backend spec 034 v2 prescription form. `null` means a weight-only row. */
-export type LoadMode = LoadModeWire
+export type LoadMode = Exclude<LoadModeWire, 'free_weight' | 'bodyweight'>
 export type PctAnchor = PctAnchorWire
-export type WeightMode = 'uniform' | 'per_set'
-export type DisplayWeightMode = 'fixed_weight' | 'per_set' | 'weight_range' | 'bodyweight'
+export type WeightMode = 'uniform' | 'per_set' | 'free_weight'
+export type DisplayWeightMode = 'fixed_weight' | 'per_set' | 'weight_range' | 'bodyweight' | 'free_weight'
 export type IntensityValueMode = 'uniform' | 'per_set'
 
 /** Row-level intensity. Single-value modes use `value`; ranges use both fields. */
@@ -109,6 +109,12 @@ export interface ExerciseRow {
   intensityBoxes?: SetBox[]
   /** Weight presentation. Omitted legacy rows infer it from their values. */
   weightMode?: WeightMode
+  /** A coach selection takes precedence over Q7 automatic classification. */
+  weightModeSelected?: boolean
+  /** Recompute an automatic choice when the bound exercise changes. */
+  autoLoadMode?: boolean
+  /** Formal bodyweight intensity; absent on old drafts that hid all intensity. */
+  bodyweightIntensity?: boolean
   /** One slot per set. In the new model these are concrete target weights. */
   boxes: SetBox[]
   /** Original per-set wire data, retained so unsupported fields round-trip losslessly. */
@@ -121,12 +127,13 @@ export interface ExerciseRow {
 /** Stable comparison of the set fields the grid can actually edit. */
 export function rowSetGridSignature(row: Pick<
   ExerciseRow,
-  'reps' | 'mode' | 'legacyWeightSource' | 'intensity' | 'pctAnchor'
+  'reps' | 'mode' | 'bodyweightIntensity' | 'legacyWeightSource' | 'intensity' | 'pctAnchor'
   | 'intensityMode' | 'intensityBoxes' | 'weightMode' | 'boxes'
 >): string {
   return JSON.stringify({
     reps: row.reps,
     mode: row.mode,
+    ...(row.bodyweightIntensity ? { bodyweightIntensity: true } : {}),
     legacyWeightSource: row.legacyWeightSource ?? false,
     intensity: row.intensity ?? null,
     pctAnchor: row.pctAnchor ?? null,

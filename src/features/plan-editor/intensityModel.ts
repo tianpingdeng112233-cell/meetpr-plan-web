@@ -14,7 +14,9 @@ export function isLegacyRpeRow(row: ExerciseRow): boolean {
  * reinterpreting their boxes as weights. Until edited, reconcile can still
  * preserve every old per-set RPE value losslessly. */
 export function rowIntensity(row: ExerciseRow): RowIntensity | null {
-  if (row.mode === 'bodyweight') return null
+  // Old bodyweight drafts retained hidden intensity. Only an explicit new
+  // selection or a formal server load mode can activate an intensity target.
+  if (row.mode === 'bodyweight' && (!row.bodyweightIntensity || !isSingleValueIntensity(row.intensity ?? null))) return null
   if (row.intensity !== undefined) return row.intensity
   if (isLegacyRpeRow(row)) {
     const first = (row.intensityBoxes ?? row.boxes).find((box) => !box.empty && box.val.trim() !== '')
@@ -43,7 +45,7 @@ export function clearPctAnchor(row: ExerciseRow): ExerciseRow {
 }
 
 export function rowWeightBoxes(row: ExerciseRow): SetBox[] {
-  if (row.mode === 'bodyweight' || isLegacyRpeRow(row)) {
+  if (row.mode === 'bodyweight' || row.weightMode === 'free_weight' || isLegacyRpeRow(row)) {
     return row.boxes.map(() => ({ val: '', empty: true }))
   }
   return row.boxes
@@ -59,10 +61,11 @@ export function inferredWeightMode(row: ExerciseRow): WeightMode {
   return weightModeForBoxes(row)
 }
 
-/** Four weight-column modes. The backend's weight_range/fixed_weight values
+/** Weight-column modes. The backend's weight_range/fixed_weight values
  * remain in row.intensity for wire compatibility, but their UI belongs here. */
 export function displayedWeightMode(row: ExerciseRow): DisplayWeightMode {
   if (row.mode === 'bodyweight') return 'bodyweight'
+  if (row.weightMode === 'free_weight') return 'free_weight'
   const intensity = rowIntensity(row)
   if (intensity?.mode === 'weight_range') return 'weight_range'
   // Stored fixed_weight and old pure-kg rows predate the UI's explicit
@@ -114,4 +117,9 @@ export function materializeIntensityRow(row: ExerciseRow): ExerciseRow {
     weightMode: inferredWeightMode(row),
     boxes: rowWeightBoxes(row).map((box) => ({ ...box })),
   }
+}
+
+/** Q10: only an explicit build-time opt-in enables new free-weight authoring. */
+export function freeWeightEnabled(): boolean {
+  return import.meta.env.VITE_FREE_WEIGHT_ENABLED === 'true'
 }

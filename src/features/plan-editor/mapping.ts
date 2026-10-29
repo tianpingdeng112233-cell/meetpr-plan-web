@@ -30,6 +30,12 @@ function optionalNum(value: string | number | null | undefined): string {
 
 function intensityFromSet(set: PlanExerciseResponse['sets'][number]): RowIntensity | null {
   switch (set.load_mode) {
+    case 'bodyweight':
+    case 'free_weight':
+      if (set.target_rpe != null) return { mode: 'rpe', value: optionalNum(set.target_rpe), high: '' }
+      if (set.rir_target != null) return { mode: 'rir', value: optionalNum(set.rir_target), high: '' }
+      if (set.target_pct != null) return { mode: 'pct', value: optionalNum(set.target_pct), high: '' }
+      return null
     case 'pct': return { mode: 'pct', value: optionalNum(set.target_pct), high: '' }
     case 'rpe': return { mode: 'rpe', value: optionalNum(set.target_rpe), high: '' }
     case 'rir': return { mode: 'rir', value: optionalNum(set.rir_target), high: '' }
@@ -45,6 +51,7 @@ function intensityFromSet(set: PlanExerciseResponse['sets'][number]): RowIntensi
 }
 
 function singleIntensityValue(set: PlanExerciseResponse['sets'][number]): string {
+  if (set.load_mode === 'bodyweight' || set.load_mode === 'free_weight') return intensityFromSet(set)?.value ?? ''
   switch (set.load_mode) {
     case 'pct': return optionalNum(set.target_pct)
     case 'rpe': return optionalNum(set.target_rpe)
@@ -357,7 +364,8 @@ function mapExercise(ex: PlanExerciseResponse, catalog: Catalog): ExerciseRow {
     }
   }
 
-  const bodyweight = sets.every((s) => STABLE_ZH.patterns.bodyweight.test(s.coach_note ?? ''))
+  const bodyweight = sets.every((s) => s.load_mode === 'bodyweight'
+    || (s.load_mode == null && STABLE_ZH.patterns.bodyweight.test(s.coach_note ?? '')))
   const legacyRpeSource = !bodyweight && sets.every((set) => (
     set.load_mode == null && set.intensity_mode === 'rpe'
   ))
@@ -366,20 +374,21 @@ function mapExercise(ex: PlanExerciseResponse, catalog: Catalog): ExerciseRow {
   ))
   const loadMode = sets[0].load_mode ?? null
   const uniformLoadMode = sets.every((set) => (set.load_mode ?? null) === loadMode)
-  const singleValueMode = loadMode === 'pct' || loadMode === 'rpe' || loadMode === 'rir'
+  const intensity = uniformLoadMode ? intensityFromSet(sets[0]) : null
+  const singleValueMode = intensity?.mode === 'pct' || intensity?.mode === 'rpe' || intensity?.mode === 'rir'
   const intensityBoxes: SetBox[] = sets.map((set) => {
     const value = legacyRpeSource ? optionalNum(set.target_value) : singleIntensityValue(set)
     return { empty: value === '', val: value }
   })
   const boxes: SetBox[] = sets.map((s) => {
-    if (bodyweight) return { empty: true, val: '' }
+    if (bodyweight || loadMode === 'free_weight') return { empty: true, val: '' }
     const weight = s.target_weight ?? (s.load_mode == null && s.intensity_mode === 'weight' ? s.target_value : null)
     return { empty: weight == null, val: optionalNum(weight) }
   })
   const baseReps = sets[0].target_reps
   const repsMax = sets[0].target_reps_max
   const hasAmrap = sets.some((s) => s.set_type === 'amrap')
-  const reps = repsMax != null && repsMax > baseReps
+  const reps = sets.every(set => set.set_type === 'failed') ? '力竭' : repsMax != null && repsMax > baseReps
     ? `${baseReps}-${repsMax}`
     : hasAmrap ? `${baseReps}+` : String(baseReps)
   return withOpaqueSets({
@@ -391,16 +400,17 @@ function mapExercise(ex: PlanExerciseResponse, catalog: Catalog): ExerciseRow {
     // `mode: rpe` is provenance only: reconcile keeps load_mode=null until an
     // explicit row edit materializes the first-class intensity fields.
     mode: bodyweight ? 'bodyweight' : legacyRpeSource ? 'rpe' : 'kg',
+    ...(loadMode === 'bodyweight' ? { bodyweightIntensity: true } : {}),
     ...(legacyWeightSource ? { legacyWeightSource: true } : {}),
-    ...(!bodyweight && (legacyRpeSource || singleValueMode) ? {
+    ...((legacyRpeSource || singleValueMode) ? {
       intensityMode: intensityModeForBoxes(intensityBoxes),
       intensityBoxes,
     } : {}),
     ...(loadMode === 'pct' ? { pctAnchor: sets[0].pct_anchor ?? 'one_rm' } : {}),
     ...(legacyRpeSource ? {} : {
-      intensity: bodyweight || !uniformLoadMode ? null : intensityFromSet(sets[0]),
+      intensity,
     }),
-    weightMode: weightModeForBoxes(boxes),
+    weightMode: loadMode === 'free_weight' ? 'free_weight' : weightModeForBoxes(boxes),
     boxes,
     note: ex.notes ?? '',
   }, sets)
