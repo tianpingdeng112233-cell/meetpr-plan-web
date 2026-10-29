@@ -655,17 +655,48 @@ export function excelSerialToISODate(serial: number): string {
   return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`
 }
 
-/** Plan start date taken from the sheet itself: the first selected week-column
- *  anchor, so imported dates match the source even when the cycle starts mid-week.
- *  Serials run across the visible columns consecutively, so `serial − dayIndex`
- *  is the date represented by column 0 of that plan week.
- *  nil when no usable date serial is present. */
+function weekStartSerial(week: ParsedWeek): number | null {
+  const column = week.dateSerials.findIndex(serial => serial != null && serial >= 10_000)
+  return column < 0 ? null : (week.dateSerials[column] as number) - column
+}
+
+function datedTrainingDays(weeks: ParsedWeek[]): { day: ParsedDay; serial: number }[] {
+  const anchorIndex = weeks.findIndex(week => weekStartSerial(week) != null)
+  if (anchorIndex < 0) return []
+  const calendarStart = weekStartSerial(weeks[anchorIndex])! - anchorIndex * DAYS
+  return weeks.flatMap((week, weekIndex) => {
+    const weekStart = weekStartSerial(week) ?? calendarStart + weekIndex * DAYS
+    return week.days.filter(day => day.exercises.length > 0)
+      .sort((a, b) => a.dayOfWeek - b.dayOfWeek)
+      .map(day => ({
+        day,
+        // Excel dates may carry a time fraction; calendar slots are whole days.
+        serial: Math.floor(week.dateSerials[day.dayOfWeek] ?? weekStart + day.dayOfWeek),
+      }))
+  })
+}
+
+/** First prescription's source date; null for an undated or empty sheet. */
 export function importStartDate(weeks: ParsedWeek[]): string | null {
-  const first = weeks.find((week) => week.dateSerials.some((s) => s != null && s >= 10_000))
-  if (!first) return null
-  const idx = first.dateSerials.findIndex((s) => s != null && s >= 10_000)
-  if (idx < 0) return null
-  return excelSerialToISODate((first.dateSerials[idx] as number) - idx)
+  const first = datedTrainingDays(weeks)[0]
+  return first ? excelSerialToISODate(first.serial) : null
+}
+
+function regroupDatedWeeks(weeks: ParsedWeek[]): ParsedWeek[] {
+  const trainingDays = datedTrainingDays(weeks)
+  if (trainingDays.length === 0) return weeks
+  const firstSerial = trainingDays[0].serial
+  const lastSerial = Math.max(...trainingDays.map(({ serial }) => serial))
+  const regrouped: ParsedWeek[] = Array.from({ length: Math.floor((lastSerial - firstSerial) / DAYS) + 1 }, (_, w) => ({
+    blockIndex: w,
+    dateSerials: Array.from({ length: DAYS }, (_, d) => firstSerial + w * DAYS + d),
+    days: [],
+  }))
+  for (const { day, serial } of trainingDays) {
+    const offset = serial - firstSerial
+    regrouped[Math.floor(offset / DAYS)].days.push({ ...day, dayOfWeek: offset % DAYS })
+  }
+  return regrouped
 }
 
 function latestCalendarWindow(parsed: ParsedWeek[]): ParsedWeek[] {
@@ -683,17 +714,23 @@ function latestCalendarWindow(parsed: ParsedWeek[]): ParsedWeek[] {
 
 export function buildWeeks(
   parsed: ParsedWeek[], index: ExerciseIndex, startDate: string,
-): { weeks: Week[]; startDate: string } {
+): { weeks: Week[]; startDate: string; droppedSourceWeeks: number } {
   // Import the latest mesocycle as a calendar window ending at the last week with content.
   // Keep empty weeks inside that window; dropping them would compress later dated content
   // (for example July rows) into earlier labels after save/reload.
   const sourceWeeks = latestCalendarWindow(parsed)
+  // Count discarded prescriptions before regrouping: fewer output weeks alone
+  // does not mean any source content was truncated.
+  const droppedSourceWeeks = parsed.filter(weekHasExercises).length - sourceWeeks.filter(weekHasExercises).length
   // Date the plan from the sheet itself so imported dates match the source (spec 002
   // option A); fall back to the plan's own start_date only when the sheet has no dates.
   const effectiveStart = importStartDate(sourceWeeks) ?? startDate
   const curWeek = currentPlanWeek(effectiveStart)
 
-  const weeks = sourceWeeks.map((sourceWeek, weekIndex) => {
+  // Rebucket source dates into seven-day weeks from the first prescription.
+  // Empty days inside the window are still filled below; no leading empty days
+  // or wholly empty trailing week are needed. Undated imports retain their slots.
+  const weeks = regroupDatedWeeks(sourceWeeks).map((sourceWeek, weekIndex) => {
     const weekNumber = weekIndex + 1
     const byDay = new Map(sourceWeek.days.map((day) => [day.dayOfWeek, day]))
     const days: DayCol[] = []
@@ -729,5 +766,5 @@ export function buildWeeks(
   })
   // startDate = the plan start derived from the sheet, so the caller can PATCH the
   // backend plan's start_date and the imported dates survive a reload.
-  return { weeks, startDate: effectiveStart }
+  return { weeks, startDate: effectiveStart, droppedSourceWeeks }
 }

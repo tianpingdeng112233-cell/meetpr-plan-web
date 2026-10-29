@@ -1,10 +1,30 @@
 import { describe, it, expect } from 'vitest'
 import { excelSerialToISODate, importStartDate, buildWeeks, type ParsedWeek } from './index'
 import { planDayDowLabel, relabelWeeksForStartDate, shiftISODate } from '../mapping'
-import type { ExerciseIndex } from '../exerciseIndex'
+import { ExerciseIndex } from '../exerciseIndex'
 import type { Week } from '../types'
 
-const STUB = { resolve: () => null } as unknown as ExerciseIndex
+const STUB = new ExerciseIndex([])
+
+// Source calendar: Monday 10/26, a Saturday start, then Tue/Wed/Sat/Sun.
+// The final source row ends on Wednesday, completing the preceding training week.
+function saturdayStartSheet(count: number): ParsedWeek[] {
+  return Array.from({ length: count }, (_, w) => ({
+    blockIndex: w,
+    dateSerials: Array.from({ length: 7 }, (_, d) => 46321 + w * 7 + d),
+    days: Array.from({ length: 7 }, (_, dayOfWeek) => ({
+      dayOfWeek,
+      rest: false,
+      exercises: (w === 0 ? [5, 6] : w === count - 1 ? [1, 2] : [1, 2, 5, 6]).includes(dayOfWeek)
+        ? ['深蹲', '卧推'].map((rawName, i) => ({
+          rawName, setCount: 2, reps: '5', mode: 'kg' as const,
+          values: [String(80 + w * 10 + i), String(85 + w * 10 + i)],
+          note: `source-${w}-${dayOfWeek}-${i}`,
+        }))
+        : [],
+    })),
+  }))
+}
 
 function weekAt(serialBase: number): ParsedWeek {
   return {
@@ -29,12 +49,93 @@ function emptyWeekAt(serialBase: number): ParsedWeek {
 }
 
 describe('import dates — keep the source plan dates (spec 002 option A)', () => {
+  it.each([
+    [3, 2, ['10/31', '11/1', '11/3', '11/4', '11/7', '11/8', '11/10', '11/11']],
+    [4, 3, ['10/31', '11/1', '11/3', '11/4', '11/7', '11/8', '11/10', '11/11', '11/14', '11/15', '11/17', '11/18']],
+    [5, 4, ['10/31', '11/1', '11/3', '11/4', '11/7', '11/8', '11/10', '11/11', '11/14', '11/15', '11/17', '11/18', '11/21', '11/22', '11/24', '11/25']],
+    [6, 5, ['10/31', '11/1', '11/3', '11/4', '11/7', '11/8', '11/10', '11/11', '11/14', '11/15', '11/17', '11/18', '11/21', '11/22', '11/24', '11/25', '11/28', '11/29', '12/1', '12/2']],
+  ] as const)('regroups %i source rows into %i training weeks without moving prescriptions', (count, expectedWeeks, dates) => {
+    const source = saturdayStartSheet(count)
+    const { weeks, startDate, droppedSourceWeeks } = buildWeeks(source, STUB, '2099-01-01')
+
+    expect(startDate).toBe('2026-10-31')
+    expect(droppedSourceWeeks).toBe(0)
+    expect(importStartDate(source)).toBe('2026-10-31')
+    expect(weeks).toHaveLength(expectedWeeks)
+    expect(weeks[0].days.filter(day => !day.rest).map(day => day.dowLabel))
+      .toEqual(['周六', '周日', '周二', '周三'])
+    expect(weeks[0].days.map(day => day.dateLabel))
+      .toEqual(['10/31', '11/1', '11/2', '11/3', '11/4', '11/5', '11/6'])
+    const trainingDays = weeks.flatMap(week => week.days.filter(day => !day.rest))
+    expect(trainingDays.map(day => day.dateLabel)).toEqual(dates)
+    expect(trainingDays.flatMap(day => day.rows.map(row => ({
+      name: row.name, reps: row.reps, mode: row.mode,
+      values: row.boxes.map(box => box.val), note: row.note,
+    })))).toEqual(source.flatMap(week => week.days.flatMap(day => day.exercises.map(exercise => ({
+      name: exercise.rawName, reps: exercise.reps, mode: exercise.mode,
+      values: exercise.values, note: exercise.note,
+    })))))
+  })
+
   it('converts an Excel date serial to an ISO date', () => {
     expect(excelSerialToISODate(46020)).toBe('2025-12-29') // 许可 2026 sheet, week 1 Monday
   })
 
-  it('derives the plan start from the first selected week-column anchor', () => {
+  it('keeps a Monday start when the first prescription is already on Monday', () => {
     expect(importStartDate([weekAt(46020)])).toBe('2025-12-29')
+    const { weeks, startDate } = buildWeeks([weekAt(46020), weekAt(46027)], STUB, '2099-01-01')
+    expect(startDate).toBe('2025-12-29')
+    expect(weeks).toHaveLength(2)
+    expect(weeks.map(week => week.days[0].dateLabel)).toEqual(['12/29', '1/5'])
+    expect(weeks.map(week => week.days[0].rows[0].boxes[0].val)).toEqual(['100', '100'])
+  })
+
+  it('keeps the manually chosen start and original slots when dates are absent', () => {
+    const source = saturdayStartSheet(3).map(week => ({ ...week, dateSerials: [] }))
+    const { weeks, startDate } = buildWeeks(source, STUB, '2026-10-26')
+    expect(importStartDate(source)).toBeNull()
+    expect(startDate).toBe('2026-10-26')
+    expect(weeks).toHaveLength(3)
+    expect(weeks[0].days.slice(0, 5).every(day => day.rest && day.rows.length === 0)).toBe(true)
+    expect(weeks[0].days.filter(day => !day.rest).map(day => day.dateLabel)).toEqual(['10/31', '11/1'])
+    expect(weeks[1].days.filter(day => !day.rest).map(day => day.dowLabel)).toEqual(['周二', '周三', '周六', '周日'])
+  })
+
+  it('retains the final training week when the last source row also has weekend prescriptions', () => {
+    const source = saturdayStartSheet(6)
+    source[5].days = source[4].days
+    const { weeks } = buildWeeks(source, STUB, '2099-01-01')
+    expect(weeks).toHaveLength(6)
+    expect(weeks[5].days.filter(day => !day.rest).map(day => day.dateLabel)).toEqual(['12/5', '12/6'])
+  })
+
+  it('skips leading empty weeks and explicit rest days but keeps later empty calendar days', () => {
+    const source = saturdayStartSheet(3)
+    source[0].days[0].rest = true
+    const { weeks, startDate } = buildWeeks([emptyWeekAt(46314), ...source], STUB, '2099-01-01')
+    expect(startDate).toBe('2026-10-31')
+    expect(weeks).toHaveLength(2)
+    expect(weeks[0].days[0].rows).toHaveLength(2)
+    expect(weeks[0].days[2]).toMatchObject({ dateLabel: '11/2', rest: true, rows: [] })
+    expect(weeks[1].days[6]).toMatchObject({ dateLabel: '11/13', rest: true, rows: [] })
+  })
+
+  it('infers a missing first-training-day header from the other dated columns', () => {
+    const source = saturdayStartSheet(3)
+    source[0].dateSerials[5] = null
+    const { weeks, startDate } = buildWeeks(source, STUB, '2099-01-01')
+    expect(startDate).toBe('2026-10-31')
+    expect(weeks[0].days.filter(day => !day.rest).map(day => day.dateLabel))
+      .toEqual(['10/31', '11/1', '11/3', '11/4'])
+  })
+
+  it('keeps every prescription when Excel date headers contain different times of day', () => {
+    const source = saturdayStartSheet(3)
+    source[0].dateSerials[5] = 46326.5 // 10/31 noon, followed by 11/1 midnight
+    const { weeks, startDate } = buildWeeks(source, STUB, '2099-01-01')
+    expect(startDate).toBe('2026-10-31')
+    expect(weeks.flatMap(week => week.days.filter(day => !day.rest).map(day => day.dateLabel)))
+      .toEqual(['10/31', '11/1', '11/3', '11/4', '11/7', '11/8', '11/10', '11/11'])
   })
 
   it('buildWeeks dates the plan from the sheet, ignoring the passed start_date', () => {
@@ -93,8 +194,9 @@ describe('import dates — keep the source plan dates (spec 002 option A)', () =
   it('imports only the latest 12 weeks of a long continuous plan', () => {
     // 27 consecutive weeks (吕子豪 2026 sheet); David: keep the latest 12 only.
     const weeks = Array.from({ length: 27 }, (_, i) => weekAt(46020 + i * 7))
-    const { weeks: built } = buildWeeks(weeks, STUB, '2099-01-01')
+    const { weeks: built, droppedSourceWeeks } = buildWeeks(weeks, STUB, '2099-01-01')
     expect(built).toHaveLength(12)
+    expect(droppedSourceWeeks).toBe(15)
     expect(built[0].num).toBe(1) // re-numbered from 1
     expect(built[0].days[0].dateLabel).toBe('4/13') // original week 16 = 2026-04-13
   })
