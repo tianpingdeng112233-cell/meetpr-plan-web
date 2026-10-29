@@ -72,28 +72,78 @@ export function excelSerialToISODate(serial: number): string {
   return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`
 }
 
-/** Plan start date taken from the sheet itself: the first selected week-column
- *  anchor, so imported dates match the source even when the cycle starts mid-week.
- *  Serials run across the visible columns consecutively, so `serial − dayIndex`
- *  is the date represented by column 0 of that plan week.
- *  nil when no usable date serial is present. */
+function weekStartSerial(week: ParsedWeek): number | null {
+  const column = week.dateSerials.findIndex(serial => serial != null && serial >= 10_000)
+  return column < 0 ? null : (week.dateSerials[column] as number) - column
+}
+
+function datedTrainingDays(weeks: ParsedWeek[]): { day: ParsedDay; serial: number }[] {
+  const anchorIndex = weeks.findIndex(week => weekStartSerial(week) != null)
+  if (anchorIndex < 0) return []
+  const calendarStart = weekStartSerial(weeks[anchorIndex])! - anchorIndex * DAYS
+  return weeks.flatMap((week, weekIndex) => {
+    const weekStart = weekStartSerial(week) ?? calendarStart + weekIndex * DAYS
+    return week.days.filter(day => day.exercises.length > 0)
+      .sort((a, b) => a.dayOfWeek - b.dayOfWeek)
+      .map(day => ({
+        day,
+        // Excel dates may carry a time fraction; calendar slots are whole days.
+        serial: Math.floor(week.dateSerials[day.dayOfWeek] ?? weekStart + day.dayOfWeek),
+      }))
+  }).sort((a, b) => a.serial - b.serial)
+}
+
+/** First prescription's source date; null for an undated or empty sheet. */
 export function importStartDate(weeks: ParsedWeek[]): string | null {
-  const first = weeks.find((week) => week.dateSerials.some((s) => s != null && s >= 10_000))
-  if (!first) return null
-  const idx = first.dateSerials.findIndex((s) => s != null && s >= 10_000)
-  if (idx < 0) return null
-  return excelSerialToISODate((first.dateSerials[idx] as number) - idx)
+  const first = datedTrainingDays(weeks)[0]
+  return first ? excelSerialToISODate(first.serial) : null
+}
+
+function regroupDatedWeeks(weeks: ParsedWeek[]): ParsedWeek[] {
+  const trainingDays = datedTrainingDays(weeks)
+  if (trainingDays.length === 0) return weeks
+  const firstSerial = trainingDays[0].serial
+  // Keep explicitly selected empty-week placeholders, including their review flags.
+  const emptyWeekEnds = weeks.filter(week => week.importDoubts?.includes('empty_week'))
+    .map(week => Math.floor(weekStartSerial(week)!) + DAYS - 1)
+  const lastSerial = Math.max(...trainingDays.map(({ serial }) => serial), ...emptyWeekEnds)
+  const regrouped: ParsedWeek[] = Array.from({ length: Math.floor((lastSerial - firstSerial) / DAYS) + 1 }, (_, w) => ({
+    blockIndex: w,
+    dateSerials: Array.from({ length: DAYS }, (_, d) => firstSerial + w * DAYS + d),
+    days: [],
+  }))
+  for (const { day, serial } of trainingDays) {
+    const offset = serial - firstSerial
+    const target = regrouped[Math.floor(offset / DAYS)]
+    const existing = target.days.find(candidate => candidate.dayOfWeek === offset % DAYS)
+    if (existing) existing.exercises = [...existing.exercises, ...day.exercises]
+    else target.days.push({ ...day, dayOfWeek: offset % DAYS })
+  }
+  for (const week of weeks.filter(week => week.importDoubts?.length)) {
+    const start = Math.floor(weekStartSerial(week)!)
+    const first = Math.max(0, Math.floor((start - firstSerial) / DAYS))
+    // A leading placeholder can precede the new calendar; keep its reminder in W1.
+    const last = Math.max(0, Math.min(regrouped.length - 1, Math.floor((start + DAYS - 1 - firstSerial) / DAYS)))
+    for (let w = first; w <= last; w++) {
+      regrouped[w].importDoubts = [...new Set([...(regrouped[w].importDoubts ?? []), ...week.importDoubts!])]
+    }
+  }
+  return regrouped
 }
 
 export function buildWeeks(
   parsed: ParsedWeek[], index: ExerciseIndex, startDate: string,
-): { weeks: Week[]; startDate: string } {
-  // Selection and AI interpretation happen before this binder. Preserve every selected week.
+): { weeks: Week[]; startDate: string; droppedSourceWeeks: number } {
+  // Selection and AI interpretation happen before this binder; do not truncate source content.
   const sourceWeeks = parsed
-  const effectiveStart = importStartDate(sourceWeeks.slice(0, 1)) ?? startDate
+  // Mixed/undated selections retain their slots; the dialog supplies the chosen anchor.
+  const dated = sourceWeeks.length > 0 && sourceWeeks.every(week => weekStartSerial(week) != null)
+  const firstAnchor = sourceWeeks[0] ? weekStartSerial(sourceWeeks[0]) : null
+  const effectiveStart = dated ? importStartDate(sourceWeeks) ?? startDate
+    : firstAnchor == null ? startDate : excelSerialToISODate(firstAnchor)
   const curWeek = currentPlanWeek(effectiveStart)
 
-  const weeks = sourceWeeks.map((sourceWeek, weekIndex) => {
+  const weeks = (dated ? regroupDatedWeeks(sourceWeeks) : sourceWeeks).map((sourceWeek, weekIndex) => {
     const weekNumber = weekIndex + 1
     const byDay = new Map(sourceWeek.days.map((day) => [day.dayOfWeek, day]))
     const days: DayCol[] = []
@@ -125,5 +175,6 @@ export function buildWeeks(
   })
   // startDate = the plan start derived from the sheet, so the caller can PATCH the
   // backend plan's start_date and the imported dates survive a reload.
-  return { weeks, startDate: effectiveStart }
+  // This branch selects the source window in the dialog, so the binder drops no source weeks.
+  return { weeks, startDate: effectiveStart, droppedSourceWeeks: 0 }
 }

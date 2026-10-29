@@ -11,7 +11,7 @@ import { createDraftMirror, saveDraftMirror } from '../draftMirror'
 import { putPendingRevision } from '../../../api/pendingRevision'
 import { reconcileImportedPlan } from '../reconcile'
 import { aiWeeksToParsed, defaultImportWeekdays, placeAIWeekdays } from './aiWeeks'
-import { buildWeeks } from './index'
+import { buildWeeks, importStartDate } from './index'
 import { mmdd, planEndISO, weekdayIndex } from '../components/PlanCalendarControls'
 import { shiftISODate } from '../mapping'
 import { ApiException } from '../../../api/client'
@@ -183,6 +183,8 @@ export function ImportPlanDialog(p: ImportPlanDialogProps) {
     empty_week: selected.filter(index => emptyWeeks.has(index)).length,
   }
   const needsFirstDate = counts.no_date > 0 || ordinalWeeks.length > 0
+  const summaryStartDate = needsFirstDate ? goodWeeks[0]?.start_date ?? firstDate
+    : importStartDate(aiWeeksToParsed(goodWeeks)) ?? firstDate
   const dateMatchesFirst = !ordinalWeeks.length || (!!firstDate && days.includes(first) && weekdayIndex(firstDate) === first)
   const createdRef = useRef<PlanResponse | null>(null)
   const addedRef = useRef<ExerciseResponse[]>([])
@@ -192,22 +194,27 @@ export function ImportPlanDialog(p: ImportPlanDialogProps) {
     creatingRef.current = true; setBusy(S.editor.saving); setError('')
     try {
       const placed = placeAIWeekdays(applyTextFixes(goodWeeks, textFixes), days, first)
-      const startDate = needsFirstDate ? firstDate : goodWeeks[0].start_date!
+      // Undated/ordinal weeks keep the coach's anchor and selected week slots.
+      // Dated weeks retain the source calendar for buildWeeks to regroup.
+      const scheduled = needsFirstDate ? placed.map(w => ({ ...w, start_date: null,
+        days: w.days.map(d => ({ ...d, weekday: (d.weekday! - weekdayIndex(firstDate) + 7) % 7 })),
+      })) : placed
+      const parsed = aiWeeksToParsed(scheduled, emptyWeeks, inferredConfirmed)
+      let index = addedRef.current.reduce((idx, exercise) => idx.withAdded(exercise), p.exerciseIndex)
+      let built = buildWeeks(parsed, index, firstDate)
+      const startDate = built.startDate
       const anchor = weekdayIndex(startDate)
       if (!createdRef.current) createdRef.current = await createPlan({
-        trainee_id: p.traineeId, name: name.trim(), plan_weeks: selected.length, start_date: startDate,
-        end_date: planEndISO(startDate, selected.length), anchor_weekday: anchor + 1, source: 'coach', kind: 'regular',
+        trainee_id: p.traineeId, name: name.trim(), plan_weeks: built.weeks.length, start_date: startDate,
+        end_date: planEndISO(startDate, built.weeks.length), anchor_weekday: anchor + 1, source: 'coach', kind: 'regular',
       })
-      let index = addedRef.current.reduce((idx, exercise) => idx.withAdded(exercise), p.exerciseIndex)
       for (const exercise of exercises) {
         if (index.resolve(exercise.name)) continue
         const created = await createCustomExercise({ name: exercise.name.trim(), ...(exercise.family_guess ? { exerciseType: 'main_lift_variation' as const, mainLiftFamily: exercise.family_guess } : {}) })
         addedRef.current.push(created); index = index.withAdded(created)
       }
-      // No-date weeks now have an explicit calendar. Rotate weekday positions relative to D1.
-      const scheduled = placed.map((w, position) => ({ ...w, start_date: shiftISODate(startDate, position * 7), days: w.days.map(d => ({ ...d, weekday: (d.weekday! - anchor + 7) % 7 })) }))
-      const parsed = aiWeeksToParsed(scheduled, emptyWeeks, inferredConfirmed)
-      const built = buildWeeks(parsed, index, startDate)
+      // Rebind after custom exercises are created, including those retained by a retry.
+      built = buildWeeks(parsed, index, startDate)
       const planId = createdRef.current.id
       const content = { weeks: built.weeks, planStartDate: startDate, weeksCount: built.weeks.length }
       // Persist the review metadata independently from the plan tree, including recovery after a partial save.
@@ -282,7 +289,7 @@ export function ImportPlanDialog(p: ImportPlanDialogProps) {
       <footer className="import-picker-footer"><button className="import-back" onClick={() => { setStage(multiBlock ? 'blocks' : 'source'); setError('') }}>{multiBlock ? S.sheetImport.changeBlock : S.sheetImport.changeSource}</button><button className="primary" onClick={() => void recognize(selected.filter(index => !results.some(result => result.index === index)))} disabled={!selected.length || !name.trim()}>{S.sheetImport.recognize(selected.length)}</button></footer>
     </>}
     {stage === 'summary' && outline && <>
-      <small>{name} · W{(selected[0] ?? 0) + 1}–W{(selected.at(-1) ?? 0) + 1} · {mmdd(goodWeeks[0]?.start_date ?? firstDate)}</small>
+      <small>{name} · W{(selected[0] ?? 0) + 1}–W{(selected.at(-1) ?? 0) + 1} · {mmdd(summaryStartDate)}</small>
       <div className="import-summary">{S.sheetImport.summary(selected.length, goodWeeks.reduce((n,w) => n + w.days.filter(d => !d.rest).length, 0), exercises.length).split(' · ').map((stat, index) => <span key={index}>{index > 0 && <span className="import-stat-divider"> · </span>}{stat}</span>)}</div>
       <GroupedTextFixes groups={textGroups} fixes={textFixes} onFix={(key, fix) => setTextFixes(prev => ({ ...prev, [key]: fix }))} />
       {failures.map(w => <div key={w.index} className="import-failure">

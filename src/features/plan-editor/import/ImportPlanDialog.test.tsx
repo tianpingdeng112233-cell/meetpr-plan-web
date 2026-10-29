@@ -12,7 +12,7 @@ import * as XLSX from 'xlsx'
 import type { Week } from '../types'
 import { readFileSync } from 'node:fs'
 import { PlanEditor } from '../PlanEditor'
-import { mapPlanToWeeks } from '../mapping'
+import { mapPlanToWeeks, planDayDateLabel } from '../mapping'
 import { saveBlockPlan } from '../saveBlockPlan'
 import { openBlockDay } from '../blockGridTestUtils'
 import type { PlanWithChildren } from '../../../api/types'
@@ -262,6 +262,90 @@ it('defaults to the latest 12 consecutive weeks and sends cells without a filena
   expect(host.textContent).toContain('已选 11 周 / 最多 12 周')
 })
 const aiExercise = { source_cells: [] as imports.SourceCell[], name: 'Synthetic squat', sets: 1, reps: '5', intensity_kind: null, intensity_values: [], weight_values: ['100'], note: '', family_guess: 'squat' as const, flags: ['inferred' as const] }
+it('creates five weeks from six AI source weeks starting on the first prescribed Saturday without a truncation alert', async () => {
+  const weeks = ['2026-10-26', '2026-11-02', '2026-11-09', '2026-11-16', '2026-11-23', '2026-11-30'].map((start_date, index) => ({
+    index, start_date,
+    days: (index === 0 ? [5, 6] : [1, 2]).map((weekday, day) => ({ weekday, day_index: day + 1, rest: false, exercises: [aiExercise] })),
+  }))
+  vi.mocked(imports.outlineImport).mockResolvedValue({ import_id: 'dated', sheet: 'Paste', truncated_rows: 0, header_region: null,
+    weeks: weeks.map(week => ({ index: week.index, label: `W${week.index + 1}`, start_date: week.start_date, training_days: 2, region: { r1: 1, c1: 1, r2: 1, c2: 3 } })),
+  })
+  vi.mocked(imports.recognizeImportWeeks).mockImplementation(async (_id, input) => ({ weeks: weeks.filter(week => input.weeks.some(item => item.index === week.index)) }))
+  const draft = { id: 'dated-created', trainee_id: 'trainee', name: 'Synthetic', plan_weeks: 5, start_date: '2026-10-31', end_date: '2026-12-04', status: 'draft', days: [] } as never
+  vi.mocked(plans.createPlan).mockResolvedValue(draft)
+  vi.mocked(plans.getPlan).mockResolvedValue(draft)
+  vi.mocked(plans.batchDays).mockResolvedValue(draft)
+  const alert = vi.spyOn(window, 'alert').mockImplementation(() => {})
+  try {
+    await source(new ExerciseIndex([{ id: 'squat', name: aiExercise.name } as never]))
+    await click(S.sheetImport.recognize(6))
+    await click(S.sheetImport.create)
+
+    expect(plans.createPlan).toHaveBeenCalledWith(expect.objectContaining({
+      start_date: '2026-10-31', plan_weeks: 5, end_date: '2026-12-04', anchor_weekday: 6,
+    }))
+    expect(host.querySelector('.import-fields > small')?.textContent).toContain('10-31')
+    expect(host.querySelector('[role=alert]')).toBeNull()
+    expect(alert).not.toHaveBeenCalled()
+    expect(host.textContent).not.toMatch(/截断|只导入最新|表格较长/)
+    expect(onImported).toHaveBeenCalledWith(expect.objectContaining({
+      plan: expect.objectContaining({ start_date: '2026-10-31', plan_weeks: 5, end_date: '2026-12-04' }),
+      weekdays: [5, 6, 1, 2],
+    }))
+    const snapshot = vi.mocked(pending.putPendingRevision).mock.calls[0][1].content
+    expect(snapshot.planStartDate).toBe('2026-10-31')
+    expect(snapshot.weeks).toHaveLength(5)
+    const savedDays = vi.mocked(plans.batchDays).mock.calls.flatMap(([, body]) => body.upsert_days)
+    expect(savedDays.map(day => planDayDateLabel('2026-10-31', day.week_number, day.day_of_week - 1)))
+      .toEqual(['10/31', '11/1', '11/3', '11/4', '11/10', '11/11', '11/17', '11/18', '11/24', '11/25', '12/1', '12/2'])
+  } finally { alert.mockRestore() }
+})
+
+it('retries a dated import after custom-exercise and snapshot failures using the same draft and calendar', async () => {
+  vi.mocked(imports.outlineImport).mockResolvedValue({ import_id: 'dated-retry', sheet: 'Paste', truncated_rows: 0, header_region: null,
+    weeks: [{ index: 0, label: 'W1', start_date: '2026-10-26', training_days: 1, region: { r1: 1, c1: 1, r2: 1, c2: 3 } }],
+  })
+  vi.mocked(imports.recognizeImportWeeks).mockResolvedValue({ weeks: [{ index: 0, start_date: '2026-10-26',
+    days: [{ weekday: 5, day_index: 1, rest: false, exercises: [aiExercise, { ...aiExercise, name: 'Second lift' }] }],
+  }] })
+  const draft = { id: 'dated-retry-created', plan_weeks: 1, start_date: '2026-10-31', end_date: '2026-11-06', status: 'draft', days: [] } as never
+  vi.mocked(plans.createPlan).mockResolvedValue(draft)
+  vi.mocked(plans.getPlan).mockResolvedValue(draft)
+  vi.mocked(plans.batchDays).mockResolvedValue(draft)
+  vi.mocked(catalog.createCustomExercise)
+    .mockResolvedValueOnce({ id: 'first', name: aiExercise.name, created_by_coach_id: 'coach' } as never)
+    .mockRejectedValueOnce(new Error('temporary catalog failure'))
+    .mockResolvedValueOnce({ id: 'second', name: 'Second lift', created_by_coach_id: 'coach' } as never)
+  vi.mocked(pending.putPendingRevision).mockRejectedValueOnce(new Error('temporary snapshot failure'))
+  await source(); await click(S.sheetImport.recognize(1))
+  await click(S.sheetImport.create)
+  expect(host.querySelector('[role=alert]')?.textContent).toContain(S.sheetImport.createdRetry)
+  expect(onImported).not.toHaveBeenCalled()
+  await click(S.sheetImport.create)
+  expect(host.querySelector('[role=alert]')?.textContent).toContain(S.sheetImport.createdRetry)
+  expect(onImported).not.toHaveBeenCalled()
+  await click(S.sheetImport.create)
+
+  expect(plans.createPlan).toHaveBeenCalledOnce()
+  expect(plans.createPlan).toHaveBeenCalledWith(expect.objectContaining({
+    start_date: '2026-10-31', plan_weeks: 1, end_date: '2026-11-06', anchor_weekday: 6,
+  }))
+  expect(catalog.createCustomExercise).toHaveBeenCalledTimes(3)
+  expect(host.querySelector('[role=alert]')).toBeNull()
+  expect(onImported).toHaveBeenCalledOnce()
+  const savedDays = vi.mocked(plans.batchDays).mock.calls.flatMap(([, body]) => body.upsert_days)
+  expect(savedDays).toHaveLength(1)
+  expect(savedDays[0]).toMatchObject({ week_number: 1, day_of_week: 1,
+    exercises: [expect.objectContaining({ exercise_id: 'first' }), expect.objectContaining({ exercise_id: 'second' })],
+  })
+  for (const [id, mirror] of vi.mocked(pending.putPendingRevision).mock.calls) {
+    expect(id).toBe('dated-retry-created')
+    expect(mirror.content.planStartDate).toBe('2026-10-31')
+    expect(mirror.content.weeks).toHaveLength(1)
+    expect(mirror.content.weeks[0].days[0].rows.map(row => row.exerciseId)).toEqual(['first', 'second'])
+  }
+})
+
 it.each([
   [[1, 1, 0, 1, 1, 0, 0], [false, false, false, true, true, false, false]],
   [[...Array(14).fill(1), ...Array(12).fill(0)], [false, false, ...Array(12).fill(true), ...Array(12).fill(false)]],
@@ -554,6 +638,13 @@ it.each([false, true])('does not offer a weekday picker for known weekdays (date
   expect(host.querySelector('[data-training-weekday]')).toBeNull()
   expect(host.querySelector('input[type=date]') !== null).toBe(!dated)
   expect(button(S.sheetImport.create).disabled).toBe(false)
+})
+
+it('keeps the existing summary date for ordinal weeks when the coach selects a first date', async () => {
+  ordinalWeeks(4, false, true)
+  await source(); await click(S.sheetImport.recognize(1))
+  await act(async () => inputValue(host.querySelector<HTMLInputElement>('input[type=date]')!, '2026-11-02'))
+  expect(host.querySelector('.import-fields > small')?.textContent).toContain('10-19')
 })
 
 it.each([
