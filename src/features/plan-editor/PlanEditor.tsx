@@ -2752,7 +2752,7 @@ export function PlanEditor(props: PlanEditorProps) {
         days: Array.from({ length: 7 }, (_, day) => importer.parseDay(grid, block.contentRows, day, offset)),
       }))
       const sourceWeekCount = parsedWeeks.filter(hasParsedWeekContent).length
-      const { weeks: nextWeeks, startDate: importStart } = importer.buildWeeks(parsedWeeks, props.exerciseIndex, currentStart)
+      const { weeks: nextWeeks, startDate: importStart, droppedSourceWeeks } = importer.buildWeeks(parsedWeeks, props.exerciseIndex, currentStart)
 
       if (nextWeeks.length === 0) {
         window.alert(S.editor.noTrainingWeeks)
@@ -2784,9 +2784,8 @@ export function PlanEditor(props: PlanEditorProps) {
       // Best-effort: a failed rename must not fail the import (the coach can rename manually).
       if (fileBase && props.onRename) void Promise.resolve(props.onRename(fileBase)).catch(() => {})
       const imported = nextWeeks.length
-      const dropped = sourceWeekCount - imported
       let truncation: string
-      if (dropped > 0) {
+      if (droppedSourceWeeks > 0) {
         truncation = S.editor.importTruncated(sourceWeekCount, imported)
       } else {
         truncation = S.editor.importedUnsaved(imported)
@@ -2794,7 +2793,7 @@ export function PlanEditor(props: PlanEditorProps) {
       const range = importRangeLabel(nextWeeks)
       if (range) truncation += `（${range}）`
       setStatusText(truncation)
-      if (dropped > 0) window.alert(truncation)
+      if (droppedSourceWeeks > 0) window.alert(truncation)
     } catch (e) {
       const code = e instanceof Error ? e.message : ''
       if (code === 'WORKBOOK_TOO_LARGE' || code === 'SHEET_TOO_LARGE') {
