@@ -1,5 +1,12 @@
 import type { Translations } from './types'
 export const zhImport = {
+  selectBlock: (n: number) => `这个表格里有 ${n} 个 block`,
+  blockHint: '一个 block 导成一份计划。选一个继续；想导别的，之后再导一次。',
+  blockSheets: (sheets: string[]) => sheets.length === 1 ? `「${sheets[0]}」页` : `「${sheets[0]}」…「${sheets.at(-1)}」${sheets.length} 页`,
+  blockWeeks: (weeks: number, days: string) => `${weeks} 周 · 每周练 ${days} 天`,
+  skippedSheets: (sheets: string[]) => `没当成 block 的页：${sheets.join('、')}（说明、计算或记录，不是计划）`,
+  chooseBlock: '选这个 block，下一步选周', changeBlock: '← 换一个 block',
+  foundBlock: (label: string, n: number) => `「${label}」识别到 ${n} 周`,
   groupedTexts: '同类写法',
   groupFields: { reps: '次数', intensity: '强度', weight: '重量' },
   textGroup: (field: string, text: string, n: number) => `${field}写的是『${text}』· ${n} 个动作`,
@@ -45,6 +52,13 @@ export const zhImport = {
   planActions: (name: string) => `${name} · 更多操作`, emptyWeek: (n: number) => `W${n} · 无内容周`,
 } as const
 export const enImport: Translations<typeof zhImport> = {
+  selectBlock: n => `This table contains ${n} blocks`,
+  blockHint: 'Each block becomes one plan. Select one to continue; import again later for another block.',
+  blockSheets: sheets => sheets.length === 1 ? `Sheet “${sheets[0]}”` : `“${sheets[0]}”…“${sheets.at(-1)}” · ${sheets.length} sheets`,
+  blockWeeks: (weeks, days) => `${weeks} weeks · ${days} training days per week`,
+  skippedSheets: sheets => `Sheets not treated as blocks: ${sheets.join(', ')} (instructions, calculations or records, not plans)`,
+  chooseBlock: 'Select this block, then choose weeks', changeBlock: '← Choose another block',
+  foundBlock: (label, n) => `${n} weeks found in “${label}”`,
   groupedTexts: 'Repeated text',
   groupFields: { reps: 'Reps', intensity: 'Intensity', weight: 'Weight' },
   textGroup: (field, text, n) => `${field} says “${text}” · ${n} exercises`,

@@ -45,6 +45,159 @@ it('hides import when disabled and disables recognition when the quota is zero',
 })
 
 async function click(text: string) { await act(async () => button(text).click()) }
+async function uploadBlocks() {
+  const workbook = XLSX.utils.book_new()
+  for (const [sheet, rows] of [
+    ['基础', [['基础表头'], ['Squat', '100'], ['Bench', '60']]],
+    ['比赛', [['比赛表头'], ['Deadlift', '150']]],
+    ['说明', [['不是计划']]],
+  ] as const) XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet(rows.map(row => [...row])), sheet)
+  const buffer = XLSX.write(workbook, { type: 'array', bookType: 'xlsx' })
+  await act(async () => {
+    const input = host.querySelector<HTMLInputElement>('input[type=file]')!
+    Object.defineProperty(input, 'files', { configurable: true, value: [{ name: 'Synthetic.xlsx', size: buffer.byteLength, arrayBuffer: async () => buffer }] })
+    input.dispatchEvent(new Event('change', { bubbles: true }))
+  })
+  await click('开始识别')
+}
+function blockOutline() {
+  const blocks: imports.ImportBlock[] = [
+    { id: 'base', label: '基础 block', sheets: ['基础'], header_region_by_sheet: { 基础: { r1: 1, c1: 1, r2: 1, c2: 1 } }, weeks: [
+      { index: 0, label: '基础 W1', start_date: '2026-09-07', training_days: 3, region: { sheet: '基础', r1: 2, c1: 1, r2: 2, c2: 2 } },
+      { index: 1, label: '基础 W2', start_date: '2026-09-14', training_days: 3, region: { sheet: '基础', r1: 3, c1: 1, r2: 3, c2: 2 } },
+    ] },
+    { id: 'meet', label: '比赛 block', sheets: ['比赛'], header_region_by_sheet: { 比赛: { r1: 1, c1: 1, r2: 1, c2: 1 } }, weeks: [
+      { index: 0, label: '比赛 W1', start_date: '2026-10-26', training_days: 4, region: { sheet: '比赛', r1: 2, c1: 1, r2: 2, c2: 2 } },
+    ] },
+  ]
+  return { import_id: 'blocks-run', sheet: '比赛', truncated_rows: 0, header_region: blocks[1].header_region_by_sheet.比赛!, weeks: blocks[1].weeks, blocks, skipped_sheets: ['说明'] }
+}
+it('selects the latest block, switches its week list and recognizes only the chosen block', async () => {
+  vi.mocked(imports.getImportStatus).mockResolvedValue({ enabled: true, daily_limit: 3, remaining_today: 3 })
+  vi.mocked(imports.outlineImport).mockResolvedValue(blockOutline())
+  vi.mocked(imports.recognizeImportWeeks).mockResolvedValue({ weeks: [] })
+  await render(); await click('从表格导入'); await uploadBlocks()
+  expect(host.querySelector('h3')?.textContent).toBe('这个表格里有 2 个 block')
+  expect(host.textContent).toContain('一个 block 导成一份计划。选一个继续；想导别的，之后再导一次。')
+  expect(host.textContent).toContain('没当成 block 的页：说明（说明、计算或记录，不是计划）')
+  expect(host.textContent).toContain('「基础」页')
+  expect(host.textContent).toContain('2 周 · 每周练 3 天')
+  expect(host.textContent).toContain('09/07 – 09/20')
+  expect([...host.querySelectorAll<HTMLInputElement>('input[type=radio]')].map(input => input.checked)).toEqual([false, true])
+  await click('选这个 block，下一步选周')
+  expect(host.textContent).toContain('Synthetic.xlsx · 「比赛 block」识别到 1 周')
+  expect(host.querySelector<HTMLInputElement>('input:not([type])')?.value).toBe('Synthetic · 比赛 block')
+  expect([...host.querySelectorAll('input[type=checkbox]')].map(input => input.getAttribute('aria-label'))).toEqual(['比赛 W1'])
+  await click('← 换一个 block')
+  await act(async () => host.querySelector<HTMLInputElement>('input[type=radio]')!.click())
+  await click('选这个 block，下一步选周')
+  expect(host.textContent).toContain('Synthetic.xlsx · 「基础 block」识别到 2 周')
+  expect(host.querySelector<HTMLInputElement>('input:not([type])')?.value).toBe('Synthetic · 基础 block')
+  expect([...host.querySelectorAll('input[type=checkbox]')].map(input => input.getAttribute('aria-label'))).toEqual(['基础 W1', '基础 W2'])
+  await click('识别这 2 周')
+  expect(imports.recognizeImportWeeks).toHaveBeenLastCalledWith('blocks-run', {
+    weeks: [{ index: 0, cells: [[2, 1, 'Squat'], [2, 2, '100']] }, { index: 1, cells: [[3, 1, 'Bench'], [3, 2, '60']] }],
+    header_cells: [[1, 1, '基础表头']], header_cells_by_sheet: { 基础: [[1, 1, '基础表头']] },
+  })
+  expect(imports.outlineImport).toHaveBeenCalledTimes(1)
+})
+it('reads each week and its retry from the correct sheet in a cross-sheet block', async () => {
+  const outline = blockOutline()
+  outline.blocks[0].sheets = ['基础', '比赛']
+  outline.blocks[0].weeks[1].region = { sheet: '比赛', r1: 2, c1: 1, r2: 2, c2: 2 }
+  outline.blocks[0].header_region_by_sheet = { ...outline.blocks[0].header_region_by_sheet, 比赛: outline.header_region }
+  vi.mocked(imports.getImportStatus).mockResolvedValue({ enabled: true, daily_limit: 3, remaining_today: 3 })
+  vi.mocked(imports.outlineImport).mockResolvedValue(outline)
+  vi.mocked(imports.recognizeImportWeeks).mockResolvedValue({ weeks: [
+    { index: 0, start_date: '2026-09-07', days: [{ weekday: 0, day_index: 1, rest: false, exercises: [aiExercise] }] },
+    { index: 1, error: 'PARSE_FAILED', reason: 'BAD_OUTPUT' },
+  ] })
+  await render(); await click('从表格导入'); await uploadBlocks()
+  expect(host.textContent).toContain('「基础」…「比赛」2 页')
+  await act(async () => host.querySelector<HTMLInputElement>('input[type=radio]')!.click())
+  await click('选这个 block，下一步选周'); await click('识别这 2 周')
+  expect(imports.recognizeImportWeeks).toHaveBeenLastCalledWith('blocks-run', {
+    weeks: [{ index: 0, cells: [[2, 1, 'Squat'], [2, 2, '100']] }, { index: 1, cells: [[2, 1, 'Deadlift'], [2, 2, '150']] }],
+    header_cells: [[1, 1, '基础表头']], header_cells_by_sheet: { 基础: [[1, 1, '基础表头']], 比赛: [[1, 1, '比赛表头']] },
+  })
+  const cell = host.querySelector<HTMLInputElement>('[aria-label="W2 B2"]')!
+  expect(cell.value).toBe('150')
+  await act(async () => inputValue(cell, '155'))
+  await click('改好了，重新识别')
+  expect(imports.recognizeImportWeeks).toHaveBeenLastCalledWith('blocks-run', {
+    weeks: [{ index: 1, cells: [[2, 1, 'Deadlift'], [2, 2, '155']] }],
+    header_cells: [[1, 1, '基础表头']], header_cells_by_sheet: { 基础: [[1, 1, '基础表头']], 比赛: [[1, 1, '比赛表头']] },
+  })
+})
+it.each(['single', 'legacy'] as const)('skips the block picker for a %s file response and retains the filename default', async shape => {
+  const response = blockOutline()
+  const outline: imports.ImportOutline = shape === 'single' ? { ...response, blocks: [response.blocks[1]] } : {
+    import_id: response.import_id, sheet: response.sheet, header_region: response.header_region, truncated_rows: 0,
+    weeks: [{ ...response.weeks[0], region: { r1: 2, c1: 1, r2: 2, c2: 2 } }],
+  }
+  vi.mocked(imports.getImportStatus).mockResolvedValue({ enabled: true, daily_limit: 3, remaining_today: 3 })
+  vi.mocked(imports.outlineImport).mockResolvedValue(outline)
+  vi.mocked(imports.recognizeImportWeeks).mockResolvedValue({ weeks: [] })
+  await render(); await click('从表格导入'); await uploadBlocks()
+  expect(host.querySelector('h3')?.textContent).toBe('选择要导入的周')
+  expect(host.querySelector('input[type=radio]')).toBeNull()
+  expect(button('← 换一个 block')).toBeUndefined()
+  expect(host.querySelector<HTMLInputElement>('input:not([type])')?.value).toBe('Synthetic')
+  expect(host.textContent).toContain(shape === 'single' ? 'Synthetic.xlsx · 「比赛 block」识别到 1 周' : 'Synthetic.xlsx · 在「比赛」页识别到 1 周')
+  await click('识别这 1 周')
+  expect(imports.recognizeImportWeeks).toHaveBeenLastCalledWith('blocks-run', {
+    weeks: [{ index: 0, cells: [[2, 1, 'Deadlift'], [2, 2, '150']] }], header_cells: [[1, 1, '比赛表头']],
+    ...(shape === 'single' ? { header_cells_by_sheet: { 比赛: [[1, 1, '比赛表头']] } } : {}),
+  })
+})
+it('keeps pasted content in one block even when the response includes multiple blocks', async () => {
+  const response = blockOutline()
+  vi.mocked(imports.outlineImport).mockResolvedValue({ ...response, sheet: 'Paste', header_region: null,
+    weeks: [{ ...response.weeks[0], region: { r1: 1, c1: 1, r2: 1, c2: 3 } }],
+  })
+  vi.mocked(imports.recognizeImportWeeks).mockResolvedValue({ weeks: [] })
+  await source()
+  expect(host.querySelector('h3')?.textContent).toBe('选择要导入的周')
+  expect(host.querySelector('input[type=radio]')).toBeNull()
+  expect(host.querySelector<HTMLInputElement>('input:not([type])')?.value).toBe('导入计划')
+  await click('识别这 1 周')
+  expect(imports.recognizeImportWeeks).toHaveBeenLastCalledWith('blocks-run', {
+    weeks: [{ index: 0, cells: [[1, 1, 'Squat'], [1, 2, '4*8'], [1, 3, '100']] }],
+    header_cells: [], header_cells_by_sheet: { Paste: [] },
+  })
+})
+it.each([undefined, []])('omits the skipped-sheet line when skipped_sheets is %j and shows undated blocks', async skipped_sheets => {
+  const outline: imports.ImportOutline = blockOutline()
+  outline.skipped_sheets = skipped_sheets
+  outline.blocks![0].weeks.forEach(w => { w.start_date = null })
+  vi.mocked(imports.getImportStatus).mockResolvedValue({ enabled: true, daily_limit: 3, remaining_today: 3 })
+  vi.mocked(imports.outlineImport).mockResolvedValue(outline)
+  await render(); await click('从表格导入'); await uploadBlocks()
+  expect(host.textContent).not.toContain('没当成 block 的页')
+  expect(host.textContent).toContain('没写日期')
+  expect([...host.querySelectorAll<HTMLInputElement>('input[type=radio]')].map(input => input.checked)).toEqual([false, true])
+  await click('← 换一个表格')
+  expect(host.querySelector('textarea')).not.toBeNull()
+  expect(host.textContent).toContain('今天还能为 Synthetic trainee 导入 2 次')
+  expect(imports.outlineImport).toHaveBeenCalledTimes(1)
+})
+it('clears edited failed-week cells and recognition results when switching blocks with the same week indexes', async () => {
+  vi.mocked(imports.getImportStatus).mockResolvedValue({ enabled: true, daily_limit: 3, remaining_today: 3 })
+  vi.mocked(imports.outlineImport).mockResolvedValue(blockOutline())
+  vi.mocked(imports.recognizeImportWeeks).mockResolvedValue({ weeks: [{ index: 0, error: 'PARSE_FAILED', reason: 'BAD_OUTPUT' }] })
+  await render(); await click('从表格导入'); await uploadBlocks()
+  await click('选这个 block，下一步选周'); await click('识别这 1 周')
+  await act(async () => inputValue(host.querySelector<HTMLInputElement>('[aria-label="W1 B2"]')!, '999'))
+  await click('← 重新选周'); await click('← 换一个 block')
+  await act(async () => host.querySelector<HTMLInputElement>('input[type=radio]')!.click())
+  await click('选这个 block，下一步选周'); await click('识别这 2 周')
+  expect(imports.recognizeImportWeeks).toHaveBeenLastCalledWith('blocks-run', {
+    weeks: [{ index: 0, cells: [[2, 1, 'Squat'], [2, 2, '100']] }, { index: 1, cells: [[3, 1, 'Bench'], [3, 2, '60']] }],
+    header_cells: [[1, 1, '基础表头']], header_cells_by_sheet: { 基础: [[1, 1, '基础表头']] },
+  })
+  expect(host.textContent).not.toContain('999')
+  expect(imports.outlineImport).toHaveBeenCalledTimes(1)
+})
 async function uploadWorkbook(hasContent: boolean) {
   const workbook = XLSX.utils.book_new()
   if (hasContent) XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([['Squat', 120]]), 'Sheet2')

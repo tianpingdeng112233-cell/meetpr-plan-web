@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
-import { outlineImport, recognizeImportWeeks, type AIWeekResult, type AIWeek, type ImportOutline, type ImportStatus } from '../../../api/planImports'
+import { outlineImport, recognizeImportWeeks, type AIWeekResult, type AIWeek, type ImportOutline, type ImportBlock, type ImportStatus } from '../../../api/planImports'
 import type { PlanWithChildren, PlanResponse, ExerciseResponse } from '../../../api/types'
 import type { ExerciseIndex } from '../exerciseIndex'
 import type { Week } from '../types'
@@ -31,6 +31,27 @@ function defaultWeekSelection(weeks: ImportOutline['weeks']): number[] {
   return weeks.slice(start, end).map(w => w.index)
 }
 
+function outlineBlocks(outline: ImportOutline, isFile: boolean): ImportBlock[] {
+  if (outline.blocks?.length && (isFile || outline.blocks.length === 1)) return outline.blocks
+  return [{ id: 'default', label: outline.sheet, sheets: [outline.sheet], weeks: outline.weeks,
+    header_region_by_sheet: { [outline.sheet]: outline.header_region } }]
+}
+function blockDates(block: ImportBlock): string[] {
+  return block.weeks.flatMap(w => w.start_date ? [w.start_date] : []).sort()
+}
+function latestBlock(blocks: ImportBlock[]): ImportBlock {
+  return blocks.reduce((latest, block) => (blockDates(block).at(-1) ?? '') > (blockDates(latest).at(-1) ?? '') ? block : latest)
+}
+function blockDateRange(block: ImportBlock): string {
+  const dates = blockDates(block)
+  return dates.length ? `${mmdd(dates[0]).replace('-', '/')} – ${mmdd(shiftISODate(dates.at(-1)!, 6)).replace('-', '/')}` : S.sheetImport.noDate
+}
+function blockTrainingDays(block: ImportBlock): string {
+  const days = block.weeks.map(w => w.training_days)
+  const min = Math.min(...days), max = Math.max(...days)
+  return days.length ? min === max ? String(min) : `${min}–${max}` : '0'
+}
+
 function importError(error: unknown): string {
   const code = error instanceof Error ? error.message : ''
   if (code in S.sheetImport.errors) return S.sheetImport.errors[code as keyof typeof S.sheetImport.errors]
@@ -47,21 +68,34 @@ export function ImportPlanDialog(p: ImportPlanDialogProps) {
   const [filename, setFilename] = useState('')
   const [paste, setPaste] = useState('')
   const [error, setError] = useState('')
-  const [stage, setStage] = useState<'source' | 'weeks' | 'summary'>('source')
+  const [stage, setStage] = useState<'source' | 'blocks' | 'weeks' | 'summary'>('source')
   const [busy, setBusy] = useState('')
   const [remaining, setRemaining] = useState(p.status.remaining_today)
   const [outline, setOutline] = useState<ImportOutline | null>(null)
+  const [blockId, setBlockId] = useState('')
+  const blocks = outline ? outlineBlocks(outline, !!filename) : []
+  const block = blocks.find(b => b.id === blockId)
+  const multiBlock = blocks.length > 1
   const [selected, setSelected] = useState<number[]>([])
   const [name, setName] = useState(S.sheetImport.defaultName)
+  const resetRecognition = () => {
+    setResults([]); setTextFixes({}); setEditedCells({}); setSkippedUnreadable(new Set()); setEmptyWeeks(new Set()); createdRef.current = null; addedRef.current = []
+    setFirstDate(defaultFirstDate(0)); setInferredConfirmed(false); setChosenDays(null); setFirst(0)
+  }
+  const selectBlock = (next: ImportBlock, multiple: boolean) => {
+    resetRecognition(); setError(''); setBlockId(next.id); setSelected(defaultWeekSelection(next.weeks))
+    const baseName = filename.replace(/\.[^.]+$/, '').trim() || S.sheetImport.defaultName
+    setName(multiple ? `${baseName} · ${next.label}` : baseName)
+  }
   const start = async () => {
     if (busy || !remaining) return
     setBusy(S.sheetImport.reading); setError('')
     try {
       const result = await outlineImport({ trainee_id: p.traineeId, source: filename ? 'file' : 'paste', sheets })
-      setResults([]); setTextFixes({}); setEditedCells({}); setSkippedUnreadable(new Set()); setEmptyWeeks(new Set()); createdRef.current = null; addedRef.current = []
-      setFirstDate(defaultFirstDate(0)); setInferredConfirmed(false); setChosenDays(null); setFirst(0)
-      setOutline(result); setSelected(defaultWeekSelection(result.weeks)); setRemaining(Math.max(0, remaining - 1)); p.onRemainingChange?.(Math.max(0, remaining - 1))
-      setName(filename.replace(/\.[^.]+$/, '').trim() || S.sheetImport.defaultName); setStage('weeks')
+      const nextBlocks = outlineBlocks(result, !!filename)
+      setOutline(result); selectBlock(latestBlock(nextBlocks), nextBlocks.length > 1)
+      setRemaining(Math.max(0, remaining - 1)); p.onRemainingChange?.(Math.max(0, remaining - 1))
+      setStage(nextBlocks.length > 1 ? 'blocks' : 'weeks')
     } catch (e) {
       setError(e instanceof ApiException && e.status === 400 && e.code === 'VALIDATION_ERROR' ? S.sheetImport.invalidFormat : importError(e))
       if (e instanceof ApiException && e.code === 'IMPORT_DAILY_LIMIT') { setRemaining(0); p.onRemainingChange?.(0) }
@@ -70,9 +104,9 @@ export function ImportPlanDialog(p: ImportPlanDialogProps) {
   }
   const toggleWeek = (index: number) => {
     const next = selected.includes(index) ? selected.filter(i => i !== index) : [...selected, index]
-    const positions = outline!.weeks.flatMap((w, i) => next.includes(w.index) ? [i] : [])
+    const positions = block!.weeks.flatMap((w, i) => next.includes(w.index) ? [i] : [])
     if (next.length > 12 || (positions.length && positions.at(-1)! - positions[0] + 1 !== positions.length)) { setError(S.sheetImport.selectionError); return }
-    setSelected(outline!.weeks.filter(w => next.includes(w.index)).map(w => w.index)); setError('')
+    setSelected(block!.weeks.filter(w => next.includes(w.index)).map(w => w.index)); setError('')
   }
   const [textFixes, setTextFixes] = useState<TextFixes>({})
   const [results, setResults] = useState<AIWeekResult[]>([])
@@ -83,10 +117,14 @@ export function ImportPlanDialog(p: ImportPlanDialogProps) {
   const [firstDate, setFirstDate] = useState(defaultFirstDate(0))
   const [chosenDays, setChosenDays] = useState<number[] | null>(null)
   const [first, setFirst] = useState(0)
-  const cells = sheets.find(sheet => sheet.name === outline?.sheet)?.cells ?? []
-  const cellsFor = (index: number) => editedCells[index] ?? regionCells(cells, outline!.weeks.find(w => w.index === index)!.region)
+  const cells = sheets.find(sheet => sheet.name === block?.sheets[0])?.cells ?? []
+  const cellsFor = (index: number) => {
+    const region = block!.weeks.find(w => w.index === index)!.region
+    const sourceCells = sheets.find(sheet => sheet.name === (region.sheet ?? block!.sheets[0]))?.cells ?? []
+    return editedCells[index] ?? regionCells(sourceCells, region)
+  }
   const recognize = async (indexes: number[]) => {
-    if (!outline || busy) return
+    if (!outline || !block || busy) return
     setError(''); setBusy(S.sheetImport.progress(1, indexes.length))
     if (indexes.length) setInferredConfirmed(false)
     const received: AIWeekResult[] = []
@@ -97,7 +135,10 @@ export function ImportPlanDialog(p: ImportPlanDialogProps) {
         const batch = indexes.slice(offset, offset + 4)
         const response = await recognizeImportWeeks(outline.import_id, {
           weeks: batch.map(index => ({ index, cells: cellsFor(index).map(([r,c,text]): SheetCell => [r,c,text.trim()]).filter(c => c[2]) })),
-          header_cells: regionCells(cells, outline.header_region),
+          header_cells: regionCells(cells, block.header_region_by_sheet[block.sheets[0]] ?? null),
+          ...(outline.blocks?.length ? { header_cells_by_sheet: Object.fromEntries(block.sheets.map(sheet => [sheet,
+            regionCells(sheets.find(s => s.name === sheet)?.cells ?? [], block.header_region_by_sheet[sheet] ?? null),
+          ])) } : {}),
         })
         received.push(...batch.map(index => response.weeks.find(w => w.index === index) ?? { index, error: 'PARSE_FAILED' as const, reason: 'BAD_OUTPUT' as const }))
       }
@@ -202,7 +243,7 @@ export function ImportPlanDialog(p: ImportPlanDialogProps) {
     catch (e) { setSheets([]); setError(importError(e)) }
   }
   return <div className="import-overlay" onMouseDown={() => { if (!busy) p.onClose() }}><section role="dialog" aria-modal="true" aria-label={S.workspace.dialogs.newPlanTitle} className="import-dialog" onKeyDown={e => { if (e.key === 'Escape' && !busy) p.onClose() }} onMouseDown={e => e.stopPropagation()}>
-    <div className="import-title"><h3>{stage === 'weeks' ? S.sheetImport.selectWeeks : stage === 'summary' ? S.sheetImport.done : S.workspace.dialogs.newPlanTitle}</h3>{!busy && stage === 'source' && p.tabs}</div>
+    <div className="import-title"><h3>{stage === 'blocks' ? S.sheetImport.selectBlock(blocks.length) : stage === 'weeks' ? S.sheetImport.selectWeeks : stage === 'summary' ? S.sheetImport.done : S.workspace.dialogs.newPlanTitle}</h3>{!busy && stage === 'source' && p.tabs}</div>
     {busy && <p role="status">{busy}</p>}
     <fieldset disabled={!!busy} className="import-fields">
     {stage === 'source' && <>
@@ -218,17 +259,27 @@ export function ImportPlanDialog(p: ImportPlanDialogProps) {
     {error && <p role="alert">{error}</p>}
     <footer><button onClick={p.onClose}>{S.common.cancel}</button><button className="primary" onClick={() => void start()} disabled={!sheets.some(s => s.cells.length) || remaining === 0}>{remaining === 0 ? S.sheetImport.exhausted : S.sheetImport.start}</button></footer>
     </>}
-    {stage === 'weeks' && outline && <>
-      <small>{filename || S.sheetImport.pasted} · {S.sheetImport.found(filename ? outline.sheet : S.sheetImport.pasted, outline.weeks.length)}</small>
+    {stage === 'blocks' && outline && <>
+      <small>{S.sheetImport.blockHint}</small>
+      <div className="import-blocks">{blocks.map(candidate => <label key={candidate.id} className={candidate.id === blockId ? 'selected' : ''}>
+        <input type="radio" name="import-block" aria-label={candidate.label} checked={candidate.id === blockId} onChange={() => selectBlock(candidate, multiBlock)} />
+        <span className="import-block-name"><b>{candidate.label}</b><small>{S.sheetImport.blockSheets(candidate.sheets)}</small></span>
+        <span className="import-block-details"><span>{S.sheetImport.blockWeeks(candidate.weeks.length, blockTrainingDays(candidate))}</span><small>{blockDateRange(candidate)}</small></span>
+      </label>)}</div>
+      {!!outline.skipped_sheets?.length && <small className="import-skipped-sheets">{S.sheetImport.skippedSheets(outline.skipped_sheets)}</small>}
+      <footer className="import-picker-footer"><button className="import-back" onClick={() => { setStage('source'); setError('') }}>{S.sheetImport.changeSource}</button><button className="primary" onClick={() => setStage('weeks')}>{S.sheetImport.chooseBlock}</button></footer>
+    </>}
+    {stage === 'weeks' && outline && block && <>
+      <small>{filename || S.sheetImport.pasted} · {outline.blocks?.length ? S.sheetImport.foundBlock(block.label, block.weeks.length) : S.sheetImport.found(filename ? outline.sheet : S.sheetImport.pasted, block.weeks.length)}</small>
       <label>{S.workspace.dialogs.planName}<input value={name} onChange={e => setName(e.target.value)} /></label>
       <div className="import-footnote"><span>{S.sheetImport.selectionHint}</span><span>{S.sheetImport.selected(selected.length)}</span></div>
       {outline.truncated_rows > 0 && <small>{S.sheetImport.truncated}</small>}
-      <div className="import-weeks">{outline.weeks.map(w => <label key={w.index} className={selected.includes(w.index) ? 'selected' : ''}>
+      <div className="import-weeks">{block.weeks.map(w => <label key={w.index} className={selected.includes(w.index) ? 'selected' : ''}>
         <input type="checkbox" checked={selected.includes(w.index)} onChange={() => toggleWeek(w.index)} aria-label={w.label} />
-        <b title={w.label}>W{w.index + 1}</b><span>{w.start_date ? `${mmdd(w.start_date)} – ${mmdd(shiftISODate(w.start_date, 6))}` : S.sheetImport.noDate}</span><small>{S.sheetImport.trainingDays(w.training_days)}</small>
+        <b title={w.label}>W{w.index + 1}</b><span>{w.start_date ? `${mmdd(w.start_date).replace('-', '/')} – ${mmdd(shiftISODate(w.start_date, 6)).replace('-', '/')}` : S.sheetImport.noDate}</span><small>{S.sheetImport.trainingDays(w.training_days)}</small>
       </label>)}</div>
       {error && <p role="alert">{error}</p>}
-      <footer><button onClick={() => { setStage('source'); setError('') }}>{S.sheetImport.changeSource}</button><button className="primary" onClick={() => void recognize(selected.filter(index => !results.some(result => result.index === index)))} disabled={!selected.length || !name.trim()}>{S.sheetImport.recognize(selected.length)}</button></footer>
+      <footer className="import-picker-footer"><button className="import-back" onClick={() => { setStage(multiBlock ? 'blocks' : 'source'); setError('') }}>{multiBlock ? S.sheetImport.changeBlock : S.sheetImport.changeSource}</button><button className="primary" onClick={() => void recognize(selected.filter(index => !results.some(result => result.index === index)))} disabled={!selected.length || !name.trim()}>{S.sheetImport.recognize(selected.length)}</button></footer>
     </>}
     {stage === 'summary' && outline && <>
       <small>{name} · W{(selected[0] ?? 0) + 1}–W{(selected.at(-1) ?? 0) + 1} · {mmdd(goodWeeks[0]?.start_date ?? firstDate)}</small>
@@ -239,7 +290,7 @@ export function ImportPlanDialog(p: ImportPlanDialogProps) {
         <p>{S.sheetImport.editFailed(w.index + 1)}</p>
         <FailedWeekCells index={w.index} cells={cellsFor(w.index)} onChange={next => setEditedCells(prev => ({ ...prev, [w.index]: next }))} />
         <div className="import-failure-actions"><button className="primary" onClick={() => void recognize([w.index])}>{S.sheetImport.retry}</button>
-          <button onClick={() => { setEmptyWeeks(prev => new Set(prev).add(w.index)); setResults(prev => prev.map(r => r.index === w.index ? { index: w.index, start_date: outline.weeks.find(o => o.index === w.index)?.start_date ?? null, days: [] } : r)) }}>{S.sheetImport.leaveEmpty}</button>
+          <button onClick={() => { setEmptyWeeks(prev => new Set(prev).add(w.index)); setResults(prev => prev.map(r => r.index === w.index ? { index: w.index, start_date: block!.weeks.find(o => o.index === w.index)?.start_date ?? null, days: [] } : r)) }}>{S.sheetImport.leaveEmpty}</button>
           <button onClick={() => { setSelected(prev => prev.filter(i => i !== w.index)); setResults(prev => prev.filter(r => r.index !== w.index)) }}>{S.sheetImport.omit}</button></div>
       </div>)}
       {unreadableWeeks.map(w => <div key={w.index} className="import-unreadable">

@@ -16,7 +16,7 @@
 .import-dialog small, .import-footnote, .import-divider { font-size: 12px; color: #6b7280; }
 .import-divider { text-align: center; }
 .import-dialog label { display: grid; gap: 8px; font-size: 13px; }
-.import-dialog textarea, .import-dialog input:not([type=checkbox]) { font: inherit; padding: 10px; border: 1px solid #d1d5db; border-radius: 7px; width: 100%; box-sizing: border-box; }
+.import-dialog textarea, .import-dialog input:not([type=checkbox]):not([type=radio]) { font: inherit; padding: 10px; border: 1px solid #d1d5db; border-radius: 7px; width: 100%; box-sizing: border-box; }
 .import-dialog textarea { height: 96px; resize: vertical; }
 .import-footnote, .import-dialog footer { display: flex; justify-content: space-between; gap: 12px; }
 .import-dialog footer { justify-content: flex-end; }
@@ -82,3 +82,18 @@
 .import-group-controls label { width: 110px; gap: 4px; font-size: 12px; }
 .import-group-controls button, .import-group-controls select { padding: 10px; border: 1px solid #d1d5db; border-radius: 7px; background: white; font: inherit; }
 .import-group-controls button[aria-pressed=true] { background: #fef3c7; border-color: #fde68a; }
+
+.import-blocks { display: grid; gap: 10px; max-height: 360px; overflow: auto; }
+.import-blocks label { grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 12px; padding: 14px; border: 1px solid #e5e7eb; border-radius: 10px; background: #f9fafb; cursor: pointer; }
+.import-blocks label.selected { border-color: #111827; background: white; }
+.import-blocks input { margin: 0; accent-color: #111827; }
+.import-block-name, .import-block-details { display: grid; gap: 6px; overflow-wrap: anywhere; }
+.import-block-details { text-align: right; font-variant-numeric: tabular-nums; }
+.import-skipped-sheets { padding: 12px; border-radius: 7px; background: #f3f4f6; overflow-wrap: anywhere; }
+.import-dialog .import-picker-footer { justify-content: space-between; align-items: center; }
+.import-dialog footer .import-back { padding-left: 0; border: 0; background: none; }
+@media (max-width: 520px) {
+  .import-blocks label { grid-template-columns: auto minmax(0, 1fr); }
+  .import-block-details { grid-column: 2; text-align: left; }
+  .import-picker-footer { flex-wrap: wrap; }
+}
