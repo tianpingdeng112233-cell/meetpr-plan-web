@@ -1,3 +1,5 @@
+import { STABLE_ZH } from '../../../i18n/stable-zh'
+import { activeImportDoubts } from '../import/doubts'
 import { actualShorthand } from '../actualShorthand'
 import type { ActualSet, StudentAddedExercise } from '../actuals'
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
@@ -34,6 +36,7 @@ interface Props {
   readOnly: boolean
   rowTier: (row: ExerciseRow) => 'main' | 'aux'
   renderDay: (week: Week, day: DayCol, dx: number, dayNumber: number) => ReactNode
+  onConfirmWeekImport?: (weekNumber: number) => void
   renderCapacity: (week: Week, index: number) => ReactNode
   onOpen: (week: Week, day: DayCol, event: React.MouseEvent) => void
   onClose: () => void
@@ -57,7 +60,7 @@ function shorthand(row: ExerciseRow): string {
   const weight = row.mode === 'bodyweight' ? S.common.bodyweight
     : intensity?.mode === 'weight_range' ? `${intensity.value}–${intensity.high}`
       : weights.some(w => w !== '—') ? (new Set(weights).size === 1 ? weights[0] : weights.join('/')) : ''
-  return [`${row.boxes.length || '—'}×${row.reps}`, load, weight ? `· ${weight}` : ''].filter(Boolean).join(' ')
+  return [`${row.boxes.length || '—'}×${row.reps === STABLE_ZH.failureReps ? S.editor.failureReps : row.reps}`, load, weight ? `· ${weight}` : ''].filter(Boolean).join(' ')
 }
 
 export function BlockGrid(props: Props) {
@@ -204,6 +207,10 @@ export function BlockGrid(props: Props) {
         <div className="block-week-label" tabIndex={0} style={byDay ? { gridColumn: index + 2, gridRow: 1 } : undefined}>
           <b>W{week.num}</b><span>{props.startDate ? mdLabel(addDays(props.startDate, (week.num - 1) * 7)) : week.range.split(/[–—~]/)[0]}</span>
           {week.isCurrent && <mark>{byDay ? S.editor.blockCurrentWeek : S.editor.currentWeek}</mark>}
+          {!!activeImportDoubts(week.importDoubts).length && !week.days.some(day => day.rows.length) && <div className="import-empty-week" data-import-week={week.num}>
+            {activeImportDoubts(week.importDoubts).map(kind => <span key={kind} title={S.sheetImport.doubtHints[kind]}>{S.sheetImport.doubts[kind]}</span>)}
+            <button disabled={props.readOnly} onClick={() => props.onConfirmWeekImport?.(week.num)}>{S.sheetImport.confirm}</button>
+          </div>}
           <div className="block-capacity">{byDay && <span className="block-capacity-range">{props.startDate
             ? `${mdLabel(addDays(props.startDate, (week.num - 1) * 7))}–${mdLabel(addDays(props.startDate, week.num * 7 - 1))}` : week.range} · </span>}{props.renderCapacity(week, index)}</div>
         </div>
@@ -240,7 +247,7 @@ export function BlockGrid(props: Props) {
                 const actual = props.showActuals && !!actuals?.length
                 const summary = actual ? actualShorthand(row, actuals!) : shorthand(row)
                 return <div key={row.id} className={`block-brick${actual ? ' actual-display' : ''}${props.showActuals && !actual ? ' prescribed-muted' : ''}${props.highlightedVideo?.rowId === row.id ? ' video-highlight' : ''}${props.selectedRows.has(row.id) ? ' row-sel' : ''}${props.rowTier(row) === 'aux' ? ' aux' : ''}${i > 0 && props.rowTier(rows[i - 1]) !== props.rowTier(row) ? ' section-start' : ''}`}
-                data-rowid={row.id} data-locked={row.hasLogs} role="button" tabIndex={0} title={actual ? S.block.prescription(shorthand(row)) : `${name} ${summary}${row.hasLogs ? ' ✓' : ''}`} data-hint={actual ? S.block.prescription(shorthand(row)) : undefined}
+                data-rowid={row.id} data-import-doubt={activeImportDoubts(row.importDoubts).length ? "true" : undefined} data-locked={row.hasLogs} role="button" tabIndex={0} title={actual ? S.block.prescription(shorthand(row)) : `${name} ${summary}${row.hasLogs ? ' ✓' : ''}`} data-hint={actual ? S.block.prescription(shorthand(row)) : undefined}
                 onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); event.stopPropagation(); event.currentTarget.click() } }}
                 onClick={event => { event.stopPropagation(); if (day) props.onSelectRow(week, day, row.id, { toggle: event.metaKey || event.ctrlKey, range: event.shiftKey }) }}>
                 <span>{name}</span><div className="block-brick-summary"><code>{summary}</code><span className="block-brick-status">{row.hasLogs && <span>✓</span>}{props.videoMarker?.(row)}</span></div>

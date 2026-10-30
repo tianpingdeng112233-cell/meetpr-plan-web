@@ -8,6 +8,7 @@ import type { zhCatalog } from './strings-catalog'
 import type { zhChat } from './strings-chat'
 import type { zhCommon } from './strings-common'
 import type { zhEditor } from './strings-editor'
+import type { zhImport } from './strings-import'
 import type { zhStates } from './strings-states'
 import type { zhStats } from './strings-stats'
 import type { zhVideo } from './strings-video'
@@ -388,6 +389,7 @@ const hantCommon = {
 } as const satisfies Translations<typeof zhCommon>
 
 const hantEditor = {
+    failureReps: "\u529B\u7AED",
     blockWeekday: "\u4FEE\u6539 Dx \u661F\u671F",
     blockDone: "\u5DF2\u7DF4",
     blockClose: "Esc \u6536\u8D77",
@@ -452,7 +454,7 @@ const hantEditor = {
     previousWeek: "\u4E0A\u4E00\u9031",
     nextWeek: "\u4E0B\u4E00\u9031",
     scrollHint: "\u6A6B\u5411\u6EFE\u52D5\u5207\u63DB\u9031 \u00B7 \u9031\u5167\u8A13\u7DF4\u65E5\u7E31\u5411\u6392\u5217",
-    renameCurrentPlan: "\u91CD\u65B0\u547D\u540D\u7576\u524D\u8AB2\u8868",
+    renameCurrentPlan: "\u91CD\u65B0\u547D\u540D",
     new: "\u65B0\u5EFA",
     startDateCompact: (date: string) => `\u8D77\u59CB ${date} \u25BC`,
     startDateDayOne: "\u958B\u59CB\u65E5\u671F\uFF08= Day 1\uFF09",
@@ -461,10 +463,10 @@ const hantEditor = {
     planContext: "\u8AB2\u8868\u4E0A\u4E0B\u6587",
     backToOverview: "\u2190 \u7E3D\u89BD",
     renameStudent: "\u4FEE\u6539\u5B78\u54E1\u59D3\u540D",
-    newPlan: "\u65B0\u5EFA\u8AB2\u8868",
+    newPlan: "\uFF0B \u65B0\u5EFA\u8AB2\u8868",
     markCompleted: "\u6A19\u8A18\u5B8C\u6210",
     backfillPastTraining: "\u88DC\u8A18\u904E\u53BB\u8A13\u7DF4",
-    deleteCurrentDraft: "\u522A\u9664\u7576\u524D\u8349\u7A3F",
+    deleteCurrentDraft: "\u522A\u9664\u8349\u7A3F",
     deleteGlyph: "\u522A",
     coachShiftNotice: (days: number, date: string) => `\u5DF2\u5F8C\u79FB ${days} \u5929 \u00B7 ${date} \u8D77`,
     studentShiftNotice: (days: number) => `\u5B78\u54E1\u66FE\u9806\u5EF6 ${days} \u5929`,
@@ -492,7 +494,6 @@ const hantEditor = {
     undoShiftRefreshFailed: "\u5F8C\u79FB\u5DF2\u5FA9\u539F \u00B7 \u65E5\u671F\u91CD\u65B0\u6574\u7406\u5931\u6557\uFF0C\u8ACB\u91CD\u8A66\u91CD\u65B0\u6574\u7406",
     retryShiftRefresh: "\u91CD\u8A66\u91CD\u65B0\u6574\u7406",
     addExercise: "\uFF0B \u52D5\u4F5C",
-    importXlsx: "\u532F\u5165 .xlsx",
     issuesToReview: (count: number) => `! ${count} \u8655\u5F85\u6838\u5C0D`,
     saving: "\u5132\u5B58\u4E2D\u2026",
     updatePlan: "\u66F4\u65B0\u8AB2\u8868",
@@ -658,7 +659,6 @@ const hantEditor = {
     importNotReady: "\u532F\u5165\u5931\u6557 \u00B7 \u8AB2\u8868\u6216\u52D5\u4F5C\u5EAB\u672A\u5C31\u7DD2",
     importWhileSaving: "\u6B63\u5728\u5132\u5B58\u6216\u767C\u5E03 \u00B7 \u8ACB\u7A0D\u5019\u518D\u532F\u5165",
     importPublishedAlert: (plan: string, student: string) => `\u300C${plan}\u300D\u5DF2\u767C\u5E03\u7D66 ${student}\uFF0C\u532F\u5165\u6703\u76F4\u63A5\u8986\u84CB\u5B78\u54E1\u6B63\u5728\u770B\u7684\u8AB2\u8868\u3002\n\u8ACB\u5148\u9EDE\u53F3\u4E0A\u300C\u65B0\u5EFA\u8AB2\u8868\u300D\uFF0C\u5728\u65B0\u7684\u8349\u7A3F\u88E1\u532F\u5165\u3002`,
-    importOverwriteConfirm: "\u7576\u524D\u7DB2\u683C\u5DF2\u6709\u5167\u5BB9\uFF0C\u532F\u5165\u6703\u8986\u84CB\u7576\u524D\u8AB2\u8868\u3002\u662F\u5426\u7E7C\u7E8C\uFF1F",
     importing: "\u532F\u5165\u4E2D\u2026",
     noTrainingWeeks: "\u6C92\u8B58\u5225\u51FA\u8A13\u7DF4\u9031\uFF0C\u8ACB\u78BA\u8A8D\u9078\u7684\u662F\u8AB2\u8868\u8868",
     importNoPlan: "\u532F\u5165\u5931\u6557 \u00B7 \u672A\u8B58\u5225\u8AB2\u8868\u8868",
@@ -712,6 +712,58 @@ const hantEditor = {
     },
     sampleEccentricNote: "3\u79D2\u96E2\u5FC3", sampleSculptingNote: "3\u00D715 \u5851\u5F62",
 } as const satisfies Translations<typeof zhEditor>
+
+const hantImport = {
+    selectBlock: (n: number) => `\u9019\u500B\u8868\u683C\u88E1\u6709 ${n} \u500B block`,
+    blockHint: "\u4E00\u500B block \u5C0E\u6210\u4E00\u4EFD\u8AB2\u8868\u3002\u9078\u4E00\u500B\u7E7C\u7E8C\uFF1B\u60F3\u5C0E\u5225\u7684\uFF0C\u4E4B\u5F8C\u518D\u5C0E\u4E00\u6B21\u3002",
+    blockSheets: (sheets: string[]) => sheets.length === 1 ? `\u300C${sheets[0]}\u300D\u9801` : `\u300C${sheets[0]}\u300D\u2026\u300C${sheets.at(-1)}\u300D${sheets.length} \u9801`,
+    blockWeeks: (weeks: number, days: string) => `${weeks} \u9031 \u00B7 \u6BCF\u9031\u7DF4 ${days} \u5929`,
+    skippedSheets: (sheets: string[]) => `\u6C92\u7576\u6210 block \u7684\u9801\uFF1A${sheets.join("\u3001")}\uFF08\u8AAA\u660E\u3001\u8A08\u7B97\u6216\u8A18\u9304\uFF0C\u4E0D\u662F\u8AB2\u8868\uFF09`,
+    chooseBlock: "\u9078\u9019\u500B block\uFF0C\u4E0B\u4E00\u6B65\u9078\u9031", changeBlock: "\u2190 \u63DB\u4E00\u500B block",
+    foundBlock: (label: string, n: number) => `\u300C${label}\u300D\u8B58\u5225\u5230 ${n} \u9031`,
+    groupedTexts: "\u540C\u985E\u5BEB\u6CD5",
+    groupFields: { reps: "\u4E0B\u6578", intensity: "\u5F37\u5EA6", weight: "\u91CD\u91CF" },
+    textGroup: (field: string, text: string, n: number) => `${field}\u5BEB\u7684\u662F\u300E${text}\u300F\u00B7 ${n} \u500B\u52D5\u4F5C`,
+    unresolvedGroups: (n: number) => `\u9084\u6709 ${n} \u985E\u5BEB\u6CD5\u6C92\u8655\u7406`,
+    noIntensity: "\u4E0D\u8A2D\u5F37\u5EA6", noWeight: "\u4E0D\u8A2D\u91CD\u91CF", fixed: "\u5DF2\u8655\u7406",
+    manual: "\u624B\u52D5\u65B0\u5EFA", title: "\u5F9E\u8868\u683C\u532F\u5165", drop: "\u628A\u8A13\u7DF4\u8868\u62D6\u5230\u9019\u88E1\uFF0C\u6216 ", chooseFile: "\u9078\u64C7\u6A94\u6848",
+    formats: ".xlsx \u00B7 .xls \u00B7 .csv \u00B7 WPS \u8868\u683C \u00B7 \u4EFB\u4F55\u6559\u7DF4\u7684\u6392\u6CD5\u90FD\u53EF\u4EE5", orPaste: "\u6216\u8005\u76F4\u63A5\u8CBC\u4E0A", paste: "\u8CBC\u4E0A\u8868\u683C",
+    pasteHint: "\u5728 WPS / Excel / \u91D1\u5C71\u6587\u4EF6 / Google Sheets \u88E1\u9078\u4E2D\u6574\u4EFD\u8AB2\u8868\uFF0C\u2318C \u8907\u88FD\uFF0C\u5728\u9019\u88E1 \u2318V \u8CBC\u4E0A",
+    privacy: "\u8868\u683C\u5167\u5BB9\u5C07\u7531 AI \u8B58\u5225\uFF0C\u4E0D\u6703\u4E0A\u50B3\u6A94\u6848\u540D", remaining: (name: string, n: number) => `\u4ECA\u5929\u9084\u80FD\u70BA ${name} \u532F\u5165 ${n} \u6B21`,
+    exhausted: "\u4ECA\u5929\u7684\u6B21\u6578\u7528\u5B8C\u4E86\uFF0C\u660E\u5929\u518D\u4F86", start: "\u958B\u59CB\u8B58\u5225", defaultName: "\u532F\u5165\u8AB2\u8868", pasted: "\u8CBC\u4E0A\u7684\u8868\u683C",
+    readingFile: "\u6B63\u5728\u8B80\u53D6\u8868\u683C\u2026", reading: "\u6B63\u5728\u8B58\u5225\u7D50\u69CB\u2026", selectWeeks: "\u9078\u64C7\u8981\u532F\u5165\u7684\u9031", found: (sheet: string, n: number) => `\u5728\u300C${sheet}\u300D\u9801\u8B58\u5225\u5230 ${n} \u9031`,
+    selectionHint: "\u9810\u8A2D\u52FE\u6700\u65B0\u7684\u9023\u7E8C\u4E00\u6BB5 \u00B7 \u53EA\u80FD\u52FE\u9023\u7E8C\u7684\u9031", selected: (n: number) => `\u5DF2\u9078 ${n} \u9031 / \u6700\u591A 12 \u9031`,
+    selectionError: "\u53EA\u80FD\u9078\u64C7\u9023\u7E8C\u7684\u9031\uFF0C\u6700\u591A 12 \u9031", noDate: "\u6C92\u5BEB\u65E5\u671F", trainingDays: (n: number) => `\u7DF4 ${n} \u5929`,
+    truncated: "\u8868\u683C\u8F03\u9577\uFF0C\u53EA\u8B58\u5225\u4E86\u6700\u5F8C\u4E00\u90E8\u5206", changeSource: "\u2190 \u63DB\u4E00\u500B\u8868\u683C", recognize: (n: number) => `\u8B58\u5225\u9019 ${n} \u9031`,
+    progress: (n: number, total: number) => `\u6B63\u5728\u8B58\u5225\u5167\u5BB9 \u00B7 \u7B2C ${n} / ${total} \u9031`, done: "\u8B58\u5225\u5B8C\u6210",
+    summary: (weeks: number, days: number, exercises: number) => `${weeks} \u9031 \u00B7 ${days} \u500B\u8A13\u7DF4\u65E5 \u00B7 ${exercises} \u500B\u52D5\u4F5C`,
+    failed: (n: number, reason: string) => `W${n} \u6C92\u8B58\u5225\u51FA\u4F86 \u00B7 ${reason}`,
+    reasons: { MODEL_BUSY: "DeepSeek \u66AB\u6642\u6C92\u97FF\u61C9", OUTPUT_TOO_LONG: "\u9019\u4E00\u9031\u5167\u5BB9\u592A\u591A\uFF0C\u6C92\u8B80\u5B8C", BAD_OUTPUT: "\u9019\u4E00\u9031\u6C92\u8B80\u61C2", REGION_SUSPECT: "\u9019\u4E00\u9031\u7684\u7BC4\u570D\u53EF\u80FD\u5207\u6B6A\u4E86", EMPTY_WEEK: "\u9019\u4E00\u9031\u6C92\u6709\u8A13\u7DF4\u5167\u5BB9" },
+    editFailed: (n: number) => `\u4E0B\u9762\u662F\u8868\u88E1 W${n} \u7684\u539F\u59CB\u5167\u5BB9\uFF0C\u53EF\u4EE5\u76F4\u63A5\u6539\uFF08\u6BD4\u5982\u522A\u6389\u8AAA\u660E\u6587\u5B57\u3001\u628A\u300C4\u7D44 x8\u300D\u6539\u6210\u300C4*8\u300D\uFF09\uFF0C\u6539\u5B8C\u91CD\u65B0\u8B58\u5225\u3002`,
+    skipUnreadable: "\u8DF3\u904E\u9019\u5E7E\u500B\u52D5\u4F5C", undoSkipUnreadable: "\u5DF2\u8DF3\u904E\u9019\u5E7E\u500B\u52D5\u4F5C \u00B7 \u5FA9\u539F",
+    confirmSkipUnreadable: (week: number, count: number) => `\u8DF3\u904E W${week} \u7684\u9019 ${count} \u500B\u52D5\u4F5C\uFF1F\u5B83\u5011\u4E0D\u6703\u532F\u5165\uFF0C\u5EFA\u7ACB\u524D\u53EF\u5FA9\u539F\u3002`,
+    retryUnreadable: "\u91CD\u65B0\u8B58\u5225\u9019\u4E00\u9031",
+    unresolvedUnreadable: (week: number, count: number) => `W${week} \u9084\u6709 ${count} \u500B\u52D5\u4F5C\u6C92\u8B80\u61C2`,
+    unreadableMismatch: (sets: number, got: number, track: string) => `\u5BEB\u7684\u662F ${sets} \u7D44\uFF0C\u4F46\u53EA\u8A8D\u51FA ${got} \u500B ${track}`,
+    unreadableInvalid: (value: string | number) => `${value} \u4E0D\u662F\u6709\u6548\u7684\u6578\u5B57`,
+    unreadableReasons: { MISSING_NAME: "\u6C92\u627E\u5230\u52D5\u4F5C\u540D", MISSING_SETS: "\u6C92\u627E\u5230\u7D44\u6578", OTHER: "\u9019\u4E00\u884C\u6C92\u8B80\u61C2" },
+    unreadableTracks: { rpe: "RPE", rir: "RIR", pct: "\u767E\u5206\u6BD4", intensity: "\u5F37\u5EA6", weight: "\u91CD\u91CF" },
+    retry: "\u6539\u597D\u4E86\uFF0C\u91CD\u65B0\u8B58\u5225", leaveEmpty: "\u9019\u9031\u5148\u7A7A\u8457\uFF0C\u9032\u7DE8\u8F2F\u5668\u586B", omit: "\u4E0D\u5C0E\u9019\u4E00\u9031",
+    attention: "\u9700\u8981\u6CE8\u610F\u7684", attentionHint: "\u50C5\u63A8\u65B7\u6578\u503C\u548C\u7121\u5167\u5BB9\u9031\u8A08\u5165 \u26A0 \u5F85\u6838\u5C0D",
+    doubts: { new_exercise: "\u65B0\u5EFA\u52D5\u4F5C", note_fallback: "\u9032\u4E86\u5099\u8A3B", inferred: "\u63A8\u65B7\u6578\u503C", no_date: "\u7121\u65E5\u671F\u9031", empty_week: "\u7121\u5167\u5BB9\u9031" },
+    doubtHints: { new_exercise: "\u52D5\u4F5C\u5EAB\u88E1\u6C92\u627E\u5230\uFF0C\u5DF2\u6309\u539F\u540D\u5EFA\u6210\u4F60\u7684\u81EA\u5B9A\u7FA9\u52D5\u4F5C", note_fallback: "60%top\u3001\u7BC0\u594F 310\u3001\u529B\u7AED\u9019\u985E\u5BEB\u6CD5\uFF0C\u539F\u6A23\u653E\u5728\u5099\u8A3B\u88E1", inferred: "\u6578\u5B57\u5728\u539F\u8868\u88E1\u627E\u4E0D\u5230\uFF0C\u6BD4\u5982\u4E00\u500B\u91CD\u91CF\u92EA\u6EFF\u4E86 4 \u7D44", no_date: "\u8868\u88E1\u6C92\u5BEB\u65E5\u671F", empty_week: "\u8B58\u5225\u5931\u6557\u5F8C\u5148\u7A7A\u8457\uFF0C\u9032\u7DE8\u8F2F\u5668\u624B\u586B" },
+    noWeekdays: (n: number) => `\u8868\u88E1\u53EA\u5BEB\u4E86 Day1\u2013Day${n}\uFF0C\u6C92\u5BEB\u661F\u671F\u5E7E`,
+    allDated: "\u6BCF\u4E00\u9031\u8868\u88E1\u90FD\u5BEB\u4E86\u65E5\u671F", reselect: "\u2190 \u91CD\u65B0\u9078\u9031", create: "\u5EFA\u7ACB\u8349\u7A3F\u8AB2\u8868", handleFirst: (n: number) => `\u5148\u8655\u7406 W${n}`,
+    errors: { NO_TRAINING_WEEKS: "\u6C92\u6709\u8B58\u5225\u5230\u8A13\u7DF4\u9031\uFF0C\u8ACB\u6AA2\u67E5\u8868\u683C\u5167\u5BB9", IMPORT_DAILY_LIMIT: "\u4ECA\u5929\u7684\u6B21\u6578\u7528\u5B8C\u4E86\uFF0C\u660E\u5929\u518D\u4F86", PAYLOAD_TOO_LARGE: "\u8868\u683C\u5167\u5BB9\u592A\u591A\uFF0C\u8ACB\u7E2E\u5C0F\u7BC4\u570D\u5F8C\u518D\u8A66", IMPORT_HEADERS_TOO_LARGE: "\u8868\u982D\u5167\u5BB9\u592A\u591A\uFF0C\u8ACB\u522A\u6389\u7121\u95DC\u8AAA\u660E\u5F8C\u518D\u8A66", IMPORT_WEEK_CALL_LIMIT: "\u9019\u4EFD\u8868\u683C\u7684\u8B58\u5225\u6B21\u6578\u5DF2\u7528\u5B8C\uFF0C\u8ACB\u63DB\u4E00\u500B\u8868\u683C\u91CD\u65B0\u958B\u59CB", IMPORT_NOT_FOUND: "\u672C\u6B21\u8B58\u5225\u5DF2\u904E\u671F\uFF0C\u8ACB\u91CD\u65B0\u9078\u64C7\u8868\u683C", WORKBOOK_TOO_LARGE: "\u6A94\u6848\u592A\u5927\uFF0C\u8ACB\u4F7F\u7528 10 MB \u4EE5\u5167\u7684\u6A94\u6848", SHEET_TOO_LARGE: "\u8868\u683C\u5167\u5BB9\u592A\u591A\uFF0C\u8ACB\u7E2E\u5C0F\u7BC4\u570D\u5F8C\u518D\u8A66" },
+    noContent: "\u8868\u683C\u88E1\u6C92\u6709\u5167\u5BB9", noTrainingContent: "\u9019\u5E7E\u9031\u6C92\u6709\u8A13\u7DF4\u5167\u5BB9",
+    invalidFormat: "\u9019\u5F35\u8868\u7684\u683C\u5F0F\u8B80\u4E0D\u4E86\uFF0C\u8A66\u8A66\u53E6\u5B58\u70BA .xlsx \u6216\u76F4\u63A5\u8CBC\u4E0A",
+    invalidFile: "\u7121\u6CD5\u8B80\u53D6\u8868\u683C\uFF0C\u8ACB\u9078\u64C7\u6709\u6548\u7684\u8A13\u7DF4\u8868", etHint: "\u8ACB\u5728 WPS \u88E1\u53E6\u5B58\u70BA .xlsx", failedRetry: "\u64CD\u4F5C\u5931\u6557\uFF0C\u8ACB\u91CD\u8A66",
+    createdRetry: "\u8349\u7A3F\u5DF2\u7D93\u5EFA\u7ACB\uFF0C\u91CD\u8A66\u6703\u7E7C\u7E8C\u5132\u5B58\u5230\u9019\u4EFD\u8349\u7A3F", confirm: "\u78BA\u8A8D", confirmAll: "\u5168\u90E8\u78BA\u8A8D", undoConfirmAll: "\u5DF2\u5168\u90E8\u78BA\u8A8D \u00B7 \u5FA9\u539F", reviewedHint: "\u6539\u904E\u9019\u4E00\u884C\uFF0C\u6216\u9EDE\u300C\u78BA\u8A8D\u300D\uFF0C\u6DE1\u9EC3\u7C64\u5C31\u6D88\u5931",
+    publishDoubts: (n: number) => `\u9084\u6709 ${n} \u884C\u532F\u5165\u5B58\u7591\u6C92\u770B\uFF0C\u4ECD\u8981\u767C\u5E03\uFF1F`, publishTitle: "\u767C\u5E03\u7D66\u5B78\u54E1",
+    backfill: (n: number) => `\u628A\u904E\u53BB ${n} \u9031\u6C92\u6253\u5361\u7684\u8A13\u7DF4\u8A18\u70BA\u5DF2\u5B8C\u6210\uFF08\u8A08\u5165 PR \u57FA\u7DDA\uFF0C\u4E0D\u8A08\u5B8C\u6210\u7387\uFF09`,
+    pastDoubts: (n: number) => `\u904E\u53BB\u7684\u9031\u88E1\u9084\u6709 ${n} \u884C\u532F\u5165\u5B58\u7591\u6C92\u770B`, backfillFailed: "\u8AB2\u8868\u5DF2\u767C\u5E03\uFF0C\u4F46\u88DC\u8A18\u5931\u6557\uFF0C\u53EF\u5728\u8AB2\u8868\u9078\u55AE\u88E1\u91CD\u8A66\u300C\u88DC\u8A18\u904E\u53BB\u8A13\u7DF4\u300D",
+    planActions: (name: string) => `${name} \u00B7 \u66F4\u591A\u64CD\u4F5C`, emptyWeek: (n: number) => `W${n} \u00B7 \u7121\u5167\u5BB9\u9031`,
+} as const satisfies Translations<typeof zhImport>
 
 const hantStates = {
     retry: "\u91CD\u8A66",
@@ -893,6 +945,7 @@ export const zhHant = {
   chat: hantChat,
   common: hantCommon,
   editor: hantEditor,
+  sheetImport: hantImport,
   states: hantStates,
   stats: hantStats,
   video: hantVideo,

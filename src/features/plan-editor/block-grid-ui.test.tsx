@@ -43,8 +43,9 @@ function hotfixFixture(extraWeeks = [2, 3, 5, 8]): Week[] {
 const api = vi.hoisted(() => ({ logs: vi.fn().mockResolvedValue([]) }))
 vi.mock('../../api/coach', () => ({ getStudentSetLogs: api.logs, getExerciseStats: vi.fn().mockResolvedValue({ recent_sessions: [] }) }))
 let host: HTMLDivElement, root: Root
-beforeEach(() => { api.logs.mockResolvedValue([]); host = document.createElement('div'); document.body.append(host); root = createRoot(host) })
-afterEach(() => { act(() => root.unmount()); host.remove(); vi.restoreAllMocks(); setLocale(undefined) })
+// Initialize React's async act scheduler before any test installs fake timers.
+beforeEach(async () => { await act(async () => {}); api.logs.mockResolvedValue([]); host = document.createElement('div'); document.body.append(host); root = createRoot(host) })
+afterEach(() => { act(() => root.unmount()); host.remove(); vi.useRealTimers(); vi.restoreAllMocks(); setLocale(undefined) })
 const cell = (w: number, dx: number) => host.querySelector<HTMLElement>(`[data-block-week="${w}"][data-dx="${dx}"]`)!
 const click = (el: Element, init = {}) => act(() => { el.dispatchEvent(new MouseEvent('click', { bubbles: true, ...init })) })
 const key = async (key: string, metaKey = false) => act(async () => { window.dispatchEvent(new KeyboardEvent('keydown', { key, metaKey, bubbles: true, cancelable: true })); await Promise.resolve() })
@@ -115,6 +116,7 @@ it.each(['12-week import', 'published with logs', 'student-added', 'shifted', 'u
     expect(JSON.stringify(weeks)).toBe(before)
     vi.useRealTimers()
   },
+  30_000, // The legacy 12-week fixture mounts every edit card; allow slower CI hosts.
 )
 
 it('fills W1D1 through W4 with confirmation and one-step undo', async () => {
@@ -939,6 +941,32 @@ it.each(['replacement-empty', 'old-empty'])('does not transfer an old Delete act
     await act(async () => { await vi.advanceTimersByTimeAsync(4000) })
     expect(onSave.mock.calls[1][4]).not.toContain(savedId)
   } finally { vi.useRealTimers() }
+})
+
+
+it('toggles 力竭 in the edit card and shows it in the shorthand without a 待填全 issue', async () => {
+  act(() => root.render(<PlanEditor initialWeeks={fixture(1)} weeksCount={1} studentName="学员" planName="计划" />))
+  click(cell(1, 0))
+  const repsCell = () => cell(1, 0).querySelector('[data-rowid="w1-0-0"] [data-c="reps"]')!
+  const toggle = () => repsCell().querySelector<HTMLButtonElement>('button')!
+  expect(toggle()?.textContent).toBe('力竭')
+  click(toggle())
+  expect(toggle().getAttribute('aria-pressed')).toBe('true')
+  expect(repsCell().querySelector<HTMLInputElement>('input')?.value).toBe('力竭')
+  expect(repsCell().querySelector<HTMLInputElement>('input')?.disabled).toBe(true)
+  expect(cell(1, 0).querySelector('[data-rowid="w1-0-0"]')?.textContent).not.toContain('待填全')
+  await key('Escape')
+  expect(cell(1, 0).querySelector('[data-rowid="w1-0-0"]')?.textContent).toContain('1×力竭')
+  click(cell(1, 0)); click(toggle())
+  const input = repsCell().querySelector<HTMLInputElement>('input')!
+  expect(toggle().getAttribute('aria-pressed')).toBe('false')
+  expect(input.disabled).toBe(false)
+  act(() => {
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, '8')
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+  })
+  await key('Escape')
+  expect(cell(1, 0).querySelector('[data-rowid="w1-0-0"]')?.textContent).toContain('1×8')
 })
 
 it.each([

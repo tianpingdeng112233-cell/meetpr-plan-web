@@ -1,3 +1,5 @@
+import { enImport, zhImport } from './strings-import'
+
 import { traditionalExerciseName } from './exercise-names'
 import { zhHant } from './strings-zh-hant'
 import { enBlock, zhBlock } from './strings-block'
@@ -16,6 +18,7 @@ import { enStates, zhStates } from './strings-states'
 import type { Translations } from './types'
 
 const zh = {
+  sheetImport: zhImport,
   block: zhBlock,
   app: zhApp,
   common: zhCommon,
@@ -31,6 +34,7 @@ const zh = {
 } as const
 
 const en = {
+  sheetImport: enImport,
   block: enBlock,
   app: enApp,
   common: enCommon,

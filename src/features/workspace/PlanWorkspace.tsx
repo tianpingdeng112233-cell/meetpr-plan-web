@@ -1,3 +1,5 @@
+import type { ImportedPlan } from '../plan-editor/import/ImportPlanDialog'
+import type { PlanAction } from '../plan-editor/components/TopBar'
 import { getOverviewAlerts, markPlanViewed } from '../../api/overviewAlerts'
 import { deriveOverviewBoard, type AlertsState, type OverviewTag } from './overviewBoard'
 import { loadCoachInvitation } from '../onboarding/invitation'
@@ -50,7 +52,7 @@ import {
 } from './rosterOverview'
 
 interface Props { onLogout: () => void | Promise<void>; me: AuthUser }
-type Loaded = { plan: PlanWithChildren; weeks: Week[]; weeksCount: number }
+type Loaded = { plan: PlanWithChildren; weeks: Week[]; weeksCount: number; serverWeeks?: Week[] }
 type WorkspaceRetry =
   | { kind: 'boot'; fallback: string }
   | { kind: 'student'; id: string; fallback: string; openEditor: boolean }
@@ -122,6 +124,11 @@ export function PlanWorkspace({ onLogout, me }: Props) {
   const [studentSwitching, setStudentSwitching] = useState(false)
   const [errorRetrying, setErrorRetrying] = useState(false)
   const [newPlanOpen, setNewPlanOpen] = useState(false)
+  const selectedStudentRef = useRef(studentId)
+  selectedStudentRef.current = studentId
+  const [actionPlan, setActionPlan] = useState<PlanResponse | null>(null)
+  const [actionTrainingDays, setActionTrainingDays] = useState(0)
+  const [settingsTarget, setSettingsTarget] = useState<string | null>(null)
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [deleteError, setDeleteError] = useState('')
@@ -393,7 +400,7 @@ export function PlanWorkspace({ onLogout, me }: Props) {
     // A mutation response is newer authority than any list or tonnage request
     // already in flight for this student.
     planRequestVersions.current.invalidate(id)
-    setPlans(update)
+    if (selectedStudentRef.current === id) setPlans(update)
     const studentPlans = update(plansByStudentRef.current[id] ?? [])
     const next = {
       ...plansByStudentRef.current,
@@ -429,6 +436,7 @@ export function PlanWorkspace({ onLogout, me }: Props) {
     // same render. Until the foreground response wins, this student is unknown.
     planRequestVersions.current.invalidate(id)
     setStudentSwitching(true)
+    selectedStudentRef.current = id
     setStudentId(id); setOnboarding(undefined); setLoaded(null); setPlanId('')
     setPlans([])
     if (Object.hasOwn(plansByStudentRef.current, id)) {
@@ -714,32 +722,22 @@ export function PlanWorkspace({ onLogout, me }: Props) {
   }
 
   const deleteCurrentPlan = async () => {
-    if (!loaded || loaded.plan.status !== 'draft' || !catalog || deleting) return
-    setDeleting(true)
-    setDeleteError('')
-    const deletedId = loaded.plan.id
-    const generation = ++loadGeneration.current
+    const target = actionPlan ?? loaded?.plan
+    if (!target || target.status !== 'draft' || !catalog || deleting) return
+    const generation = loadGeneration.current
+    setDeleting(true); setDeleteError('')
     try {
-      await deletePlan(deletedId)
-      // The backend deletion is authoritative even if a newer load superseded
-      // this UI request while it was in flight.
-      clearDraftMirror(deletedId)
-      if (generation !== loadGeneration.current) return
-      const remaining = sortedPlans(plans.filter((plan) => plan.id !== deletedId))
-      updateStudentPlans(studentId, () => remaining)
-      setDeleteOpen(false)
-      if (remaining[0]) {
-        await loadPlan(remaining[0].id, catalog, generation)
-      } else {
-        setLoaded(null)
-        setPlanId('')
-        localStorage.removeItem(`${LAST_PLAN_PREFIX}${studentId}`)
+      await deletePlan(target.id)
+      clearDraftMirror(target.id)
+      const remaining = sortedPlans((plansByStudentRef.current[target.trainee_id] ?? []).filter(plan => plan.id !== target.id))
+      updateStudentPlans(target.trainee_id, current => current.filter(plan => plan.id !== target.id))
+      setDeleteOpen(false); setActionPlan(null)
+      if (generation === loadGeneration.current && target.id === planId) {
+        if (remaining[0]) await loadPlan(remaining[0].id, catalog)
+        else { setLoaded(null); setPlanId(''); localStorage.removeItem(`${LAST_PLAN_PREFIX}${target.trainee_id}`) }
       }
-    } catch (e) {
-      if (generation === loadGeneration.current) setDeleteError(errText(e, S.workspace.plan.deleteFailed))
-    } finally {
-      if (generation === loadGeneration.current) setDeleting(false)
-    }
+    } catch (e) { setDeleteError(errText(e, S.workspace.plan.deleteFailed)) }
+    finally { setDeleting(false) }
   }
 
   const backfillHistory = async () => {
@@ -760,21 +758,59 @@ export function PlanWorkspace({ onLogout, me }: Props) {
   }
 
   const markCurrentComplete = async () => {
-    if (!loaded || loaded.plan.status !== 'published' || completing) return
-    setCompleting(true)
-    setCompleteError('')
+    const target = actionPlan ?? loaded?.plan
+    if (!target || target.status !== 'published' || completing) return
+    setCompleting(true); setCompleteError('')
     try {
-      const updated = await patchPlan(loaded.plan.id, { status: 'completed' })
-      updateStudentPlans(updated.trainee_id, (prev) => prev.map((plan) => plan.id === updated.id ? updated : plan))
-      setLoaded((prev) => prev && prev.plan.id === updated.id
-        ? { ...prev, plan: { ...prev.plan, ...updated } }
-        : prev)
-      setCompleteOpen(false)
-    } catch (e) {
-      setCompleteError(errText(e, S.workspace.plan.completeFailed))
-    } finally {
-      setCompleting(false)
-    }
+      const updated = await patchPlan(target.id, { status: 'completed' })
+      updateStudentPlans(updated.trainee_id, prev => prev.map(plan => plan.id === updated.id ? updated : plan))
+      setLoaded(prev => prev?.plan.id === updated.id ? { ...prev, plan: { ...prev.plan, ...updated } } : prev)
+      setCompleteOpen(false); setActionPlan(null)
+    } catch (e) { setCompleteError(errText(e, S.workspace.plan.completeFailed)) }
+    finally { setCompleting(false) }
+  }
+
+  const handlePlanAction = async (id: string, action: PlanAction) => {
+    const target = plans.find(plan => plan.id === id)
+    if (!target || !catalog) return
+    const generation = loadGeneration.current
+    try {
+      if (action === 'rename') {
+        if (target.status !== 'draft' && target.status !== 'published') return
+        const name = window.prompt(S.editor.planNamePrompt, target.name)?.trim()
+        if (!name || name === target.name) return
+        const updated = await patchPlan(id, { name })
+        updateStudentPlans(target.trainee_id, prev => prev.map(plan => plan.id === id ? { ...plan, ...updated } : plan))
+        setLoaded(prev => prev?.plan.id === id ? { ...prev, plan: { ...prev.plan, ...updated } } : prev)
+      } else if (action === 'delete' && target.status === 'draft') {
+        const fullPlan = id === loaded?.plan.id ? loaded.plan : await getPlan(id)
+        if (generation !== loadGeneration.current) return
+        setActionTrainingDays(fullPlan.days.length)
+        setActionPlan(target); setDeleteError(''); setDeleteOpen(true)
+      } else if (action === 'complete' && target.status === 'published') {
+        setActionPlan(target); setCompleteError(''); setCompleteOpen(true)
+      } else if (action === 'settings' || action === 'backfill') {
+        if (action === 'settings' && target.status !== 'draft' && target.status !== 'published') return
+        if (action === 'backfill' && (target.status === 'draft' || target.start_date >= todayISO())) return
+        if (id !== planId && !await loadPlan(id, catalog)) return
+        if (action === 'settings') setSettingsTarget(id)
+        else { setBackfillError(''); setBackfillOpen(true) }
+      }
+    } catch (e) { window.alert(errText(e, S.sheetImport.failedRetry)) }
+  }
+
+  const acceptImportedPlan = async (result: ImportedPlan) => {
+    const nextExercises = [...exerciseList, ...result.exercises.filter(e => !exerciseList.some(existing => existing.id === e.id))]
+    setExerciseList(nextExercises)
+    const nextCatalog: Catalog = new Map(nextExercises.map(e => [e.id, { name: displayExerciseName(e.name), nameEn: e.name_en, custom: e.created_by_coach_id != null }]))
+    setCatalog(nextCatalog); setIndex(new ExerciseIndex(nextExercises, {}, exerciseUsage.current))
+    updateStudentPlans(result.plan.trainee_id, prev => [result.plan, ...prev.filter(p => p.id !== result.plan.id)])
+    if (!saveBlockWeekdays(result.plan.id, result.weekdays)) window.alert(S.block.patternFailed)
+    ++loadGeneration.current
+    setPlanId(result.plan.id); localStorage.setItem(`${LAST_PLAN_PREFIX}${result.plan.trainee_id}`, result.plan.id)
+    setLoaded({ plan: result.plan, weeks: result.weeks, weeksCount: result.weeks.length,
+      serverWeeks: mapPlanToWeeks(result.plan, nextCatalog) })
+    setNewPlanOpen(false)
   }
 
   const handleCreateExercise = async (input: CreateCustomExerciseInput) => {
@@ -1006,6 +1042,8 @@ export function PlanWorkspace({ onLogout, me }: Props) {
   const planOpts = plans.map((p) => ({
     id: p.id,
     label: p.name,
+    status: p.status,
+    startDate: p.start_date,
     sub: S.workspace.plan.startSummary(fmtStart(p.start_date), p.plan_weeks),
     tag: `${statusTag(p.status)}${p.pending_revision_saved_at ? ` · ${S.common.pendingChanges}` : ''}`,
   }))
@@ -1062,6 +1100,7 @@ export function PlanWorkspace({ onLogout, me }: Props) {
         feedbackRef={editorFeedbackRef} feedbackSession={editorFeedback?.studentId === studentId ? editorFeedback.session : null}
         onFeedbackSessionChange={session => setEditorFeedback({ studentId, session })}
         initialWeeks={loaded?.weeks ?? []}
+        initialServerWeeks={loaded?.serverWeeks}
         weeksCount={loaded?.weeksCount ?? 0}
         studentName={studentName}
         studentId={studentId}
@@ -1081,6 +1120,7 @@ export function PlanWorkspace({ onLogout, me }: Props) {
         studentPlanCursor={studentPlanCursor}
         readOnly={historicalReadOnly}
         initialPublished={loaded?.plan.status === 'published'}
+        onBackfillAfterPublish={loaded ? async () => { await markImportedHistory(loaded.plan.id) } : undefined}
         onPublish={loaded?.plan.status === 'draft' ? async () => {
           const updated = await publishPlan(loaded.plan.id)
           // Reflect the now-live status in the parent-owned list + loaded plan, so the plan
@@ -1089,7 +1129,7 @@ export function PlanWorkspace({ onLogout, me }: Props) {
           updateStudentPlans(updated.trainee_id, (prev) => prev.map((p) => (p.id === updated.id ? updated : p)))
           setLoaded((prev) => (prev && prev.plan.id === updated.id ? { ...prev, plan: { ...prev.plan, ...updated } } : prev))
         } : undefined}
-        onSave={loaded && planContentEditable ? async (weeks, importStart, markPastAsAssumedComplete, onProgress, deletedDayIds) => {
+        onSave={loaded && planContentEditable ? async (weeks, importStart, _unused, onProgress, deletedDayIds) => {
           const reconcileOptions = {
             published: loaded.plan.status === 'published',
             catalog: catalog ?? undefined,
@@ -1097,17 +1137,6 @@ export function PlanWorkspace({ onLogout, me }: Props) {
           const result = importStart
             ? await reconcileImportedPlan(loaded.plan.id, weeks, importStart, onProgress, reconcileOptions)
             : await saveBlockPlan(loaded.plan.id, weeks, onProgress, { ...reconcileOptions, deletedDayIds })
-          if (importStart && markPastAsAssumedComplete) {
-            // The plan itself is already reconciled at this point. History
-            // marking rides a backend endpoint that may not be deployed yet
-            // (feat/043-plan-import-backend); failing the whole save here would
-            // put the editor in a permanent retry loop over an optional extra.
-            try {
-              await markImportedHistory(loaded.plan.id)
-            } catch {
-              window.alert(S.workspace.plan.importBackfillFailed)
-            }
-          }
           if (result.planStartDate && result.planEndDate && result.planWeeks != null) {
             const calendar = {
               start_date: result.planStartDate,
@@ -1183,6 +1212,9 @@ export function PlanWorkspace({ onLogout, me }: Props) {
         plans={planOpts}
         currentPlanId={planId}
         onSwitchPlan={switchPlan}
+        onPlanAction={handlePlanAction}
+        openSettingsRequest={settingsTarget === planId}
+        onSettingsRequestHandled={() => setSettingsTarget(null)}
         onNewPlan={newPlan}
         onDeleteCurrentDraft={loaded?.plan.status === 'draft' ? () => { setDeleteError(''); setDeleteOpen(true) } : undefined}
         onMarkComplete={loaded?.plan.status === 'published' ? () => { setCompleteError(''); setCompleteOpen(true) } : undefined}
@@ -1237,21 +1269,21 @@ export function PlanWorkspace({ onLogout, me }: Props) {
         onClose={() => { if (!backfilling) setBackfillOpen(false) }}
         onConfirm={() => { void backfillHistory() }}
       />
-      <NewPlanDialog initialStartDate={newPlanStart} open={newPlanOpen} studentName={studentName} onClose={() => setNewPlanOpen(false)} onCreate={createNewPlan} />
+      <NewPlanDialog initialStartDate={newPlanStart} open={newPlanOpen} traineeId={studentId} exerciseIndex={index} onImported={acceptImportedPlan} studentName={studentName} onClose={() => setNewPlanOpen(false)} onCreate={createNewPlan} />
       <DeletePlanDialog
-        open={deleteOpen && loaded?.plan.status === 'draft'}
-        name={loaded?.plan.name ?? ''}
-        weeks={loaded?.plan.plan_weeks ?? 0}
-        trainingDays={loaded?.plan.days.length ?? 0}
+        open={deleteOpen && (actionPlan ?? loaded?.plan)?.status === 'draft'}
+        name={(actionPlan ?? loaded?.plan)?.name ?? ''}
+        weeks={(actionPlan ?? loaded?.plan)?.plan_weeks ?? 0}
+        trainingDays={actionPlan ? actionTrainingDays : loaded?.plan.days.length ?? 0}
         deleting={deleting}
         error={deleteError}
         onClose={() => { if (!deleting) setDeleteOpen(false) }}
         onDelete={() => { void deleteCurrentPlan() }}
       />
       <CompletePlanDialog
-        open={completeOpen && loaded?.plan.status === 'published'}
-        name={loaded?.plan.name ?? ''}
-        weeks={loaded?.plan.plan_weeks ?? 0}
+        open={completeOpen && (actionPlan ?? loaded?.plan)?.status === 'published'}
+        name={(actionPlan ?? loaded?.plan)?.name ?? ''}
+        weeks={(actionPlan ?? loaded?.plan)?.plan_weeks ?? 0}
         completing={completing}
         error={completeError}
         onClose={() => { if (!completing) setCompleteOpen(false) }}

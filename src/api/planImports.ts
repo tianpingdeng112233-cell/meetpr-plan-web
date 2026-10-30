@@ -1,0 +1,46 @@
+import { api } from './client'
+import type { ImportSheet, SheetCell, SheetRegion } from '../features/plan-editor/import/sheets'
+import type { LiftFamily } from './types'
+
+export interface ImportStatus { enabled: boolean; daily_limit: number; remaining_today: number }
+export interface OutlineWeek { index: number; label: string; start_date: string | null; training_days: number; region: SheetRegion & { sheet?: string } }
+export interface ImportBlock { id: string; label: string; sheets: string[]; weeks: OutlineWeek[]; header_region_by_sheet: Record<string, SheetRegion | null> }
+export interface ImportOutline { import_id: string; sheet: string; truncated_rows: number; header_region: SheetRegion | null; weeks: OutlineWeek[]; blocks?: ImportBlock[]; skipped_sheets?: string[] }
+export type ImportFailureReason = 'MODEL_BUSY' | 'OUTPUT_TOO_LONG' | 'BAD_OUTPUT' | 'REGION_SUSPECT'
+export type SourceCell = [row: number, col: number]
+export type UnreadableExercise = {
+  day_index: number
+  weekday: number | null
+  source_cells: SourceCell[]
+} & (
+  | { reason: 'SETS_VALUES_MISMATCH'; detail: { track: 'intensity' | 'weight'; sets: number; got: number } }
+  | { reason: 'INVALID_NUMBER'; detail: { track: 'intensity' | 'weight'; value: string | number } }
+  | { reason: 'MISSING_NAME' | 'MISSING_SETS' | 'OTHER'; detail: Record<string, unknown> }
+)
+export interface AIExercise {
+  // Optional while the backend rollout is in progress.
+  unparsed?: { field: 'reps' | 'intensity' | 'weight'; text: string }[]
+  source_cells: SourceCell[]
+  name: string; sets: number; reps: string
+  intensity_kind: 'rpe' | 'rir' | 'pct' | null
+  intensity_values: string[]
+  weight_values: string[]
+  note: string
+  family_guess: LiftFamily | null
+  flags: ('note_fallback' | 'inferred')[]
+}
+export interface AIWeek { unreadable?: UnreadableExercise[]; index: number; start_date: string | null; days: { weekday: number | null; day_index: number; rest: boolean; exercises: AIExercise[] }[] }
+export interface FailedAIWeek { index: number; error: 'PARSE_FAILED'; reason: ImportFailureReason }
+export type AIWeekResult = AIWeek | FailedAIWeek
+export const getImportStatus = (traineeId: string) => api.get<ImportStatus>(`/coach/plan-imports/status?trainee_id=${encodeURIComponent(traineeId)}`, { retryRateLimit: false })
+// Build explicit bodies: file metadata must never cross this boundary.
+export const outlineImport = (input: { trainee_id: string; source: 'file' | 'paste'; sheets: ImportSheet[] }) =>
+  api.post<ImportOutline>('/coach/plan-imports', {
+    trainee_id: input.trainee_id, source: input.source,
+    sheets: input.sheets.map(({ name, cells }) => ({ name, cells })),
+  }, { retryRateLimit: false })
+export const recognizeImportWeeks = (id: string, input: { weeks: { index: number; cells: SheetCell[] }[]; header_cells: SheetCell[]; header_cells_by_sheet?: Record<string, SheetCell[]> }) =>
+  api.post<{ weeks: AIWeekResult[] }>(`/coach/plan-imports/${encodeURIComponent(id)}/weeks`, {
+    weeks: input.weeks.map(({ index, cells }) => ({ index, cells })), header_cells: input.header_cells,
+    ...(input.header_cells_by_sheet ? { header_cells_by_sheet: input.header_cells_by_sheet } : {}),
+  }, { retryRateLimit: false })

@@ -28,6 +28,7 @@ const repsCountKeys = new Set([
   'editor.cellRepsLabel', 'editor.opaqueSetSettingsHint',
   'stats.context.repsPr', 'stats.board.repsPr',
   'stats.tracking.repsShare', 'stats.tracking.repsDistribution',
+  'sheetImport.groupFields.reps',
 ])
 const repsUnitKeys = new Set([
   'common.reps', 'common.countReps', 'block.reps', 'video.repCount',
@@ -74,16 +75,17 @@ for (const file of modules) {
     const declaration = statement.declarationList.declarations[0]
     if (!/^zh[A-Z]/.test(declaration.name.getText(source))) continue
     const name = declaration.name.getText(source), suffix = name.slice(2)
+    const section = suffix === 'Import' ? 'sheetImport' : suffix[0].toLowerCase() + suffix.slice(1)
     imports.push(`import type { ${name} } from './${file.slice(0, -3)}'`)
-    properties.push(`  ${suffix[0].toLowerCase() + suffix.slice(1)}: hant${suffix},`)
+    properties.push(`  ${section}: hant${suffix},`)
     const transformed = ts.transform(declaration.initializer, [context => {
       const visit = node => {
         // Literal fragments only: interpolation expressions/user data stay intact.
-        if (ts.isStringLiteral(node) && node.parent?.name !== node) return ts.factory.createStringLiteral(translate(node.text, translationKey(node, suffix[0].toLowerCase() + suffix.slice(1))))
-        if (ts.isNoSubstitutionTemplateLiteral(node)) return ts.factory.createNoSubstitutionTemplateLiteral(translate(node.text, translationKey(node, suffix[0].toLowerCase() + suffix.slice(1))))
-        if (ts.isTemplateHead(node)) return ts.factory.createTemplateHead(translate(node.text, translationKey(node, suffix[0].toLowerCase() + suffix.slice(1))))
-        if (ts.isTemplateMiddle(node)) return ts.factory.createTemplateMiddle(translate(node.text, translationKey(node, suffix[0].toLowerCase() + suffix.slice(1))))
-        if (ts.isTemplateTail(node)) return ts.factory.createTemplateTail(translate(node.text, translationKey(node, suffix[0].toLowerCase() + suffix.slice(1))))
+        if (ts.isStringLiteral(node) && node.parent?.name !== node) return ts.factory.createStringLiteral(translate(node.text, translationKey(node, section)))
+        if (ts.isNoSubstitutionTemplateLiteral(node)) return ts.factory.createNoSubstitutionTemplateLiteral(translate(node.text, translationKey(node, section)))
+        if (ts.isTemplateHead(node)) return ts.factory.createTemplateHead(translate(node.text, translationKey(node, section)))
+        if (ts.isTemplateMiddle(node)) return ts.factory.createTemplateMiddle(translate(node.text, translationKey(node, section)))
+        if (ts.isTemplateTail(node)) return ts.factory.createTemplateTail(translate(node.text, translationKey(node, section)))
         return ts.visitEachChild(node, visit, context)
       }
       return node => ts.visitNode(node, visit)

@@ -2,8 +2,6 @@ import { openBlockDay } from './blockGridTestUtils'
 import { act, useState } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import * as XLSX from 'xlsx'
-import { S } from '../../i18n/strings'
 import { DayColumn } from './components/DayColumn'
 import { PlanEditor, findIssueRows, replaceUnlockedRows } from './PlanEditor'
 import { ExerciseIndex } from './exerciseIndex'
@@ -39,29 +37,6 @@ function buttonByText(container: HTMLElement, text: string): HTMLButtonElement {
 function setInput(input: HTMLInputElement, value: string): void {
   Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(input, value)
   input.dispatchEvent(new Event('input', { bubbles: true }))
-}
-
-function importFile(trainingDays: number[][]): File {
-  const rows = trainingDays.flatMap((days, w) => {
-    const header: (string | number)[] = []
-    const content: (string | number)[] = []
-    for (let d = 0; d < 7; d++) {
-      header[d * 5] = 46321 + w * 7 + d // Monday 2026-10-26
-      if (days.includes(d)) {
-        content[d * 5] = '深蹲'
-        content[d * 5 + 1] = '3*5'
-        content[d * 5 + 2] = '100'
-      }
-    }
-    return [header, content]
-  })
-  const workbook = XLSX.utils.book_new()
-  XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet(rows), '计划')
-  const buffer = XLSX.write(workbook, { type: 'array', bookType: 'xlsx' }) as ArrayBuffer
-  const file = new File([buffer], '刘星.xlsx')
-  // jsdom's File lacks arrayBuffer; provide the real workbook bytes at this browser boundary.
-  Object.defineProperty(file, 'arrayBuffer', { value: async () => buffer })
-  return file
 }
 
 describe('exercise history lock UI', () => {
@@ -253,6 +228,7 @@ describe('exercise history lock UI', () => {
     openBlockDay(host)
 
     act(() => host.querySelector<HTMLButtonElement>('[data-plan-menu-trigger]')!.click())
+    act(() => document.querySelector<HTMLButtonElement>('[aria-haspopup=menu][aria-label]')!.click())
     act(() => ([...document.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')].find(button => button.textContent?.startsWith('计划设置'))!).click())
     const date = host.querySelector<HTMLInputElement>('input[type="date"]')!
     expect(date.disabled).toBe(true)
@@ -343,57 +319,9 @@ describe('exercise history lock UI', () => {
     expect(onSave).not.toHaveBeenCalled()
   })
 
-  it('keeps xlsx import forbidden for a published plan', async () => {
-    const alert = vi.spyOn(window, 'alert').mockImplementation(() => {})
-    act(() => root?.render(
-      <PlanEditor initialWeeks={[week(1, [])]} weeksCount={1} studentName="学员" planName="已发布计划"
-        initialPublished planStartDate="2026-01-01" exerciseIndex={new ExerciseIndex([])} />,
-    ))
-    openBlockDay(host)
-    const input = host.querySelector<HTMLInputElement>('input[type="file"]')!
-    Object.defineProperty(input, 'files', { value: [new File(['x'], 'plan.xlsx')], configurable: true })
-    await act(async () => input.dispatchEvent(new Event('change', { bubbles: true })))
-    expect(alert).toHaveBeenCalledWith(expect.stringContaining('请先点右上「新建计划」'))
-  })
-
-  it('imports six source weeks as five training weeks without a truncation alert', async () => {
-    const alert = vi.spyOn(window, 'alert').mockImplementation(() => {})
-    act(() => root?.render(
-      <PlanEditor initialWeeks={[week(1, [])]} weeksCount={1} studentName="刘星" planName="草稿"
-        planStartDate="2026-10-26" exerciseIndex={new ExerciseIndex([])} />,
-    ))
-    const input = host.querySelector<HTMLInputElement>('input[type="file"]')!
-    Object.defineProperty(input, 'files', { value: [importFile([
-      [5, 6], [1, 2, 5, 6], [1, 2, 5, 6], [1, 2, 5, 6], [1, 2, 5, 6], [1, 2],
-    ])], configurable: true })
-    await act(async () => {
-      input.dispatchEvent(new Event('change', { bubbles: true }))
-      await vi.dynamicImportSettled()
-    })
-    expect(alert).not.toHaveBeenCalled()
-    expect(host.querySelector('[data-testid="plan-save-status"]')?.textContent)
-      .toContain(S.editor.importedUnsaved(5))
-  })
-
-  it.each([
-    ['continuous', Array.from({ length: 13 }, () => [0]), 13],
-    ['with blank weeks inside the retained window', Array.from({ length: 13 }, (_, w) => [0, 1, 12].includes(w) ? [0] : []), 3],
-  ] as const)('alerts when the latest import window drops prescriptions: %s', async (_label, days, sourceWeeks) => {
-    const alert = vi.spyOn(window, 'alert').mockImplementation(() => {})
-    act(() => root?.render(
-      <PlanEditor initialWeeks={[week(1, [])]} weeksCount={1} studentName="学员" planName="草稿"
-        planStartDate="2026-10-26" exerciseIndex={new ExerciseIndex([])} />,
-    ))
-    const input = host.querySelector<HTMLInputElement>('input[type="file"]')!
-    Object.defineProperty(input, 'files', { value: [importFile(days)], configurable: true })
-    await act(async () => {
-      input.dispatchEvent(new Event('change', { bubbles: true }))
-      await vi.dynamicImportSettled()
-    })
-    expect(alert).toHaveBeenCalledTimes(1)
-    expect(alert).toHaveBeenCalledWith(expect.stringContaining(S.editor.importTruncated(sourceWeeks, 12)))
-    expect(host.querySelector('[data-testid="plan-save-status"]')?.textContent)
-      .toContain(S.editor.importTruncated(sourceWeeks, 12))
+  it('has no overwrite import control on a published plan', async () => {
+    act(() => root?.render(<PlanEditor initialWeeks={[week(1, [])]} weeksCount={1} studentName="学员" planName="已发布计划" initialPublished planStartDate="2026-01-01" exerciseIndex={new ExerciseIndex([])} />))
+    expect(host.querySelector('input[type=file]')).toBeNull()
   })
 
   it('keeps published changes unsaved after a scoped 409 instead of showing a false saved state', async () => {

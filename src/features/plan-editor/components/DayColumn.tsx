@@ -1,3 +1,4 @@
+import { activeImportDoubts } from '../import/doubts'
 import { useLayoutEffect, useRef, useState } from 'react'
 import type { FeedbackEntry } from '../feedbackModel'
 import { createPortal } from 'react-dom'
@@ -82,6 +83,7 @@ interface Props {
   onAddRow: (tier: 'main' | 'aux') => void
   /** Display tier resolver (catalog exercise_type based); absent = flat legacy list. */
   rowTier?: (row: ExerciseRow) => 'main' | 'aux'
+  onConfirmImport?: (rowId: string) => void
   onEditRow: (rowId: string, updater: (r: ExerciseRow) => ExerciseRow) => void
   onReorderRow?: (dragRowId: string, targetRowId: string, position: 'before' | 'after') => void
   onDeleteRow: (rowId: string) => void
@@ -842,6 +844,7 @@ export function DayColumn({
   onAddRow,
   rowTier,
   onEditRow,
+  onConfirmImport,
   onReorderRow,
   onDeleteRow,
   weekBand,
@@ -1045,7 +1048,8 @@ export function DayColumn({
       </>}
 
 
-      <div className="daygrid" style={{ width: total, fontVariantNumeric: 'tabular-nums' }}>
+      {day.rows.some(row => activeImportDoubts(row.importDoubts).length) && <small className="import-review-hint">{S.sheetImport.reviewedHint}</small>}
+      <div className={`daygrid${day.rows.some(row => activeImportDoubts(row.importDoubts).length) ? ' has-import-doubts' : ''}`} style={{ width: total, fontVariantNumeric: 'tabular-nums' }}>
         <div className="gridhead" style={{ display: 'flex', alignItems: 'stretch', background: 'var(--card-bg)', borderBottom: '1px solid var(--line)' }}>
           {weekBand && <div className="gcell week-band-frozen week-band-index" data-c="index" style={{ width: 28, padding: '4px 3px', textAlign: 'center', ...head }}>#</div>}
           <div className={`gcell${weekBand ? ' week-band-frozen' : ''}`} data-c="name" style={{ width: colW.name, padding: '4px 6px', ...head }}>{S.common.action}</div>
@@ -1067,7 +1071,7 @@ export function DayColumn({
           return (
             <div
               key={row.id}
-              data-rowid={row.id}
+              data-rowid={row.id} data-import-doubt={activeImportDoubts(row.importDoubts).length ? "true" : undefined}
               data-alert-set-index={highlightedSetIndex}
               data-locked={row.hasLogs ? 'true' : 'false'}
               data-drag-disabled={dragDisabled ? 'true' : 'false'}
@@ -1154,21 +1158,26 @@ export function DayColumn({
                   data-c="reps"
                   data-plan-cell="reps"
                   data-plan-cell-key={planCellKey({ weekNumber, dow: day.dow, rowId: row.id, field: 'reps' })}
-                  style={{ width: colW.reps }}
+                  style={{ width: colW.reps, display: 'flex', alignItems: 'center', gap: 4 }}
                 >
-                  <GuardedInput value={row.reps === '—' ? '' : row.reps} inputMode="text" placeholder="—"
+                  <GuardedInput value={row.reps === STABLE_ZH.failureReps ? S.editor.failureReps : row.reps === '—' ? '' : row.reps} inputMode="text" placeholder="—"
                     className={inputIssue?.invalidReps ? 'guard-invalid' : undefined}
                     data-guard-field="reps" data-input-invalid={inputIssue?.invalidReps ? 'true' : undefined}
                     aria-invalid={inputIssue?.invalidReps || undefined}
                     title={inputIssue?.invalidReps ? INPUT_GUARD_REASONS.reps : undefined}
-                    disabled={readOnly || row.hasLogs}
+                    disabled={readOnly || row.hasLogs || row.reps === STABLE_ZH.failureReps}
                     filter={filterRepsInput}
                     onFocus={() => selectCell(row.id, 'reps')}
                     onClick={(event) => { stop(event); selectCell(row.id, 'reps') }}
                     onValue={(value) => {
                       edit((r) => ({ ...r, reps: value === '' ? '—' : value }))
                     }}
-                    style={{ ...baseInput, width: '100%', textAlign: 'center', color: 'var(--txt)', fontFamily: 'var(--font-mono)', fontWeight: 500 }} />
+                    style={{ ...baseInput, width: '100%', minWidth: 0, textAlign: 'center', color: 'var(--txt)', fontFamily: 'var(--font-mono)', fontWeight: 500 }} />
+                  <button type="button" className="reps-failure-toggle" aria-pressed={row.reps === STABLE_ZH.failureReps}
+                    disabled={readOnly || row.hasLogs} onClick={event => {
+                      stop(event); selectCell(row.id, 'reps')
+                      edit(r => ({ ...r, reps: r.reps === STABLE_ZH.failureReps ? '—' : STABLE_ZH.failureReps }))
+                    }}>{S.editor.failureReps}</button>
                 </div>
 
                 <EditableIntensity
@@ -1214,6 +1223,10 @@ export function DayColumn({
                       onClick={(e) => { e.stopPropagation(); onDeleteRow(row.id) }}>✕</span>
                   )}
                 </div>
+                {!!activeImportDoubts(row.importDoubts).length && <div className="gcell import-row-review" data-c="import-review" onClick={stop}>
+                  {activeImportDoubts(row.importDoubts).map(kind => <span key={kind} className="import-doubt-label" title={S.sheetImport.doubtHints[kind]}>{S.sheetImport.doubts[kind]}</span>)}
+                  <button type="button" disabled={readOnly} onClick={() => onConfirmImport ? onConfirmImport(row.id) : edit(r => ({ ...r, importDoubts: undefined }))}>{S.sheetImport.confirm}</button>
+                </div>}
               </div>
             </div>
           )

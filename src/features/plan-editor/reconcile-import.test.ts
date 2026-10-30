@@ -91,7 +91,7 @@ describe('reconcileImportedPlan — align backend plan to the import', () => {
       dateSerials: Array.from({ length: 7 }, (_, d) => 46321 + w * 7 + d),
       days: (w === 0 ? [5, 6] : w === 5 ? [1, 2] : [1, 2, 5, 6]).map(dayOfWeek => ({
         dayOfWeek, rest: false,
-        exercises: [{ rawName: '深蹲', setCount: 1, reps: '5', mode: 'kg', values: ['100'], note: '' }],
+        exercises: [{ rawName: '深蹲', setCount: 1, reps: '5', intensityKind: null, intensityValues: [], weightValues: ['100'], note: '' }],
       })),
     }))
     vi.mocked(plans.getPlan).mockResolvedValue({
