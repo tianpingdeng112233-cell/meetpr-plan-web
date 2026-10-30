@@ -1112,3 +1112,462 @@ npx vitest run src/features/plan-editor/block-grid-ui.test.tsx
 - review-loop 独立只读审查一轮：Standards 0 findings；Spec 0 findings。缺 tracker 配置，未声称执行完整 code-review 流程。SPEC §6 摘录尚无 day_index，按任务卡新契约实现，未改正典 spec。后端联调与 Opus 收货不在本次开发自测结论内。
 - 浏览器复验受限：CUA 拒绝读取现有 `http://localhost:5180/` 页面（origin approval 未获准），未绕过权限；本轮没有视觉通过结论。
 - Git：`git add` exit 128，主仓 `.git/worktrees/meetpr-plan-web-wt-015/index.lock` 被沙箱拒写；按卡保留 **uncommitted**，未 commit/push。完整补丁（含新增共享组件）`/private/tmp/015-weekdays.patch`。
+
+## 2026-10-22 · 016（原编号 014）管理后台浅色重做（Codex 开发交付，待 Claude 收货）
+
+范围补充：`src/i18n/en-smoke.test.tsx` 仍引用已删除的管理计划详情类型与入口；为完成删除和全量类型检查，需要同步移除该文件中的计划详情专用夹具/断言，保留动作库、视频和组卡英文覆盖。总览接口不含邮箱，最近注册表使用现有 `/admin/users` 获取身份信息并按注册时间取前十；不新增接口或修改后端。
+
+### 改动文件与行为
+
+- `src/features/admin/AdminWorkspace.tsx`：五项导航，默认总览；父层加载一次申请列表并共享待处理计数；待办最多五条、四个关键数字、最近注册最多十行；统一页头与刷新；浅色角色/状态标签；用户详情补邮箱，计划仅保留不可交互概要，关联用户仍可打开。删除计划列表、详情、矩阵、导航及其内部类型。`ADMIN_WRITE_ENABLED` 保持 false。
+- `src/features/admin/ApplicationsPage.tsx`（新增）：待处理默认筛选、四状态计数与姓名/邮箱搜索；按提交时间倒序；原生确认对话框；审核与重发防重复提交；复用 onboarding API、`errorText` 和 `trackOnboarding`；审核成功在父层本地更新，邮件失败标记跨后台页导航保留，重新加载申请列表时清除。
+- `src/index.css`：仅替换后台选择器下暗色变量与状态覆写，新增同作用域按钮、申请表格、确认框样式；不改 `:root`。
+- `src/i18n/strings-admin.ts`：中英同步增加总览/申请文案，删除计划页、详情及闲置计划文案。
+- `src/api/admin.ts`、`src/api/admin.test.ts`：删除前端计划总览/详情 API 与专用类型，保留用户详情所需计划概要及其余只读接口测试。
+- `src/features/onboarding/CoachApplicationsSection.tsx`（删除）、`src/features/onboarding/onboarding.css`、`src/features/onboarding/onboarding.test.tsx`：移除旧后台申请组件、其独占样式及已迁移的两条业务测试；其他入驻行为不变。
+- `src/features/admin/AdminWorkspace.test.tsx`：在指定 seam 经左栏进入申请页，以 fetch 桩覆盖真实 onboarding 请求和遥测；最终 12 条。包含确认后单次 POST、通过/拒绝、本地计数同步、邮件失败/重发、学员邮箱冲突、四筛选/搜索、刷新清标、英文文案、只读概要与关联用户跳转。
+- `src/i18n/en-smoke.test.tsx`：仅移除被删计划页的专用类型、mock 和断言，保留其余英文覆盖。范围扩展原因见本节开头。
+- `docs/CODEX-JOURNAL.md`：本记录。没有依赖、锁文件或后端改动，没有 commit、push 或 PR；分支 `feat/014-admin-redesign`，HEAD 仍为 `dca136c`。
+
+### 红 → 绿证据
+
+均使用 `npm test -- src/features/admin/AdminWorkspace.test.tsx`：
+
+| 行为 / 测试名 | 先红证据 | 转绿证据 |
+| --- | --- | --- |
+| `opens overview with five navigation items, shared pending counts and four key figures` | 原导航六项、申请先于总览且无计数；另两条原用户测试因标签仍为「用户管理」失败。有效红日志：`/tmp/014-overview-red.log`（3 failed / 1 passed） | `/tmp/014-overview-green.log`：5 passed，覆盖导航、默认页、待办/左栏计数、四数字和去审核 |
+| `shows email and read-only plan summaries while linked users still open` | 用户详情缺邮箱，期望 `邮箱coach@example.test` 未找到。`/tmp/014-detail-red.log`（该测试和总览测试失败） | 同上 5 passed；概要行无 button/link/svg，关联用户仍调用详情 |
+| `confirms approval once, updates shared counts, tracks approval and clears failed mail after resend` | 新申请页尚无「通过」操作，`button not found: 通过`。`/tmp/014-review-red.log`（1 failed / 5 passed） | `/tmp/014-review-green.log`：6 passed；包含连续两次确认只发一次 approve、遥测事件、成功行离开 pending、resend 清除失败标记 |
+| `never labels a failed linked-user load with the previous user identity`（审查返修） | 点学员乙后面包屑仍是 `用户/教练甲刷新`。`/tmp/014-review-identity-red.log`（1 failed / 9 passed） | `/tmp/014-review-identity-green.log`：10 passed；换资源 key 时清旧身份，同 key 刷新可保留 |
+
+旧 onboarding 的两条业务覆盖均已迁入：审核确认与邮件失败重发，以及 `COACH_APPLICATION_EMAIL_IS_STUDENT` 报错后保持待处理。额外覆盖拒绝确认/取消/重发、筛选与搜索、会话标记刷新清除、英文通过成功 toast。最终后台 seam：`/tmp/014-admin-final.log`，12 passed；最终相关四文件复验：`/tmp/014-targeted-final.log`，35 passed。
+
+### 三条检查命令
+
+| 检查 | 命令 | 结果 |
+| --- | --- | --- |
+| Typecheck | `npm run lint`（package.json 中等价脚本 `tsc --noEmit`，无名为 typecheck 的脚本） | exit 0，无类型诊断；`/tmp/014-typecheck-final.log` |
+| 完整测试 | `npm test -- --maxWorkers=2 --minWorkers=1` | exit 0，101 files / 1027 passed，47.90s；`/tmp/014-full-test-bounded.log` |
+| 生产构建 | `npm run build` | exit 0，Vite 6.15s；仅既有 chunk >500 kB 提示；`/tmp/014-build-final.log` |
+
+默认并发的 `npm test` 两次触发旧 `block-grid-ui` 的 5000ms 超时（后续同文件连带失败）及 `pinyin` 的 1000ms 耗时阈值：`/tmp/014-full-test.log`、`/tmp/014-full-test-final.log`。独立运行 block-grid-ui 全部 62 条通过（`/tmp/014-block-isolated.log`）；降低 worker 数后整套全绿。没有改测试阈值、跳过测试或改仓库并发配置。最后的间距/图标及死类型清理之后，重新运行 typecheck、build 和相关四测试文件（35/35）。
+
+### 验收项 1 grep
+
+命令：`rg -n '计划总览|Plan overview|getAdminPlans|getAdminPlan\(|planDetail|PlanDetailPage' src/`
+
+唯一命中：`src/features/admin/AdminWorkspace.test.tsx:81: expect(host.textContent).not.toContain('计划总览')`，属于清单允许的“不存在”断言。排除 `*.test.*` 后为零命中（rg exit 1）；`CoachApplicationsSection`、`onboarding-admin`、`buildMatrix`、`PlanContext` 生产源码也零命中。原始记录 `/tmp/014-acceptance-1-grep.log`。`git diff --check` 通过，`package.json` / `package-lock.json` diff 为空。
+
+### 自审与待收货事项
+
+- Standards：独立只读 reviewer 发现 1 项跨用户加载旧身份问题，先红后绿修复并定向复核关闭；剩余 0 项。
+- Spec：独立只读 reviewer 发现 2 项稿面偏差（左栏选中态、用户详情双栏/标题/间距），已修复并定向复核关闭；剩余 0 项。三列表页筛选后计数已移入各自页头副标题，刷新仍指向对应资源。
+- 样式检测器只报告未改动的全局 CSS 旧规则（侧边线、width 动画），未扩范围修改；记录 `/tmp/014-design-detect.json`。
+- **浏览器实看未完成**：按卡第 14 项由 Claude 收货。曾尝试启动纯本地 fetch 夹具做补充自看，当前沙箱拒绝 `listen 127.0.0.1:5194`（EPERM，`/tmp/014-vite.log`）；没有绕过权限，临时 HTML/TSX 已删除，没有真实后端请求。1280/1024 下的像素布局、原生 dialog 焦点和遮罩仍待 Claude 实看，不能把 DOM 测试或源码审查当作视觉验收。
+- 总览邮箱从既有 users 接口取得；未做线上数据或真实邮件联调。以上为开发自测和代码自审，不声明产品验收完成。
+
+## 2026-10-22 · 014 卡 A：按天排（开发交付，待 Claude 浏览器验收）
+
+工作树 `meetpr-plan-web-wt-014-impl`，分支 `feat/014-transposed-layout`，基线 `f7026a5`。开工先读仓根 CONTEXT、CLAUDE、014 SPEC/CARD-A、011 与 012 前置章节，并现场核实 worktree、status、最近十条提交；开工工作树干净。没有 commit、push、开 PR 或修改锁文件。
+
+### 改动文件与行为
+
+- `src/features/plan-editor/blockGridModel.ts`：新增展示轴投影、编辑卡起止列与扩宽列数、共用跨周填充目标。按天排列为周、行为原星期列，保留原格子及地址；按周排的左借位公式不变。填充预览、覆盖确认、实际填充使用同一目标函数。
+- `src/features/plan-editor/blockLayout.ts`（新增）：本机通用排版偏好 `meetpr.plan-editor.block-layout`，默认按周排；读取失败回默认，写入失败保留本次会话选择。偏好不进入计划树、快照或草稿。
+- `src/features/plan-editor/components/BlockGrid.tsx`、`block-grid.css`：双图标切换；复用日卡、编辑内容、积木、实际速记和视频标记；按天排周列头/星期行头、容量气泡、固定行头、六周横滚、向右三列编辑及临时扩宽、左侧周提示、横缝首尾/中间插入和双语菜单。开始横向填充时安全收起编辑卡，暴露后方目标格；预览、覆盖确认、锁定跳过和一步撤销继续共用原路径。
+- `src/features/plan-editor/PlanEditor.tsx`：接入偏好；切换保留编辑卡和未完成组数/备注输入；按天排翻周改定位有布局盒的周列头，待核对定位不再横向居中。没有修改 reconcile、请求体或保存路径。
+- `src/i18n/strings-editor.ts`：补中英文切换、插入说明和本周标签；填充柄改为「拖动复制到后面几周」。行内 ⌘D 及其「已向下填充 N 格」保持原样。
+- `src/features/plan-editor/blockGridModel.test.ts`：新增 11 条，既有 14 条原样保留。
+- `src/features/plan-editor/by-day-layout-ui.test.tsx`（新增）：19 条，复用 `blockGridTestUtils.ts`；覆盖切换/重挂载/换计划学员、存储读写抛错、W1–W4 编辑与宽度恢复、横向填充、单周插入/首尾插入/删除撤销、行头规律、输入与发布状态、无保存请求、英文和六周横滚定位。
+
+### 红 → 绿证据
+
+逐个行为纵向实现；每行红均在对应实现前实际执行。模型命令 `npm test -- src/features/plan-editor/blockGridModel.test.ts`；UI 命令 `npm test -- src/features/plan-editor/by-day-layout-ui.test.tsx`。
+
+| 行为 | 红 | 绿 | 日志前缀（均位于 `/private/tmp/`，后缀 `-red.log` / `-green.log`） |
+| --- | --- | --- | --- |
+| 行列投影、单周插入空位 | 1 failed / 14 passed | 15 passed | `014-model-projection` |
+| W1–W4 编辑起止列、按周排不变 | 8 failed / 15 passed | 23 passed | `014-model-span` |
+| 两种排版共用填充目标 | 2 failed / 23 passed | 25 passed | `014-model-fill` |
+| 切换与跨计划记忆 | 1 failed | 1 passed | `014-ui-preference` |
+| 周列头、四周编辑位置与收起 | 4 failed / 1 passed | 5 passed | `014-ui-layout` |
+| 横缝插入、单周行、删除撤销 | 1 failed / 5 passed | 6 passed | `014-ui-insert` |
+| 横向拖拽暴露目标、预览和撤销 | 1 failed / 6 passed | 7 passed | `014-ui-fill` |
+| 切换保留未完成输入与发布状态 | 1 failed / 7 passed | 8 passed | `014-ui-input` |
+| 周容量气泡日期范围 | 1 failed / 14 passed | 15 passed | `014-ui-capacity` |
+| 审查返修：六周计划翻周定位 | 1 failed / 15 passed | 16 passed | `014-review-navigation` |
+| 审查返修：向左换编辑卡仍露出上一周 | 1 failed / 16 passed | 17 passed | `014-review-previous` |
+| 审查返修：待核对行/空天不横向居中 | 2 failed / 17 passed | 19 passed | `014-review-issue` |
+
+补充的存储异常、行头改规律、首尾插入、英文六周用例验证已共用的能力，加入即绿，没有把这些用例记为独立红绿。输入与待核对定位的测试初稿曾因使用 SPEC 概述文案而未命中既有状态/按钮；对齐实际 UI 后重新跑出上述有效红，不修改既有业务断言。
+
+### 最终检查
+
+- `npm test` 已执行：默认并发下 12 周 UI 用例超过既有 5 秒超时，导致同文件后续连锁失败；另拼音性能用例耗时 1253.78ms 超过既有 1000ms 阈值。该次 **2 files failed / 100 passed；61 failed / 986 passed**，日志 `/private/tmp/014-final-test.log`。没有修改测试阈值、旧断言或 Vitest 配置。
+- 限制并发后执行同一全量套件：`npm test -- --maxWorkers=2 --minWorkers=1`，exit 0，**102 files / 1051 passed**，53.84s；日志 `/private/tmp/014-final-test-bounded.log`。包含原 block-grid-ui 62 条、cell-selection-ui、block-history-ui、actuals-ui、block-date-save 等全部回归。此前单独复跑原 block-grid-ui 也是 62 passed，日志 `/private/tmp/014-week-regression.log`。
+- `npx tsc --noEmit`：exit 0，无诊断；`/private/tmp/014-final-tsc.log`。
+- `npm run build`：exit 0，Vite 4.02s；仅既有 chunk >500 kB 提示；`/private/tmp/014-final-build.log`。
+- `git diff --check` 通过；锁文件无改动。以上是本地验证，不是 CI 或上线证据。
+
+### 独立审查与验收边界
+
+按 `review-loop` 对未提交 diff 和新增文件做两轴独立只读审查。本仓缺少 `docs/agents/issue-tracker.md`，没有声称执行依赖 tracker 的完整 Matt 分支流程；后续需 `$setup-matt-pocock-skills`，本次本地审查直接采用已批准 SPEC。
+
+- **Standards**：初审 1 项——按天排的周 wrapper 为 `display: contents`，旧翻周滚动无法定位。补红绿后改定位周列头；定向复审未决 0、新发现 0。
+- **Spec**：初审 1 项——六周计划 W4 → W3 时，编辑卡已在视口内，单纯 nearest 不会露出上一周。补红绿后按上一周与固定行头边界补偿横滚，同时避免待核对定位/聚焦再次横滚；定向复审未决 0、新发现 0。
+- 未发现已知代码层面的 SPEC 偏离；存储写入失败时本次会话仍可切换、重开回默认，沿用 RAIL_MODE_KEY 的降级方式。
+- 本轮没有启动开发服务器或做真实浏览器验收。按 CARD-A，浏览器验收由 Claude 在沙箱外执行；DOM / CSS 与模拟几何测试不能替代 1440×900 的真实像素和滚动检查。仍须按 SPEC 1–10 收货，尤其验证 W1–W4 及六周 W4→W3、固定行头、逐组重量/RPE/10组长行、自加动作、已后移日、视频反馈/显示实际/聊天浮窗和已发布计划。本段仅为开发交付，不宣布产品验收通过。
+
+## 2026-10-22 · 016 卡 B（Codex 开发交付，待 Claude 收货）
+
+基线：`feat/014-admin-redesign`，HEAD `768fef0`；按新版 `CARD-B.md`、SPEC §6 与稿 ⑤ 实装。没有 commit、push、PR、后端、依赖或锁文件改动。
+
+### 改动文件
+
+- `src/features/admin/AdminWorkspace.tsx`：左栏减为总览 / 教练申请 / 用户 / 动作库；删除 `BindingsPage`、导航与专用图标，保留 `getAdminBindings`。用户详情移除旧关系卡和全部计划渲染，替换为绑定记录：按当前用户 coachId / studentId 过滤全部状态，发起时间倒序，accepted 计生效数；显示发起/响应日期、空响应为 `—`，整行进入对方详情。绑定数据有独立加载、错误重试与角色空态，页头刷新同时更新详情和记录；表格在窄栏内横向滚动。
+- `src/features/admin/AdminWorkspace.test.tsx`：四项导航断言；改写原只读计划概要测试，覆盖五状态、无关记录排除、排序、计数、日期和双向跳转，同时断言教练/学员详情均无计划。旧用户加载失败身份回归改用 bindings 夹具，保留卡 A 的审核、用户与动作库覆盖；新增英文全部状态、错误重试及刷新覆盖，最终 14 条。
+- `src/i18n/strings-admin.ts`：中英文同步新增绑定记录标题/计数，精简列名；删除绑定列表搜索/计数/空态和旧详情计划、关系标题专用 key。
+- `docs/CODEX-JOURNAL.md`：本记录。当前基线已无独立绑定页测试；`en-smoke.test.tsx` 未引用已删入口，无需修改。接口返回的计划类型仍保留，详情组件不读取或渲染它。
+
+### 红 → 绿证据
+
+- 导航：先改 `four navigation items` 断言，旧实现多出「绑定关系」而失败，`/tmp/016-b-nav-red.log`（1 failed）；删除导航/页面后 `/tmp/016-b-nav-green.log`（1 passed）。
+- 详情：先替换概要断言，旧实现仍显示「相关计划 / 力量积累 / 名下学员」，`/tmp/016-b-detail-red.log`（1 failed）；接入绑定记录并删除计划渲染后 `/tmp/016-b-detail-green.log`（12 passed）。
+- 补充覆盖：`/tmp/016-b-admin-final.log`（14 passed）。错误重试测试初次误写既有错误文案为「加载失败」，按真实公共错误组件文案「内容没能加载出来」修正断言；未为测试改产品文案。
+
+### 检查与审查
+
+- `npm run lint`：通过（等价 `tsc --noEmit`），`/tmp/016-b-lint.log`。
+- `npm run build`：通过，Vite 构建 21.02s，仅既有 >500 kB chunk 提示，`/tmp/016-b-build.log`。
+- 完整测试最终通过：`npm test -- --maxWorkers=2 --minWorkers=1`，101 files / 1029 passed，44.06s，`/tmp/016-b-full-test-final.log`。默认并发首轮（`/tmp/016-b-full-test.log`）为 4 files / 63 tests failed：包含修正前的错误文案断言，以及无关 `block-history-ui` / `block-grid-ui` 的 5000ms 超时、连带失败和 `pinyin` 耗时阈值超限。第一轮两 worker（`/tmp/016-b-full-test-bounded.log`）与构建重叠，仍有 `block-grid-ui` 超时及连带失败、`pinyin` 1096ms 超过 1000ms（2 files / 61 tests failed）；构建结束后使用相同两 worker 命令，最终整套全绿。未修改超时阈值、跳过测试或改变仓内测试配置。
+- 验收 1 grep：`rg -n '计划总览|Plan overview|getAdminPlans|getAdminPlan\(|planDetail|PlanDetailPage|BindingsPage' src/` 仅命中后台测试中「计划总览」不存在的断言；生产代码零命中。用户详情 `detail.plans` / `planBadge` / `detail.relations` 零命中，`git diff --check` 通过。
+- Standards：独立只读审查仅发现绑定页删除后遗留的 `arrow` 图标死分支，已删除并经 reviewer 定向复核关闭；剩余 0 项。
+- Spec：独立只读审查剩余 0 项。机械设计检测 `[]`，`/tmp/016-b-design-detect.json`；此检测不等同视觉验收。
+
+### 拿不准的地方 / 待收货
+
+- 无未定产品分支。稿 ⑤ 示例行并非发起时间倒序，按 CARD-B 与 SPEC §6 明确要求排序；稿中的人名/数字仅作示例。
+- 浏览器实看未完成：本地 Vite `--host 127.0.0.1 --port 5194` 被当前沙箱拒绝 `listen EPERM`（`/tmp/016-b-vite.log`），未绕过权限或发起真实后端请求。1280/1024 下的表格滚动、结构/层级/间距仍由 Claude 按验收 14 收货，不能将 DOM 测试或源码审查写成视觉验收通过。
+- 本节是开发自测与代码审查记录，不宣布产品验收完成。仓内缺 `docs/agents/issue-tracker.md` 已告知 David 后续运行 `/setup-matt-pocock-skills`；本次以明确本地卡片为审查依据。
+
+## 2026-10-22 · 014 网页繁体中文（开发交付，合并闸门未过）
+
+### 范围与执行边界
+
+- 在用户指定 worktree `/Users/david/Projects/apps/meetpr-plan-web-wt-014-zh-hant` 创建、读取并删除临时文件成功（exit 0），再依次读取 CONTEXT、CLAUDE、014 CARD/SPEC/GLOSSARY 和 008 SPEC；核对当前分支 `feat/014-zh-hant`、起点 `7f95ce6`、worktree/status/log。原工作区干净。
+- 仅当前 worktree 写入；未 push、开 PR、部署、修改服务端数据或正典发布台账。计划原子提交实现、测试和本记录，按用户要求附 Co-Authored-By；实际提交被 Git 元数据写权限阻断，见末节。开发自测/自审不替代 Opus 按 SPEC 收货。
+- 使用 tdd 逐项先红后绿；最终按 review-loop 做独立 Standards / Spec 只读审查。仓内缺 Matt tracker 配置，不私建；未来依赖 tracker 的流程需 David 调用 `$setup-matt-pocock-skills`。本次直接以已批准本地 CARD/SPEC 为依据。
+
+### 改动
+
+- `locale.ts` 增加 `zh-Hant`、繁体浏览器判定和测试 query override；国内其他语言继续 zh，海外维持既有规则。初次解析同步 html lang；API 公共请求路径（含 refresh）显式带单值 Accept-Language。S3 预签名上传不是后端 API，保持签名要求。
+- `scripts/gen-zh-hant.mjs` 使用固定开发依赖 opencc-js 1.4.2 的 cn→twp 转换，再以 glossary 优先处理台湾用语、引号和品牌；TS AST 只转换字面量，插值表达式不转换。生成 12 组同构字典、onboarding 文案表、系统动作名表、输入规范化表与简体特有字检测表，产物入仓；运行时不加载 OpenCC。`npm run gen:zh-hant` 可重跑，`--check` 检查当前产物与幂等性。
+- onboarding 既有双语 helper 纳入同一生成入口，覆盖登录/注册入口与 CoachShell 等调用方；动态文案用 tagged template 保护姓名等插值。日期沿用中文格式，星期使用「週」。没有改页面结构、CSS、导航或添加语言切换 UI，简体/英文字典源未改。
+- `stable-zh.ts` 输入规范化接入 ExerciseIndex、动作库/管理/统计/命令搜索、剪贴板与 workbook 解析。只规范化协议字段和匹配输入；canonical 仍简体，自定义名称与备注原样。后端已本地化的系统 catalog 名称入索引前恢复 canonical。
+- 动作展示仅在明确系统归属时查生成表；同名自建动作也原样。无归属信息的远端 DTO 保留服务端出参，依赖共享契约中后端 052 按请求语言转换，不凭名称猜用户内容。
+- 动作源快照来自只读的后端系统 seed/rename migrations，记录于 `src/data/exercise-system-names.json`：backend SHA `1e494dbd46952ffcb6a07577a12133efaed7e917`，1271 个源名称，含历史系统名；结合本仓别名与既有展示名称生成 1315 条映射。不含生产或用户数据，不作为线上 catalog 现状证据；系统目录增长需更新快照再生成。
+
+### 测试 seam：红 → 绿
+
+| seam / 命令 | 首次红的原因 | 修复后证据 |
+| --- | --- | --- |
+| `npm test -- src/i18n/locale.test.ts` | 繁体浏览器仍返回 zh，html lang 为空 | 11 passed；覆盖国内/海外、query、html 与 API/refresh 请求头 |
+| `npm test -- src/i18n/stable-zh.test.ts src/features/plan-editor/exerciseIndex.test.ts` | 缺规范化函数、繁体动作无法绑定 | 输入规范化与简体等价；索引最终 17 passed，含后端繁体名回到简体 canonical |
+| `npm test -- src/features/plan-editor/clipboard.test.ts` | 繁体表头被当作动作，多导入一行 | 9 passed；备注原样 |
+| `npm test -- src/features/plan-editor/import/import.test.ts` | 繁体组次数无法解析，结果为空 | 34 passed；包含臥推、相撲硬舉、二頭彎舉及备注保护 |
+| `npm test -- src/i18n/zh-hant-smoke.test.tsx src/i18n/zh-hant-generated.test.ts --maxWorkers=1 --minWorkers=1` | 繁体入口落英文、系统名未转换；复审新增用例揭露登录入口漏收集及同名自建名被转换 | 最终 2 files / 11 passed（6 smoke + 5 生成验证），exit 0，8.71s |
+
+- 生成验证检查全部 key/类型、插值 sentinel 保持、每条 glossary 覆写、所有生成字面量分支、onboarding/系统名产物简体特有字命中为 0，以及生成内容可重复。初版检测字集误报「群/里」，补全 OpenCC 繁体词组输出集合后消除误报。
+- `ForgotPasswordScreen.test.tsx` 仅两处原精确 header 断言新增 `Accept-Language: zh-Hans`；014 明确新增请求头，旧断言必须同步，文案与请求体断言保持。
+
+### 最终合并闸门与原始诊断
+
+- 首次 `npm test`：104 files，101 passed / 3 failed；1043 tests，980 passed / 63 failed。其中 2 条为上述请求头旧断言，已修；另有网格 60 条失败和拼音性能 1 条失败。
+- 修复后全量 `npm test -- --maxWorkers=1 --minWorkers=1`：**exit 1，104 files：102 passed / 2 failed；1048 tests：987 passed / 61 failed；809.66s**。所有 014 新增测试通过，但全量未绿，不满足本卡合并闸门。
+- 网格首个失败：`opens legacy 12-week import without changing any prescription or date and without saving`，`Test timed out in 5000ms.`；最终串行这条耗时 42500ms，后续发生 DOM 缺失等连锁失败，共 60 条。未修改既有测试 timeout、跳过测试或放宽断言。
+- 拼音失败原文：`AssertionError: expected 8652.368875 to be less than 1000`，位于 `src/features/plan-editor/pinyin.test.ts:53`。拼音实现与该测试未改；单独组合运行时 7 条拼音测试通过。
+- 隔离复跑：`npm test -- src/features/plan-editor/block-grid-ui.test.tsx src/features/plan-editor/pinyin.test.ts --maxWorkers=1 --minWorkers=1`，60 failed / 9 passed；网格同一测试超时 5852ms。
+- 基线对照：在本 worktree 内 `.validation-014/baseline` 用 `git archive 7f95ce6` 展开原提交（仅复用现有 node_modules），运行 `npm test -- --root .validation-014/baseline src/features/plan-editor/block-grid-ui.test.tsx --maxWorkers=1 --minWorkers=1`，同样 **60 failed / 2 passed**，同一 12-week 测试超时 6227ms；随后删除基线临时目录，最终全量只收集本仓 104 个测试文件。
+- 运行环境 Node v25.9.0；09:21 `uptime` load averages 为 `147.81 187.56 235.03`，09:27 为 `261.24 238.50 244.24`。基线复现及高负载支持环境耗时导致失败的判断，但不能据此宣布全量通过；机器负载恢复后仍需按原配置重跑三条闸门命令。
+- 最终 `npm run lint`（仓内脚本即 `tsc --noEmit`）：exit 0，无诊断。`npm run build`（含再次 tsc）：exit 0，242 modules，Vite 12.50s；仅既有 chunk >500 kB 提示。`git diff --cached --check` 通过。原始输出节选保存在 `docs/verification-014-zh-hant.txt`；临时基线、运行日志目录与本地 dev server 已清理。
+
+### 独立审查、偏离与待收货问题
+
+- Standards 初审指出未知归属动作误转换风险；Spec 初审另指出 onboarding 生成漏掉目录外调用方、EditorChat fallback 未统一。新增真实入口和同名自建动作回归先红后绿，再定向复审；两轴均无新的确定性本仓代码阻断项。保留完整性校验，不将远端未知归属数据统一转字。
+- SPEC §4 的简体 5 屏 / 英文 2 屏逐字截图对比、带历史老用户首屏实看，以及繁体逐屏截图 **未完成**。打开 `http://127.0.0.1:5180/?lang=zh-Hant` 时浏览器自动审批拒绝，原因为该来源未获访问授权（`origin approval gate did not grant access`）；遵守拒绝，没有换浏览器、CDP 或其他渠道绕过。jsdom smoke 不能替代像素与真实用户验收。
+- SPEC 要求四端同一份简体特有字文件，但卡内未提供已有共用文件。本仓生成 `src/i18n/simplified-only.json`，SHA256 `e7b44915dea02ff397e07751db0618baf684546ac746d70d45bc3f121785908a`；需 Opus 在其他三仓同步同一份后确认，未宣称四端一致。
+- 后端 052 尚未在本次联调：统计/计划/聊天等无归属 DTO 的系统动作名依赖服务端按语言输出；同名自建动作必须保留。特别核对聊天 `set_ref.exercise_name` 与 body 的机械首行同步变更，否则 `parseSetRefMessage` 的完整性比较会降级纯文本；用户 note 必须原样。客户端未放宽该校验，相关 smoke 使用契约形态的服务端 fixture，不作为后端上线证据。
+- 本次没有运行推送/邮件、其他客户端或真实服务端验收；它们仍由对应卡及 Opus 跨端收货覆盖。后续处理顺序：恢复本地全量绿 → 获准浏览器逐屏验收 → 052 联调与共用检测字集对齐；不改动已批准验收范围。
+
+
+### 提交阻塞（原始报错）
+
+实现与测试已暂存，但最后暂存 JOURNAL / 原始验证节选时，`git add docs/CODEX-JOURNAL.md docs/verification-014-zh-hant.txt` 返回：
+
+```text
+fatal: Unable to create '/Users/david/Projects/apps/meetpr-plan-web/.git/worktrees/meetpr-plan-web-wt-014-zh-hant/index.lock': Operation not permitted
+```
+
+worktree 文件可写，但实际 Git 元数据在可写根之外；本会话禁止权限提升，未改用其他目录、替代 git-dir 或绕过沙箱。**尚未 commit**；JOURNAL 修改与验证节选未暂存，其余实现/测试保留在 index，HEAD 仍为 `7f95ce6`。待允许正常写该 worktree 的 Git 元数据后，先暂存这两份记录，再在当前分支创建原子提交；拟定标题 `Add Taiwan Traditional Chinese localization`，末行必须为 `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`。本条是提交权限缺口，不是修改验收或允许合并；全量测试仍须恢复全绿。没有 push、PR 或部署。
+
+### v2 返修（2026-10-22，AMEND-v2）
+
+- 在原有未提交改动上继续；开工用仓内 `mktemp` 创建并删除临时文件，确认可写。HEAD 仍为 `7f95ce6` / `feat/014-zh-hant`；保留原 index，未 add、commit、push，也未改其他 worktree。
+- `scripts/gen-zh-hant.mjs` 将显示覆写与末节输入别名分开读取；重生成「課表」（含复合词）、「反饋」和 reps「下數／下」。上下文限定行不进入全局反向替换，避免污染「尝试次数」「最近 N 次」等输入或文案。简体与英文源字典未改。
+- reps 显式白名单（16 个命中 key）：`block.historyHint`、`editor.actualWeightReps`、`editor.repsGuard`、`editor.cellRepsLabel`、`editor.opaqueSetSettingsHint`、`stats.context.repsPr`、`stats.board.repsPr`、`stats.tracking.repsShare`、`stats.tracking.repsDistribution`（仅替换「次数」）；`common.reps`、`common.countReps`、`block.reps`、`video.repCount`、`stats.context.setsReps`、`stats.context.repsBest`、`stats.context.repsBestShort`（替换 reps 单位「次」）。`block.historyHint` 中「近 5 次记录」保留；`auth.rateLimited`、`stats.board.sessions`、`stats.context.historyRecent` 有反例断言。
+- `exercise-aliases.json` 增加批准表中的 17 条输入别名，繁→简后匹配，catalog 全名优先；只在 exact 未命中后剥离末尾尺寸（兼容中英混合括号），不剥 `(PIN)` 等语义。系统与自建动作 fallback 绑定时把尺寸原文留入备注；精确自建全名保持原文。fixture 新 canonical 逐条核对已有 backend seed/migration 源快照，不含真实教练课表。本轮未取得已授权的线上 token，未作生产 catalog 实测；本地快照不能代替上线联调证据。跨仓别名源同步由 Opus 对应卡收货。
+- Excel 五列日块及 TSV 粘贴识别「下數」「教練指示」「反饋備註」，两个备注列合并时保持各自字形与内容；补真实 XLSX 编解码→parseDay→buildWeeks 合成回归。速记 `2下@8。80%` 分离为 reps 2、RPE 8、百分比 80%；不从百分比推算重量，不凭空新增组数。
+- **Opus 确认沿用既有规则**：当前行模型只能选择一种强度，沿用既有百分比导入备注规则：RPE 8 进入结构化强度，`80%` 保留备注；不新增双强度模型。David 在 v2.1 任务中传达确认。
+
+#### 先红后绿与审查
+
+| 行为 / 命令范围 | 红 | 绿 |
+| --- | --- | --- |
+| `zh-hant-generated.test.ts`：v2 覆写、reps 与非 reps | 4 failed / 2 passed | 6 passed |
+| `exerciseIndex.test.ts`：17 别名、混合括号、排除歧义 | 1 failed / 17 passed | 18 passed |
+| import + clipboard：下數与备注表头 | 2 failed / 43 passed | 45 passed |
+| import：`2下@8。80%` | 1 failed（只选该例） | 36 passed（整文件） |
+| import + clipboard：XLSX/粘贴绑定与尺寸保留 | 2 failed / 46 passed | 66 passed（含索引） |
+| 审查返修：catalog 全名覆盖、带表头休息/事件行 | 2 failed / 55 passed | 68 passed（含粘贴） |
+| 复审返修：自建动作尺寸 exact/fallback 原文保留 | 2 failed / 49 passed | 见下方最终定向集 |
+
+原始阶段日志保存在 `/private/tmp/014-v2-{terms,alias,header,compact,binding,review,custom}-red.log`，对应 green 日志及最终定向日志另存；`custom` 的绿由最终定向集覆盖。所有新增夹具为合成数据。Standards 独立审查发现 catalog key 覆盖、休息行及自建尺寸保留问题；Spec 独立审查发现休息行问题；均按公开 seam 先红后绿定向返修。
+
+- 最后自查补一条带表头的「仅备注续行」回归：原 derived 字段判空会漏掉备注，改为检查原始五个 cell 后复用现有续行逻辑；`npm test -- src/features/plan-editor/import/import.test.ts` 先 **1 failed / 39 passed**，再 **40 passed**（11.28s）。日志 `/private/tmp/014-v2-continuation-{red,green}.log`。Spec 定向复核通过，无表头路径判空语义不变。
+- 最终 Standards：上述 3 个问题均关闭，无遗留代码阻断；最终 Spec：休息行、备注续行均关闭，未发现新增代码缺口，RPE/百分比口径已由 Opus 确认沿用既有规则。审查基线为本轮开始前的 index，使用 `git diff -- scripts src`，没有把 v1 的全部 staged 实装重复算作 v2。
+
+#### 命令结果与验证边界
+
+- 综合定向命令：`npm test -- src/i18n src/features/plan-editor/exerciseIndex.test.ts src/features/plan-editor/clipboard.test.ts src/features/plan-editor/import src/features/plan-editor/reconcile-import.test.ts src/features/catalog/catalogModel.test.ts --maxWorkers=1 --minWorkers=1`，**13 files / 118 passed**，136.88s，exit 0。含英文 smoke、繁体 smoke、生成幂等/字集、日期、别名/粘贴/XLSX/落树；日志 `/private/tmp/014-v2-targeted-delivery.log`。随后仅备注续行改动由上面的 **40/40 import 定向复跑**覆盖；未声称它属于 118 条那次运行。
+- 按 David 要求，**全量只运行一次**：`npm test`，**102 files passed / 2 failed（104）**，**996 tests passed / 61 failed（1057）**，51.25s，exit 1，日志 `/private/tmp/014-v2-full.log`。`block-grid-ui.test.tsx` 的 `opens legacy 12-week import...` 超过原 5000ms timeout（报告 8787ms），后续连锁失败，合计 60 条；`pinyin.test.ts` 性能断言实际 `4697.069667ms`，要求 `<1000ms`，1 条失败。未改这两个文件、测试 timeout 或断言，未增加 .skip；本轮未做基线复跑，也未把既有高负载现象宣称为全量通过。
+- 全量发生在最后「自建动作尺寸 fallback 保留」和「仅备注续行」修复前；这两处之后已用定向测试覆盖，遵守只跑一次的要求没有再次全量。该次全量不代表最终树全量绿。
+- 环境：Node `v25.9.0`；开工后 09:49 load averages `262.19 319.48 290.23`，全量启动前 10:00 为 `122.92 139.44 203.57`，10:01 为 `141.66 142.17 200.93`，10:06 为 `183.01 154.42 185.73`。这里记录观测，不用负载数字代替失败证据。
+- `npm run lint`（`tsc --noEmit`）exit 0；`git diff --check`、`git diff --cached --check` 通过。首次 lint 检出的 nullable closure 已修复后复跑。最终 lint 日志 `/private/tmp/014-v2-lint-final.log`。
+- 浏览器实看仍未完成：本会话 IAB 不可用；Chrome 打开 `http://127.0.0.1:5180/?lang=zh-Hant` 被自动审批拒绝，明确报 `origin approval gate did not grant access` / `The user declined approval`。未换通道绕过；jsdom smoke 不能替代页面截图、带历史老用户首屏或跨端验收。
+- `npm run build`（含 `tsc --noEmit`）exit 0，242 modules，Vite 42.42s；只有既有 chunk >500 kB 提示，未调整阈值。日志 `/private/tmp/014-v2-build.log`；验证节选追加在 `docs/verification-014-zh-hant.txt`。本地 Vite dev server 已停止。最终仍未 commit、未 push，无 PR 或部署。
+
+### v2.1（2026-10-22，AMEND-v2 补充）
+
+- 开工在当前 worktree 创建并删除临时文件，确认可写；现场核对 HEAD `7f95ce6` / `feat/014-zh-hant`。只增量处理 v2.1，保留既有工作区与 index；未 add、commit、push 或部署。
+- `scripts/gen-zh-hant.mjs` 提取新增词条的源词，沿用最长词优先：先「杠杆→槓桿」，再「杆→槓」。已运行 `npm run gen:zh-hant`，更新界面字典、动作名、术语表及输入规范化表。界面「特殊槓／低槓深蹲／安全槓深蹲」、动作「EZ槓二頭彎舉／坐姿槓桿臂屈伸」均有断言；简体与英文源字典未动，自建动作显示保留原文。
+- 输入保留既有通用「槓→杠」，用系统动作全名及 Latin 器械 token（含大小写）还原「杆」，如 `EZ槓→EZ杆`。动作查询键统一「杆／杠」支持繁体别名；原名与归一化键分表，确保 catalog 真名精确命中优先、返回的 canonical 不变。
+- 已把上一节百分比口径改为「Opus 确认沿用既有规则」：RPE 8 结构化，`80%` 留备注；本轮不改百分比导入实现。
+
+#### 红→绿与独立审查
+
+- 显示/生成：新增动作名断言首次 **3 failed / 4 passed**（含未重生成检查与新术语表断言）；补 UI 断言后单例先红，重生成后 **7 passed**。日志 `/private/tmp/014-v21-display-{red,green}.log`、`/private/tmp/014-v21-ui-red.log`。
+- 输入：默认反向覆写覆盖既有「低槓→低杠」先 **1 failed / 10 passed**；按系统名/token 消歧后，输入与生成合计 **18 passed**。日志 `/private/tmp/014-v21-input-{red,green}.log`。
+- 搜索/绑定：`安全槓深蹲` 别名先 **1 failed / 19 passed**，查询键统一后 **20 passed**；同时覆盖 `EZ槓`/`ez槓` 搜索与完整动作精确绑定。日志 `/private/tmp/014-v21-binding-{red,green}.log`。
+- Standards 独立审查发现新查询键可能覆盖 catalog 原名；用合成「安全杠深蹲／安全杆深蹲」及两种排序先 **1 failed / 20 passed**，分离索引后 **21 passed**。日志 `/private/tmp/014-v21-collision-{red,green}.log`。Standards 定向复审：问题关闭、无新增阻断；Spec 定向复审：无遗留本轮实现缺口。
+
+#### 最终验证
+
+- `npm test -- src/i18n src/features/plan-editor/exerciseIndex.test.ts src/features/plan-editor/clipboard.test.ts src/features/plan-editor/import src/features/plan-editor/reconcile-import.test.ts src/features/catalog/catalogModel.test.ts --maxWorkers=1 --minWorkers=1`：**13 files / 129 passed，exit 0**，覆盖生成幂等、繁英 smoke、输入、别名、粘贴、Excel 与落树。日志 `/private/tmp/014-v21-targeted-final.log`。本轮未运行全量，不覆盖或改写上一轮全量失败记录。
+- `npm run lint`、`npm run build` 均 **exit 0**；build 只有既有 chunk >500 kB 提示。日志 `/private/tmp/014-v21-{lint,build}-final.log`。`git diff --check` 与 `git diff --cached --check` 通过。
+- 本轮浏览器尝试访问 `http://127.0.0.1:5180/?lang=zh-Hant`，自动审批拒绝，原因 `origin approval gate did not grant access` / `The user declined approval`；没有换通道绕过，页面实看仍未完成。已停止本轮本地 Vite server；jsdom smoke 不代替浏览器或跨端验收。
+
+### 语言头返修（2026-10-22，AMEND-header）
+
+- 开工在当前 worktree 用 `mktemp` 创建并删除临时文件，确认可写；HEAD `7f95ce6` / `feat/014-zh-hant`。在已有未提交改动上增量完成，未 add、commit、push，保留原 index。
+- 按更新后的 SPEC「共享契约」与 AMEND-header，将 `src/api/client.ts` 统一请求入口的显式语言头改为 `X-MeetPR-Locale`，标签仍为 `zh-Hans` / `zh-Hant` / `en`。普通 API、refresh（含重试）、未登录 auth 与 analytics 共用此入口；不再手动设置 `Accept-Language`，由浏览器保持默认行为。源码扫描未见其他显式语言头入口；预签名对象存储上传不属于后端 API，保持原请求。
+- 沿用 `locale.test.ts` 的公开 request/fetch seam，覆盖三种语言下的原请求、refresh、重试请求及真实未登录找回密码 API；用 `Headers` 大小写不敏感地断言新头值、旧头不存在，并校验 refresh 与未登录请求无 Authorization。同步找回密码/重置密码 UI 测试的请求头断言。
+- **先红后绿**：先改测试，`npm test -- src/i18n/locale.test.ts src/features/auth/ForgotPasswordScreen.test.tsx --maxWorkers=1 --minWorkers=1` 得 **3 failed / 18 passed**，失败均来自旧语言头；随后修改统一入口。红日志：`/private/tmp/014-header-red.log`。
+- **最终定向验证**：`npm test -- src/i18n/locale.test.ts src/api/client.test.ts src/api/auth.test.ts src/api/auth.email-login.test.ts src/features/auth --maxWorkers=1 --minWorkers=1`，**6 files / 55 passed，exit 0**。日志：`/private/tmp/014-header-green.log`。
+- `npm run lint` 与 `npm run build` 均 **exit 0**；build 242 modules，仅既有 chunk >500 kB 提示。日志：`/private/tmp/014-header-lint.log`、`/private/tmp/014-header-build.log`。`git diff --check` 与 `git diff --cached --check` 通过。
+- 独立增量审查以 `/private/tmp/014-header-before/` 的开工文件快照为基线：**Standards 0 项；Spec 0 项**。本次仅客户端返修与定向验证，未运行全量、真实后端或跨端验收，不改写此前验收边界。
+
+### v2.2（2026-10-22，AMEND-v22）
+
+- 开工在本 worktree 创建并删除临时文件，确认可写；HEAD `7f95ce6` / `feat/014-zh-hant`。在既有工作区改动上增量返修，保留原 index；未 add、commit、push 或部署。
+- 沿用已更新的 GLOSSARY 两条「发布→發布」「获取→取得」，运行 `npm run gen:zh-hant`。更新界面字典、onboarding、术语表及输入规范化表；生成器本身未改。解码比较确认界面字典增量仅 40 处「釋出→發布」及 5 处「獲取→取得」，onboarding 另有 2 处「釋出→發布」。简体/英文源字典及系统动作名产物未改。
+- `locale.ts` 在现有语言初始化入口同步 `document.title`：繁体为「MeetPR 課表編輯器」，简体与英文保持现有「MeetPR 计划编辑器」。测试覆盖浏览器繁体、query 强制繁体、简体、英文、query 覆盖及重新解析后的标题恢复；不新增语言设置。
+- **术语红→绿**：`zh-hant-generated.test.ts` 新增真实文案断言并同步 glossary 精确校验，先 **3 failed / 5 passed**（新文案、未重生成、词表），重生成后 **8 passed**。日志 `/private/tmp/014-v22-terms-{red,green}.log`。
+- **标题红→绿**：`locale.test.ts` 先 **3 failed / 14 passed**（繁体标题未更新），修改入口后纳入最终定向测试。红日志 `/private/tmp/014-v22-title-red.log`。
+- **最终定向验证**：`npm test -- src/i18n --maxWorkers=1 --minWorkers=1`，**7 files / 48 passed，exit 0**，包含生成幂等、字集扫描、繁英 smoke、输入与语言/标题回归。日志 `/private/tmp/014-v22-targeted-green.log`。本轮未运行全量，不改写此前全量失败及跨端验收记录。
+- `npm run gen:zh-hant -- --check`、`npm run lint`（即 `tsc --noEmit`）、`npm run build` 均 **exit 0**；build 只有既有 chunk >500 kB 提示。日志 `/private/tmp/014-v22-generation-check.log`、`/private/tmp/014-v22-lint.log`、`/private/tmp/014-v22-build.log`。`git diff --check` 与 `git diff --cached --check` 通过。
+- 独立增量审查基线 `/private/tmp/014-v22-before/i18n`，代码差异 `/private/tmp/014-v22.patch`；**Standards 0 项；Spec 0 项**。按本地返修卡审查，不依赖缺失的 issue-tracker 配置。
+- 浏览器实看未完成：尝试 `npm run dev -- --host 127.0.0.1 --strictPort`，沙箱拒绝监听，原始错误 `Error: listen EPERM: operation not permitted 127.0.0.1:5180`。未启动服务、未绕过权限边界。自动化标题测试不代替真实浏览器截图或 Opus 验收。
+## 2026-10-22 · 016 卡 C（Codex 开发交付）
+
+基线：`feat/014-admin-redesign`，HEAD `fd3a68b`；按 `specs/016-admin-redesign/CARD-C.md` 执行。
+
+### 改动文件
+
+- `src/features/onboarding/OnboardingPages.tsx`：题目改为「学员主要用什么手机」/ “What phones do most of your athletes use?”，选项、默认值与提交字段保持不变。
+- `src/i18n/strings-admin.ts`：`applications.device` 改为「学员设备」/ “Athlete phones”；旧申请值仍按原映射显示，总览副标题不改。
+- `src/features/onboarding/onboarding.test.tsx`：增加中英文题目、三种选项和值、默认值断言，测试后恢复中文；保留原提交 payload 回归。
+- `src/features/admin/AdminWorkspace.test.tsx`：增加中英文表头断言与「学员 12 人 · iPhone · …」总览格式回归。
+- `docs/CODEX-JOURNAL.md`：本节。无后端、依赖、锁文件改动；未 commit、push 或开 PR。
+
+### 红 → 绿与检查
+
+- 申请页：先加断言运行原实现，2 failed / 19 passed，明确失败于旧中英文题目（`/tmp/016-c-onboarding-red.log`）；仅替换题目后 21 passed（`/tmp/016-c-onboarding-green.log`）。
+- 后台：先加断言运行原实现，2 failed / 12 passed，明确失败于旧中英文表头（`/tmp/016-c-admin-red.log`）；仅替换表头后 14 passed（`/tmp/016-c-admin-green.log`）。
+- `npm run lint`：exit 0，`/tmp/016-c-lint.log`。
+- `npm test -- src/features/onboarding/onboarding.test.tsx src/features/admin/AdminWorkspace.test.tsx src/i18n/en-smoke.test.tsx`：3 files / 38 passed，exit 0，`/tmp/016-c-related-tests.log`；有 Node `--localstorage-file` 路径提示，不影响测试结果。
+- `npm run build`：exit 0，Vite 4.71s，仅既有 >500 kB chunk 提示，`/tmp/016-c-build.log`。
+- `git diff --check` 通过；检索确认无旧题目残留，无其他需要更名的同字段标签。Standards 自审：未见问题；Spec 自审：未见遗漏或超范围改动。本次为 T0 文案调整，未做独立互审。
+- 浏览器实看未完成：`npm run dev -- --host 127.0.0.1 --port 5194` 被沙箱拒绝 `listen EPERM`（`/tmp/016-c-vite.log`）。没有绕过权限或向真实后端写入；DOM 测试不等同视觉验收。
+
+## 2026-10-22 · 017（Codex 开发交付，待 Claude 收货）
+
+基线：`feat/017-exercise-adoption`，HEAD `ba684aa`（基于 016）。已全文读取本仓 CONTEXT / CLAUDE、017 CARD / SPEC、四份定稿 HTML 源码，以及后端 053 SPEC / CONTEXT。未 commit、push、开 PR；未修改后端、依赖、锁文件或产品正典。
+
+### 改动文件
+
+- `src/api/admin.ts`：自建动作待处理/已收录 wire 类型，以及 list / adopt / unadopt 三接口；收录请求用互斥类型表达 `target_exercise_id` 或 `new_official`。成功响应形状在 053 中未进一步定字段，客户端不猜字段，成功后重新 GET。
+- `src/api/types.ts`、`src/api/exercises.ts`：响应类型增加可选 `canonical_exercise_id` / `adopted`（兼容尚未返回字段的环境）；被收录动作 PATCH 只生成 name。
+- `src/features/admin/CustomExercisesPage.tsx`：两层分段、搜索、待处理表与已收录分组表、单条撤销、toast、列表与计数刷新。官方分段保留原使用统计表的排序和搜索行为。
+- `src/features/admin/AdoptDialog.tsx`：推荐/新建同一原生 modal；最多三条推荐、官方搜索、按最高 plan_count 预填、往返保留输入、属性胶囊与类型联动、单次提交防重、失败保留输入。409 后以最新 pending 同步待处理 IDs；整组已处理时保留输入并禁用提交；刷新 GET 失败时可在弹窗内仅重拉数据。
+- `src/features/admin/adoptionCandidates.ts`：纯函数排序，归一去空白/大小写/全角，别名表 > 包含 > 单字集合 Dice ≥ 0.5；所有写法取最高分、相同分沿用 catalog 顺序，排除自建动作。
+- `src/features/admin/useAdminResource.ts`、`AdminWorkspace.tsx`：将既有资源 hook 原样提取供新页面复用，并接入动作库分段容器。
+- `src/features/catalog/CatalogPage.tsx`：被收录自建动作只允许改 name，其余属性完整只读（含多个动作模式）；隐藏删除；处理两个 adoption 409 错误码。英文模式也保留教练自己的 name，改名后列表与详情同步显示。
+- `src/i18n/strings-admin.ts`、`strings-catalog.ts`：中英文同步；`src/index.css`：只给收录弹窗覆盖旧审核弹窗的按钮最小高度，让胶囊保持稿中的 30px、底部操作保持 40px。
+- 测试：`src/features/admin/AdminWorkspace.test.tsx`、`adoptionCandidates.test.ts`、`src/features/catalog/CatalogPage.test.tsx`。`src/i18n/en-smoke.test.tsx` 将后台整模块 mock 改成部分 mock，保留新增接口导出，继续覆盖原英文 smoke。
+- `docs/CODEX-JOURNAL.md`：本记录。
+
+### 红 → 绿证据
+
+按卡片批准的三个 seam 逐个行为推进；后台新增交互用 fetch 桩，没有真实后端写请求。各日志位于 `/tmp/017-*.log`。
+
+| 行为 | Red | Green |
+| --- | --- | --- |
+| 候选排序优先级 / 前三 / 排除自建 | `017-rank-red.log`：模块未实现，导入失败 | `017-rank-green.log`：首条通过；后续补全角、英文、双向包含、0.5 阈值、空写法覆盖 |
+| 两层分段、表格、写法数、教练搜索 | `017-list-red.log`：无「教练自建」入口 | `017-list-green.log`：通过 |
+| 归到已有官方、全组 IDs、搜索选中、防重、刷新 | `017-existing-red.log`：无收录弹窗 | `017-existing-green.log`：通过 |
+| 新建预填 / 往返保留 / 类型联动 / 必填 / 请求体 | `017-new-red.log`：无新建切换入口 | `017-new-green.log`：通过；过程中修正同批连续选择覆盖前一选择的问题，改用函数式 state 更新 |
+| 无候选直达新建、普通错误保留、409 刷新 | `017-errors-red.log`：未直达新建 | `017-errors-green.log`：通过；测试错误信封按既有 client 的 `{ error: string }` 校正 |
+| 撤销单条、无确认、防重、回待处理 | `017-undo-red.log`：无 unadopt 请求 | `017-undo-green.log`：通过 |
+| 教练只改名、属性只读、无删除 | `017-catalog-red.log`：仍有删除按钮 | `017-catalog-green.log`：catalog 9 条通过 |
+| 旧 catalog 遇到属性锁定 / 禁删错误 | `017-catalog-error-red.log`：只有通用错误 | `017-catalog-error-green.log`：catalog 10 条通过 |
+| 自审返修：409 重试使用剩余 IDs；英文显示教练叫法 | `017-review-red.log`：2 条失败，旧 IDs / 官方英文名 | `017-review-green.log`：相关 3 文件 35 条通过 |
+| 自审返修：409 后 GET 失败，在弹窗里重试且保留输入 | `017-refresh-red.log`：弹窗内无「重试」 | `017-refresh-green.log`：通过，重试不重复 POST，最后可提交成功 |
+
+### 检查与开发自审
+
+- `npm run lint`：通过（`tsc --noEmit`），`/tmp/017-lint-final.log`。
+- 全量测试：`npm test -- --maxWorkers=2 --minWorkers=1` 通过，102 files / 1043 passed，44.30s，`/tmp/017-full-test-two-workers.log`。
+- `npm run build`：通过，Vite 7.22s，`/tmp/017-build-final.log`；仅既有 >500 kB chunk 提示。
+- `git diff --check` 通过，`package.json` / `package-lock.json` 无 diff。最终完整改动（含新增文件）导出 `/tmp/017-changes.diff`，供本地收货查看。
+- 默认并发首次全测 `/tmp/017-full-test.log`：1039 passed / 1 failed，唯一失败是旧英文 smoke 的 admin 全模块 mock 缺少新增导出，已修正。修正及审查返修后的默认并发 `/tmp/017-full-test-final.log`：1042 passed / 1 failed；唯一失败是未修改的 `plan-editor/pinyin.test.ts` 性能用例 1237ms 超过 1000ms 阈值。按任务要求改用两 worker 重跑，未改测试超时/阈值、未跳过用例、未改仓内并发配置。
+- Standards：独立只读初审发现 409 继续提交旧 IDs；修复后定向复审发现 GET 失败时重试在原生 modal 背后不可操作。两轮均补红→绿回归，第二轮定向复核关闭全部问题。
+- Spec：独立只读初审发现英文模式显示官方 name_en 遮盖教练叫法，以及 30px 胶囊受旧样式影响变成 40px。均已修复；复核同步确认 409 刷新恢复修复，无剩余明确代码缺陷。以下计数口径为未明确定义项，不宣称产品验收通过。
+
+### 拿不准的地方 / 待 Claude 收货
+
+- 分段 N 的计量单位未在 017 / 053 明确定义。目前官方按 `/exercises` 官方动作条数；待处理按归一名组数；已收录按官方目标组数；教练自建为后两者之和。多组归到同一官方时总组数可能下降；此处与两张表的分组单位一致，需收货时确认口径。
+- 053 单次 adopt 上限为 50 条，017 要求整组一次提交。实现遵循整组单次请求，没有私自拆批或截断；超 50 条的组如何处理，两个 spec 未约定。
+- 浏览器实看未完成：本地 `npm run dev -- --host 127.0.0.1 --port 5194` 被当前沙箱拒绝 `listen EPERM`，见 `/tmp/017-vite.log`。未绕过权限。DOM 测试不代替视觉验收；定稿⑥–⑨结构/间距、原生 modal 实际焦点与滚动，以及验收 10 的真实 staging「收录 → 教练自己叫法且官方隐藏 → 撤销恢复」仍由 Claude 收货。
+- 仓内无 `docs/agents/issue-tracker.md`，已告知需后续 `$setup-matt-pocock-skills`；本次依据明确本地卡片，用 review-loop 独立双轴开发自审，不宣称运行了缺配置的 tracker 工作流。
+
+## 2026-10-22 · 017 合并 main
+
+基线：分支 `feat/017-exercise-adoption`，HEAD `d7c6a14b3d3f7c6b86d27a8d6057bf6cffc84840`；接手时 reviewer 已执行 no-commit merge，`MERGE_HEAD` 与 `origin/main` 均为 `985d03fc9d7c199434929312b396a4e4a6405b5f`。已读 CONTEXT、CLAUDE、017 SPEC/CARD、016 规范及 018 术语表与补充卡。本轮只编辑工作区文件，未执行任何写入 Git 元数据的命令；不 add、commit、push 或继续 merge。
+
+### 合并与繁中文案
+
+- `src/features/admin/AdminWorkspace.tsx`：直接消除 import 冲突。保留 017 的 `CustomExercisesPage` 和提取后的资源 hook；保留 main 的繁体搜索规范化、中文日期、zh-TW 相对时间及 016 A/B/C 行为。`useRef` 留在资源 hook 模块，工作区组件不引入无用 import。
+- `src/features/admin/AdminWorkspace.test.tsx`：合并两侧全部测试，保留 017 收录/撤销/错误恢复与 main 繁中申请审核/用户详情回归；新增繁中收录推荐、新建、撤销、用户原文不转换及请求 `X-MeetPR-Locale` 测试。
+- `src/i18n/strings-admin.ts`：撤销 toast 的 `${coach} 的` 改为 `${coach}的`。运行 `node scripts/gen-zh-hant.mjs`，按现有 OpenCC s2twp + GLOSSARY 生成 `strings-zh-hant.ts`，补齐整个 `admin.adoption` 及 catalog 的 `adoptedLocked`、`adoptedDelete`、`adoptedNote`；使用「課表」「復原」，姓名/教练叫法插值原样保留。其余生成文件无变化。
+- `src/features/catalog/CatalogPage.test.tsx`：既有只改名、属性只读、无删除测试同时覆盖 zh 与 zh-Hant。
+- `src/i18n/zh-hant-generated.test.ts`：生成完整性测试为 017 的数组参数函数提供合法实参，覆盖单/多写法和教练名单分支，继续检查所有 key、插值与简体特有字。
+- `src/i18n/zh-hant-smoke.test.tsx`：全量检查发现旧全模块 admin mock 遮蔽 017 新导出；按既有 en-smoke 改为 partial mock，原断言不删减。
+
+### 验证证据
+
+- 撤销文案红→绿：既有 UI 测试先改预期，确认旧 toast 多余空格导致失败，再修文案通过；`/tmp/017-merge-undo-red.log`、`/tmp/017-merge-undo-green.log`。
+- 繁中红→绿：重新生成前缺少 adoption 字典造成后台报错、catalog 灰字缺失；生成后适配数组参数校验与用户内容扫描，3 files / 44 tests 通过；`/tmp/017-merge-hant-red.log`、`/tmp/017-merge-hant-green.log`。
+- `npm run lint`：exit 0，`/tmp/017-merge-lint.log`。
+- 首次 `npm test`：105 files passed / 1 failed，1133 tests passed / 1 failed；唯一失败为上述繁中 smoke mock 缺少导出，见 `/tmp/017-merge-full-test.log`。修复后定向 6 tests 通过，`/tmp/017-merge-smoke-green.log`。
+- 最终 `npm test`：**106 files / 1134 tests 全通过**，默认并发，14.38s，exit 0，`/tmp/017-merge-full-test-final.log`。没有 plan-editor/pinyin 超时，不需要两 worker 重跑；未修改超时、阈值或并发配置。
+- `npm run build`：exit 0，Vite 2.03s，`/tmp/017-merge-build.log`；仅既有 >500 kB chunk 提示。
+- `node scripts/gen-zh-hant.mjs --check` 与 `git diff --check` 通过，src 下无冲突标记。
+- 接手时本地 node_modules 缺少 main 已声明的 opencc-js；从相邻 016 worktree 复用已安装的 **1.4.2** 包，使生成脚本可运行。没有新增依赖或修改声明/锁文件；package.json SHA-256 前后均为 `d98da6105c5730d1723e45a24535b013f9569796feee5a3662c754beb2b1f7a2`，package-lock.json 均为 `2fcff504cd345b8c43e18a5abecef5fa0980088211f61b18f803053e8dc16b86`。接手时已有的 staged package 差异属于 main 合并内容，原样保留。
+
+### 双轴开发审查与限制
+
+- 使用 review-loop 的本地独立只读双轴审查，以用户本轮要求与本地 spec 为准；无 tracker 配置，不宣称执行 tracker 流程。
+- Standards：独立审查未发现本轮增量违反仓规；新增 partial mock 定向复核无问题。
+- Spec：独立审查确认 017 与 main 016/018 接线和原有测试均保留，017 繁中 key 齐全，撤销空格修复符合要求；新增 partial mock 定向复核无问题。
+- 浏览器实看未完成：`npm run dev -- --host 127.0.0.1 --port 5194` 被沙箱拒绝 `listen EPERM`，见 `/tmp/017-merge-vite.log`。未绕过权限或向真实后端写请求；DOM 测试不等同浏览器/真实 staging 验收。
+- 两个冲突文件的工作区内容已解冲突，但依用户要求没有暂存，所以 Git 索引仍显示 `UU`；合并尚未提交，交 reviewer 后续处理。
+
+## 2026-10-22 — SPEC 019 / CARD-A：总览看板实装（待浏览器验收）
+
+- 工作树 `/Users/david/Projects/apps/meetpr-plan-web-wt-019-impl`，分支 `feat/019-overview-board`，基准 `baff260`。开工第一条命令在本目录 `mktemp ./.__codex_write_check.XXXXXX` 后删除，exit 0；开工工作树干净。完整读取 CONTEXT、CLAUDE、CARD-A、SPEC 019（含屏幕稿），054 §2–§3 只读参考；未改后端、锁文件、正典 spec，未 commit、push、开 PR、部署。
+- 总览顶部复用邀请接口、消息函数和二维码组件；申请卡、接受/拒绝、60 秒可见轮询及防旧响应复活继续保留。下方六列按需要注意/正常分段，七类标签、溢出菜单和连续 J/K/Enter；导航删除申请和待排队列，红计数为申请数加需要注意学员数，旧 requests 值和命令搜索落总览。
+- 提醒 GET 支持可见轮询、回总览刷新、失败重试、404 降级；进入学员编排 POST plan-viewed，失败静默。训练提醒先按训练日 ID 查到所属计划再挂载编辑器，避免查找期间暴露另一个可编辑计划；RPE/未完成定位与组高亮、计划结束预填新建日期、落后直开后移；后移按钮挪到展开卡头。
+
+### 改动文件
+
+- API：新增 `src/api/overviewAlerts.ts`。
+- 共用邀请：新增 `src/features/onboarding/invitation.ts`；修改 `CoachWelcomePage.tsx`、`install.tsx`。
+- 总览：新增 `src/features/workspace/overviewBoard.ts`、`OverviewInvite.tsx`、`OverviewTags.tsx`；修改同目录 `PlanWorkspace.tsx`、`CoachShell.tsx`、`StatsViews.tsx`、`RequestsPage.tsx`、`CommandPalette.tsx`、`coachViewNavigation.ts`、`PlanDialogs.tsx`。
+- 编排：`src/features/plan-editor/PlanEditor.tsx`、`components/DayColumn.tsx`。
+- 文案/样式：`src/i18n/strings-workspace.ts`、生成的 `strings-zh-hant.ts`、`src/index.css`。执行既有 `npm run gen:zh-hant`；其他生成文件无差异。
+- 测试：新增 `src/features/workspace/overviewBoard.test.ts`；修改同目录 `PlanWorkspace.test.tsx`、`CoachShell.test.tsx`、`coachViewNavigation.test.ts`、`RosterBoard.test.tsx`、`RequestsPage.test.tsx`，以及 `src/features/plan-editor/plan-shift-ui.test.tsx`、`week-band-ui.test.tsx`。本段追加于 `docs/CODEX-JOURNAL.md`。
+- 旧申请页测试迁到总览申请卡/邀请卡；接受后刷新、拒绝、防轮询旧响应、剪贴板成功/失败、视频聊天、完成率/e1RM/吨位及键盘业务断言保留。五项导航、筛选/旧列及旧后移 DOM 结构断言按 019 新界面迁位；旧游标徽章本体断言继续直接覆盖共享组件，编排里的游标行为未改。
+
+### 红 → 绿证据
+
+| 行为 / 命令 | 实际红灯 | 转绿 |
+| --- | --- | --- |
+| `npm test -- src/features/workspace/overviewBoard.test.ts src/features/workspace/PlanWorkspace.test.tsx -t 'overview board\|019'` | 2 files failed：新纯函数模块尚不存在导致 1 suite 收集失败；总览顶部 1 test failed、38 skipped | 首轮 2 files / 2 tests passed、38 skipped |
+| `npm test -- src/features/plan-editor/plan-shift-ui.test.tsx -t '019'` | 修正测试 storage fixture 后，按周/按天布局均因未展开目标卡而红：2 failed、17 skipped | 2 passed、17 skipped；后续整个文件 19 passed，含原后移与撤销 |
+| `npm test -- src/features/workspace/PlanWorkspace.test.tsx -t '019 keeps the board'` | 慢请求查另一份计划时过早进入编辑器：1 failed、47 skipped | 修复后包含在 `-t '019'` 的 10 passed、38 skipped |
+| `npm test -- src/features/workspace/PlanWorkspace.test.tsx -t '019 opens the alert'` | 使用真实零基首组 `set_index: 0` 后 RPE/未完成显示第 0 组：2 failed、1 passed、45 skipped | 同上 10 passed，首组显示第 1 组且落在对应训练日 |
+| `npm test -- src/features/workspace/overviewBoard.test.ts -t 'orders plan-ending'` | 未来截止日错误排在今日留言前：1 failed、4 skipped | 全文件 5 passed，最终全量亦包含 |
+
+原始日志：`/private/tmp/019-red-initial.log`、`019-green-initial.log`、`019-red-shift.log`、`019-green-shift.log`、`019-red-race.log`、`019-red-set-index.log`、`019-green-races.log`、`019-red-sort.log`、`019-green-review.log`。最后一份定向复跑 61/61 通过；其后新增可见轮询、申请拒绝、发布后消失、命令兼容、末行溢出等断言由最终全量覆盖。
+
+### 最终命令结果
+
+- `npm test`：**106 files / 1143 tests passed，0 failed，exit 0**，11.71s。日志 `/private/tmp/019-full-test-final.log`。首次全量 1133 passed / 1 failed，为旧后移按钮 DOM 选择器；迁位后全绿。没有超时，没有降低断言、skip 或延长配置；无需长超时重跑。
+- `npx tsc --noEmit`：**exit 0**，日志 `/private/tmp/019-types-final.log`。过程中修正了新类型和测试清理回调的返回值类型错误，最终重新执行通过。
+- `npm run build`：**exit 0**，247 modules，Vite 1.52s；仅大于 500 kB 的 chunk 提示，未改阈值。日志 `/private/tmp/019-build-final.log`。
+- `git diff --check` 通过；`package-lock.json` 无差异。上述三条结果来自最后代码树，不是 CI 或线上验收。
+
+### 独立自审与待确认边界
+
+- 仓内缺 `docs/agents/issue-tracker.md`，未私建 tracker，未冒称已跑 tracker 流程；沿用 `code-review` 双轴方法、`review-loop` 的本地批准 spec 流程。若后续需要 tracker 工作流，由 David 运行 `$setup-matt-pocock-skills`。
+- **Standards**：独立只读 reviewer 初审 2 项（深链异步替换可编辑计划、溢出菜单被滚动区裁剪），另指出表头横滚不同步；均修正。定向复审无遗留 finding。
+- **Spec**：独立只读 reviewer 初审 3 项（组索引、屏幕稿细节、排序时间）。索引、橙色完成率、申请计数、下载按钮位置均修正；复审发现 56px width 仍被旧 48px flex-basis 覆盖，最后同时设置 `width:56px; flex:0 0 56px`，主代理核对，之后三条命令全绿。
+- **排序待确认**：054 的 `plan_ending` 没有提醒发生时间，也不含学员时区。当前替代值为「结束日减 3 天的 UTC 零点」与对应计划 `updated_at` 中较晚者，且不晚于 `generated_at`；不会把未来截止日当发生时间。完成率低沿用 overview 的 `last_trained_at`，留言/视频用现有时间字段。若要求精确到事件发生时刻，需要后端补时间契约；本轮未改 054。
+- **深链**：054 没有 parent plan ID，前端在点击时串行查该学员计划，已发布优先，按 `plan_day_id` 定位后再挂载；找不到或请求失败保持总览并提示重试。后端现实现与现有 set-log 使用零基 `set_index`（只读核对 054 `src/domain/overview-alerts.ts`），仅显示组号加一。逐组输入/实际组高亮；统一值或辅助动作没有独立组格时，用动作旁浅黄「第 N 组」标记定位，不改变处方显示模式或内容。
+- **welcome 抽取**：`loadCoachInvitation` 保持 `/me + invite-codes + public invite` 同源逻辑；`invitationMessage` 原文和繁体片段不改；welcome 保持原下载位置与行为，总览通过可选下载容器放在左侧按钮行。
+- **404**：仅 404 启用既有 `isStudentPendingNextWeek` 口径，标签显示「下周未排」；不显示 RPE/未完成/落后。普通失败不伪造计划结束提醒，保留留言、视频、完成率低与独立邀请/申请。
+- **浏览器验收未做**：尝试 `npm run dev -- --host 127.0.0.1 --port 5199` 被文件会话沙箱拒绝监听，原始错误 `Error: listen EPERM: operation not permitted 127.0.0.1:5199`。未换 checkout、未绕过权限。按 CARD-A，由 Claude 在沙箱外验证屏幕稿、真实老用户第一屏及 SPEC 019 验收 1–16；本轮 jsdom 和构建不等于浏览器或真实后端验收。
+
+## 2026-10-23 — SPEC 019 / CARD-A：第 1 轮定向返修
+
+- 范围以 David 本轮四点指令为准，覆盖 SPEC §1 原「记住上次页面」的错误表述；不修改正典 spec。基线为本次进场未提交树（HEAD `baff260`，分支 `feat/019-overview-board`），快照 `/tmp/019-r1-before`，代码增量 `/tmp/019-r1-final.patch`。原有 WIP 保留，未 commit、push、部署或改锁文件。
+- 仅改：`src/features/workspace/PlanWorkspace.tsx`、`PlanWorkspace.test.tsx`、`OverviewInvite.tsx`、`RequestsPage.tsx`、`RequestsPage.test.tsx`；`src/i18n/strings-workspace.ts`、生成的 `strings-zh-hant.ts`；以及本 JOURNAL。
+- 删除 `mpw.coachView` 的读取与写入，启动固定计划编排；既有 `normalizeCoachView('requests') → 'board'` 未动。旧总览测试改为点击导航进入，业务断言保留。
+- 将 plan-viewed 从 editor 状态 effect 移至显式打开动作：双击 / Enter、提醒标签、学员切换器、⌘K（含当前学员）；显式打开失败后的成功重试也计入。初次自动加载、legacy 地址初载、总览单击选中不清提醒；POST 失败继续静默。
+- 复制链接成功反馈为「链接已复制」/ “Link copied” /「連結已複製」，完整邀请消息反馈保留。邀请请求 Promise 由当前 PlanWorkspace 持有，进入总览才请求、跨页面复用成功及在途结果；失败释放缓存可重试，卸载 / 退出登录结束本次缓存。welcome 页与共用加载函数未改。
+- RequestsPanel 在零申请时不渲染计数，非零与空态提示保留。对应接受申请和防旧轮询响应复活的旧 `0 条` 断言同步为计数元素不存在。
+
+### 逐项红 → 绿（均先运行失败测试，再改实现）
+
+| 项目 | 命令 | 实际红灯 | 转绿 |
+| --- | --- | --- | --- |
+| 1 启动视图 | `npm test -- src/features/workspace/PlanWorkspace.test.tsx -t '019 R1 always'` | 3 failed / 51 skipped：恢复了存储页面或仍写入 board | 3 passed / 51 skipped |
+| 2 显式打开才确认查看 | `npm test -- src/features/workspace/PlanWorkspace.test.tsx -t '019 R1 marks\|019 opens the alert'` | 8 failed / 51 skipped：初载已调用 markPlanViewed | 扩大为同文件 `-t '019'`：21 passed / 38 skipped，覆盖双击、Enter、切换器、⌘K、三类训练标签 |
+| 3a 复制链接三语提示 | `npm test -- src/features/workspace/RequestsPage.test.tsx -t '019 R1'` | 3 failed / 3 skipped：仍显示邀请消息反馈 | 整文件 6 passed |
+| 3b 会话邀请缓存 | `npm test -- src/features/workspace/PlanWorkspace.test.tsx -t '019 R1.*invitation'` | 2 failed / 59 skipped：再次进入多发请求，失败重试成功后仍重复请求 | 2 passed / 59 skipped，另断言新工作区会话重新请求 |
+| 4 零申请隐藏计数 | `npm test -- src/features/workspace/RequestsPage.test.tsx -t '019 R1 hides'` | 1 failed / 6 skipped：仍渲染 `0 条` | 整文件 7 passed，覆盖 0 → 1 → 0 |
+
+红绿原始日志按组存于 `/tmp/019-r1-{view,viewed,copy,cache,count}-{red,green}.log`。最后 PlanWorkspace 整文件为 **61 passed**（`/tmp/019-r1-workspace-green.log`），额外核对 legacy 初载不确认查看，并让原 POST 失败测试通过显式双击真正触发失败，保留静默降级断言。
+
+### 最终三条命令结果
+
+- `npm test`：**Test Files 106 passed (106)；Tests 1157 passed (1157)；exit 0**，16.78s。日志 `/tmp/019-r1-test-final.log`。首轮全量 2 failed / 1155 passed，都是旧接受申请用例仍期待 `0 条`；按新契约迁移三处断言后重跑全绿，无删除测试、skip 或延长超时。
+- `npx tsc --noEmit`：**exit 0**，无输出。日志 `/tmp/019-r1-tsc-final.log`。
+- `npm run build`：**exit 0；✓ built in 4.42s**。日志 `/tmp/019-r1-build-final.log`。保留既有 chunk >500 kB 提示，未调整阈值。
+- `npm run gen:zh-hant -- --check`、`git diff --check` 通过。测试日志有既有 Node localstorage 路径提示与其他视频用例的 jsdom `HTMLMediaElement.load/pause` 未实现输出，未导致失败，本轮未扩大修复范围。
+
+### 审查与限制
+
+- 按 `review-loop` 以进场快照做只读独立双轴增量审查：**Standards 0 项代码 finding；Spec 0 项实现 finding**。两位 reviewer 均指出首轮全量旧零计数断言需迁移，已修并以上述最终全量验证。未运行依赖缺失 tracker 的流程；需要该流程时仍由 David 调用 `$setup-matt-pocock-skills`。
+- `src/mock/overviewHarness.tsx` 与 `mock-overview.html` 对比进场快照逐字节相同，未触碰。
+- 浏览器实看仍未完成：`npm run dev -- --host 127.0.0.1 --port 5199` 被沙箱拒绝监听，`Error: listen EPERM: operation not permitted 127.0.0.1:5199`（`/tmp/019-r1-browser.log`）。未绕过权限；按 CARD-A 保留 Claude 沙箱外视觉验收，本轮仅声明开发自测结果。

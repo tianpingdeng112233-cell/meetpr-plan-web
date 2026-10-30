@@ -1,6 +1,6 @@
 import { text } from '../onboarding/text'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { AuthUser, CoachStudent } from '../../api/types'
+import type { AuthUser } from '../../api/types'
 import { ChangePasswordDialog } from './ChangePasswordDialog'
 import {
   CommandPalette,
@@ -11,7 +11,7 @@ import { usePersistentCollapse } from './usePersistentCollapse'
 import { useGlobalKeyboardHandler } from './globalKeyboard'
 import { fmt, S } from '../../i18n/strings'
 
-export type CoachView = 'board' | 'editor' | 'catalog' | 'requests' | 'tracking'
+export type CoachView = 'board' | 'editor' | 'catalog' | 'tracking'
 
 type Badge = { count: number; tone: 'danger' | 'muted'; label: string }
 
@@ -19,7 +19,6 @@ const navItems = (): { id: CoachView; label: string; short: string }[] => [
   { id: 'board', label: S.workspace.nav.overview, short: S.workspace.nav.overviewShort },
   { id: 'editor', label: S.workspace.nav.editor, short: S.workspace.nav.editorShort },
   { id: 'catalog', label: S.workspace.nav.catalog, short: S.workspace.nav.catalogShort },
-  { id: 'requests', label: S.workspace.nav.requests, short: S.workspace.nav.requestsShort },
   { id: 'tracking', label: S.workspace.nav.tracking, short: S.workspace.nav.trackingShort },
 ]
 
@@ -27,13 +26,12 @@ const viewShortcuts = (): Record<CoachView, string> => ({
   board: S.workspace.shortcuts.board,
   editor: S.workspace.shortcuts.editor,
   catalog: S.workspace.shortcuts.catalog,
-  requests: '',
   tracking: '',
 })
 
 const viewCrumbs = (): Record<CoachView, string> => ({
   board: S.workspace.nav.overview, editor: S.workspace.nav.editor,
-  catalog: S.workspace.nav.catalog, requests: S.workspace.nav.requests, tracking: S.workspace.nav.tracking,
+  catalog: S.workspace.nav.catalog, tracking: S.workspace.nav.tracking,
 })
 
 export interface CoachShellProps {
@@ -42,12 +40,10 @@ export interface CoachShellProps {
   onChange: (view: CoachView) => void
   me: AuthUser
   exerciseCount: number
-  pendingStudents: CoachStudent[]
-  pendingCount: number
   unreadCount: number
   requestCount: number
+  attentionCount: number
   videoCount: number | null
-  onPickPending: (studentId: string) => void
   lastSyncedAt: Date | null
   onLogout: () => void | Promise<void>
   onConfirmLeave?: () => Promise<boolean>
@@ -63,12 +59,10 @@ export function CoachShell({
   onChange,
   me,
   exerciseCount,
-  pendingStudents,
-  pendingCount,
   unreadCount,
   requestCount,
+  attentionCount,
   videoCount,
-  onPickPending,
   lastSyncedAt,
   onLogout,
   onConfirmLeave,
@@ -85,9 +79,9 @@ export function CoachShell({
         ? S.workspace.unreadBadge(unreadCount)
         : S.workspace.unreadVideoBadge(unreadCount, videoCount),
     },
-    requests: { count: requestCount, tone: 'danger', label: S.workspace.pendingBadge(requestCount) },
+    board: { count: requestCount + attentionCount, tone: 'danger', label: S.workspace.pendingBadge(requestCount + attentionCount) },
     catalog: { count: exerciseCount, tone: 'muted', label: S.workspace.exerciseBadge(exerciseCount) },
-  }), [exerciseCount, requestCount, unreadCount, videoCount])
+  }), [exerciseCount, requestCount, attentionCount, unreadCount, videoCount])
   const [toast, setToast] = useState('')
   const [commandOpen, setCommandOpen] = useState(false)
   const commandTriggerRef = useRef<HTMLButtonElement>(null)
@@ -122,16 +116,12 @@ export function CoachShell({
         <CoachNavigation
           view={view}
           badges={badges}
-          pendingStudents={pendingStudents}
-          pendingCount={pendingCount}
           onChange={onChange}
-          onPickPending={onPickPending}
           lastSyncedAt={lastSyncedAt}
         />
         <main className="coach-main">{children}</main>
       </div>
       <footer className="coach-statusbar">
-        <span>{S.workspace.queued(pendingCount)}</span>
         <span>{S.workspace.unread(unreadCount)}</span>
         <span className="coach-statusbar-shortcuts">{viewShortcuts()[view]}</span>
       </footer>
@@ -288,18 +278,12 @@ function CoachTopBar({
 function CoachNavigation({
   view,
   badges,
-  pendingStudents,
-  pendingCount,
   onChange,
-  onPickPending,
   lastSyncedAt,
 }: {
   view: CoachView
   badges: Partial<Record<CoachView, Badge>>
-  pendingStudents: CoachStudent[]
-  pendingCount: number
   onChange: (view: CoachView) => void
-  onPickPending: (studentId: string) => void
   lastSyncedAt: Date | null
 }) {
   const week = weekRange(new Date())
@@ -343,21 +327,6 @@ function CoachNavigation({
           </button>
         )
       })}
-      {!collapsed && (
-        <>
-          <span className="coach-nav-heading coach-queue-heading">{S.workspace.queue(pendingCount)}</span>
-          {pendingStudents.slice(0, 4).map((student) => (
-            <button
-              key={student.id}
-              type="button"
-              className="coach-queue-item"
-              onClick={() => onPickPending(student.id)}
-            >
-              {student.display_name}
-            </button>
-          ))}
-        </>
-      )}
       <span className="coach-nav-footer">
         {S.workspace.thisWeek(week)}
         <br />

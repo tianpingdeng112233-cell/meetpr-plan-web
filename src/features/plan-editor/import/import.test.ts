@@ -88,3 +88,36 @@ describe('buildWeeks from AI adapter output', () => {
     expect(weeks[0].days[0].rows[0]).toMatchObject({ name, exerciseId: null, note: '' })
   })
 })
+
+it('binds Traditional exercise names from AI output without changing notes', () => {
+  const index = new ExerciseIndex([exercise('bench', '竞技卧推'), exercise('deadlift', '相扑硬拉'), exercise('curl', '哑铃二头弯举')])
+  for (const [hant, zh] of [['臥推', '卧推'], ['相撲硬舉', '相扑硬拉'], ['二頭彎舉', '二头弯举']]) {
+    const create = (name: string) => buildWeeks(parsed([ai(name, { note: '教练原文备注' })]), index, '2026-10-19')
+    expect(create(hant)).toEqual(create(zh))
+  }
+})
+
+it('keeps a Taiwan name specification and percent through AI import and canonical binding', () => {
+  const result = buildWeeks(parsed([ai('滑輪下拉（2cm)', {
+    sets: 3, reps: '2', intensity_kind: 'rpe', intensity_values: ['8', '8', '8'], weight_values: [],
+    note: '80% · 合成备注：慢放 · 合成反饋',
+  })]), new ExerciseIndex([exercise('row', '高位下拉')]), '2026-01-05')
+  expect(result.weeks[0].days[0].rows[0]).toMatchObject({
+    exerciseId: 'row', name: '高位下拉', reps: '2',
+    intensity: { mode: 'rpe', value: '8', high: '' },
+    note: '80% · 合成备注：慢放 · 合成反饋 · （2cm)',
+  })
+})
+
+it('preserves custom dimensions for both exact and fallback AI bindings', () => {
+  const index = new ExerciseIndex([
+    exercise('custom', '合成自建練習', { created_by_coach_id: 'synthetic-coach' }),
+    exercise('exact', '合成自建練習（4cm)', { created_by_coach_id: 'synthetic-coach' }),
+  ])
+  const rows = buildWeeks(parsed([
+    ai('合成自建練習（2cm)', { sets: 3, reps: '6', note: '原文' }),
+    ai('合成自建練習（4cm)', { sets: 3, reps: '6', note: '原文' }),
+  ]), index, '2026-01-05').weeks[0].days[0].rows
+  expect(rows[0]).toMatchObject({ exerciseId: 'custom', name: '合成自建練習', note: '原文 · （2cm)' })
+  expect(rows[1]).toMatchObject({ exerciseId: 'exact', name: '合成自建練習（4cm)', note: '原文' })
+})

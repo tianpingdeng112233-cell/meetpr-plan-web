@@ -1,3 +1,39 @@
+import traditionalInput from './input-zh-hant.json'
+
+const inputCharacters: Record<string, string> = traditionalInput.characters
+const inputPhrases: Record<string, string> = traditionalInput.phrases
+const inputPhrasePattern = new RegExp(Object.keys(inputPhrases).sort((a, b) => b.length - a.length)
+  .map(phrase => phrase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|'), 'g')
+
+/** Parser/search boundary only. Never normalize user notes or persisted names. */
+export function normalizeTraditionalInput(input: string): string {
+  return [...input.replace(inputPhrasePattern, phrase => inputPhrases[phrase])]
+    .map(character => inputCharacters[character] ?? character).join('')
+}
+
+/** A suffix dimension is input metadata, not part of the catalog name. */
+export function splitExerciseSpecification(input: string): { name: string; specification: string } {
+  const match = input.match(/\s*([(（]\s*\d+(?:\.\d+)?\s*(?:cm|mm|公分|厘米|公厘|毫米)\s*[)）])\s*$/i)
+  return match ? { name: input.slice(0, match.index).trim(), specification: match[1] }
+    : { name: input, specification: '' }
+}
+
+/** A complete prescription cell only; never apply to free-form notes. */
+export function parseTaiwanSetShorthand(input: string): { reps: string; rpe: string; percentage: string } | null {
+  const match = input.trim().match(/^(\d{1,2})\s*下\s*@\s*(10|[1-9](?:\.\d+)?)\s*(?:[。，,;；]\s*(\d+(?:\.\d+)?)\s*%)?$/)
+  return match ? { reps: match[1], rpe: match[2], percentage: match[3] ?? '' } : null
+}
+
+/** Header matching only; note cell contents must never pass through this. */
+export function normalizeImportHeader(input: string): string {
+  const header = normalizeTraditionalInput(input).trim()
+  const aliases: Record<string, string> = {
+    下数: '次数', 次: '次数', 组数: '组',
+    教练指示: '备注', 反馈备注: '备注',
+  }
+  return aliases[header] ?? header
+}
+
 // Chinese parsing and canonical-name tokens are protocol data, not display copy.
 // They intentionally never depend on the current locale.
 export const STABLE_ZH = {

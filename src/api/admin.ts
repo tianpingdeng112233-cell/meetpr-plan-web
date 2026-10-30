@@ -1,5 +1,5 @@
 import { api } from './client'
-import type { PlanDayResponse, PlanExerciseResponse, PlanStatus, PlanWithChildren } from './types'
+import type { ExerciseResponse, PlanStatus } from './types'
 
 // Includes 'admin': /admin/users and overview return the admin account itself.
 export type AdminManagedRole = 'coach' | 'coached_student' | 'self_train_student' | 'admin'
@@ -11,7 +11,6 @@ export interface AdminOverviewResponse {
     coachedStudents: number
     selfTrainStudents: number
     activeBonds: number
-    publishedPlans: number
   }
   recentUsers: Array<{
     id: string
@@ -19,15 +18,7 @@ export interface AdminOverviewResponse {
     role: AdminManagedRole
     createdAt: string
   }>
-  recentPlans: Array<{
-    id: string
-    name: string
-    coachId: string | null
-    coachName: string | null
-    traineeId: string
-    studentName: string | null
-    publishedAt: string
-  }>
+
 }
 
 export type AdminUserRelation =
@@ -79,22 +70,6 @@ export interface AdminBinding {
 
 export interface AdminBindingsResponse { bindings: AdminBinding[] }
 
-export interface AdminPlan {
-  id: string
-  name: string
-  coachId: string | null
-  coachName: string | null
-  traineeId: string
-  studentName: string | null
-  status: PlanStatus
-  weeks: number
-  startDate: string | null
-  endDate: string | null
-  createdAt: string
-}
-
-export interface AdminPlansResponse { plans: AdminPlan[] }
-
 export interface AdminExerciseUsage {
   exercise_id: string
   name: string
@@ -111,14 +86,41 @@ export const getAdminUsers = () => api.get<AdminUsersResponse>('/admin/users')
 export const getAdminUser = (userId: string) =>
   api.get<AdminUserDetailResponse>(`/admin/users/${encodeURIComponent(userId)}`)
 export const getAdminBindings = () => api.get<AdminBindingsResponse>('/admin/bindings')
-export const getAdminPlans = () => api.get<AdminPlansResponse>('/admin/plans')
 export const getAdminExerciseUsage = () =>
   api.get<AdminExerciseUsageResponse>('/admin/exercise-usage')
-// Admin plan detail carries display-ready exercise names: the admin cannot see
-// coach-private catalog entries via /exercises, so the backend joins names in.
-export type AdminPlanExercise = PlanExerciseResponse & { exercise_name: string; name_en?: string | null }
-export type AdminPlanDay = Omit<PlanDayResponse, 'exercises'> & { exercises: AdminPlanExercise[] }
-export type AdminPlanWithChildren = Omit<PlanWithChildren, 'days'> & { days: AdminPlanDay[] }
 
-export const getAdminPlan = (planId: string) =>
-  api.get<AdminPlanWithChildren>(`/admin/plans/${encodeURIComponent(planId)}`)
+// Wire shapes from backend spec 053. Official creation also accepts main lifts.
+export type OfficialExerciseInput = Pick<ExerciseResponse, 'name' | 'name_en' | 'exercise_type' | 'main_lift_family' | 'is_competition_lift' | 'muscle_groups' | 'equipment' | 'movement_pattern'>
+export interface CustomExerciseRow extends OfficialExerciseInput {
+  exercise_id: string
+  coach_id: string
+  coach_name: string | null
+  plan_count: number
+}
+export interface PendingExerciseGroup {
+  key: string
+  display_name: string
+  coach_count: number
+  plan_count: number
+  rows: CustomExerciseRow[]
+}
+export interface AdoptedExerciseRow {
+  exercise_id: string
+  name: string
+  coach_id: string
+  coach_name: string | null
+  plan_count: number
+  adopted_at: string
+}
+export interface AdminCustomExercisesResponse {
+  pending: PendingExerciseGroup[]
+  adopted: Array<{ official: Pick<ExerciseResponse, 'id' | 'name' | 'name_en'>; rows: AdoptedExerciseRow[] }>
+}
+export const getAdminCustomExercises = () => api.get<AdminCustomExercisesResponse>('/admin/custom-exercises')
+export type AdoptExercisesInput = { exercise_ids: string[] } & (
+  | { target_exercise_id: string; new_official?: never }
+  | { new_official: OfficialExerciseInput; target_exercise_id?: never }
+)
+// Consumers refresh the canonical lists; the success envelope is not specified further by 053.
+export const adoptCustomExercises = (body: AdoptExercisesInput) => api.post<unknown>('/admin/custom-exercises/adopt', body)
+export const unadoptCustomExercises = (exercise_ids: string[]) => api.post<unknown>('/admin/custom-exercises/unadopt', { exercise_ids })

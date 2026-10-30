@@ -51,7 +51,7 @@ const primaryButton: CSSProperties = {
 
 export interface BlockPlanSettings { name: string; weeks: number; startDate: string; weekdays: number[] }
 
-export function NewPlanDialog({ open, studentName, onClose, onCreate, settings, traineeId, exerciseIndex, onImported, calendarLocked = false, calendarLockedHint, weeksLocked = false }: {
+export function NewPlanDialog({ open, studentName, onClose, onCreate, settings, initialStartDate, traineeId, exerciseIndex, onImported, calendarLocked = false, calendarLockedHint, weeksLocked = false }: {
   open: boolean
   studentName: string
   onClose: () => void
@@ -59,6 +59,7 @@ export function NewPlanDialog({ open, studentName, onClose, onCreate, settings, 
   traineeId?: string
   exerciseIndex?: ExerciseIndex | null
   onImported?: (result: ImportedPlan) => void | Promise<void>
+  initialStartDate?: string
   settings?: BlockPlanSettings
   calendarLockedHint?: string
   calendarLocked?: boolean
@@ -87,9 +88,10 @@ export function NewPlanDialog({ open, studentName, onClose, onCreate, settings, 
     if (!open) return
     setName(settings?.name ?? S.workspace.dialogs.newPlan)
     setWeeks(settings?.weeks ?? 4)
-    setDays(settings?.weekdays ?? [0, 2, 4, 5])
-    setFirst(settings?.weekdays[0] ?? 0)
-    setStartDate(settings?.startDate ?? defaultFirstDate(0))
+    const firstDay = initialStartDate ? weekdayIndex(initialStartDate) : 0
+    setDays(settings?.weekdays ?? [0, 2, 4, 5].map(day => (day + firstDay) % 7))
+    setFirst(settings?.weekdays[0] ?? firstDay)
+    setStartDate(settings?.startDate ?? initialStartDate ?? defaultFirstDate(0))
     setCreating(false); setError('')
   }, [open])
   if (!open) return null

@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs'
+import { setLocale, S } from '../../i18n/strings'
 import { act, useEffect } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -9,6 +11,12 @@ import { setRefFirstLine } from '../chat/setRef'
 const api = vi.hoisted(() => ({
   realEditor: false,
   deletePlan: vi.fn(),
+
+  publicInvite: vi.fn(),
+  meRequest: vi.fn(),
+  rejectBindRequest: vi.fn(),
+  getOverviewAlerts: vi.fn(),
+  markPlanViewed: vi.fn(),
   getStudentSetLogs: vi.fn(),
   markVideoViewed: vi.fn(),
   getCoachStudents: vi.fn(),
@@ -20,6 +28,7 @@ const api = vi.hoisted(() => ({
   getStudentOnboarding: vi.fn(),
   getBindRequests: vi.fn(),
   getStudentVideos: vi.fn(),
+  getStudentFeedback: vi.fn(),
   getExerciseStatsOverview: vi.fn(),
   getExerciseStats: vi.fn(),
   refreshCoachStudents: vi.fn(),
@@ -47,6 +56,10 @@ const api = vi.hoisted(() => ({
   guardLeave: vi.fn(),
 }))
 
+vi.mock('../../api/client', async importOriginal => ({ ...await importOriginal<typeof import('../../api/client')>(), request: api.meRequest }))
+vi.mock('../../api/onboarding', () => ({ getPublicInvite: api.publicInvite }))
+vi.mock('../../api/overviewAlerts', () => ({ getOverviewAlerts: api.getOverviewAlerts, markPlanViewed: api.markPlanViewed }))
+vi.mock('../../api/invite', async importOriginal => ({ ...await importOriginal<typeof import('../../api/invite')>(), getInviteCodes: api.getInviteCodes }))
 vi.mock('../../api/plans', () => ({
   getCoachStudents: api.getCoachStudents,
   getStudentPlans: api.getStudentPlans,
@@ -70,6 +83,7 @@ vi.mock('../../api/coach', () => ({
   getStudentSetLogs: api.getStudentSetLogs,
   getBindRequests: api.getBindRequests,
   getStudentVideos: api.getStudentVideos,
+  getStudentFeedback: api.getStudentFeedback,
   getExerciseStatsOverview: api.getExerciseStatsOverview,
   getExerciseStats: api.getExerciseStats,
   refreshCoachStudents: api.refreshCoachStudents,
@@ -77,7 +91,7 @@ vi.mock('../../api/coach', () => ({
   getInviteCodes: api.getInviteCodes,
   getUploadUrl: api.getUploadUrl,
   postCoachFeedback: api.postCoachFeedback,
-  rejectBindRequest: vi.fn(),
+  rejectBindRequest: api.rejectBindRequest,
 }))
 vi.mock('../../api/markers', () => ({
   markVideoViewed: api.markVideoViewed,
@@ -290,6 +304,247 @@ describe('PlanWorkspace editor remount', () => {
   let host: HTMLDivElement
   let root: Root
 
+  it('020 sends whole-day feedback with the actual date, appends the response and restores it after reopening', async () => {
+    api.realEditor = true
+    const trained = plan('初始计划', 'published')
+    trained.days[0].completed_at = '2026-01-07T20:00:00Z'
+    api.getPlan.mockResolvedValue(trained)
+    api.getStudentSetLogs.mockResolvedValue([{ id: 'log', plan_exercise_id: 'plan-exercise', plan_day_id: 'day', logged_date: '2026-01-06', logged_at: '2026-01-06T21:00:00Z', completed: true, weight_kg: '100', reps: 5, set_index: 0 }])
+    const existing = { id: 'old', student_id: 'student', day_date: null, plan_exercise_id: 'plan-exercise', video_id: 'seen', text: '按组反馈', posted_at: '2026-01-06T22:00:00Z', read_at: '2026-01-07T01:00:00Z' }
+    api.getStudentVideos.mockResolvedValue([video('seen', '深蹲', '2026-01-07')])
+    api.getStudentFeedback.mockResolvedValue([existing])
+    const sent = { id: 'new', student_id: 'student', day_date: '2026-01-06', plan_exercise_id: null, video_id: null, text: '整体节奏很好', posted_at: '2026-01-07T22:00:00Z', read_at: null }
+    api.postCoachFeedback.mockResolvedValue(sent)
+    await act(async () => { root.render(<PlanWorkspace onLogout={vi.fn()} me={me} />); await settle() })
+    expect(host.querySelector('[data-day-feedback-marker="day"]')?.textContent).toContain('已反馈')
+    await act(async () => { host.querySelector<HTMLButtonElement>('[data-feedback-toggle]')!.click(); await settle() })
+    const day = host.querySelector<HTMLButtonElement>('[data-feedback-day="day"]')
+    expect(day?.textContent).toContain('周二')
+    expect(day?.textContent).toContain('已反馈 1')
+    await act(async () => { day!.click(); await settle() })
+    expect(host.querySelector('video')).toBeNull()
+    expect(host.querySelector('.day-feedback-detail')?.textContent).toContain('按组反馈')
+    expect(host.querySelector('.day-feedback-detail')?.textContent).toContain('第 2 组')
+    const reply = host.querySelector<HTMLTextAreaElement>('.day-feedback-detail textarea')!
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!.call(reply, '整体节奏很好')
+      reply.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+    await act(async () => { reply.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', metaKey: true, bubbles: true })); await settle() })
+    expect(api.postCoachFeedback).toHaveBeenCalledWith({ student_id: 'student', day_date: '2026-01-06', plan_exercise_id: null, video_id: null, text: '整体节奏很好' })
+    expect(reply.value).toBe('')
+    expect(host.querySelector('.day-feedback-detail')?.textContent).toContain('整体节奏很好')
+    expect(host.querySelector('[data-day-feedback-marker="day"]')?.textContent).toContain('已反馈 2')
+    await act(async () => { host.querySelector<HTMLButtonElement>('[data-feedback-toggle]')!.click(); await settle() })
+    await act(async () => { host.querySelector<HTMLButtonElement>('[data-day-feedback-marker="day"]')!.click(); await settle() })
+    expect(host.querySelector('.day-feedback-detail')?.textContent).toContain('整体节奏很好')
+    api.getStudentFeedback.mockResolvedValue([existing, sent])
+    await act(async () => { clickNav(host, '总览'); await settle() })
+    await act(async () => { clickNav(host, '计划编排'); await settle() })
+    expect(host.querySelector('[data-day-feedback-marker="day"]')?.textContent).toContain('已反馈 2')
+  })
+
+  it('020 historical viewed video outside the plan stays selected and exits to the original history level', async () => {
+    api.realEditor = true
+    api.getPlan.mockResolvedValue(plan('history'))
+    api.getStudentVideos.mockResolvedValue([{ ...video('old', '旧计划深蹲', '2026-01-05'), plan_exercise_id: 'old-block-exercise' }])
+    const session = { date: '2025-12-20', prescribed: { sets: 1, reps: 5 }, sets: [{ set_index: 0, weight_kg: '100', reps: 5, rpe: '8', completed: true, failed: false, assumed: false, has_video: true, video_id: 'old' }] }
+    api.getExerciseStats.mockResolvedValue({ recent_sessions: [session], filtered_sessions: [session], rep_prs: [], by_set_count: {} })
+    await act(async () => { root.render(<PlanWorkspace onLogout={vi.fn()} me={me} />); await settle() })
+    await act(async () => { host.querySelector<HTMLElement>('[data-block-week]')!.click(); await settle() })
+    await act(async () => { host.querySelector<HTMLInputElement>('[data-c="reps"] input')!.focus(); await settle() })
+    const before = host.querySelector('.history-breadcrumbs')!.textContent
+    await act(async () => { host.querySelector<HTMLButtonElement>('.history-session summary button')!.click(); await settle() })
+    expect(host.querySelector('[data-feedback-mode]')).not.toBeNull()
+    expect(host.querySelector('[data-feedback-video="old"]')?.classList.contains('selected')).toBe(true)
+    expect(host.querySelector('.feedback-queue')?.textContent).toContain('不在本计划')
+    expect(host.querySelector('.video-feedback textarea')).not.toBeNull()
+    expect(host.querySelector('.video-highlight')).toBeNull()
+    await act(async () => { clickButton(host, '← 历史'); await settle() })
+    expect(host.querySelector('.history-breadcrumbs')?.textContent).toBe(before)
+    expect(host.querySelector('video')).toBeNull()
+  })
+
+  it('020 keeps training days on read failure, retries, preserves a failed send and switches between day and video replies', async () => {
+    api.realEditor = true
+    const trained = plan('初始计划', 'published')
+    trained.days[0].completed_at = '2026-01-06T20:00:00Z'
+    api.getStudentSetLogs.mockResolvedValue([{ id: 'log', plan_exercise_id: 'plan-exercise', logged_date: '2026-01-06', logged_at: '2026-01-06T20:00:00Z', weight_kg: '100', reps: 5, set_index: 0 }])
+    api.getPlan.mockResolvedValue(trained)
+    api.getStudentVideos.mockResolvedValue([video('v1', '深蹲')])
+    api.getStudentFeedback.mockRejectedValueOnce(new Error('offline'))
+    await act(async () => { root.render(<PlanWorkspace onLogout={vi.fn()} me={me} />); await settle() })
+    await act(async () => { host.querySelector<HTMLButtonElement>('[data-feedback-toggle]')!.click(); await settle() })
+    expect(host.querySelector('video')).not.toBeNull()
+    expect(host.querySelector('[data-feedback-day="day"]')).not.toBeNull()
+    expect(host.querySelector('[data-feedback-day="day"]')?.textContent).not.toContain('未反馈')
+    expect(host.querySelector('.feedback-days [role="alert"]')?.textContent).toContain('反馈读取失败')
+    await act(async () => { host.querySelector<HTMLButtonElement>('.feedback-days button')!.click(); await settle() })
+    expect(host.querySelector('[data-feedback-day="day"]')?.textContent).toContain('未反馈')
+    await act(async () => { host.querySelector<HTMLButtonElement>('[data-feedback-day="day"]')!.click(); await settle() })
+    expect(host.querySelector('video')).toBeNull()
+    const reply = host.querySelector<HTMLTextAreaElement>('.day-feedback-detail textarea')!
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!.call(reply, '保留输入')
+      reply.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+    api.postCoachFeedback.mockRejectedValueOnce(new Error('offline'))
+    await act(async () => { host.querySelector<HTMLButtonElement>('.day-feedback-detail footer button')!.click(); await settle() })
+    expect(reply.value).toBe('保留输入')
+    expect(host.querySelector('.day-feedback-detail [role="alert"]')).not.toBeNull()
+    api.postCoachFeedback.mockResolvedValue({ id: 'day-fb', student_id: 'student', day_date: '2026-01-06', plan_exercise_id: null, video_id: null, text: '保留输入', posted_at: '2026-01-07T00:00:00Z', read_at: null })
+    await act(async () => { host.querySelector<HTMLButtonElement>('.day-feedback-detail footer button')!.click(); await settle() })
+    expect(reply.value).toBe('')
+    await act(async () => { host.querySelector<HTMLButtonElement>('[data-feedback-video="v1"]')!.click(); await settle() })
+    expect(host.querySelector('.day-feedback-detail')).toBeNull()
+    expect(host.querySelector('[data-feedback-day="day"]')?.getAttribute('aria-pressed')).toBe('false')
+    expect(host.querySelector('video')).not.toBeNull()
+    expect(host.querySelector('.video-feedback')?.textContent).toContain('回复这段视频')
+    const videoReply = host.querySelector<HTMLTextAreaElement>('.video-feedback textarea')!
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!.call(videoReply, '按组回复')
+      videoReply.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+    api.postCoachFeedback.mockResolvedValue({ id: 'video-fb', student_id: 'student', day_date: '2026-01-06', plan_exercise_id: 'plan-exercise', video_id: 'v1', text: '按组回复', posted_at: '2026-01-07T01:00:00Z', read_at: null })
+    const reads = api.getStudentFeedback.mock.calls.length
+    await act(async () => { host.querySelector<HTMLButtonElement>('.video-feedback footer button')!.click(); await settle() })
+    expect(api.getStudentFeedback.mock.calls.length).toBeGreaterThan(reads)
+    expect(host.querySelector('[data-feedback-day="day"]')?.textContent).toContain('已反馈 2')
+  })
+
+  it('020 reads the server items envelope through the real API adapter on the first screen', async () => {
+    api.realEditor = true
+    const trained = plan('初始计划', 'completed')
+    trained.days[0].completed_at = '2026-01-06T20:00:00Z'
+    api.getStudentSetLogs.mockResolvedValue([{ id: 'log', plan_exercise_id: 'plan-exercise', logged_date: '2026-01-06', logged_at: '2026-01-06T20:00:00Z', weight_kg: '100', reps: 5, set_index: 0 }])
+    api.getPlan.mockResolvedValue(trained)
+    const realCoach = await vi.importActual<typeof import('../../api/coach')>('../../api/coach')
+    api.getStudentFeedback.mockImplementation(realCoach.getStudentFeedback)
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({ items: [{
+      id: 'feedback', student_id: 'student', day_date: '2026-01-06', plan_exercise_id: null, video_id: null,
+      text: '第一屏反馈', posted_at: '2026-01-07T00:00:00Z', read_at: null,
+    }] }), { status: 200 }))
+    await act(async () => { root.render(<PlanWorkspace onLogout={vi.fn()} me={me} />); await settle() })
+    expect(fetchSpy).toHaveBeenCalledWith('/api/students/student/feedback', expect.anything())
+    expect(host.querySelector('[data-day-feedback-marker="day"]')?.textContent).toContain('已反馈')
+    expect(host.querySelector('[data-feedback-toggle]')).not.toBeNull()
+  })
+
+  it('020 waits for actual dates and shows a successful send even while the feedback read remains failed', async () => {
+    api.realEditor = true
+    const trained = plan('初始计划', 'published')
+    trained.days[0].completed_at = '2026-01-07T20:00:00Z'
+    api.getPlan.mockResolvedValue(trained)
+    let resolveLogs!: (logs: unknown[]) => void
+    api.getStudentSetLogs.mockImplementation(() => new Promise(resolve => { resolveLogs = resolve }))
+    api.getStudentFeedback.mockRejectedValue(new Error('offline'))
+    await act(async () => { root.render(<PlanWorkspace onLogout={vi.fn()} me={me} />); await settle() })
+    await act(async () => { host.querySelector<HTMLButtonElement>('[data-feedback-toggle]')!.click(); await settle() })
+    await act(async () => { host.querySelector<HTMLButtonElement>('[data-feedback-day="day"]')!.click(); await settle() })
+    expect(host.querySelector<HTMLTextAreaElement>('.day-feedback-detail textarea')?.disabled).toBe(true)
+    expect(host.querySelector('.day-feedback-detail')?.textContent).not.toContain('1/7')
+    expect(api.postCoachFeedback).not.toHaveBeenCalled()
+    await act(async () => { resolveLogs([{ id: 'log', plan_day_id: 'day', plan_exercise_id: 'plan-exercise', logged_date: '2026-01-06', logged_at: '2026-01-07T20:00:00Z', weight_kg: '100', reps: 5, set_index: 0 }]); await settle() })
+    const reply = host.querySelector<HTMLTextAreaElement>('.day-feedback-detail textarea')!
+    expect(reply.disabled).toBe(false)
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!.call(reply, '读取失败也能成功发送')
+      reply.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+    api.postCoachFeedback.mockResolvedValue({ id: 'sent', student_id: 'student', day_date: '2026-01-06', plan_exercise_id: null, video_id: null, text: '读取失败也能成功发送', posted_at: '2026-01-08T00:00:00Z', read_at: null })
+    await act(async () => { host.querySelector<HTMLButtonElement>('.day-feedback-detail footer button')!.click(); await settle() })
+    expect(api.postCoachFeedback).toHaveBeenCalledWith(expect.objectContaining({ day_date: '2026-01-06' }))
+    expect(host.querySelector('.day-feedback-cards')?.textContent).toContain('读取失败也能成功发送')
+    expect(host.querySelector('[data-day-feedback-marker="day"]')?.textContent).toContain('已反馈')
+    expect(host.querySelector('.feedback-days [role="alert"]')).not.toBeNull()
+  })
+
+  it('020 topbar preserves the open edit card and the history level through real pointer events', async () => {
+    api.realEditor = true
+    api.getPlan.mockResolvedValue(plan('history'))
+    await act(async () => { root.render(<PlanWorkspace onLogout={vi.fn()} me={me} />); await settle() })
+    await act(async () => { host.querySelector<HTMLElement>('[data-block-week]')!.click(); await settle() })
+    await act(async () => { host.querySelector<HTMLInputElement>('[data-c="reps"] input')!.focus(); await settle() })
+    const before = host.querySelector('.history-breadcrumbs')!.textContent
+    const toggle = host.querySelector<HTMLButtonElement>('[data-feedback-toggle]')!
+    const toggleWithPointer = async () => act(async () => {
+      toggle.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }))
+      toggle.click(); await settle()
+    })
+    await toggleWithPointer()
+    expect(host.querySelector('.daygrid')).not.toBeNull()
+    await toggleWithPointer()
+    expect(host.querySelector('.history-breadcrumbs')?.textContent).toBe(before)
+  })
+
+  it('020 resolves a completed day logged before the plan’s recommended start', async () => {
+    api.realEditor = true
+    const trained = plan('提前训练', 'published')
+    trained.days[0].completed_at = '2026-01-07T20:00:00Z'
+    api.getPlan.mockResolvedValue(trained)
+    api.getStudentSetLogs.mockImplementation((_student, from) => Promise.resolve(from < '2026-01-04' ? [{ id: 'log', plan_exercise_id: 'plan-exercise', plan_day_id: 'day', logged_date: '2026-01-04', logged_at: '2026-01-07T20:00:00Z', weight_kg: '100', reps: 5, set_index: 0 }] : []))
+    await act(async () => { root.render(<PlanWorkspace onLogout={vi.fn()} me={me} />); await settle() })
+    await act(async () => { host.querySelector<HTMLButtonElement>('[data-feedback-toggle]')!.click(); await settle() })
+    expect(host.querySelector('[data-feedback-day="day"]')?.textContent).toContain('1/4')
+  })
+
+  it.each(['by-week', 'by-day'] as const)('020 day selection and hover link both ways and retain the marker in edit mode: %s', async layout => {
+    api.realEditor = true
+    localStorage.setItem('meetpr.plan-editor.block-layout', layout)
+    const trained = plan('初始计划', 'published')
+    trained.days[0].completed_at = '2026-01-06T20:00:00Z'
+    api.getPlan.mockResolvedValue(trained)
+    api.getStudentSetLogs.mockResolvedValue([{ id: 'log', plan_exercise_id: 'plan-exercise', logged_date: '2026-01-06', logged_at: '2026-01-06T20:00:00Z', weight_kg: '100', reps: 5, set_index: 0 }])
+    api.getStudentFeedback.mockResolvedValue([{ id: 'f1', student_id: 'student', day_date: '2026-01-06', plan_exercise_id: null, video_id: null, text: '整日内容', posted_at: '2026-01-07T00:00:00Z', read_at: null }])
+    await act(async () => { root.render(<PlanWorkspace onLogout={vi.fn()} me={me} />); await settle() })
+    const style = document.createElement('style')
+    style.textContent = readFileSync('src/features/plan-editor/components/block-grid.css', 'utf8')
+    host.append(style)
+    const cell = host.querySelector<HTMLElement>('[data-block-day-id="day"]')!
+    await act(async () => { cell.querySelector<HTMLButtonElement>('[data-day-feedback-marker]')!.click(); await settle() })
+    expect(cell.classList.contains('day-feedback-highlight')).toBe(true)
+    expect(host.querySelector('[data-feedback-day="day"]')?.getAttribute('aria-pressed')).toBe('true')
+    expect(cell.querySelector('[role="tooltip"]')?.textContent).toContain('整日内容')
+    await act(async () => { cell.click(); await settle() })
+    const marker = cell.querySelector<HTMLElement>('.block-edit-head [data-day-feedback-marker]')!
+    expect(marker).not.toBeNull()
+    expect(getComputedStyle(marker).backgroundColor).toBe('rgb(249, 250, 251)')
+    expect(getComputedStyle(marker).borderTopWidth).toBe('1px')
+    for (const locale of ['zh', 'en', 'zh-Hant'] as const) {
+      await act(async () => { setLocale(locale); root.render(<PlanWorkspace onLogout={vi.fn()} me={me} />); await settle() })
+      expect(host.querySelector('[data-feedback-toggle]')?.textContent).toContain(S.block.feedback)
+      expect(host.querySelector('.day-feedback-detail')?.textContent).toContain(S.block.wholeDay)
+    }
+    await act(async () => { host.querySelector<HTMLButtonElement>('[data-feedback-toggle]')!.click(); await settle() })
+    await act(async () => { host.querySelector<HTMLButtonElement>('[data-feedback-toggle]')!.click(); await settle() })
+    await act(async () => cell.dispatchEvent(new MouseEvent('mouseover', { bubbles: true })))
+    expect(host.querySelector('[data-feedback-day="day"]')?.classList.contains('hovered')).toBe(true)
+    await act(async () => cell.dispatchEvent(new MouseEvent('mouseout', { bubbles: true })))
+    const day = host.querySelector<HTMLElement>('[data-feedback-day="day"]')!
+    await act(async () => day.dispatchEvent(new MouseEvent('mouseover', { bubbles: true })))
+    expect(cell.classList.contains('day-feedback-highlight')).toBe(true)
+  })
+
+  it.each([0, 1])('020 topbar feedback opens and closes even with a collapsed rail, pending count %s', async count => {
+    api.realEditor = true
+    api.getPlan.mockResolvedValue(plan('初始计划'))
+    api.getStudentVideos.mockResolvedValue(count ? [video('v1', '深蹲')] : [])
+    localStorage.setItem('meetpr.plan-editor.rail-mode', 'collapsed')
+    await act(async () => { root.render(<PlanWorkspace onLogout={vi.fn()} me={me} />); await settle() })
+    const toggle = host.querySelector<HTMLButtonElement>('[data-feedback-toggle]')
+    expect(toggle).not.toBeNull()
+    expect(toggle?.getAttribute('aria-pressed')).toBe('false')
+    expect(toggle?.querySelector('[data-feedback-count]')?.textContent ?? null).toBe(count ? '1' : null)
+    expect(toggle?.nextElementSibling?.getAttribute('role')).toBe('switch')
+    await act(async () => { toggle!.click(); await settle() })
+    expect(host.querySelector('[data-feedback-mode]')).not.toBeNull()
+    expect(toggle?.getAttribute('aria-pressed')).toBe('true')
+    expect(!!host.querySelector('video')).toBe(!!count)
+    await act(async () => { toggle!.click(); await settle() })
+    expect(host.querySelector('[data-feedback-mode]')).toBeNull()
+    expect(host.querySelector('video')).toBeNull()
+  })
+
   it('013 overview waits for the target plan and videos, then opens the first in-plan pending video', async () => {
     api.realEditor = true
     api.getPlan.mockResolvedValue(plan('初始计划'))
@@ -306,7 +561,7 @@ describe('PlanWorkspace editor remount', () => {
     let resolveVideos!: (value: StudentVideo[]) => void
     api.getPlan.mockImplementation(() => new Promise(resolve => { resolvePlan = resolve }))
     api.getStudentVideos.mockImplementation(() => new Promise(resolve => { resolveVideos = resolve }))
-    await act(async () => { host.querySelector<HTMLButtonElement>('[data-student-id="second"] [data-count="videos"] button')!.click(); await settle() })
+    await act(async () => { host.querySelector<HTMLButtonElement>('[data-student-id="second"] [data-alert-kind="videos"]')!.click(); await settle() })
     expect(host.querySelector('[data-feedback-mode]')).toBeNull()
     await act(async () => { resolvePlan(secondPlan); await settle() })
     expect(host.querySelector('.block-grid')).not.toBeNull()
@@ -326,7 +581,7 @@ describe('PlanWorkspace editor remount', () => {
     await act(async () => { clickNav(host, '总览'); await settle() })
     let release!: (videos: StudentVideo[]) => void
     api.getStudentVideos.mockImplementation(() => new Promise(resolve => { release = resolve }))
-    await act(async () => { host.querySelector<HTMLButtonElement>('[data-count="videos"] button')!.click(); await settle() })
+    await act(async () => { host.querySelector<HTMLButtonElement>('[data-alert-kind="videos"]')!.click(); await settle() })
     if (scenario === 'leave') await act(async () => { clickNav(host, '动作库'); await settle() })
     await act(async () => { release(scenario === 'empty' ? [] : [video('pending', '深蹲')]); await settle() })
     if (scenario === 'leave') await act(async () => { clickNav(host, '计划编排'); await settle() })
@@ -347,7 +602,7 @@ describe('PlanWorkspace editor remount', () => {
     expect(host.querySelector('.editor-chat-toggle')?.textContent).toContain('3')
     await act(async () => { clickNav(host, '总览'); await settle() })
     expect(host.querySelector('.editor-chat')).toBeNull()
-    await act(async () => { host.querySelector<HTMLButtonElement>('[data-student-id="student"] [data-count="messages"] button')!.click(); await settle() })
+    await act(async () => { host.querySelector<HTMLButtonElement>('[data-student-id="student"] [data-alert-kind="chat"]')!.click(); await settle() })
     expect(host.querySelector('.editor-chat-window')?.textContent).toContain('甲的消息')
     await act(async () => { host.querySelector<HTMLButtonElement>('[data-testid="switch-second"]')!.click(); await settle() })
     expect(host.querySelector('.editor-chat-window')?.textContent).toContain('乙的消息')
@@ -372,6 +627,7 @@ describe('PlanWorkspace editor remount', () => {
     try {
       await act(async () => { root.render(<PlanWorkspace onLogout={vi.fn()} me={me} />); await settle() })
       expect(host.querySelector('[data-testid="current-student"]')?.textContent).toBe('second')
+      expect(api.markPlanViewed).not.toHaveBeenCalled()
       expect(host.querySelector('.coach-nav-item.active')?.textContent).toContain('计划编排')
     } finally { window.history.replaceState(null, '', '/') }
   })
@@ -425,7 +681,7 @@ describe('PlanWorkspace editor remount', () => {
     expect(host.querySelector('[data-feedback-video="v1"]')).toBeNull()
   })
 
-  it('013 repair 1 historical play waits until halfway and updates the brick once', async () => {
+  it('020 historical play enters feedback, waits until halfway and updates the brick once', async () => {
     api.realEditor = true
     api.getPlan.mockResolvedValue(plan('history'))
     api.getStudentVideos.mockResolvedValue([video('v1', '深蹲')])
@@ -435,8 +691,8 @@ describe('PlanWorkspace editor remount', () => {
     await act(async () => { host.querySelector<HTMLElement>('[data-block-week]')!.click(); await settle() })
     await act(async () => { host.querySelector<HTMLInputElement>('[data-c="reps"] input')!.focus(); await settle() })
     await act(async () => { host.querySelector<HTMLButtonElement>('.history-session summary button')!.click(); await settle() })
-    expect(host.querySelector('[data-feedback-mode]')).toBeNull()
-    expect(host.querySelector('.video-rpe-calibration')).toBeNull()
+    expect(host.querySelector('[data-feedback-mode]')).not.toBeNull()
+    expect(host.querySelector('.video-feedback textarea')).not.toBeNull()
     expect(api.markVideoViewed).not.toHaveBeenCalled()
     await playback(host, 9.99)
     expect(api.markVideoViewed).not.toHaveBeenCalled()
@@ -636,6 +892,11 @@ describe('PlanWorkspace editor remount', () => {
         get length() { return stored.size },
       } satisfies Storage,
     })
+    api.meRequest.mockResolvedValue({ user: { email: 'coach@example.test', role: 'coach' } })
+    api.publicInvite.mockResolvedValue({ valid: true, coach_display_name: '教练' })
+    api.rejectBindRequest.mockResolvedValue(undefined)
+    api.getOverviewAlerts.mockResolvedValue({ generated_at: '2026-10-22T09:00:00Z', plan_ending: [], training: [] })
+    api.markPlanViewed.mockResolvedValue(undefined)
     api.listExercises.mockResolvedValue([exercise])
     api.getExerciseUsageStats.mockResolvedValue([])
     api.getCoachStudents.mockResolvedValue([{ id: 'student', display_name: '学员', status: 'active', evaluation: null }])
@@ -643,6 +904,7 @@ describe('PlanWorkspace editor remount', () => {
     api.getStudentOnboarding.mockResolvedValue(null)
     api.publishPlan.mockResolvedValue(plan('发布完成'))
     api.getBindRequests.mockResolvedValue([])
+    api.getStudentFeedback.mockResolvedValue([])
     api.getStudentVideos.mockResolvedValue([])
     api.getExerciseStatsOverview.mockResolvedValue({
       exercises: [],
@@ -687,6 +949,7 @@ describe('PlanWorkspace editor remount', () => {
     act(() => root.unmount())
     host.remove()
     vi.useRealTimers()
+    setLocale(undefined)
     vi.clearAllMocks()
     vi.restoreAllMocks()
   })
@@ -806,6 +1069,242 @@ describe('PlanWorkspace editor remount', () => {
     expect(host.querySelector('[data-testid="command-exercise"]')?.textContent).toBe('')
   }, 15_000)
 
+  it.each(['board', 'requests', null])('019 R1 always starts in planning without persisting navigation: %s', async stored => {
+    if (stored) localStorage.setItem('mpw.coachView', stored)
+    api.getPlan.mockResolvedValue(plan('启动计划'))
+    await act(async () => { root.render(<PlanWorkspace me={me} onLogout={() => {}} />); await settle() })
+    expect(host.querySelector('.coach-nav-item.active')?.textContent).toContain('计划编排')
+    await act(async () => { clickNav(host, '总览'); await settle() })
+    expect(localStorage.getItem('mpw.coachView')).toBe(stored)
+  })
+
+  it.each(['double-click', 'Enter', 'switcher', 'command', 'same-student command'])('019 R1 marks only an explicitly opened student plan: %s', async entry => {
+    api.getCoachStudents.mockResolvedValue([
+      { id: 'student', display_name: '学员', status: 'active', evaluation: null },
+      { id: 'second', display_name: '乙', status: 'active', evaluation: null },
+    ])
+    const second = { ...plan('乙计划'), id: 'second-plan', trainee_id: 'second' }
+    api.getStudentPlans.mockImplementation(async id => [id === 'second' ? second : plan('首个计划')])
+    api.getPlan.mockImplementation(async id => id === 'second-plan' ? second : plan('首个计划'))
+    await act(async () => { root.render(<PlanWorkspace me={me} onLogout={() => {}} />); await settle() })
+    expect(host.querySelector('[data-testid="current-student"]')?.textContent).toBe('student')
+    expect(api.markPlanViewed).not.toHaveBeenCalled()
+    const target = entry === 'same-student command' ? 'student' : 'second'
+    if (entry === 'switcher') {
+      await act(async () => { host.querySelector<HTMLButtonElement>('[data-testid="switch-second"]')!.click(); await settle() })
+    } else if (entry.includes('command')) {
+      await act(async () => { window.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', metaKey: true, bubbles: true })); await settle() })
+      const search = host.querySelector<HTMLInputElement>('[aria-label="搜索命令"]')!
+      await act(async () => {
+        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(search, target === 'second' ? '乙' : '学员')
+        search.dispatchEvent(new Event('input', { bubbles: true }))
+      })
+      await act(async () => { search.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await settle() })
+    } else {
+      await act(async () => { clickNav(host, '总览'); await settle() })
+      await act(async () => { host.querySelector<HTMLElement>('[data-student-id="second"]')!.click(); await settle() })
+      expect(api.markPlanViewed).not.toHaveBeenCalled()
+      await act(async () => {
+        if (entry === 'Enter') window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
+        else host.querySelector('[data-student-id="second"]')!.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }))
+        await settle()
+      })
+    }
+    expect(host.querySelector('[data-testid="current-student"]')?.textContent).toBe(target)
+    expect(api.markPlanViewed).toHaveBeenCalledTimes(1)
+    expect(api.markPlanViewed).toHaveBeenCalledWith(target)
+  })
+
+  it('019 R1 caches invitation requests across overview visits within one workspace session', async () => {
+    api.getPlan.mockResolvedValue(plan('邀请缓存'))
+    api.getInviteCodes.mockResolvedValue([{ code: 'INVITE', type: 'personal_permanent', revoked_at: null }])
+    await act(async () => { root.render(<PlanWorkspace me={me} onLogout={() => {}} />); await settle() })
+    expect(api.meRequest).not.toHaveBeenCalled()
+    for (let visit = 0; visit < 2; visit++) {
+      await act(async () => { clickNav(host, '总览'); await settle() })
+      expect(host.querySelector('.overview-invitation')?.textContent).toContain('INVITE')
+      await act(async () => { clickNav(host, '计划编排'); await settle() })
+    }
+    expect(api.meRequest).toHaveBeenCalledTimes(1)
+    expect(api.getInviteCodes).toHaveBeenCalledTimes(1)
+    expect(api.publicInvite).toHaveBeenCalledTimes(1)
+    await act(async () => { root.render(<PlanWorkspace key="new-session" me={me} onLogout={() => {}} />); await settle() })
+    await act(async () => { clickNav(host, '总览'); await settle() })
+    expect(api.meRequest).toHaveBeenCalledTimes(2)
+    expect(api.getInviteCodes).toHaveBeenCalledTimes(2)
+    expect(api.publicInvite).toHaveBeenCalledTimes(2)
+  })
+
+  it('019 R1 retries failed invitations and caches the successful retry', async () => {
+    api.getPlan.mockResolvedValue(plan('重试邀请'))
+    api.getInviteCodes.mockResolvedValue([{ code: 'INVITE', type: 'personal_permanent', revoked_at: null }])
+    api.publicInvite.mockRejectedValueOnce(new Error('offline'))
+    await act(async () => { root.render(<PlanWorkspace me={me} onLogout={() => {}} />); await settle() })
+    await act(async () => { clickNav(host, '总览'); await settle() })
+    expect(host.querySelector('.overview-invite [role="alert"]')).not.toBeNull()
+    await act(async () => { host.querySelector<HTMLButtonElement>('.overview-invite [role="alert"] button')!.click(); await settle() })
+    expect(host.querySelector('.overview-invitation')?.textContent).toContain('INVITE')
+    await act(async () => { clickNav(host, '计划编排'); await settle() })
+    await act(async () => { clickNav(host, '总览'); await settle() })
+    expect(api.meRequest).toHaveBeenCalledTimes(2)
+    expect(api.getInviteCodes).toHaveBeenCalledTimes(2)
+    expect(api.publicInvite).toHaveBeenCalledTimes(2)
+  })
+
+  it('019 shows invitations and requests above the two-section six-column overview', async () => {
+    api.getPlan.mockResolvedValue(plan('总览'))
+    api.getBindRequests.mockResolvedValue([bindRequest])
+    await act(async () => { root.render(<PlanWorkspace me={me} onLogout={() => {}} />); await settle() })
+    await act(async () => { clickNav(host, '总览'); await settle() })
+    expect(host.querySelector('.overview-invite')?.textContent).toContain('邀请学员')
+    expect(host.querySelectorAll('.overview-invite li')).toHaveLength(4)
+    expect(host.querySelector('.request-card')?.textContent).toContain('新学员')
+    expect(host.querySelectorAll('.roster-overview-head > *')).toHaveLength(6)
+    expect(host.querySelectorAll('.overview-section-head')).toHaveLength(2)
+    expect(host.querySelector('.roster-segments')).toBeNull()
+    expect([...host.querySelectorAll('.coach-nav-item')].some(el => el.textContent?.includes('学员申请'))).toBe(false)
+    expect(host.querySelector('.coach-queue-heading')).toBeNull()
+  })
+
+  it.each(['rpe_over', 'incomplete', 'behind'] as const)('019 opens the alert day from %s and marks the student viewed', async type => {
+    api.realEditor = true
+    const target = plan('提醒训练日', 'published')
+    api.getStudentPlans.mockResolvedValue([target])
+    api.getPlan.mockResolvedValue(target)
+    let seen = false
+    api.markPlanViewed.mockImplementation(async () => { seen = true })
+    api.getOverviewAlerts.mockImplementation(async () => ({ generated_at: '2026-10-22T09:00:00Z', plan_ending: [], training: seen ? [] : [{
+      student_id: 'student', latest_at: '2026-10-21T12:00:00Z', items: [type === 'behind'
+        ? { type, recommended_date: '2026-01-05', plan_day_id: 'day', week_number: 1 }
+        : { type, date: '2026-01-05', plan_day_id: 'day', plan_exercise_id: 'plan-exercise', exercise_id: 'exercise', set_index: 0, reason: 'missing', target_rpe: '8', actual_rpe: '9' }],
+    }] }))
+    await act(async () => { root.render(<PlanWorkspace me={me} onLogout={() => {}} />); await settle() })
+    await act(async () => { clickNav(host, '总览'); await settle() })
+    expect(api.markPlanViewed).not.toHaveBeenCalled()
+    await act(async () => { host.querySelector<HTMLButtonElement>(`[data-alert-kind="${type}"]`)!.click(); await settle() })
+    expect(api.markPlanViewed).toHaveBeenCalledWith('student')
+    expect(host.querySelector('.block-edit-head')).not.toBeNull()
+    if (type === 'behind') expect(document.querySelector('[data-plan-shift-panel]')).not.toBeNull()
+    else expect(host.querySelector('[data-alert-set-index="0"] .overview-set-highlight')?.textContent).toBe('第 1 组')
+    await act(async () => { clickNav(host, '总览'); await settle() })
+    expect(host.querySelector(`[data-alert-kind="${type}"]`)).toBeNull()
+  })
+
+  it('019 keeps the board visible while resolving an alert in another plan', async () => {
+    const remembered = { ...plan('正在编辑的草稿'), id: 'draft', days: [] }
+    const target = { ...plan('提醒训练日', 'published'), id: 'target' }
+    api.getStudentPlans.mockResolvedValue([remembered, target])
+    api.getPlan.mockImplementation(async id => id === 'draft' ? remembered : target)
+    api.getOverviewAlerts.mockResolvedValue({ generated_at: '', plan_ending: [], training: [{ student_id: 'student', latest_at: '2026-10-21', items: [{ type: 'incomplete', date: '2026-10-21', plan_day_id: 'day', plan_exercise_id: 'plan-exercise', exercise_id: 'exercise', set_index: 1, reason: 'missing' }] }] })
+    await act(async () => { root.render(<PlanWorkspace me={me} onLogout={() => {}} />); await settle() })
+    await act(async () => { clickNav(host, '总览'); await settle() })
+    let resolveTarget!: (value: PlanWithChildren) => void
+    api.getPlan.mockImplementation(id => id === 'target' ? new Promise(resolve => { resolveTarget = resolve }) : Promise.resolve(remembered))
+    await act(async () => { host.querySelector<HTMLButtonElement>('[data-alert-kind="incomplete"]')!.click(); await settle() })
+    expect(host.querySelector('.overview-page')).not.toBeNull()
+    expect(host.querySelector('[data-testid="current-student"]')).toBeNull()
+    await act(async () => { resolveTarget(target); await settle() })
+    expect(host.querySelector('[data-testid="editor-note"]')?.textContent).toBe('提醒训练日')
+  })
+
+  it('019 pre-fills the next plan date and keeps the plan-ending tag when creation is cancelled', async () => {
+    api.getPlan.mockResolvedValue(plan('计划', 'published'))
+    api.getOverviewAlerts.mockResolvedValue({ generated_at: '', training: [], plan_ending: [{ student_id: 'student', plan_id: 'plan', plan_name: '计划', end_date: '2026-10-25', days_left: 3 }] })
+    await act(async () => { root.render(<PlanWorkspace me={me} onLogout={() => {}} />); await settle() })
+    await act(async () => { clickNav(host, '总览'); await settle() })
+    await act(async () => { host.querySelector<HTMLButtonElement>('[data-alert-kind="plan_ending"]')!.click(); await settle() })
+    expect(host.querySelector<HTMLInputElement>('[role="dialog"] input[type="date"]')?.value).toBe('2026-10-26')
+    await act(async () => { clickButton(host, '取消'); clickNav(host, '总览'); await settle() })
+    expect(host.querySelector('[data-alert-kind="plan_ending"]')?.textContent).toBe('计划剩 3 天')
+  })
+
+  it('019 a low completion tag opens tracking with that student selected', async () => {
+    api.getPlan.mockResolvedValue(plan('计划'))
+    await act(async () => { root.render(<PlanWorkspace me={me} onLogout={() => {}} />); await settle() })
+    await act(async () => { clickNav(host, '总览'); await settle() })
+    await act(async () => { host.querySelector<HTMLButtonElement>('[data-alert-kind="completion"]')!.click(); await settle() })
+    expect(host.querySelector('.coach-nav-item[aria-current="page"]')?.textContent).toBe('追踪')
+    expect(host.querySelector('.tracking-dashboard')?.textContent ?? host.textContent).toContain('学员')
+  })
+
+  it.each([500, 404])('019 reminder %s preserves requests, invitation, and other tags', async status => {
+    api.getPlan.mockResolvedValue(plan('计划'))
+    api.getBindRequests.mockResolvedValue([bindRequest])
+    api.getOverviewAlerts.mockRejectedValue(new ApiException(status, 'UNAVAILABLE'))
+    await act(async () => { root.render(<PlanWorkspace me={me} onLogout={() => {}} />); await settle() })
+    await act(async () => { clickNav(host, '总览'); await settle() })
+    expect(host.querySelector('.overview-invite')?.textContent).toContain('暂时没有有效的永久邀请码')
+    expect(host.querySelector('.request-card')).not.toBeNull()
+    expect(host.querySelector('[data-alert-kind="completion"]')).not.toBeNull()
+    expect(!!host.querySelector('[data-alert-kind="plan_ending"]')).toBe(status === 404)
+    expect(!!host.querySelector('.overview-alert-error')).toBe(status === 500)
+    if (status === 500) {
+      api.getOverviewAlerts.mockResolvedValue({ generated_at: '', training: [], plan_ending: [] })
+      await act(async () => { host.querySelector<HTMLButtonElement>('.overview-alert-error button')!.click(); await settle() })
+      expect(host.querySelector('.overview-alert-error')).toBeNull()
+    }
+  })
+
+  it('019 rejects a request in the overview after opening its onboarding details', async () => {
+    api.getPlan.mockResolvedValue(plan('计划'))
+    api.getBindRequests.mockResolvedValue([bindRequest])
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    await act(async () => { root.render(<PlanWorkspace me={me} onLogout={() => {}} />); await settle() })
+    await act(async () => { clickNav(host, '总览'); await settle() })
+    await act(async () => host.querySelector<HTMLElement>('.request-row')!.click())
+    expect(host.querySelector('.request-detail')).not.toBeNull()
+    expect(host.querySelector('.request-card')?.textContent).not.toContain('INVITE')
+    await act(async () => { host.querySelector<HTMLButtonElement>('.request-reject')!.click(); await settle() })
+    expect(api.rejectBindRequest).toHaveBeenCalledWith('request')
+    expect(host.querySelector('.request-card')).toBeNull()
+    expect(host.querySelector('.overview-requests')?.textContent).toContain('暂无新申请')
+  })
+
+  it('019 publishing the next plan clears the ending reminder after returning to overview', async () => {
+    api.getPlan.mockResolvedValue(plan('下一份草稿'))
+    let published = false
+    api.publishPlan.mockImplementation(async () => { published = true; return plan('已发布', 'published') })
+    api.getOverviewAlerts.mockImplementation(async () => ({ generated_at: '2026-10-22T12:00:00Z', training: [], plan_ending: published ? [] : [{ student_id: 'student', plan_id: 'ending', plan_name: '当前计划', end_date: '2026-10-24', days_left: 2 }] }))
+    await act(async () => { root.render(<PlanWorkspace me={me} onLogout={() => {}} />); await settle() })
+    await act(async () => { clickNav(host, '总览'); await settle() })
+    expect(host.querySelector('[data-alert-kind="plan_ending"]')).not.toBeNull()
+    await act(async () => { clickNav(host, '计划编排'); await settle() })
+    await act(async () => { host.querySelector<HTMLButtonElement>('[data-testid="publish-plan"]')!.click(); await settle() })
+    await act(async () => { clickNav(host, '总览'); await settle() })
+    expect(host.querySelector('[data-alert-kind="plan_ending"]')).toBeNull()
+  })
+
+  it('019 refreshes alerts only while visible and plan-viewed failures never block editing', async () => {
+    vi.useFakeTimers()
+    Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' })
+    api.getPlan.mockResolvedValue(plan('可用计划'))
+    api.markPlanViewed.mockRejectedValue(new Error('offline'))
+    await act(async () => { root.render(<PlanWorkspace me={me} onLogout={() => {}} />); await settle() })
+    expect(host.querySelector('[data-testid="editor-note"]')?.textContent).toBe('可用计划')
+    expect(api.markPlanViewed).not.toHaveBeenCalled()
+    await act(async () => { clickNav(host, '总览'); await settle() })
+    await act(async () => { host.querySelector('[data-student-id="student"]')!.dispatchEvent(new MouseEvent('dblclick', { bubbles: true })); await settle() })
+    expect(api.markPlanViewed).toHaveBeenCalledWith('student')
+    expect(host.querySelector('[data-testid="editor-note"]')?.textContent).toBe('可用计划')
+    const before = api.getOverviewAlerts.mock.calls.length
+    await act(async () => { await vi.advanceTimersByTimeAsync(60_000); await settle() })
+    expect(api.getOverviewAlerts).toHaveBeenCalledTimes(before + 1)
+    Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'hidden' })
+    await act(async () => { await vi.advanceTimersByTimeAsync(60_000); await settle() })
+    expect(api.getOverviewAlerts).toHaveBeenCalledTimes(before + 1)
+    Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' })
+  })
+
+  it('019 zero students keeps both top cards and the acceptance hint', async () => {
+    api.getCoachStudents.mockResolvedValue([])
+    await act(async () => { root.render(<PlanWorkspace me={me} onLogout={() => {}} />); await settle() })
+    await act(async () => { clickNav(host, '总览'); await settle() })
+    expect(host.querySelector('.overview-invite')).not.toBeNull()
+    expect(host.querySelector('.overview-requests')?.textContent).toContain('暂无新申请')
+    expect(host.querySelector('.empty-page')?.textContent).toBe('接受申请后，学员会出现在这里')
+    expect(host.querySelector('.roster-overview')).toBeNull()
+  })
+
   it('loads one exercise-stats overview request per student during foreground and roster hydration', async () => {
     api.getPlan.mockResolvedValue(plan('概览请求去重'))
 
@@ -890,7 +1389,7 @@ describe('PlanWorkspace editor remount', () => {
 
     expect(host.querySelector('[data-testid="editor-note"]')?.textContent).toBe('首位学员仍可编辑')
     expect(host.textContent).not.toContain('无法连接后端')
-    expect(host.querySelector('.coach-statusbar')?.textContent).toContain('待排 1')
+    expect(host.querySelector('.coach-statusbar')?.textContent).not.toContain('待排')
     const studentTab = [...host.querySelectorAll('button')].find((item) => item.firstElementChild?.textContent === '计划编排')
     expect(studentTab?.querySelector('.coach-nav-badge')).toBeNull()
   }, 15_000)
@@ -1062,10 +1561,12 @@ describe('PlanWorkspace editor remount', () => {
       await settle()
     })
     expect(host.querySelector('[data-testid="plan-options"]')?.textContent).toBe('乙学员最新计划')
-    expect(host.querySelector('.coach-statusbar')?.textContent).toContain('待排 0')
+    expect(host.querySelector('.coach-statusbar')?.textContent).not.toContain('待排')
   }, 15_000)
 
-  it('部分计划加载时导航待排数与总览页签同源且一致', async () => {
+  it('部分计划加载时 404 回退只将已知待排学员列入需要注意', async () => {
+    api.getExerciseStatsOverview.mockResolvedValue(null)
+    api.getOverviewAlerts.mockRejectedValue(new ApiException(404, 'NOT_FOUND'))
     let keepSecondPending!: (rows: PlanResponse[]) => void
     api.getCoachStudents.mockResolvedValue([
       { id: 'student', display_name: '已知待排', status: 'active', evaluation: null },
@@ -1082,16 +1583,15 @@ describe('PlanWorkspace editor remount', () => {
       await settle()
     })
 
-    expect(host.querySelector('.coach-queue-heading')?.textContent).toBe('待排队列 · 1')
-    expect(host.querySelector('.coach-statusbar')?.textContent).toContain('待排 1')
+    expect(host.querySelector('.coach-queue-heading')).toBeNull()
+    expect(host.querySelector('.coach-statusbar')?.textContent).not.toContain('待排')
 
     await act(async () => {
       clickButton(host, '总览')
       await settle()
     })
-    const pendingTab = [...host.querySelectorAll<HTMLButtonElement>('[role="tab"]')]
-      .find((button) => button.textContent?.startsWith('待排'))
-    expect(pendingTab?.textContent).toBe('待排1')
+    expect(host.querySelector('.overview-section.attention .overview-section-head')?.textContent).toBe('需要注意1')
+    expect(host.querySelector('[data-student-id="student-2"] [data-alert-kind="plan_ending"]')).toBeNull()
 
     await act(async () => {
       keepSecondPending([])
@@ -1359,16 +1859,16 @@ describe('PlanWorkspace editor remount', () => {
     expect(api.markVideoViewed).not.toHaveBeenCalled()
   }, 15_000)
 
-  it('零学员预览保留五项导航且无聊天浮窗、不发聊天请求', async () => {
+  it('零学员预览保留四项导航且无聊天浮窗、不发聊天请求', async () => {
     api.getCoachStudents.mockResolvedValue([])
 
     await act(async () => {
       root.render(<PlanWorkspace onLogout={vi.fn()} me={me} />)
       await settle()
     })
-    expect(host.querySelectorAll('.coach-nav-item')).toHaveLength(5)
+    expect(host.querySelectorAll('.coach-nav-item')).toHaveLength(4)
     expect([...host.querySelectorAll('.coach-nav-item')].map((item) => item.firstElementChild?.textContent)).toEqual([
-      '总览', '计划编排', '动作库', '学员申请', '追踪',
+      '总览', '计划编排', '动作库', '追踪',
     ])
     expect(api.listConversations).not.toHaveBeenCalled()
 
@@ -1399,6 +1899,7 @@ describe('PlanWorkspace editor remount', () => {
   }, 15_000)
 
   it('接受申请后立即刷新学员列表和申请计数', async () => {
+    api.getExerciseStatsOverview.mockResolvedValue(null)
     api.getBindRequests
       .mockResolvedValueOnce([bindRequest])
       .mockResolvedValue([])
@@ -1415,11 +1916,11 @@ describe('PlanWorkspace editor remount', () => {
       root.render(<PlanWorkspace onLogout={vi.fn()} me={me} />)
       await settle()
     })
-    const requestsTab = [...host.querySelectorAll('button')].find((item) => item.textContent?.includes('学员申请'))
+    const requestsTab = [...host.querySelectorAll('button')].find((item) => item.textContent?.startsWith('总览'))
     expect(requestsTab?.querySelector('.coach-nav-badge')?.textContent).toBe('1')
 
     await act(async () => {
-      clickButton(host, '学员申请')
+      clickButton(host, '总览')
       await settle()
     })
     expect(host.querySelector('.requests-count')?.textContent).toBe('1 条')
@@ -1432,12 +1933,13 @@ describe('PlanWorkspace editor remount', () => {
     expect(api.acceptBindRequest).toHaveBeenCalledWith('request')
     expect(api.refreshCoachStudents).toHaveBeenCalledTimes(1)
     expect(api.getBindRequests).toHaveBeenCalledTimes(2)
-    expect(host.querySelector('.requests-count')?.textContent).toBe('0 条')
+    expect(host.querySelector('.requests-count')).toBeNull()
     expect(host.querySelector('.request-list')?.textContent).not.toContain('新学员')
     expect(requestsTab?.querySelector('.coach-nav-badge')).toBeNull()
   }, 15_000)
 
   it('接受申请后丢弃更早发出的轮询响应，申请卡片和角标不复活', async () => {
+    api.getExerciseStatsOverview.mockResolvedValue(null)
     vi.useFakeTimers()
     Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' })
     let resolveStale!: (value: CoachBindRequest[]) => void
@@ -1456,9 +1958,9 @@ describe('PlanWorkspace editor remount', () => {
       root.render(<PlanWorkspace onLogout={vi.fn()} me={me} />)
       await settle()
     })
-    const requestsTab = [...host.querySelectorAll('button')].find((item) => item.textContent?.includes('学员申请'))
+    const requestsTab = [...host.querySelectorAll('button')].find((item) => item.textContent?.startsWith('总览'))
     await act(async () => {
-      clickButton(host, '学员申请')
+      clickButton(host, '总览')
       await settle()
     })
 
@@ -1473,14 +1975,14 @@ describe('PlanWorkspace editor remount', () => {
       await settle()
     })
     expect(api.getBindRequests).toHaveBeenCalledTimes(3)
-    expect(host.querySelector('.requests-count')?.textContent).toBe('0 条')
+    expect(host.querySelector('.requests-count')).toBeNull()
     expect(requestsTab?.querySelector('.coach-nav-badge')).toBeNull()
 
     await act(async () => {
       resolveStale([bindRequest])
       await settle()
     })
-    expect(host.querySelector('.requests-count')?.textContent).toBe('0 条')
+    expect(host.querySelector('.requests-count')).toBeNull()
     expect(host.querySelector('.request-list')?.textContent).not.toContain('新学员')
     expect(requestsTab?.querySelector('.coach-nav-badge')).toBeNull()
   }, 15_000)

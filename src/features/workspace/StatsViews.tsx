@@ -1,3 +1,4 @@
+import { normalizeTraditionalInput } from '../../i18n/stable-zh'
 import { useEffect, useMemo, useState } from 'react'
 import { getExerciseStats, getExerciseStatsOverview } from '../../api/coach'
 import { getStudentOnboarding } from '../../api/plans'
@@ -16,19 +17,12 @@ import type { ExerciseIndex } from '../plan-editor/exerciseIndex'
 import type { Catalog } from '../plan-editor/mapping'
 import { PageTop, kg, profileLine, shortDate } from './WorkspaceCommon'
 import { completionRateTone } from './metricThresholds'
-import {
-  deriveRosterCounts,
-  deriveRosterRows,
-  filterRosterRows,
-  type RosterDataByStudent,
-  type RosterCounts,
-  type RosterOverviewRow,
-  type RosterTab,
-} from './rosterOverview'
+import { type RosterDataByStudent } from './rosterOverview'
+import { deriveOverviewBoard, type OverviewBoard, type OverviewTag } from './overviewBoard'
+import { OverviewTags } from './OverviewTags'
 import { StudentPlanCapacityCard } from './StudentPlanCapacityCard'
 import { useGlobalKeyboardHandler } from './globalKeyboard'
 import { fmt, S } from '../../i18n/strings'
-import { StudentPlanCursorBadges } from '../plan-editor/components/StudentPlanCursorBadges'
 import { InlineFail, useDelayedLoading } from '../../components/states'
 import { isFailedRosterDatum, type FailedRosterDatum } from './rosterOverview'
 
@@ -45,7 +39,7 @@ export function SessionDetail({ detail, limit = 6 }: { detail: ExerciseStatsDeta
 }
 
 // ── 总览（mock 1:1 扫视表）──────────────────────────────────────
-export const ROSTER_GRID_COLUMNS = '290px 104px 116px 84px 78px 156px 80px 1fr 88px 88px'
+export const ROSTER_GRID_COLUMNS = '250px minmax(80px, 1fr) 140px 90px 200px 80px'
 
 // ── 花名册 e1RM 徽章(拍板 A,2026-08-09:一列紧凑三项;↑绿 ↓红 →灰,红仅点缀不大面积)──
 const E1RM_FAMILIES: LiftFamily[] = ['squat', 'bench', 'deadlift']
@@ -102,8 +96,8 @@ export interface RosterBoardProps {
   videosByStudent?: Readonly<Record<string, StudentVideo[] | null | undefined>>
   onOpenVideos?: (studentId: string) => void
   onOpenChat?: (studentId: string) => void
-  rows?: readonly RosterOverviewRow[]
-  counts?: RosterCounts
+  board?: OverviewBoard
+  onOpenTag?: (studentId: string, tag: OverviewTag) => void
   onSelect: (studentId: string) => void
   onOpen: (studentId: string) => void
   onRetryOverview?: (studentId: string) => void
@@ -146,8 +140,8 @@ export function RosterBoard({
   videosByStudent,
   onOpenVideos,
   onOpenChat,
-  rows: suppliedRows,
-  counts: suppliedCounts,
+  board: suppliedBoard,
+  onOpenTag,
   onSelect,
   onOpen,
   onRetryOverview,
@@ -155,32 +149,10 @@ export function RosterBoard({
   onRetryWeekTonnage,
   onRetryPlans,
 }: RosterBoardProps) {
-  const [sort, setSort] = useState<{ key: 'pendingVideoCount' | 'unreadCount'; descending: boolean } | null>(null)
-  const [tab, setTab] = useState<RosterTab>('all')
-  const derivedRows = useMemo(() => deriveRosterRows({
-    students,
-    dataByStudent,
-    plansByStudent,
-    conversations,
-    videosByStudent,
-  }), [conversations, dataByStudent, plansByStudent, students, videosByStudent])
-  const rows = suppliedRows ?? derivedRows
-  const derivedCounts = useMemo(() => deriveRosterCounts(rows), [rows])
-  const counts = suppliedCounts ?? derivedCounts
-  const visibleRows = useMemo(() => {
-    const filtered = filterRosterRows(rows, tab)
-    return sort ? [...filtered].sort((a, b) => {
-      const left = a[sort.key], right = b[sort.key]
-      if (left == null) return right == null ? 0 : 1
-      if (right == null) return -1
-      return (left - right) * (sort.descending ? -1 : 1)
-    }) : filtered
-  }, [rows, tab, sort])
-  const tabs: { id: RosterTab; label: string; count: number }[] = [
-    { id: 'all', label: S.stats.board.allStudents, count: counts.all },
-    { id: 'pending', label: S.stats.board.pending, count: counts.pending },
-    { id: 'attention', label: S.stats.board.attention, count: counts.attention },
-  ]
+  const derivedBoard = useMemo(() => deriveOverviewBoard({ students, dataByStudent, plansByStudent, conversations, videosByStudent }),
+    [students, dataByStudent, plansByStudent, conversations, videosByStudent])
+  const board = suppliedBoard ?? derivedBoard
+  const visibleRows = [...board.attention, ...board.normal]
 
   useGlobalKeyboardHandler(({ event, editable }) => {
     if (
@@ -213,51 +185,29 @@ export function RosterBoard({
 
   return (
     <section className="roster-overview" aria-label={S.stats.board.overview}>
-      <div className="roster-segments" role="tablist" aria-label={S.stats.board.filter}>
-        {tabs.map((item) => (
-          <button
-            key={item.id}
-            type="button"
-            role="tab"
-            aria-selected={tab === item.id}
-            className={tab === item.id ? 'active' : ''}
-            onClick={() => setTab(item.id)}
-          >
-            {item.label}<span>{item.count}</span>
-          </button>
-        ))}
-      </div>
+      <div className="roster-overview-scroll">
       <div
         className="roster-overview-grid roster-overview-head"
         style={{ gridTemplateColumns: ROSTER_GRID_COLUMNS }}
         data-grid-columns={ROSTER_GRID_COLUMNS}
       >
         <span>{S.stats.board.athlete}</span>
-        <span>{S.stats.board.levelWeight}</span>
+        <span>{S.workspace.overview.reminders}</span>
         <span>{S.stats.board.completionRate}</span>
-        <span>{S.stats.board.weeklyVolume}</span>
-        <span>RPE</span>
+        <span className="roster-cell-right">{S.stats.board.weeklyVolume}</span>
         <span>{S.stats.board.e1rm}</span>
-        <span>{S.stats.board.meetDistance}</span>
-        <span>{S.stats.board.nextWeekPlan}</span>
-        {(['pendingVideoCount', 'unreadCount'] as const).map(key => <button type="button" key={key}
-          className={`roster-count-sort${sort?.key === key ? ' active' : ''}`}
-          aria-label={key === 'pendingVideoCount' ? S.stats.board.pendingVideos : S.stats.board.unreadMessages}
-          onClick={() => setSort(current => ({ key, descending: current?.key === key ? !current.descending : true }))}>
-          {key === 'pendingVideoCount' ? S.stats.board.pendingVideos : S.stats.board.unreadMessages}
-          {sort?.key === key && (sort.descending ? ' ⌄' : ' ⌃')}
-        </button>)}
+        <span className="roster-cell-right">{S.stats.board.meetDistance}</span>
       </div>
-      <div className="roster-overview-scroll">
-        {visibleRows.map((row) => {
+        {(['attention', 'normal'] as const).map(section => <section key={section} className={`overview-section ${section}`}>
+          <header className="overview-section-head"><i />{S.workspace.overview[section]}<small>{board[section].length}</small></header>
+          {board[section].map((row) => {
           const selected = row.student.id === selectedStudentId
           const overviewLoading = row.data.overview === undefined
           const overviewFailed = isFailedRosterDatum(row.data.overview)
           const profileLoading = row.data.profile === undefined && !row.data.profileError
           const tonnageLoading = row.data.weekTonnageKg === undefined && !row.data.plansError
           const tonnageFailed = isFailedRosterDatum(row.data.weekTonnageKg) || (row.data.weekTonnageKg === undefined && row.data.plansError === true)
-          const plansLoaded = Object.hasOwn(plansByStudent, row.student.id)
-          const completionTone = completionRateTone(row.completionPercent)
+          const completionTone = completionRateTone(row.completionPercent) === 'bad' ? 'bad' : 'ok'
           const tonnage = typeof row.data.weekTonnageKg === 'number'
             ? (row.data.weekTonnageKg / 1000).toFixed(1)
             : null
@@ -277,9 +227,14 @@ export function RosterBoard({
               <span className="roster-overview-student">
                 <kbd>{row.ordinal}</kbd>
                 <b>{row.student.display_name}</b>
-                <StudentPlanCursorBadges cursor={row.data.planCursor} compact />
+                <small className="roster-overview-profile">{profileMetric(row.data.profile)}</small>
               </span>
-              <span className="roster-overview-profile">{profileMetric(row.data.profile)}</span>
+              <OverviewTags tags={row.tags} onOpen={tag => {
+                if (onOpenTag) onOpenTag(row.student.id, tag)
+                else if (tag.kind === 'videos') onOpenVideos?.(row.student.id)
+                else if (tag.kind === 'chat') onOpenChat?.(row.student.id)
+                else onOpen(row.student.id)
+              }} />
               <RosterCellState loading={overviewLoading} width={56} align="left">
                 {overviewFailed
                   ? <InlineFail retry={() => onRetryOverview?.(row.student.id)} />
@@ -295,58 +250,16 @@ export function RosterBoard({
                   ? <span className="roster-cell-right"><InlineFail retry={() => row.data.plansError ? onRetryPlans?.(row.student.id) : onRetryWeekTonnage?.(row.student.id)} /></span>
                   : <span className="roster-number">{tonnage ?? '—'}{tonnage != null && <small>t</small>}</span>}
               </RosterCellState>
-              {/* No roster-level RPE aggregate exists yet; keep the shared thresholds ready for the backend field. */}
-              <RosterCellState loading={overviewLoading} width={24}>
-                {overviewFailed
-                  ? <span className="roster-cell-right"><InlineFail retry={() => onRetryOverview?.(row.student.id)} /></span>
-                  : <MissingValue className="roster-rpe" />}
-              </RosterCellState>
               <RosterE1rmBadges overview={row.data.overview} onRetry={() => onRetryOverview?.(row.student.id)} />
               <RosterCellState loading={profileLoading} width={24}>
                 {row.data.profileError
                   ? <span className="roster-cell-right"><InlineFail retry={() => onRetryProfile?.(row.student.id)} /></span>
                   : <span className="roster-number roster-distance">{distance}</span>}
               </RosterCellState>
-              <RosterCellState loading={!plansLoaded && !row.data.plansError} width={64} align="left" className="roster-plan-cell">
-                {row.data.plansError
-                  ? <span className="roster-plan-cell"><InlineFail retry={() => onRetryPlans?.(row.student.id)} /></span>
-                  : <span className="roster-plan-cell">
-                    {row.pending == null
-                      ? <MissingValue />
-                      : <span className={`roster-plan-badge ${row.pending ? 'pending' : 'planned'}`}>
-                          {row.pending ? S.stats.board.pending : S.stats.board.planned}
-                        </span>}
-                    {row.redFlag && <span className="roster-red-flag">{row.redFlag}</span>}
-                    {row.pending === true && (
-                  <button
-                    type="button"
-                    className="roster-write"
-                    onClick={(event) => {
-                      event.stopPropagation()
-                      onOpen(row.student.id)
-                    }}
-                  >
-                    {S.stats.board.planNextWeek}
-                  </button>
-                    )}
-                  </span>}
-              </RosterCellState>
-              <span className="roster-count" data-count="videos">
-                {row.pendingVideoCount == null ? <span aria-label={S.common.loadingEllipsis}>…</span> : row.pendingVideoCount > 0
-                  ? <button type="button" className="roster-video-count" title={S.stats.board.openPendingVideos(row.student.display_name)}
-                      onDoubleClick={event => event.stopPropagation()}
-                      onClick={event => { event.stopPropagation(); onOpenVideos?.(row.student.id) }}>▶ {row.pendingVideoCount}</button>
-                  : <MissingValue />}
-              </span>
-              <span className="roster-count" data-count="messages">
-                {row.unreadCount > 0 ? <button type="button" title={S.stats.board.openUnreadMessages(row.student.display_name)}
-                  onDoubleClick={event => event.stopPropagation()}
-                  onClick={event => { event.stopPropagation(); onOpenChat?.(row.student.id) }}>{row.unreadCount}</button> : <MissingValue />}
-              </span>
             </div>
           )
-        })}
-        {visibleRows.length === 0 && <div className="roster-overview-empty">{S.stats.board.noMatchingStudents}</div>}
+        })}</section>)}
+        {visibleRows.length === 0 && <div className="roster-overview-empty">{S.workspace.overview.empty}</div>}
       </div>
     </section>
   )
@@ -384,8 +297,8 @@ export function StudentDetail({ students, studentId, onStudent, onBack, catalog,
   }, [studentId, exerciseId])
   const exercises = useMemo(() => overview?.exercises.filter((exercise) => {
     const names = index?.namesById(exercise.exercise_id)
-    const needle = query.toLowerCase()
-    return exercise.name.toLowerCase().includes(needle) || (names?.name_en?.toLowerCase().includes(needle) ?? false)
+    const needle = normalizeTraditionalInput(query).toLowerCase()
+    return normalizeTraditionalInput(exercise.name).toLowerCase().includes(needle) || (names?.name_en?.toLowerCase().includes(needle) ?? false)
   }) ?? [], [index, overview, query])
   return <main className="data-page"><PageTop title={S.stats.board.dashboard} students={students} studentId={studentId} onStudent={onStudent} onBack={onBack} tail={<span className="page-status">{S.stats.board.recentTraining} {shortDate(overview?.last_trained_at)}</span>} />
     <div className="overview-cards"><article><h3>{S.stats.board.registered1rm}</h3><div className="rm-three"><span><b>{kg(overview?.one_rm.squat)}</b><small>{S.common.squat}</small></span><span><b>{kg(overview?.one_rm.bench)}</b><small>{S.common.benchPress}</small></span><span><b>{kg(overview?.one_rm.deadlift)}</b><small>{S.common.deadlift}</small></span></div></article><article><h3>{S.stats.board.profile}</h3><p>{profile ? profileLine(profile) : S.common.loadingEllipsis}</p><p>{profile?.is_competing ? S.stats.board.preparing(shortDate(profile.competition_date), profile.target_weight_class ?? S.stats.board.weightClassMissing) : S.stats.board.noCompetition} · {profile?.injury_notes || S.stats.board.noInjury}</p></article><article><h3>{S.stats.board.lastFourWeeks}</h3><p>{S.stats.board.attendanceOf(overview?.recent_4w.trained_days ?? '—', overview?.recent_4w.total_planned_days ?? '—')}</p><p>{S.stats.board.completion(`${overview ? Math.round(overview.recent_4w.completion_rate * 100) : '—'}%`)}</p></article><StudentPlanCapacityCard studentId={studentId} catalog={catalog} index={index} /></div>

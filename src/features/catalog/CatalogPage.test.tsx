@@ -1,3 +1,4 @@
+import { setLocale } from '../../i18n/locale'
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -72,6 +73,57 @@ describe('CatalogPage', () => {
     act(() => root.unmount())
     host.remove()
     vi.restoreAllMocks()
+    setLocale('zh')
+  })
+
+  it('keeps the coach alias visible in English after adoption and renaming', () => {
+    setLocale('en')
+    const adopted = { ...exercises[4], adopted: true, name: 'My press', name_en: 'Competition Bench Press' }
+    const render = (name: string) => root.render(<CatalogPage exerciseList={[{ ...adopted, name }]} catalog={null} index={null} currentCoachId="coach-1" onCreateExercise={vi.fn()} onUpdateExercise={vi.fn()} onDeleteExercise={vi.fn()} onUseExercise={vi.fn()}/>)
+    act(() => render('My press'))
+    expect(host.querySelector('.catalog-row')?.textContent).toContain('My press')
+    act(() => host.querySelector<HTMLElement>('.catalog-row')!.click())
+    expect(host.querySelector('.catalog-drawer h2')?.textContent).toBe('My press')
+    act(() => render('Renamed press'))
+    expect(host.querySelector('.catalog-row')?.textContent).toContain('Renamed press')
+    expect(host.querySelector('.catalog-drawer h2')?.textContent).toBe('Renamed press')
+  })
+
+  it('explains adoption locks when a stale catalog attempts an attribute edit or delete', async () => {
+    const update = vi.fn().mockRejectedValue(new ApiException(409, 'EXERCISE_ADOPTED_ATTRIBUTES_LOCKED'))
+    const remove = vi.fn().mockRejectedValue(new ApiException(409, 'EXERCISE_ADOPTED'))
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    const alert = vi.spyOn(window, 'alert').mockImplementation(() => undefined)
+    act(() => root.render(<CatalogPage exerciseList={exercises} catalog={catalog} index={null} currentCoachId="coach-1" onCreateExercise={vi.fn()} onUpdateExercise={update} onDeleteExercise={remove} onUseExercise={vi.fn()}/>))
+    const row = [...host.querySelectorAll<HTMLElement>('.catalog-row')].find(row => row.textContent?.includes('史密斯箭步蹲'))!
+    act(() => row.click())
+    clickButton(host, '编辑动作')
+    await act(async () => { host.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })); await Promise.resolve() })
+    expect(host.querySelector('.catalog-form-error')?.textContent).toBe('已收录为官方动作，只能修改名字')
+    clickButton(host, '取消')
+    await act(async () => { clickButton(host, '删除动作'); await Promise.resolve() })
+    expect(alert).toHaveBeenCalledWith('已收录为官方动作，不能删除')
+  })
+
+  it.each(['zh', 'zh-Hant'] as const)('allows only the name to change on an adopted custom exercise and hides delete in %s', async (locale) => {
+    setLocale(locale)
+    const adopted = { ...exercises[4], adopted: true, canonical_exercise_id: 'official', name_en: 'Official name', movement_pattern: ['squat', 'other'] as ExerciseResponse['movement_pattern'] }
+    const update = vi.fn().mockResolvedValue({ ...adopted, name: '我的叫法' })
+    act(() => root.render(<CatalogPage exerciseList={[adopted]} catalog={null} index={null} currentCoachId="coach-1" onCreateExercise={vi.fn()} onUpdateExercise={update} onDeleteExercise={vi.fn()} onUseExercise={vi.fn()}/>))
+    act(() => host.querySelector<HTMLElement>('.catalog-row')!.click())
+    expect(host.querySelector('.catalog-drawer-footer')?.textContent).not.toContain(locale === 'zh-Hant' ? '刪除動作' : '删除动作')
+    clickButton(host, locale === 'zh-Hant' ? '編輯動作' : '编辑动作')
+    const dialog = host.querySelector<HTMLElement>('[role="dialog"]')!
+    expect(dialog.textContent).toContain(locale === 'zh-Hant' ? '已收錄為官方動作，屬性以官方為準' : '已收录为官方动作，属性以官方为准')
+    expect(dialog.textContent).toContain('Official name')
+    expect(dialog.textContent).toContain('其他')
+    const inputs = [...dialog.querySelectorAll('input')]
+    expect(inputs[0].disabled).toBe(false)
+    expect(inputs.slice(1).every(input => input.disabled || input.readOnly || input.closest('fieldset[disabled]'))).toBe(true)
+    expect([...dialog.querySelectorAll<HTMLButtonElement>('.catalog-choice')].every(button => button.disabled || button.closest('fieldset[disabled]'))).toBe(true)
+    setInput(inputs[0], '我的叫法')
+    await act(async () => { dialog.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })); await Promise.resolve() })
+    expect(update).toHaveBeenCalledWith('custom', { name: '我的叫法' })
   })
 
   it('collapses the category tree and restores the saved state', () => {

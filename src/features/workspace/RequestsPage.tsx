@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react'
-import { acceptBindRequest, getInviteCodes, rejectBindRequest } from '../../api/coach'
-import type { CoachBindRequest, InviteCode } from '../../api/types'
+import { useState } from 'react'
+import { acceptBindRequest, rejectBindRequest } from '../../api/coach'
+import type { CoachBindRequest } from '../../api/types'
 import { kg, profileLine, shortDate, techniqueStyleLine } from './WorkspaceCommon'
 import { resolveLocale, S } from '../../i18n/strings'
 
@@ -13,7 +13,7 @@ interface Props {
 }
 
 function requestTime(value: string): string {
-  const parts = new Intl.DateTimeFormat(resolveLocale() === 'zh' ? 'zh-CN' : 'en-US', {
+  const parts = new Intl.DateTimeFormat(resolveLocale() !== 'en' ? 'zh-CN' : 'en-US', {
     month: '2-digit',
     day: '2-digit',
     hour: '2-digit',
@@ -21,7 +21,7 @@ function requestTime(value: string): string {
     hour12: false,
   }).formatToParts(new Date(value))
   const part = (type: Intl.DateTimeFormatPartTypes) => parts.find((item) => item.type === type)?.value ?? '—'
-  return resolveLocale() === 'zh'
+  return resolveLocale() !== 'en'
     ? `${part('month')}-${part('day')} ${part('hour')}:${part('minute')}`
     : `${part('month')} ${part('day')}, ${part('hour')}:${part('minute')}`
 }
@@ -32,28 +32,9 @@ function requestSummary(request: CoachBindRequest): string {
   return S.workspace.requests.selfReportSummary(kg(profile.squat_1rm_kg), kg(profile.bench_1rm_kg), kg(profile.deadlift_1rm_kg), training)
 }
 
-function toast(message: string) {
-  window.dispatchEvent(new CustomEvent('meetpr:toast', { detail: message }))
-}
-
-export function RequestsPage({ requests, onRequestsChanged, onAccepted }: Props) {
+export function RequestsPanel({ requests, onRequestsChanged, onAccepted }: Props) {
   const [open, setOpen] = useState<Set<string>>(new Set())
   const [busy, setBusy] = useState('')
-  const [codes, setCodes] = useState<InviteCode[]>([])
-  const [copied, setCopied] = useState(false)
-
-  useEffect(() => {
-    void getInviteCodes().then(setCodes).catch(() => setCodes([]))
-  }, [])
-
-  useEffect(() => {
-    if (!copied) return
-    const timer = window.setTimeout(() => setCopied(false), 1600)
-    return () => window.clearTimeout(timer)
-  }, [copied])
-
-  const personal = codes.find((code) => code.type === 'personal_permanent' && !code.revoked_at)
-    ?? codes.find((code) => !code.revoked_at)
   const remove = (id: string) => onRequestsChanged(requests.filter((request) => request.id !== id))
 
   const accept = async (request: CoachBindRequest) => {
@@ -78,18 +59,6 @@ export function RequestsPage({ requests, onRequestsChanged, onAccepted }: Props)
     }
   }
 
-  const copyInviteCode = async () => {
-    if (!personal) return
-    try {
-      if (!navigator.clipboard) throw new Error('Clipboard API unavailable')
-      await navigator.clipboard.writeText(personal.code)
-      setCopied(true)
-      toast(S.workspace.requests.copied)
-    } catch {
-      toast(S.workspace.requests.copyFailed)
-    }
-  }
-
   const toggle = (id: string) => {
     setOpen((previous) => {
       const next = new Set(previous)
@@ -100,21 +69,21 @@ export function RequestsPage({ requests, onRequestsChanged, onAccepted }: Props)
   }
 
   return (
-    <main className="data-page requests-page">
+    <section className="requests-page overview-requests">
       <header className="requests-head">
-        <h1>{S.workspace.requests.pending}</h1>
-        <span className="requests-count">{S.workspace.requests.requestCount(requests.length)}</span>
+        <h1>{S.workspace.nav.requests}</h1>
+        {requests.length > 0 && <span className="requests-count">{S.workspace.requests.requestCount(requests.length)}</span>}
         <span className="requests-refresh">
           <i aria-hidden="true" />
-          {S.workspace.requests.autoRefresh(REQUEST_POLL_INTERVAL_MS / 1000)}
+          {S.workspace.overview.refresh}
         </span>
       </header>
 
       <div className="request-list">
         {requests.length === 0 && (
           <div className="requests-empty">
-            <span>{S.workspace.requests.empty}</span>
-            <small>{S.workspace.requests.emptyHint}</small>
+            <span>{S.workspace.overview.requestsEmpty}</span>
+            <small>{S.workspace.overview.requestsHint}</small>
           </div>
         )}
         {requests.map((request) => {
@@ -139,7 +108,7 @@ export function RequestsPage({ requests, onRequestsChanged, onAccepted }: Props)
                 <span className="request-avatar">{request.display_name.slice(0, 1)}</span>
                 <span className="request-who">
                   <b>{request.display_name}</b>
-                  <small>{request.masked_phone || S.workspace.requests.phoneMissing} · {requestTime(request.submitted_at)} {S.workspace.requests.inviteCode(request.invite_code || '—')}</small>
+                  <small>{request.masked_phone || S.workspace.requests.phoneMissing} · {requestTime(request.submitted_at)}</small>
                   <span>{requestSummary(request)}</span>
                 </span>
                 <button
@@ -180,13 +149,7 @@ export function RequestsPage({ requests, onRequestsChanged, onAccepted }: Props)
         })}
       </div>
 
-      <footer className="invite-footer">
-        <span>{S.workspace.requests.myInvite}</span>
-        <b>{personal?.code ?? S.workspace.requests.noInvite}</b>
-        <button type="button" disabled={!personal} onClick={() => { void copyInviteCode() }}>
-          {copied ? S.workspace.requests.copiedShort : S.workspace.requests.copy}
-        </button>
-      </footer>
-    </main>
+
+    </section>
   )
 }

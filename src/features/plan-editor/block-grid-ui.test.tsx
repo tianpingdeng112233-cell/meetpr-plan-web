@@ -302,24 +302,28 @@ it.each([3, 10])('wraps all %i per-set RPE and weight boxes in an auto-height ed
 
 it.each(['date', 'weekday'])('keeps Dx identities after changing a column, then changing its %s again', action => {
   act(() => root.render(<PlanEditor initialWeeks={fixture(1)} weeksCount={1} studentName="Student" planName="Block" planStartDate="2026-10-19" />))
-  const changeWeekday = (value: string) => {
-    click(host.querySelectorAll('.block-column button')[0])
+  const changeWeekday = (value: string, column = 0) => {
+    click(host.querySelectorAll('.block-column button')[column])
     const select = host.querySelector<HTMLSelectElement>('[aria-label="修改 Dx 星期"]')!
     act(() => { select.value = value; select.dispatchEvent(new Event('change', { bubbles:true })) })
   }
   changeWeekday('3')
-  expect([...host.querySelectorAll('.block-column button')].map(button => button.textContent)).toEqual(['周四', '周三', '周五', '周六'])
-  if (action === 'weekday') changeWeekday('1')
+  expect([...host.querySelectorAll('.block-column button')].map(button => button.textContent)).toEqual(['周三', '周四', '周五', '周六'])
+  // Thursday moved to the second display column; edit that same prescription.
+  if (action === 'weekday') changeWeekday('1', 1)
   else {
-    click(cell(1,0))
-    click(cell(1,0).querySelector('[aria-label="修改本日日期"]')!)
-    const date = cell(1,0).querySelector<HTMLInputElement>('input[type="date"]')!
+    click(cell(1,1))
+    click(cell(1,1).querySelector('[aria-label="修改本日日期"]')!)
+    const date = cell(1,1).querySelector<HTMLInputElement>('input[type="date"]')!
     act(() => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(date, '2026-10-20'); date.dispatchEvent(new Event('input', { bubbles:true })) })
   }
-  expect(cell(1,0).dataset.dow).toBe('1')
-  expect(cell(1,0).querySelector('[data-rowid="w1-0-0"]')).not.toBeNull()
-  expect(cell(1,1).dataset.dow).toBe('2')
-  expect(cell(1,1).querySelector('[data-rowid="w1-2-0"]')).not.toBeNull()
+  // A single-date exception stays under its pattern header; a weekday edit reorders it.
+  const moved = cell(1, action === 'date' ? 1 : 0)
+  const unchanged = cell(1, action === 'date' ? 0 : 1)
+  expect(moved.dataset.dow).toBe('1')
+  expect(moved.querySelector('[data-rowid="w1-0-0"]')).not.toBeNull()
+  expect(unchanged.dataset.dow).toBe('2')
+  expect(unchanged.querySelector('[data-rowid="w1-2-0"]')).not.toBeNull()
 })
 
 it('shows only weekdays in column headers and date-ordered Dx on every card and edit header', () => {
@@ -963,4 +967,31 @@ it('toggles 力竭 in the edit card and shows it in the shorthand without a 待�
   })
   await key('Escape')
   expect(cell(1, 0).querySelector('[data-rowid="w1-0-0"]')?.textContent).toContain('1×8')
+})
+
+it.each([
+  { label: 'absent', stored: null },
+  { label: 'out of order', stored: [5, 6, 1, 2] },
+  { label: 'already ordered', stored: [1, 2, 5, 6] },
+])('renders the reported October dates in calendar order with $label settings', ({ stored }) => {
+  const storage = installLocalStorageMock()
+  if (stored) storage.setItem('meetpr.plan-editor.weekdays.column-order', JSON.stringify(stored))
+  const weeks = relabelWeeksForStartDate(fixture(3).map((week, index) => ({ ...week,
+    days: week.days.map(day => ({ ...day, rest: !(index === 0 ? [5, 6] : [1, 2, 5, 6]).includes(day.dow),
+      rows: (index === 0 ? [5, 6] : [1, 2, 5, 6]).includes(day.dow)
+        ? [{ ...week.days[0].rows[0], id: `order-${week.num}-${day.dow}` }] : [] })),
+  })), '2026-10-26')
+  const before = JSON.stringify(weeks)
+  const onSave = vi.fn()
+  act(() => root.render(<PlanEditor currentPlanId="column-order" initialWeeks={weeks} weeksCount={3} studentName="学员" planName="列顺序" planStartDate="2026-10-26" onSave={onSave} />))
+  const headers = [...host.querySelectorAll('.block-column button')].map(el => el.textContent)
+  const dates = [1, 2, 3].map(w => [...host.querySelectorAll(`[data-block-week="${w}"] .block-date > span:first-child`)].map(el => el.textContent))
+  expect.soft(headers).toEqual(['周二', '周三', '周六', '周日'])
+  expect.soft(dates).toEqual([
+    ['10/27', '10/28', 'D1 · 10/31', 'D2 · 11/1'],
+    ['D1 · 11/3', 'D2 · 11/4', 'D3 · 11/7', 'D4 · 11/8'],
+    ['D1 · 11/10', 'D2 · 11/11', 'D3 · 11/14', 'D4 · 11/15'],
+  ])
+  expect(JSON.stringify(weeks)).toBe(before)
+  expect(onSave).not.toHaveBeenCalled()
 })

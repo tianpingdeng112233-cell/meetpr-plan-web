@@ -166,3 +166,27 @@ it.each(['local', 'remote'] as const)('loads %s snapshots carrying only removed 
   expect(host.querySelector<HTMLInputElement>('[data-c=note] input')?.value).toBe('restored snapshot')
   expect(host.querySelector('[data-c=import-review], .import-review-hint, .has-import-doubts')).toBeNull()
 })
+
+
+it('anchors empty-week review controls to each week in both layouts and confirms only the selected week', async () => {
+  const weeks = blockWeeks([[], [], [0]])
+  weeks[0].importDoubts = ['empty_week']
+  weeks[1].importDoubts = ['empty_week']
+  await render(weeks, { weeksCount: 3 })
+  const assertWeekAnchors = () => {
+    for (const num of [1, 2]) {
+      const badge = host.querySelector(`[data-import-week="${num}"]`)!
+      expect(badge.closest('.block-week-label')?.querySelector('b')?.textContent).toBe(`W${num}`)
+    }
+  }
+  assertWeekAnchors()
+  await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="按天排"]')!.click())
+  assertWeekAnchors()
+  expect(host.querySelector<HTMLElement>('[data-import-week="2"]')?.closest<HTMLElement>('.block-week-label')?.style.gridColumn).toBe('3')
+  await act(async () => host.querySelector<HTMLButtonElement>('[data-import-week="2"] button')!.click())
+  expect(host.querySelector('[data-import-week="2"]')).toBeNull()
+  expect(host.querySelector('[data-import-week="1"]')).not.toBeNull()
+  expect(host.textContent).toContain('1 处待核对')
+  await act(async () => host.querySelector<HTMLButtonElement>('[data-import-week="1"] button')!.click())
+  expect(host.querySelector('[data-import-week]')).toBeNull()
+})

@@ -70,6 +70,9 @@ export const zhCatalog = {
   create: '创建',
   updating: '保存中…',
   update: '保存修改',
+  adoptedLocked: '已收录为官方动作，只能修改名字',
+  adoptedDelete: '已收录为官方动作，不能删除',
+  adoptedNote: '已收录为官方动作，属性以官方为准',
   updateFailed: '保存失败，请稍后重试',
   customDialogExample: '例如：平板侧支撑',
   belongsToMainLift: '所属主项',
@@ -103,6 +106,6 @@ export const enCatalog = {
   possibleExisting: 'Possibly already in the library', useExisting: 'Use this exercise', exampleSmithLunge: 'For example: Smith Machine Lunge',
   accessoryManagedNote: 'Accessory exercise · The big three and main-lift variations are system managed',
   primaryMuscleHint: 'Choose one · Determines its body-part category', multiSelect: 'Select multiple', singleSelect: 'Choose one',
-  creating: 'Creating…', create: 'Create', updating: 'Saving…', update: 'Save changes', updateFailed: 'Could not save the exercise. Try again later.',
+  creating: 'Creating…', create: 'Create', updating: 'Saving…', update: 'Save changes', adoptedLocked: 'This exercise has been adopted. Only its name can be changed.', adoptedDelete: 'This exercise has been adopted and cannot be deleted.', adoptedNote: 'Adopted as an official exercise. Attributes follow the official exercise.', updateFailed: 'Could not save the exercise. Try again later.',
   customDialogExample: 'For example: Side Plank', belongsToMainLift: 'Main-lift family', targetArea: 'Target area',
 } satisfies Translations<typeof zhCatalog>

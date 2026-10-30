@@ -1,22 +1,20 @@
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
-import type { AdminPlanWithChildren } from '../api/admin'
 import type { ChatSetRefV1, StudentVideo } from '../api/types'
 import type { Week } from '../features/plan-editor/types'
 
 const adminApi = vi.hoisted(() => ({
   overview: vi.fn(), users: vi.fn(), user: vi.fn(), bindings: vi.fn(),
-  plans: vi.fn(), plan: vi.fn(), exerciseUsage: vi.fn(),
+  exerciseUsage: vi.fn(),
 }))
 
-vi.mock('../api/admin', () => ({
+vi.mock('../api/admin', async (importOriginal) => ({
+  ...await importOriginal<typeof import('../api/admin')>(),
   getAdminOverview: adminApi.overview,
   getAdminUsers: adminApi.users,
   getAdminUser: adminApi.user,
   getAdminBindings: adminApi.bindings,
-  getAdminPlans: adminApi.plans,
-  getAdminPlan: adminApi.plan,
   getAdminExerciseUsage: adminApi.exerciseUsage,
 }));
 
@@ -83,40 +81,12 @@ describe('English locale smoke', () => {
   })
 
   it('renders catalog-backed exercise names in English in admin, videos, and set cards', async () => {
-    const fullPlan: AdminPlanWithChildren = {
-      id: 'plan-1', coach_id: 'coach-1', trainee_id: 'athlete-1', name: 'Strength block',
-      start_date: '2026-08-18', end_date: '2026-08-24', plan_weeks: 1, source: 'coach',
-      source_template_id: null, status: 'published', kind: 'regular',
-      created_at: '2026-08-17T12:00:00Z', updated_at: '2026-08-18T12:00:00Z',
-      total_shift_days: 0, latest_shift_created_at: null, latest_shift: null,
-      days: [{
-        id: 'day-1', plan_id: 'plan-1', day_of_week: 1, week_number: 1, sort_order: 0,
-        shifted_to_date: null,
-        exercises: [{
-          id: 'plan-exercise-1', plan_day_id: 'day-1', exercise_id: 'exercise-1',
-          exercise_name: '竞技深蹲', name_en: 'Competition Squat', is_main_lift: true,
-          sort_order: 0, target: null, notes: null,
-          sets: [{
-            id: 'set-1', plan_exercise_id: 'plan-exercise-1', set_number: 1,
-            target_reps: 1, target_reps_max: null, intensity_mode: 'weight', target_value: '140.00',
-            set_type: 'working', rest_seconds: null, coach_note: null,
-            created_at: '2026-08-18T12:00:00Z',
-          }],
-        }],
-      }],
-    }
     adminApi.overview.mockResolvedValue({
       stats: { coaches: 0, coachedStudents: 0, selfTrainStudents: 0, activeBonds: 0, publishedPlans: 1 },
       recentUsers: [], recentPlans: [],
     })
     adminApi.users.mockResolvedValue({ users: [] })
     adminApi.bindings.mockResolvedValue({ bindings: [] })
-    adminApi.plans.mockResolvedValue({ plans: [{
-      id: 'plan-1', name: 'Strength block', coachId: 'coach-1', coachName: 'Coach Taylor',
-      traineeId: 'athlete-1', studentName: 'Alex', status: 'published', weeks: 1,
-      startDate: '2026-08-18', endDate: '2026-08-24', createdAt: '2026-08-17T12:00:00Z',
-    }] })
-    adminApi.plan.mockResolvedValue(fullPlan)
     adminApi.exerciseUsage.mockResolvedValue({ exercises: [{
       exercise_id: 'exercise-1', name: '竞技深蹲', name_en: 'Competition Squat',
       exercise_type: 'main_lift', plan_count: 1, coach_count: 1,
@@ -136,16 +106,6 @@ describe('English locale smoke', () => {
     const library = host.querySelector<HTMLElement>('[data-testid="admin-exercises"]')!
     expect(library.textContent).toContain('Competition Squat')
     expect(library.innerHTML).not.toMatch(CJK)
-
-    await act(async () => { clickButton(host, 'Plan overview'); await settle() })
-    await act(async () => {
-      const planButton = [...host.querySelectorAll('button')].find((item) => item.textContent?.includes('Strength block'))
-      planButton?.click()
-      await settle()
-    })
-    const detail = host.querySelector<HTMLElement>('[data-testid="admin-plan-detail"]')!
-    expect(detail.textContent).toContain('Competition Squat')
-    expect(detail.innerHTML).not.toMatch(CJK)
 
     const videos: StudentVideo[] = [{
       id: 'video-1', set_log_id: null, plan_exercise_id: 'exercise-1', content_type: 'video/mp4',

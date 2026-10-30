@@ -1,3 +1,4 @@
+import { canonicalCatalogExercise } from '../i18n/exercise-names'
 import { api } from './client'
 import type { CreateCustomExerciseBody, Equipment, ExerciseResponse, LiftFamily, MovementPattern, MuscleGroup } from './types'
 
@@ -49,7 +50,7 @@ export function customExerciseBody(input: CreateCustomExerciseInput): CreateCust
 
 // The catalog is small enough to fetch once and filter client-side for typeahead.
 export const listExercises = () =>
-  api.get<{ exercises: ExerciseResponse[] }>('/exercises').then((r) => r.exercises)
+  api.get<{ exercises: ExerciseResponse[] }>('/exercises').then((r) => r.exercises.map(canonicalCatalogExercise))
 
 export const getExerciseUsageStats = () =>
   api.get<{ stats: ExerciseUsageStat[] }>('/exercises/usage-stats').then((r) => r.stats)
@@ -70,6 +71,7 @@ export function customExercisePatchBody(
   const patch: Partial<CreateCustomExerciseBody> = {}
   const name = input.name.trim()
   if (name && name !== original.name) patch.name = name
+  if (original.adopted) return patch
   if (input.nameEn !== undefined) {
     const nameEn = input.nameEn?.trim() || null
     if (nameEn !== original.name_en) patch.name_en = nameEn

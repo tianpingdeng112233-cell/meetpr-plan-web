@@ -1,5 +1,9 @@
 import type { ImportedPlan } from '../plan-editor/import/ImportPlanDialog'
 import type { PlanAction } from '../plan-editor/components/TopBar'
+import { getOverviewAlerts, markPlanViewed } from '../../api/overviewAlerts'
+import { deriveOverviewBoard, type AlertsState, type OverviewTag } from './overviewBoard'
+import { loadCoachInvitation } from '../onboarding/invitation'
+import { OverviewInvite } from './OverviewInvite'
 import { findChatVideo, type ChatVideoTarget } from '../chat/setRef'
 import { deriveVideoFeedback } from '../plan-editor/feedbackModel'
 import { EditorChat } from '../chat/EditorChat'
@@ -28,7 +32,7 @@ import { BackfillHistoryDialog, CompletePlanDialog, DeletePlanDialog, NewPlanDia
 import { getBindRequests, getExerciseStatsOverview, getStudentVideos, refreshCoachStudents } from '../../api/coach'
 import { CoachShell, type CoachView } from './CoachShell'
 import { StudentBoard } from './StatsViews'
-import { REQUEST_POLL_INTERVAL_MS, RequestsPage } from './RequestsPage'
+import { REQUEST_POLL_INTERVAL_MS, RequestsPanel } from './RequestsPage'
 import { CatalogPage } from '../catalog/CatalogPage'
 import { navigateCoachView, normalizeCoachView, legacyStudentFromLocation } from './coachViewNavigation'
 import { TrackingDashboard } from './TrackingDashboard'
@@ -42,10 +46,7 @@ import { fmt, resolveLocale, S } from '../../i18n/strings'
 import { createKeyedRequestVersions } from './requestVersions'
 import {
   currentPublishedWeekTonnage,
-  deriveRosterCounts,
-  deriveRosterRows,
   FAILED_ROSTER_DATUM,
-  filterRosterRows,
   isFailedRosterDatum,
   type RosterDataByStudent,
 } from './rosterOverview'
@@ -88,6 +89,10 @@ export function PlanWorkspace({ onLogout, me }: Props) {
 
   const [onboarding, setOnboarding] = useState<StudentOnboardingProfile | null | undefined>(undefined)
   const [view, setView] = useState<CoachView>('editor')
+  const [alerts, setAlerts] = useState<AlertsState>({ status: 'loading' })
+  const alertsVersion = useRef(0)
+  const [newPlanStart, setNewPlanStart] = useState<string | undefined>()
+  const [dayIntent, setDayIntent] = useState<import('../plan-editor/PlanEditor').PlanDayIntent | null>(null)
   const [bindRequests, setBindRequests] = useState<CoachBindRequest[]>([])
   const [conversations, setConversations] = useState<ChatConversation[] | null>(null)
   const [sessionDead, setSessionDead] = useState(false)
@@ -168,6 +173,38 @@ export function PlanWorkspace({ onLogout, me }: Props) {
   }, [viewSwitching])
 
   const errText = (e: unknown, fb: string) => (e instanceof ApiException ? `${fb}（${e.code}）` : fb)
+  const refreshAlerts = useCallback(async () => {
+    const version = ++alertsVersion.current
+    try {
+      const data = await getOverviewAlerts()
+      if (version === alertsVersion.current) setAlerts({ status: 'ready', data })
+    } catch (error) {
+      if (version === alertsVersion.current) setAlerts({ status: error instanceof ApiException && error.status === 404 ? 'unavailable' : 'failed' })
+    }
+  }, [])
+  useVisiblePolling(refreshAlerts, REQUEST_POLL_INTERVAL_MS, { enabled: !sessionDead, immediate: true })
+  useEffect(() => {
+    if (view === 'board') void refreshAlerts()
+  }, [view, refreshAlerts])
+  const acknowledgePlanView = (id: string) => {
+    // Only explicit plan-opening actions acknowledge reminders; hydration does not.
+    void markPlanViewed(id).then(() => {
+      ++alertsVersion.current
+      setAlerts(current => current.status === 'ready' ? { ...current, data: { ...current.data, training: current.data.training.filter(item => item.student_id !== id) } } : current)
+    }).catch(() => undefined)
+  }
+
+  // The workspace owns the login-session cache so leaving overview preserves it,
+  // while logging out/unmounting drops both resolved and in-flight invitations.
+  const invitationRequest = useRef<ReturnType<typeof loadCoachInvitation> | null>(null)
+  const loadOverviewInvitation = useCallback(() => {
+    invitationRequest.current ??= loadCoachInvitation().catch(error => {
+      invitationRequest.current = null
+      throw error
+    })
+    return invitationRequest.current
+  }, [])
+
   const refreshBindRequests = useCallback(async () => {
     const version = bindRequestVersions.current.issue(BIND_REQUESTS_KEY)
     try {
@@ -392,7 +429,7 @@ export function PlanWorkspace({ onLogout, me }: Props) {
     }
   }, [])
 
-  const loadStudent = useCallback(async (id: string, cat: Catalog, exercises: ExerciseResponse[] = exerciseList) => {
+  const loadStudent = useCallback(async (id: string, cat: Catalog, exercises: ExerciseResponse[] = exerciseList, targetDayId?: string) => {
     const generation = ++loadGeneration.current
     // Invalidate any background fetch for this student before exposing the new
     // selection, and remove both the current list and its cached mount in the
@@ -421,6 +458,21 @@ export function PlanWorkspace({ onLogout, me }: Props) {
       setIndex(new ExerciseIndex(exercises, { deadliftStyle: onboarding?.deadlift_style }, exerciseUsage.current))
       if (!list) return false
       setPlans(list)
+      if (targetDayId) {
+        // Resolve the target before mounting an editor. While searching another
+        // plan, never expose an editable remembered plan that could be replaced.
+        const candidates = [...list].sort((a, b) => Number(b.status === 'published') - Number(a.status === 'published'))
+        for (const candidate of candidates) {
+          const full = await getPlan(candidate.id)
+          if (generation !== loadGeneration.current) return false
+          if (!full.days.some(day => day.id === targetDayId)) continue
+          setLoaded({ plan: full, weeks: mapPlanToWeeks(full, cat), weeksCount: full.plan_weeks })
+          setPlanId(full.id)
+          localStorage.setItem(`${LAST_PLAN_PREFIX}${id}`, full.id)
+          return true
+        }
+        throw new Error('ALERT_DAY_NOT_FOUND')
+      }
       const remembered = localStorage.getItem(`${LAST_PLAN_PREFIX}${id}`)
       const initial = list.find((plan) => plan.id === remembered) ?? list[0]
       if (initial) return await loadPlan(initial.id, cat, generation)
@@ -592,13 +644,14 @@ export function PlanWorkspace({ onLogout, me }: Props) {
     if (view === 'editor' && students.length > 0 && !sessionDead) void refreshInbox()
   }, [refreshInbox, sessionDead, students.length, view])
 
-  const cancelEditorIntent = () => { intentSequence.current += 1; setEditorIntent(null); setChatVideoIntent(null) }
+  const cancelEditorIntent = () => { intentSequence.current += 1; setEditorIntent(null); setChatVideoIntent(null); setDayIntent(null) }
 
   const switchStudent = async (id: string) => {
     cancelEditorIntent()
-    if (!catalog || id === studentId) return
+    if (!catalog) return
+    if (id === studentId) { acknowledgePlanView(id); return }
     try {
-      await loadStudent(id, catalog)
+      if (await loadStudent(id, catalog)) acknowledgePlanView(id)
     } catch (e) {
       const fallback = S.workspace.plan.switchStudentFailed
       setError({ message: errText(e, fallback), retry: { kind: 'student', id, fallback, openEditor: false } })
@@ -636,6 +689,7 @@ export function PlanWorkspace({ onLogout, me }: Props) {
   }
   const newPlan = () => {
     if (!catalog || !studentId) return
+    setNewPlanStart(undefined)
     setNewPlanOpen(true)
   }
   const createNewPlan = async (name: string, weeks: number, startDate: string, anchorWeekday: number, weekdays: number[]) => {
@@ -846,17 +900,10 @@ export function PlanWorkspace({ onLogout, me }: Props) {
     }
   }
 
-  const rosterRows = useMemo(() => deriveRosterRows({
-    students,
-    dataByStudent: rosterDataByStudent,
-    plansByStudent,
-    conversations,
-    videosByStudent,
-  }), [conversations, plansByStudent, rosterDataByStudent, students, videosByStudent])
-  const rosterCounts = useMemo(() => deriveRosterCounts(rosterRows), [rosterRows])
-  const pendingStudents = useMemo(() => (
-    filterRosterRows(rosterRows, 'pending').map((row) => row.student)
-  ), [rosterRows])
+  const overviewBoard = useMemo(() => deriveOverviewBoard({
+    students, dataByStudent: rosterDataByStudent, plansByStudent, conversations, videosByStudent,
+    alerts, requestCount: bindRequests.length,
+  }), [students, rosterDataByStudent, plansByStudent, conversations, videosByStudent, alerts, bindRequests.length])
 
   const retryWorkspace = async () => {
     if (!error || errorRetrying) return
@@ -871,7 +918,8 @@ export function PlanWorkspace({ onLogout, me }: Props) {
     setErrorRetrying(true)
     try {
       if (action.kind === 'student') {
-        await loadStudent(action.id, catalog)
+        if (!(await loadStudent(action.id, catalog))) return
+        acknowledgePlanView(action.id)
         if (action.openEditor) setView('editor')
       } else {
         await loadPlan(action.id, catalog)
@@ -933,16 +981,20 @@ export function PlanWorkspace({ onLogout, me }: Props) {
       ), 0)
     : null
   const unreadCount = unreadTotal(conversations)
-  const openStudentEditor = async (id: string, preserveIntent = false) => {
+  const openStudentEditor = async (id: string, preserveIntent = false, targetDayId?: string) => {
     if (!preserveIntent) cancelEditorIntent()
+    const sequence = intentSequence.current
     if (!catalog) return false
-    if (view === 'editor' && id === studentId) return true
+    if (view === 'editor' && id === studentId) { acknowledgePlanView(id); return true }
     if (view === 'editor' && leaveGuardRef.current && !(await leaveGuardRef.current())) return false
     try {
-      if (!(await loadStudent(id, catalog))) return false
+      if (!(await loadStudent(id, catalog, exerciseList, targetDayId)) || sequence !== intentSequence.current) return false
       if (view !== 'editor') setView('editor')
+      acknowledgePlanView(id)
       return true
     } catch (e) {
+      if (sequence !== intentSequence.current) return false
+      if (targetDayId) { window.alert(S.workspace.overview.targetMissing); return false }
       const fallback = S.workspace.plan.openStudentPlanFailed
       setError({ message: errText(e, fallback), retry: { kind: 'student', id, fallback, openEditor: true } })
       return false
@@ -958,6 +1010,26 @@ export function PlanWorkspace({ onLogout, me }: Props) {
     if (sequence !== intentSequence.current) return
     if (!opened) { setEditorIntent(null); return }
     setEditorIntent({ studentId: id, kind, ready: true })
+  }
+  const openOverviewTag = async (id: string, tag: OverviewTag) => {
+    if (tag.kind === 'chat' || tag.kind === 'videos') { await openFromOverview(id, tag.kind); return }
+    if (tag.kind === 'completion') {
+      if (await changeView('tracking')) setStudentId(id)
+      return
+    }
+    cancelEditorIntent()
+    const sequence = intentSequence.current
+    if (!(await openStudentEditor(id, true, tag.target?.plan_day_id)) || sequence !== intentSequence.current || !catalog) return
+    if (tag.kind === 'plan_ending') {
+      const date = tag.endDate ? new Date(`${tag.endDate}T12:00:00Z`) : null
+      if (date) date.setUTCDate(date.getUTCDate() + 1)
+      setNewPlanStart(date?.toISOString().slice(0, 10))
+      setNewPlanOpen(true)
+      return
+    }
+    if (!tag.target) return
+    setDayIntent({ token: sequence, planDayId: tag.target.plan_day_id,
+      ...(tag.target.type === 'behind' ? { openShift: true } : { planExerciseId: tag.target.plan_exercise_id, setIndex: tag.target.set_index }) })
   }
   const openExerciseFromCommand = async (id: string) => {
     setCommandExerciseId(null)
@@ -988,20 +1060,18 @@ export function PlanWorkspace({ onLogout, me }: Props) {
       onChange={(next) => { void changeView(next) }}
       me={me}
       exerciseCount={exerciseList.length}
-      pendingStudents={pendingStudents}
-      pendingCount={rosterCounts.pending}
+      attentionCount={overviewBoard.attention.length}
       unreadCount={unreadCount}
       requestCount={bindRequests.length}
       videoCount={videoCount}
-      onPickPending={(id) => { void openStudentEditor(id) }}
       lastSyncedAt={lastSyncedAt}
       onLogout={onLogout}
       onConfirmLeave={confirmWorkspaceLeave}
       commandStudents={students.map((student) => ({ id: student.id, label: student.display_name }))}
       commandExercises={exerciseList.map((exercise) => ({
         id: exercise.id,
-        label: fmt.exerciseName({ name: catalog?.get(exercise.id)?.name ?? displayExerciseName(exercise.name), name_en: exercise.name_en }),
-        secondary: resolveLocale() === 'zh' ? exercise.name_en : null,
+        label: fmt.exerciseName({ name: catalog?.get(exercise.id)?.name ?? displayExerciseName(exercise.name), name_en: exercise.name_en, created_by_coach_id: exercise.created_by_coach_id }),
+        secondary: resolveLocale() !== 'en' ? exercise.name_en : null,
       }))}
       onCommandStudent={async id => { await openStudentEditor(id) }}
       onCommandExercise={openExerciseFromCommand}
@@ -1025,6 +1095,7 @@ export function PlanWorkspace({ onLogout, me }: Props) {
     {view === 'editor' && hasStudents && <div ref={editorShellRef} style={{ position: 'relative', height: '100%' }}>
       <PlanEditor
         key={planId || `empty-${studentId}`}
+        dayIntent={dayIntent}
         coachId={me.id} videos={videosByStudent[studentId]} onRefreshVideos={refreshStudentVideos} onVideoViewed={markEditorVideoViewed}
         feedbackRef={editorFeedbackRef} feedbackSession={editorFeedback?.studentId === studentId ? editorFeedback.session : null}
         onFeedbackSessionChange={session => setEditorFeedback({ studentId, session })}
@@ -1198,7 +1269,7 @@ export function PlanWorkspace({ onLogout, me }: Props) {
         onClose={() => { if (!backfilling) setBackfillOpen(false) }}
         onConfirm={() => { void backfillHistory() }}
       />
-      <NewPlanDialog open={newPlanOpen} traineeId={studentId} exerciseIndex={index} onImported={acceptImportedPlan} studentName={studentName} onClose={() => setNewPlanOpen(false)} onCreate={createNewPlan} />
+      <NewPlanDialog initialStartDate={newPlanStart} open={newPlanOpen} traineeId={studentId} exerciseIndex={index} onImported={acceptImportedPlan} studentName={studentName} onClose={() => setNewPlanOpen(false)} onCreate={createNewPlan} />
       <DeletePlanDialog
         open={deleteOpen && (actionPlan ?? loaded?.plan)?.status === 'draft'}
         name={(actionPlan ?? loaded?.plan)?.name ?? ''}
@@ -1231,27 +1302,19 @@ export function PlanWorkspace({ onLogout, me }: Props) {
       commandExerciseId={commandExerciseId}
       onCommandExerciseHandled={() => setCommandExerciseId(null)}
     />}
-    {view === 'board' && (hasStudents
-      ? <StudentBoard
-          students={students}
-          selectedStudentId={studentId}
-          dataByStudent={rosterDataByStudent}
-          plansByStudent={plansByStudent}
-          conversations={conversations}
-          rows={rosterRows}
-          counts={rosterCounts}
-          onSelect={selectBoardStudent}
-          onOpen={(id) => { void openStudentEditor(id) }}
-          videosByStudent={videosByStudent}
-          onOpenVideos={id => { void openFromOverview(id, 'videos') }}
-          onOpenChat={id => { void openFromOverview(id, 'chat') }}
-          onRetryOverview={refreshRosterOverview}
-          onRetryProfile={refreshRosterProfile}
+    {view === 'board' && <div className="overview-page">
+      <div className="overview-top"><OverviewInvite loadInvitation={loadOverviewInvitation} /><RequestsPanel requests={bindRequests} onRequestsChanged={applyBindRequests} onAccepted={refreshStudentsAfterAccept} /></div>
+      {alerts.status === 'failed' && <div className="overview-alert-error" role="alert">{S.workspace.overview.failed} · <button onClick={() => void refreshAlerts()}>{S.common.retry}</button></div>}
+      {hasStudents ? <StudentBoard
+          students={students} selectedStudentId={studentId} dataByStudent={rosterDataByStudent}
+          plansByStudent={plansByStudent} conversations={conversations} board={overviewBoard}
+          onSelect={selectBoardStudent} onOpen={(id) => { void openStudentEditor(id) }}
+          videosByStudent={videosByStudent} onOpenTag={(id, tag) => { void openOverviewTag(id, tag) }}
+          onRetryOverview={refreshRosterOverview} onRetryProfile={refreshRosterProfile}
           onRetryWeekTonnage={(id) => refreshRosterWeekTonnage(id, plansByStudentRef.current[id] ?? [], true)}
           onRetryPlans={refreshRosterPlans}
-        />
-      : <div className="empty-page">{S.workspace.plan.acceptForOverview}</div>)}
-    {view === 'requests' && <RequestsPage requests={bindRequests} onRequestsChanged={applyBindRequests} onAccepted={refreshStudentsAfterAccept} />}
+        /> : <div className="empty-page">{S.workspace.overview.empty}</div>}
+    </div>}
     {view === 'tracking' && (hasStudents
       ? <TrackingDashboard
           students={students}

@@ -2,6 +2,7 @@ import type { ExerciseResponse } from '../../../api/types'
 import type { ExerciseIndex } from '../exerciseIndex'
 import type { DayCol, ExerciseRow, ImportDoubt, SetBox, Week } from '../types'
 import { currentPlanWeek, planDayDateLabel, planDayDowLabel, planWeekRangeLabel } from '../mapping'
+import { splitExerciseSpecification } from '../../../i18n/stable-zh'
 export { readWorkbook, workbookToSheets, pastedToSheets, regionCells } from './sheets'
 const DAYS = 7
 
@@ -61,7 +62,8 @@ function rowFromParsed(exercise: ParsedExercise, resolved: ExerciseResponse | nu
     } : { intensity: null }),
     weightMode: new Set(boxes.map((box) => box.empty ? '<empty>' : box.val)).size > 1 ? 'per_set' : 'uniform',
     boxes,
-    note: exercise.note,
+    note: [...new Set([exercise.note, resolved && resolved.name !== exercise.rawName
+      ? splitExerciseSpecification(exercise.rawName).specification : ''].map(part => part.trim()).filter(Boolean))].join(' · '),
     ...(exercise.importDoubts?.length ? { importDoubts: exercise.importDoubts } : {}),
   }
 }

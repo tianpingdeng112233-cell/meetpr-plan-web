@@ -205,9 +205,9 @@ export interface CreateVideoMarkerPayload {
 }
 export interface CoachFeedbackPayload {
   student_id: string
-  day_date: string
+  day_date: string | null
   plan_exercise_id: string | null
-  video_id: string
+  video_id: string | null
   text: string
 }
 export interface CoachFeedbackResponse {
@@ -406,6 +406,8 @@ export interface PlanWithChildren extends PlanResponse {
 }
 
 export interface ExerciseResponse {
+  canonical_exercise_id?: string | null
+  adopted?: boolean
   id: string
   name: string
   name_en: string | null
