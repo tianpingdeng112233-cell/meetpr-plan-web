@@ -171,3 +171,51 @@ describe('spec 034 plan read reconstruction', () => {
     expect(rowIntensity(row)).toEqual({ mode: 'rpe', value: '8', high: '' })
   })
 })
+
+
+describe('056 formal load modes', () => {
+  it.each(['bodyweight', 'free_weight'] as const)('reads %s ahead of legacy projections, with independent intensity', (loadMode) => {
+    const rows = mapPlanToWeeks(plan([
+      exercise('none', [set('none', { load_mode: loadMode, intensity_mode: 'rpe', target_value: '10', coach_note: '自重' })]),
+      exercise('rpe', [set('rpe', { load_mode: loadMode, target_rpe: '8', coach_note: '自重' })]),
+      exercise('rir', [set('rir', { load_mode: loadMode, rir_target: 2 })]),
+      exercise('pct', [set('pct', { load_mode: loadMode, target_pct: '75' })]),
+    ]), new Map())[0].days[0].rows
+    expect(rows.map(displayedWeightMode)).toEqual([loadMode, loadMode, loadMode, loadMode])
+    expect(rows.map(displayedRowIntensity)).toEqual([
+      null, { mode: 'rpe', value: '8', high: '' },
+      { mode: 'rir', value: '2', high: '' }, { mode: 'pct', value: '75', high: '' },
+    ])
+    expect(rows.every(row => row.boxes.every(box => box.empty))).toBe(true)
+  })
+
+  it('uses old bodyweight markers only if load_mode is absent', () => {
+    const rows = mapPlanToWeeks(plan([
+      exercise('old', [set('old', { load_mode: null, intensity_mode: 'rpe', target_value: '10', coach_note: 'bodyweight' })]),
+      exercise('fixed', [set('fixed', { load_mode: 'fixed_weight', target_weight: '100', coach_note: '自重' })]),
+    ]), new Map())[0].days[0].rows
+    expect(rows.map(displayedWeightMode)).toEqual(['bodyweight', 'fixed_weight'])
+  })
+})
+
+it('reads the 015 failure-reps placeholder as 力竭', () => {
+  const row = mapPlanToWeeks(plan([exercise('pullup', [set('failed', {
+    load_mode: 'bodyweight', target_reps: 1, set_type: 'failed',
+  })])]), new Map())[0].days[0].rows[0]
+  expect(row.reps).toBe('力竭')
+})
+
+
+it('requires the full legacy rpe/10 marker shape and keeps weighted or RPE-8 notes', () => {
+  const rows = mapPlanToWeeks(plan([
+    exercise('legacy', [set('legacy', { load_mode: null, intensity_mode: 'rpe', target_value: '10.00', coach_note: '自重' })]),
+    exercise('weighted', [set('weighted', { load_mode: null, intensity_mode: 'weight', target_value: '60', coach_note: '自重' })]),
+    exercise('rpe8', [set('rpe8', { load_mode: null, intensity_mode: 'rpe', target_value: '8', coach_note: '自重' })]),
+    exercise('explicit', [set('explicit', { load_mode: 'rpe', intensity_mode: 'rpe', target_value: '10', target_rpe: '10', coach_note: '自重' })]),
+  ]), new Map())[0].days[0].rows
+  expect(rows.map(row => row.mode)).toEqual(['bodyweight', 'kg', 'rpe', 'kg'])
+  expect(rows[0].boxes).toEqual([{ val: '', empty: true }])
+  expect(rows[1].boxes).toEqual([{ val: '60', empty: false }])
+  expect(rowIntensity(rows[2])).toEqual({ mode: 'rpe', value: '8', high: '' })
+  expect(rows[1].opaqueSets?.[0].coach_note).toBe('自重')
+})

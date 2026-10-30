@@ -2,12 +2,12 @@ import { clearEditedDoubts, activeImportDoubts, countImportDoubts, withoutImport
 import { useCallback, useEffect, useMemo, useRef, useState, useImperativeHandle, type Ref } from 'react'
 import type { ColKey, ColWidths, Week, DayCol, ExerciseRow } from './types'
 import { COL_DEFAULTS, COL_MIN, isContentfulUnbound, isRestDay } from './types'
-import { getBoundRowInputIssue, type BoundRowInputIssue } from './inputGuard'
+import { isValidReps, getBoundRowInputIssue, type BoundRowInputIssue } from './inputGuard'
 import { groupActualsByExercise, groupStudentAddedByDay, type ActualSet, type StudentAddedExercise } from './actuals'
 import { getStudentSetLogs } from '../../api/coach'
 import { getPlan, shiftPlan, undoPlanShift } from '../../api/plans'
 import {
-  materializeIntensityRow, isSingleValueIntensity, rowIntensity, rowIntensityBoxes, rowWeightBoxes,
+  freeWeightEnabled, materializeIntensityRow, isSingleValueIntensity, rowIntensity, rowIntensityBoxes, rowWeightBoxes,
 } from './intensityModel'
 import { ApiException } from '../../api/client'
 import { clearDayDeletionIntent, loadDayDeletionIntent, saveDayDeletionIntent, type ExplicitDayDeletion } from './dayDeletionIntent'
@@ -1412,6 +1412,20 @@ export function PlanEditor(props: PlanEditorProps) {
     positionPopAt(el, wnum, dow, rowId, value)
   }
 
+  // Editor edits/bindings opt into Q7; sheet import applies the same gate when binding rows.
+  const classifyEditedRow = (row: ExerciseRow): ExerciseRow => {
+    if (!freeWeightEnabled() || row.weightModeSelected
+      || (!row.autoLoadMode && (row.mode === 'bodyweight' || row.weightMode === 'free_weight'))
+      || row.aux || !row.exerciseId
+      || row.boxes.length === 0 || !isValidReps(row.reps)
+      || rowWeightBoxes(row).some(box => !box.empty && box.val.trim() !== '')) return row
+    const intensity = rowIntensity(row)
+    if (intensity && !isSingleValueIntensity(intensity)) return row
+    const bodyweight = !intensity && props.exerciseIndex?.equipmentById(row.exerciseId).includes('bodyweight')
+    return bodyweight ? { ...row, mode: 'bodyweight', weightMode: 'uniform', autoLoadMode: true, bodyweightIntensity: true }
+      : { ...row, mode: 'kg', weightMode: 'free_weight', autoLoadMode: true }
+  }
+
   const bindRowAt = (
     target: { wnum: number; dow: number; rowId: string },
     exerciseId: string,
@@ -1428,7 +1442,7 @@ export function PlanEditor(props: PlanEditorProps) {
       ...wk,
       days: wk.days.map((d) => d.dow !== target.dow ? d : {
         ...d, rows: d.rows.map((r) => r.id === target.rowId && !r.hasLogs
-          ? { ...r, exerciseId, name, nameEn, ku: !custom, custom, isMain: tier ? tier !== 'accessory' : r.isMain }
+          ? classifyEditedRow({ ...r, exerciseId, name, nameEn, ku: !custom, custom, isMain: tier ? tier !== 'accessory' : r.isMain })
           : r),
       }),
     }))
@@ -1460,7 +1474,7 @@ export function PlanEditor(props: PlanEditorProps) {
       ...wk,
       days: wk.days.map((d) => d.dow !== dow ? d : {
         ...d,
-        rows: d.rows.map((r) => r.id === rowId && !r.hasLogs ? updater(materializeIntensityRow(r)) : r),
+        rows: d.rows.map((r) => r.id === rowId && !r.hasLogs ? classifyEditedRow(updater(materializeIntensityRow(r))) : r),
       }),
     }))
   }

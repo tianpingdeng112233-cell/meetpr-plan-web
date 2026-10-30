@@ -47,6 +47,7 @@ export function filterStrengthInput(raw: string): string {
 
 /** Keep only the repetitions syntax supported by reconciliation. */
 export function filterRepsInput(raw: string): string {
+  if (raw.trim() === STABLE_ZH.failureReps) return STABLE_ZH.failureReps
   return [...raw].filter((character) => REPS_INPUT_CHARACTER.test(character)).join('')
 }
 
@@ -139,20 +140,6 @@ export function getBoundRowInputIssue(row: ExerciseRow): BoundRowInputIssue | nu
   const invalidReps = !missingReps && !isValidReps(reps)
   const missingSets = row.boxes.length === 0
 
-  if (row.mode === 'bodyweight') {
-    const hasIncomplete = missingReps || missingSets
-    if (!hasIncomplete && !invalidReps) return null
-    return {
-      hasIncomplete,
-      invalidReps,
-      invalidIntensity: false,
-      invalidIntensityIndexes: [],
-      invalidWeightIndexes: [],
-      invalidStrengthIndexes: [],
-      reasons: invalidReps ? [INPUT_GUARD_REASONS.reps] : [],
-    }
-  }
-
   const intensity = rowIntensity(row)
   const singleIntensity = isSingleValueIntensity(intensity) ? intensity : null
   const intensityBoxes = rowIntensityBoxes(row)
@@ -175,7 +162,8 @@ export function getBoundRowInputIssue(row: ExerciseRow): BoundRowInputIssue | nu
       ? !!intensityBoxes[index] && !intensityBoxes[index].empty && intensityBoxes[index].val.trim() !== ''
       : rowIntensityPresent
     const hasWeight = !!weights[index] && !weights[index].empty && weights[index].val.trim() !== ''
-    return !hasIntensity && !hasWeight
+    const noLoad = row.mode === 'bodyweight' || row.weightMode === 'free_weight'
+    return noLoad ? intensity != null && !hasIntensity : !hasIntensity && !hasWeight
   })
   const hasIncomplete = missingReps || missingSets || incompleteSet
   const allInvalidStrengthIndexes = [...new Set([...invalidWeightIndexes, ...invalidIntensityIndexes])]

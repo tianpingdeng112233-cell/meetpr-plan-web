@@ -3,7 +3,7 @@
 
 export type UserRole = 'coach' | 'coached_student' | 'self_train_student' | 'admin'
 export type IntensityModeWire = 'weight' | 'rpe'
-export type LoadModeWire = 'pct' | 'rpe' | 'rir' | 'weight_range' | 'rpe_range' | 'fixed_weight'
+export type LoadModeWire = 'free_weight' | 'bodyweight' | 'pct' | 'rpe' | 'rir' | 'weight_range' | 'rpe_range' | 'fixed_weight'
 export type PctAnchorWire = 'one_rm' | 'e1rm' | 'top_set'
 /** The API enum accepts `one_rm`; writes use null for the agreed default-1RM representation. */
 export type PctAnchorRequestWire = Exclude<PctAnchorWire, 'one_rm'>

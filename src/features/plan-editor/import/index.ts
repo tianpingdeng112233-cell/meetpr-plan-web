@@ -1,4 +1,6 @@
 import type { ExerciseResponse } from '../../../api/types'
+import { freeWeightEnabled } from '../intensityModel'
+import { isValidReps } from '../inputGuard'
 import type { ExerciseIndex } from '../exerciseIndex'
 import type { DayCol, ExerciseRow, ImportDoubt, SetBox, Week } from '../types'
 import { currentPlanWeek, planDayDateLabel, planDayDowLabel, planWeekRangeLabel } from '../mapping'
@@ -38,7 +40,7 @@ function rowFromParsed(exercise: ParsedExercise, resolved: ExerciseResponse | nu
   })
   const intensityBoxes = toBoxes(exercise.intensityValues)
   const boxes = toBoxes(exercise.weightValues)
-  return {
+  const row: ExerciseRow = {
     id,
     serverRowId: null,
     serverSortOrder: null,
@@ -66,6 +68,15 @@ function rowFromParsed(exercise: ParsedExercise, resolved: ExerciseResponse | nu
       ? splitExerciseSpecification(exercise.rawName).specification : ''].map(part => part.trim()).filter(Boolean))].join(' · '),
     ...(exercise.importDoubts?.length ? { importDoubts: exercise.importDoubts } : {}),
   }
+  // Q10 keeps the 015 incomplete-row rules until the new load modes are enabled.
+  if (freeWeightEnabled() && resolved && !row.aux && isValidReps(row.reps)
+    && boxes.every(box => box.empty)) {
+    const bodyweight = !row.intensity && resolved.equipment.includes('bodyweight')
+    return bodyweight
+      ? { ...row, mode: 'bodyweight', autoLoadMode: true, bodyweightIntensity: true }
+      : { ...row, weightMode: 'free_weight', autoLoadMode: true }
+  }
+  return row
 }
 
 /** Excel date serial (days since 1899-12-30) → "YYYY-MM-DD" (UTC, date-only). */

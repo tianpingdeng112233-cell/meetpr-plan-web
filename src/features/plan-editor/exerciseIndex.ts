@@ -222,6 +222,10 @@ export class ExerciseIndex {
   }
 
   /** Catalog tier for a bound exercise id; null when unknown (e.g. custom before reload). */
+  equipmentById(id: string): readonly ExerciseResponse['equipment'][number][] {
+    return this.byId.get(id)?.equipment ?? []
+  }
+
   typeById(id: string): ExerciseResponse['exercise_type'] | null {
     return this.byId.get(id)?.exercise_type ?? null
   }
