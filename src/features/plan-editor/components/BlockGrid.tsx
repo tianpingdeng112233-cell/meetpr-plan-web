@@ -200,7 +200,7 @@ export function BlockGrid(props: Props) {
     {grid.rows.map(({ week, cells }, index) => {
       const editingDx = cells.findIndex(cell => (cell.day ?? (grid.columns[cell.dx].patternIndex !== null ? blockTargetDay(grid, cell, props.startDate) : null))?.dow === props.editing?.dow && week.num === props.editing?.wnum)
       const ordered = cells.filter(cell => cell.day).sort((a, b) => a.dayNumber! - b.dayNumber!)
-      const insertGaps = props.readOnly || !props.startDate ? [] : Array.from({ length: ordered.length + 1 }, (_, i) => {
+      const insertGaps = editingDx !== -1 || props.readOnly || !props.startDate ? [] : Array.from({ length: ordered.length + 1 }, (_, i) => {
         const before = ordered[i - 1], after = ordered[i]
         return { before, after, dates: blockInsertDates(week, props.startDate!, before?.day?.dow ?? null, after?.day?.dow ?? null) }
       }).filter(gap => gap.dates.length > 0)
