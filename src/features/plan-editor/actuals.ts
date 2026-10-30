@@ -12,6 +12,7 @@ export interface ActualSet {
   weight_kg: string
   reps: number
   rpe: string | null
+  actual_rir?: number | null
   coach_rpe: string | null
   completed: boolean
   failed: boolean
@@ -37,8 +38,8 @@ export function groupActualsByExercise(logs: StudentSetLog[]): Map<string, Actua
   for (const [exerciseId, sets] of latest) {
     grouped.set(exerciseId, [...sets.values()]
       .sort((a, b) => a.set_index - b.set_index)
-      .map(({ set_index, weight_kg, reps, rpe, coach_rpe, completed, failed }) => (
-        { set_index, weight_kg, reps, rpe, coach_rpe, completed, failed }
+      .map(({ set_index, weight_kg, reps, rpe, actual_rir, coach_rpe, completed, failed }) => (
+        { set_index, weight_kg, reps, rpe, actual_rir, coach_rpe, completed, failed }
       )))
   }
   return grouped
@@ -94,6 +95,7 @@ export function actualIntensityChip(
   set: ActualSet,
   e1rm: number | null,
 ): IntensityChip {
+  if (set.actual_rir != null) return { text: `RIR ${set.actual_rir}`, tone: 'na' }
   const intensity = rowIntensity(row)
   const rpe = actualRpe(set)
   const rpeText = rpe == null ? '—' : `@${rpe}`

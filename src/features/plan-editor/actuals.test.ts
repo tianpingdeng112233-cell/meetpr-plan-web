@@ -165,3 +165,9 @@ it('groups only linked adhoc logs by day and exercise, sorting sets and taking t
   expect(groupStudentAddedByDay([log({}), added({ plan_day_id: undefined })]).size).toBe(0)
   expect(groupActualsByExercise([added({})]).size).toBe(0)
 })
+
+it('keeps actual RIR in history grouping and labels it without RPE conversion', () => {
+  const actual = { ...log({ rpe: null }), actual_rir: 2 }
+  const grouped = groupActualsByExercise([actual]).get('pe-1')![0]
+  expect(actualIntensityChip(row(), 0, grouped, null)).toEqual({ text: 'RIR 2', tone: 'na' })
+})

@@ -288,7 +288,7 @@ export function DayHeaderContext({ studentId, studentName, row, profile }: {
               <div className="dayhead-panel-line" key={set.set_index}>
                 <span>{index + 1}</span>
                 <b>{kg(set.weight_kg)}×{set.reps}</b>
-                <em>{set.rpe ? `@${Number(set.rpe)}` : '—'}{set.failed ? S.stats.context.failureSuffix : set.completed ? ' ✓' : ''}</em>
+                <em>{set.actual_rir != null ? `RIR ${set.actual_rir}` : set.rpe ? `@${Number(set.rpe)}` : '—'}{set.failed ? S.stats.context.failureSuffix : set.completed ? ' ✓' : ''}</em>
               </div>
             ))}
           </div>
@@ -524,7 +524,7 @@ function Sessions({ sessions }: { sessions: ExerciseStatsDetail['recent_sessions
             <div className="set-line" key={set.set_index}>
               <span>{set.set_index}</span>
               <b>{kg(set.weight_kg)}kg × {set.reps}</b>
-              <span>{set.rpe ? `@${Number(set.rpe)}` : '—'}</span>
+              <span>{set.actual_rir != null ? `RIR ${set.actual_rir}` : set.rpe ? `@${Number(set.rpe)}` : '—'}</span>
               <em className={set.failed ? 'failed' : ''}>{set.failed ? S.common.failure : set.completed ? '✓' : '—'}</em>
             </div>
           ))}

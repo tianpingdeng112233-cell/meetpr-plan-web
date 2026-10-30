@@ -995,3 +995,28 @@ it.each([
   expect(JSON.stringify(weeks)).toBe(before)
   expect(onSave).not.toHaveBeenCalled()
 })
+
+it('hides insert-day controls across the expanded week until the day is collapsed', async () => {
+  act(() => root.render(<PlanEditor initialWeeks={fixture()} weeksCount={4} studentName="学员" planName="Block" planStartDate="2026-10-19" />))
+  expect(host.querySelectorAll('[data-insert-week="1"] button').length).toBeGreaterThan(0)
+  click(cell(1, 0))
+  expect(host.querySelectorAll('[data-insert-week="1"] button')).toHaveLength(0)
+  expect(host.querySelectorAll('[data-insert-week="2"] button').length).toBeGreaterThan(0)
+  await key('Escape')
+  expect(host.querySelectorAll('[data-insert-week="1"] button').length).toBeGreaterThan(0)
+})
+
+it('keeps the expanded day open while a mouse selects bodyweight from the weight popup', () => {
+  act(() => root.render(<PlanEditor initialWeeks={fixture()} weeksCount={4} studentName="学员" planName="Block" planStartDate="2026-10-19" />))
+  click(cell(1, 0))
+  const menu = cell(1, 0).querySelector<HTMLSelectElement>('[aria-label="重量模式"]')!
+  act(() => { menu.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0 })) })
+  const option = [...document.querySelectorAll<HTMLElement>('[role="option"]')].find(el => el.textContent === '自重')!
+  expect(option).toBeDefined()
+  act(() => { option.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0 })) })
+  expect(host.querySelector('.daygrid')).not.toBeNull()
+  expect(option.isConnected).toBe(true)
+  act(() => { option.dispatchEvent(new MouseEvent('mouseup', { bubbles: true })); option.click() })
+  expect(cell(1, 0).querySelector<HTMLSelectElement>('[aria-label="重量模式"]')?.value).toBe('bodyweight')
+  expect(document.querySelector('[role="listbox"]')).toBeNull()
+})

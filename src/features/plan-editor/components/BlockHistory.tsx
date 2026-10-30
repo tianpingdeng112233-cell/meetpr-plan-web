@@ -12,7 +12,7 @@ import { useGlobalKeyboardHandler } from '../../workspace/globalKeyboard'
 import { DayFeedbackDetail, feedbackDayDate, feedbackDayPlace } from './DayFeedback'
 const noRefresh = async () => {}
 
-const setLabel = (set: ExerciseHistorySet) => `${kg(set.weight_kg)}×${set.reps}${set.rpe ? ` @${Number(set.rpe)}` : ''}`
+const setLabel = (set: ExerciseHistorySet) => `${kg(set.weight_kg)}×${set.reps}${set.actual_rir != null ? ` RIR ${set.actual_rir}` : set.rpe ? ` @${Number(set.rpe)}` : ''}`
 
 export function BlockHistory({ datesFailed, onRetryDates, days = [], feedbackFailed, feedbackLoaded, onRetryFeedback, onFeedbackSent, onRefreshFeedback, onOpenDay, hoveredDayId, onHoverDay, studentId, studentName, row, profile, overview, onVideos, onVideoVisibilityChange, videos, entries = [], feedback = null, onFeedbackChange, onHighlight, onVideoViewed, onRefreshVideos }: {
   datesFailed?: boolean

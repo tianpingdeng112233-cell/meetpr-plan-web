@@ -56,7 +56,7 @@ export function WeightModeSelect({ value, disabled, title, onChange }: {
       onChange={event => onChange(event.currentTarget.value as DisplayWeightMode)}>
       {options.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
     </select>
-    {position && createPortal(<div ref={popup} id={id} role="listbox" aria-label={S.editor.weightMode}
+    {position && createPortal(<div ref={popup} id={id} data-popover="" role="listbox" aria-label={S.editor.weightMode}
       style={{ position: 'fixed', ...position, zIndex: 1000, width: 240, padding: 4, background: 'var(--card-bg)', color: 'var(--txt)', border: '1px solid var(--bd)', borderRadius: 'var(--r-sm)', boxShadow: '0 4px 16px #0002' }}
       onClick={event => event.stopPropagation()}
       onKeyDown={event => {
