@@ -1,4 +1,11 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import type { ExerciseResponse } from '../../api/types'
+import type { AIWeek } from '../../api/planImports'
+import { buildWeeks } from './import'
+import { aiWeeksToParsed } from './import/aiWeeks'
+import { applyTextFixes, groupUnparsed, type TextFixes } from './import/groupedFixes'
+import { ExerciseIndex } from './exerciseIndex'
+import { displayedWeightMode } from './intensityModel'
 import { findIssueRows } from './PlanEditor'
 import {
   filterRepsInput,
@@ -189,5 +196,37 @@ describe('spec 034 dual intensity and weight guard', () => {
       intensity: { ...intensity },
       boxes: [{ val: '', empty: true }],
     }))?.reasons).toContain(reason)
+  })
+})
+
+
+describe('056 Q10 sheet-import completion', () => {
+  afterEach(() => vi.unstubAllEnvs())
+
+  it.each(['false', 'true'])('classifies grouped 力竭 / 不设重量 only with gate=%s', gate => {
+    vi.stubEnv('VITE_FREE_WEIGHT_ENABLED', gate)
+    const catalog: ExerciseResponse[] = ['引体向上', '侧平举'].map((name, index) => ({
+      id: `ex-${index}`, name, name_en: null, exercise_type: 'accessory', main_lift_family: null,
+      is_competition_lift: false, muscle_groups: [], equipment: index === 0 ? ['bodyweight'] : ['dumbbell'],
+      movement_pattern: [], competition_stance: null, created_by_coach_id: null, created_at: '',
+    }))
+    const source: AIWeek[] = [{ index: 0, start_date: null, days: [{ weekday: 0, day_index: 1, rest: false,
+      exercises: catalog.map(exercise => ({ name: exercise.name, sets: 3, reps: '', intensity_kind: null,
+        intensity_values: [], weight_values: [], note: '', flags: [], source_cells: [], family_guess: null,
+        unparsed: [{ field: 'reps', text: '力竭' }, { field: 'weight', text: '不设重量' }],
+      })),
+    }] }]
+    const fixes: TextFixes = Object.fromEntries(groupUnparsed(source).map(group => [group.key,
+      group.field === 'reps' ? { field: 'reps', value: '力竭' } : { field: 'weight', value: null },
+    ]))
+    const { weeks } = buildWeeks(aiWeeksToParsed(applyTextFixes(source, fixes)), new ExerciseIndex(catalog), '2026-10-26')
+    const rows = weeks[0].days[0].rows
+    expect(rows.map(displayedWeightMode)).toEqual(gate === 'true' ? ['bodyweight', 'free_weight'] : ['fixed_weight', 'fixed_weight'])
+    for (const imported of rows) {
+      expect(imported.reps).toBe('力竭')
+      expect(imported.note).toBe('力竭 · 不设重量')
+      expect(imported.boxes).toHaveLength(3)
+      expect(isBoundNoSets(imported)).toBe(gate !== 'true')
+    }
   })
 })

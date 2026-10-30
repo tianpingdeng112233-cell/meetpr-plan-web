@@ -14,6 +14,8 @@ afterEach(() => setLocale('zh'))
 it('covers every simplified key, preserves interpolation values, and contains no simplified-only characters', () => {
   setLocale('zh')
   const arrayArguments: Record<string, unknown[][]> = {
+    'sheetImport.blockSheets': [[['__A__']], [['__A__', '__B__']]],
+    'sheetImport.skippedSheets': [[['__A__', '__B__']]],
     'admin.adoption.spellings': [[['__A__']], [['__A__', '__B__']]],
     'admin.adoption.coachNames': [[['__A__'], 1], [['__A__', '__B__', '__C__'], 3]],
   }
@@ -91,6 +93,8 @@ it('scans all generated literal branches, not only the exercised interpolation b
 
 it('uses v2 reps terms only in repetition contexts', () => {
   expect(zhHant.common.reps).toBe('下')
+  expect(zhHant.sheetImport.groupFields.reps).toBe('下數')
+  expect(zhHant.sheetImport.remaining('__A__', 2)).toContain('2 次')
   expect(zhHant.common.countReps(2)).toBe('2 下')
   expect(zhHant.video.repCount(2)).toBe('2 下')
   expect(zhHant.block.historyHint).toContain('近 5 次記錄；填了組數、下數')

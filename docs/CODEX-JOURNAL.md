@@ -1038,6 +1038,81 @@ npx vitest run src/features/plan-editor/block-grid-ui.test.tsx
 - 浏览器验收（Claude，临时夹具 mock-feedback / mock-workspace，1440×900，中英文，验完已删）：导航无反馈工作区、计划编排徽标 = 未读 + 待看；浮窗收起 / 展开、记忆、切学员换内容；聊天视频胶囊 → 反馈模式并高亮对应积木，浮窗让到大窗左侧；总览两列数字、点待看直达该学员第一段待看、点未读切学员并展开浮窗。
 - 已知遗留（不阻塞，待 Codex 10/25 后清）：`VideoWorkbench` 的非 embedded「整页」分支在生产已无调用方（旧 VideosPage 已删），但迁移来的约 35 条 UI 测试仍经它渲染。业务逻辑与 embedded 共用同一套 hooks，覆盖有效但路径不等价；后续卡：删整页分支、把这些测试改到 embedded 渲染。
 
+## 2026-10-22 · 015 CARD-A：从表格导入（开发交付，待浏览器验收）
+
+- 工作树 `/Users/david/Projects/apps/meetpr-plan-web-wt-015`，分支 `feat/015-sheet-import`，接手 HEAD `c90b3d3`。按 CONTEXT → CLAUDE → SPEC（含屏幕稿转写）→ CARD-A 顺序读取；未 commit/push，未改后端、凭证、锁文件或真实学员数据。所有新增读表夹具均为合成工作簿/文本。
+- 实装：status/outline/weeks API（显式挑选请求字段，不带文件名、限流不自动重试）；SheetJS 稀疏读表、日期 ISO/1904、HTML 合并格优先及 TSV；新建弹窗手动/导入分段、连续最多 12 周、按 4 周分批识别、失败原格编辑/单周重试/空周/跳过、摘要和新草稿创建。自定义动作先 resolve，同次去重，已有同名复用，family_guess 接主项变式；AI adapter → buildWeeks → reconcile，存疑另存本地/远端快照，导入不补记历史。
+- 编辑器：五类导入存疑计数/跳转/黄签、改行或确认清除、设日期清除无日期标记、已打卡行仍可确认元数据但不能改处方、空周确认、刷新恢复；发布/更新提醒，首次发布才询问过去未打卡训练的默认勾选补记。菜单改为计划列表 + 新建，每行 ⋯ 按状态/日期操作指定计划；非当前重命名/完成/删除不切换编辑器，设置/补记先切换。新建和设置周数 3–12，保留存量超范围计划的原周数。
+- 删除旧覆盖导入路径与固定模板解析器，buildWeeks 测试全部改喂新适配器输出，保留绑定、日期、RPE/逐组值和空周回归；不再对 AI 原名做旧模板的猜测/拆分。补齐中英文导入文案，更新教练指南菜单与导入说明。
+
+### 红绿与代码审查
+
+- 在卡指定 seam 先写失败测试，再实现读表/adapter、导入对话框、存疑/发布、菜单与周数。后续独立 Standards / Spec 两轮只读审查发现并定向修复：旧本地存疑快照遮蔽新远端编辑、换表串入旧格子、分批失败重复耗调用额度、取消选择空周后摘要计数不减、延迟删除详情返回时学员已切换。
+- 以上审查项均有先红后绿回归；另补额度跨 tab 同步、非当前删除实际训练日数、已打卡行确认、来源替换、12 周断点重试、同名自定义动作复用、API 边界剔除文件名、错误码及 XLS/XLSX/CSV/合并格/日期的合成夹具。
+- 最后两项复核发现由主代理修复并自审，未把开发自测等同于 Opus 的功能收货。定向日志：`/private/tmp/meetpr-015-review-{red,green}.txt`、`meetpr-015-import-red-2.txt`、`meetpr-015-mirror-red.txt`、`meetpr-015-last-review-{red,green}.txt`、`meetpr-015-features-green.txt`。Impeccable 手工 detect 四个 UI 文件返回 `[]`，这不代替浏览器像素验收。
+
+### 偏差与范围说明
+
+- 卡称指南「第一节（菜单）」；当前指南的菜单实际位于第二节，所以改第二节及第五节，未重排文档。
+- 全仓旧术语零命中与保留原 spec/历史设计资料冲突：运行源码（含测试、双语 i18n）和用户指南零命中；全仓仍有 **6 文件 / 15 行**历史/需求引用（CONTEXT、002/011/015 SPEC、015 CARD-A、旧 C.dc.html 设计稿）。未为清 grep 改写这些卡范围外原始资料。
+- 测试环境 Node v25.9.0、运行速度波动：未修改 HEAD 的临时副本也复现 legacy 12 周测试超时；React 异步 act 在假时钟前初始化并在 afterEach 恢复真时钟，legacy 大夹具预算调至 30 秒。保留全部业务断言。最终全量命令限制单 worker、单例 30 秒；首次默认并发跑出现性能时间断言与超时级联，未据此改业务代码或放宽拼音性能断言。
+
+### 最终检查
+
+- `npm test -- --maxWorkers=1 --minWorkers=1 --testTimeout=30000`：exit 0，**105 files / 1038 passed**；215.94 秒，完整套件无跳过。日志 `/private/tmp/meetpr-015-final-test.txt`。
+- `npx tsc --noEmit`：exit 0，0 个诊断；日志 `/private/tmp/meetpr-015-tsc-final-3.txt`。
+- `npm run build`：exit 0，TypeScript + Vite 构建通过（244 modules）；既有 >500 kB chunk 警告仍在。日志 `/private/tmp/meetpr-015-build.txt`。
+- 旧词扫描命令：`rg -n -f /private/tmp/meetpr-015-old-patterns.txt src 'docs/教练使用指南.md'`（pattern 文件含 CARD-A 指定五项），**0 命中**；同模式扫描全仓 **6 文件 / 15 行**，结果 `/private/tmp/meetpr-015-old-terms.txt`，历史引用保留原因见上。
+- `git diff --check` 通过。可审阅完整补丁（含新增文件）：`/private/tmp/meetpr-015-card-a.patch`。
+
+### 浏览器尚未验证（由 Opus 按 SPEC §8 收货）
+
+- 本环境 `npm run dev -- --host 127.0.0.1 --port 5188` 被沙箱以 `listen EPERM` 拒绝；随后合成离线预览的 file URL 被浏览器 URL policy 拒绝（只允许 http/https）。未绕过限制，未访问生产/使用真实表格，没有截图或实际像素通过结论。
+- 待核对屏幕 ⑮–⑲ 中英文布局、滚动/焦点/窄窗、来源拖放与失败格子编辑、待核对跳转、每计划菜单；连已配置 DeepSeek 的本地/staging 后端完成 SPEC 指定三种样表、WPS/Google Sheets 粘贴，第 4 次额度拒绝与换学员独立额度，旧计划第一屏，以及 iOS/安卓打开 12 周计划。真实样表由 David/Opus 在仓外验，禁止入库。
+
+## 2026-10-22 · 015 CARD-A · round 1 rework
+
+- 仅修⑱/⑲三项：DayColumn 的存疑标签/确认作为备注后的 trailing cell，编辑卡增加第八列，标签可省略、确认不收缩不换行，行底保持 #FFFBEB；当前计划整行（含 ⋯）#FEF3C7；新建项改「＋ 新建计划」/「+ New plan」、粗体与 #F3F4F6 底。未 commit/push。
+- 本轮文件：`components/DayColumn.tsx`、`components/TopBar.tsx`、`components/TopBar.test.tsx`、`import/import.css`、`import/import-doubts-ui.test.tsx`（均在 `src/features/plan-editor/`），以及 `src/i18n/strings-editor.ts`、本 journal；其余卡 A 既有未提交改动保持原样。
+- 先红后绿：行尾测试 9/10 → 10/10（长动作名、双标签、备注之后同一行尾单元格、点击确认）；菜单测试 7/9 → 9/9（中英文加号标签/样式类，整行 current 标记包含 ⋯，新建回调）；合跑 19/19。日志 `/private/tmp/015-r1-row-red.log`、`015-r1-row-green.log`、`015-r1-menu-red.log`、`015-r1-green.log`。未加入假像素测试。
+- `npm test`：单独重跑 exit 0，105/105 files、1041/1041 tests（`/private/tmp/015-r1-test-rerun.log`）。首跑与构建同时运行时，仅既有拼音性能断言 1217ms > 1000ms（1040/1041）；未改代码/阈值，原命令重跑通过。
+- `npx tsc --noEmit`：exit 0、0 诊断（`/private/tmp/015-r1-tsc.log`）；`npm run build`：exit 0、244 modules（`/private/tmp/015-r1-build-final.log`），仅既有 >500 kB chunk 提示。`git diff --check` 通过。
+- 本轮补丁自审：Standards / Spec 均无新增问题；Impeccable detect 返回 `[]`。本轮补丁 `/private/tmp/015-r1.patch`，接手前副本 `/private/tmp/015-r1-before/`。
+- 浏览器自测阻塞：Vite 在 127.0.0.1:5195 启动被沙箱 `listen EPERM` 拒绝；未声明 1440×900 像素验收通过，留 Opus 复验三项。
+
+## 2026-10-23 · 015 FIX：跳过工作簿空页
+
+- 基线 `1160a6e`，按 David FIX CARD 修复：`workbookToSheets` 过滤零非空单元格页；全空文件显示「表格里没有内容」并禁用识别；仅 outline 的 400 `VALIDATION_ERROR` 显示另存为 .xlsx / 直接粘贴提示，均含英文。源码范围仅 import 与 strings-import；测试全部现场用 SheetJS 生成，无真实表格入库。
+- 先红后绿：空页读表/请求 3 failed → 24 passed；全空文件中英文 2 failed → 19 passed；格式错误中英文 2 failed → 最终两文件 28 passed。日志 `/private/tmp/015-empty-sheets-{red,green}.log`、`015-empty-file-{red,green}.log`、`015-validation-red.log`、`015-fix-green.log`；各有效红测 exit 1，绿测 exit 0。
+- 提交前验证：`npm test` exit 0，105 files / 1048 tests passed；`npx tsc --noEmit` exit 0，0 诊断；`npm run build` exit 0（仅既有 >500 kB chunk 提示）。日志 `/private/tmp/015-fix-{test,tsc,build}.log`；`git diff --check` 通过。
+- review-loop 独立只读审查一轮：Standards 0 findings；Spec 0 findings。开发验证不代替 Opus 收货。
+- 浏览器复验未完成：Vite 监听 `127.0.0.1:5195` 被沙箱以 `listen EPERM` 拒绝，证据 `/private/tmp/015-fix-browser.log`；中英文提示与按钮/API 行为已有组件测试覆盖。
+
+## 2026-10-23 · 015 FIX：强度与重量分两条线
+
+- 基线 `00e12d1`。AI 契约改用 `intensity_kind` / `intensity_values` / `weight_values`；adapter 与 buildWeeks 映射既有 spec-034 行字段，逐组强度、重量独立保留，空强度数组不生成结构化强度。摘要与存疑不变；未改 reconcile/mapping、未启停 dev server，所有夹具为合成数据。
+- 先红后绿：新契约 adapter/buildWeeks 14 failed，创建草稿保存断言 1 failed → 四文件 42 passed；覆盖 RPE 6 + 227.5 kg、RIR、pct、纯重量、两线皆空，并通过真实 reconcile 检查 batchDays 中每组的 `target_rpe` 和 `target_weight`。审查补充空强度数组两例：2 failed / 11 passed → 13 passed。日志 `/private/tmp/015-tracks-{contract-red,save-red,green,empty-red,empty-green}.log`。
+- review-loop 独立只读审查：Standards 0 findings；Spec 初审 1 项（有 kind 但强度数组为空），定向修复及复核后 0 未决项。未运行依赖缺失 tracker 的完整 code-review 流程。
+- 最终 `npm test` exit 0：105 files / 1055 tests passed；`npx tsc --noEmit` exit 0、0 诊断；`npm run build` exit 0，仅既有 >500 kB chunk 提示。日志 `/private/tmp/015-tracks-{test,tsc,build}.log`；`git diff --check` 通过。后端并行契约改动与真实教练表联调待 David/Opus 收货，本次不声明端到端验收完成。
+
+## 2026-10-23 · 015 §4.1：仅推断数值与无内容周进入待核对
+
+- 基线 `0ec5261`，按 CHANGE CARD 实装：仅 `inferred` / `empty_week` 生成编辑器标记；摘要保留新建动作（含名字）、备注、无日期统计。推断数值增加中英文「全部确认」及可撤销的 pressed 状态，创建与快照均尊重确认；识别新结果或换表时重置确认。无产品决策偏差。
+- 旧快照采用卡允许的「忽略」方式：统一过滤标记、计数、跳转和发布提醒，保留兼容 wire 类型与快照格式；移除仅服务旧标记的日期清除、动作 tooltip 和 adapter 新动作参数。仅改授权源码/测试及本记录，未启停 dev server。
+- 指定 seam 先红后绿：adapter 2 failed → adapter/buildWeeks 16 passed；dialog 4 failed → 25 passed；editor 4 failed → 13 passed（含本地/远端旧快照）。证据 `/private/tmp/015-doubts-{adapter,dialog,ui}-{red,green}.log`。review-loop 独立只读审查一轮：Standards 0 findings；Spec 0 代码 findings，要求补本记录已落实；缺 tracker，未声称运行完整 code-review。
+- 验证：`npm test` exit 0，105 files / 1062 tests passed；`npx tsc --noEmit` exit 0、0 诊断；`npm run build` exit 0、244 modules，仅既有 >500 kB chunk 提示。日志 `/private/tmp/015-doubts-{test,tsc,build}.log`；`git diff --check` exit 0。Impeccable detector 返回 `[]`。
+- 浏览器复验未完成：CUA 权限策略拒绝读取已有 `http://localhost:5180` 标签页（origin approval 未获准）；未换通道绕过，未声明视觉或真实导入端到端验收通过。
+- Git：`git add` exit 128，主仓 `.git/worktrees/meetpr-plan-web-wt-015/index.lock` 被沙箱拒写；按卡保留未提交改动，未 commit/push。完整补丁 `/private/tmp/015-doubts.patch`。
+
+## 2026-10-23 · 015 §2.1：Day1–DayN 自选星期
+
+- 基线 `5ba0b27`。AI day 契约增加必填 `day_index`、允许 `weekday: null`；摘要复用从手动新建抽出的 `WeekdayPicker`，按 2–6 天指定默认分布，少选/多选及第一练日期不匹配 D1 时禁用创建。按 `day_index` 排序后从 D1 映射至选择的星期，再走既有 buildWeeks/reconcile；plan weekdays 返回所选顺序。补中英文，weekday-known 路径保持原行为。仅修改卡片授权范围，未启停 dev server。
+- 指定 seam 先红后绿：aiWeeks 映射 1 failed → 4 passed；picker 默认分布 5 failed → 定向 41 passed；创建/日期校验 3 failed → 最终定向 3 files / 44 passed。覆盖四天默认/自选跨周回绕、乱序 day_index、rest、不改原输入、2–6 默认分布、少选/多选、已知星期不展示 picker、双语创建动作/日期及实际 batch day_of_week。测试期修正日期显示格式和 API 1-based 日序号的预期，未改现有实现口径。日志 `/private/tmp/015-weekdays-{map,picker,create}-{red,green}.log`。
+- 验证：`npm test` exit 0，105 files / 1074 tests passed；`npx tsc --noEmit` exit 0、0 诊断；`npm run build` exit 0（245 modules，仅既有 >500 kB chunk 提示）。日志 `/private/tmp/015-weekdays-{test,tsc,build}.log`；`git diff --check` 通过；Impeccable detect 返回 `[]`。
+- review-loop 独立只读审查一轮：Standards 0 findings；Spec 0 findings。缺 tracker 配置，未声称执行完整 code-review 流程。SPEC §6 摘录尚无 day_index，按任务卡新契约实现，未改正典 spec。后端联调与 Opus 收货不在本次开发自测结论内。
+- 浏览器复验受限：CUA 拒绝读取现有 `http://localhost:5180/` 页面（origin approval 未获准），未绕过权限；本轮没有视觉通过结论。
+- Git：`git add` exit 128，主仓 `.git/worktrees/meetpr-plan-web-wt-015/index.lock` 被沙箱拒写；按卡保留 **uncommitted**，未 commit/push。完整补丁（含新增共享组件）`/private/tmp/015-weekdays.patch`。
+
 ## 2026-10-22 · 016（原编号 014）管理后台浅色重做（Codex 开发交付，待 Claude 收货）
 
 范围补充：`src/i18n/en-smoke.test.tsx` 仍引用已删除的管理计划详情类型与入口；为完成删除和全量类型检查，需要同步移除该文件中的计划详情专用夹具/断言，保留动作库、视频和组卡英文覆盖。总览接口不含邮箱，最近注册表使用现有 `/admin/users` 获取身份信息并按注册时间取前十；不新增接口或修改后端。

@@ -70,6 +70,9 @@ export function buildBlockGrid(weeks: readonly Week[], startDate?: string | null
     const position = columns.findIndex(column => (column.weekday - firstWeekday + 7) % 7 > (weekday - firstWeekday + 7) % 7)
     columns.splice(position < 0 ? columns.length : position, 0, { dx: 0, weekday, patternIndex: null })
   }
+  // Saved patterns and ordinal votes can be out of calendar order. Normalize
+  // display positions only; patternIndex still addresses the original edit slot.
+  columns.sort((a, b) => ((a.weekday - firstWeekday + 7) % 7) - ((b.weekday - firstWeekday + 7) % 7))
   columns.forEach((column, dx) => { column.dx = dx })
   return { columns, rows: weeks.map((week, index) => {
     const cells: BlockCell[] = columns.map(({ dx }) => ({ weekNumber: week.num, dx, dayNumber: null, day: null }))

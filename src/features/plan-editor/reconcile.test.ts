@@ -192,6 +192,7 @@ describe('reconcilePlan — opaque legacy set passthrough', () => {
     const baseline = serverPlan([serverDay([savedLegacyExercise(bodyweight), fixed])], 'draft')
     vi.mocked(plans.getPlan).mockResolvedValue(baseline)
     const weeks = mapPlanToWeeks(baseline, catalog)
+    expect(weeks[0].days[0].rows[0].mode).toBe(bodyweight ? 'bodyweight' : 'rpe')
     weeks[0].days[0].rows[1].boxes[0].val = '110'
 
     await expect(reconcilePlan('p', weeks)).resolves.toMatchObject({ changedDays: 1 })
@@ -200,6 +201,27 @@ describe('reconcilePlan — opaque legacy set passthrough', () => {
     const exercises = vi.mocked(plans.batchDays).mock.calls[0][1].upsert_days[0].exercises
     expect(exercises[1].sets[0].target_weight).toBe('110')
     expectCompatibleShape(exercises[0].sets, bodyweight)
+  })
+
+  it.each(['weight', 'rpe'] as const)('preserves a %s set mentioning 自重 through unchanged and edited saves', async mode => {
+    const saved = serverExercise('saved', 'saved-ex', 0)
+    saved.sets[0] = { ...saved.sets[0], load_mode: null, intensity_mode: mode,
+      target_value: mode === 'weight' ? '60' : '8', coach_note: '自重', rest_seconds: 90 }
+    const baseline = serverPlan([serverDay([saved, serverExercise('edited', 'edited-ex', 1)])], 'draft')
+    vi.mocked(plans.getPlan).mockResolvedValue(baseline)
+    const weeks = mapPlanToWeeks(baseline, catalog)
+    weeks[0].days[0].rows[1].boxes[0].val = '110'
+    await reconcilePlan('p', weeks)
+    const untouched = vi.mocked(plans.batchDays).mock.calls[0][1].upsert_days[0].exercises[0].sets[0]
+    expect(untouched).toMatchObject({ intensity_mode: mode, target_value: mode === 'weight' ? '60' : '8', coach_note: '自重' })
+    expect(untouched.load_mode).not.toBe('bodyweight')
+
+    vi.mocked(plans.batchDays).mockClear()
+    weeks[0].days[0].rows[0].reps = '6'
+    await reconcilePlan('p', weeks)
+    const edited = vi.mocked(plans.batchDays).mock.calls[0][1].upsert_days[0].exercises[0].sets[0]
+    expect(edited).toMatchObject({ target_reps: 6, coach_note: '自重', rest_seconds: 90 })
+    expect(mode === 'weight' ? edited.target_weight : edited.target_value).toBe(mode === 'weight' ? '60' : '8')
   })
 
   it('copies legacy bodyweight with formal load mode and preserved per-set settings', async () => {
@@ -1340,6 +1362,25 @@ describe('reconcilePlan — scoped 409 merge', () => {
     vi.mocked(plans.createExercise).mockResolvedValue({ id: 'new' } as never)
   })
 
+  it.each(['bodyweight', 'free_weight'] as const)('restores formal %s and its independent RPE after a scoped 409', async loadMode => {
+    const target = serverExercise('target', 'target', 0)
+    target.sets[0] = { ...target.sets[0], load_mode: loadMode, intensity_mode: 'rpe', target_value: '10', target_rpe: '8' }
+    const baseline = serverPlan([serverDay([target])])
+    vi.mocked(plans.getPlan).mockResolvedValueOnce(baseline)
+      .mockResolvedValueOnce(serverPlan([serverDay([{ ...target, has_logs: true }])]))
+    vi.mocked(plans.batchDays).mockRejectedValueOnce(new ApiException(409, 'DAY_HISTORY_IMMUTABLE', {
+      details: { day_id: 'day1' },
+    }))
+    const weeks = mapPlanToWeeks(baseline, new Map())
+    weeks[0].days[0].rows[0].reps = '6'
+    const conflict = await reconcilePlan('p', weeks).catch(error => error)
+    expect(conflict).toBeInstanceOf(ReconcileConflict)
+    const restored = conflict.weeks[0].days[0].rows[0]
+    expect(displayedWeightMode(restored)).toBe(loadMode)
+    expect(restored).toMatchObject({ hasLogs: true, reps: '5',
+      intensity: { mode: 'rpe', value: '8', high: '' }, intensityBoxes: [{ val: '8', empty: false }] })
+  })
+
   it('EXERCISE_HISTORY_IMMUTABLE restores and locks only the named row', async () => {
     const lock = serverExercise('existing-lock', 'lock', 0, '90', true)
     const target = serverExercise('target', 'target', 1, '100')
@@ -1483,5 +1524,25 @@ describe('reconcilePlan — scoped 409 merge', () => {
     expect(conflict.weeks[0].days[0].rows[0]).toMatchObject({
       hasLogs: true, exerciseId: null, name: '本地未绑定改名', boxes: [{ val: '105', empty: false }],
     })
+  })
+})
+
+
+describe('力竭 reps round trip', () => {
+  it.each(['kg', 'bodyweight', 'rpe'] as const)('saves every %s set as failed and reads it back as 力竭', async mode => {
+    vi.clearAllMocks()
+    vi.mocked(plans.getPlan).mockResolvedValue(serverPlan([], 'draft'))
+    mockBatchEcho()
+    const weeks = [weekWithMondayRows([boundRow('failure', null, 'ex1', '100', {
+      reps: '力竭', mode, boxes: [1, 2].map(() => ({ val: mode === 'rpe' ? '8' : '100', empty: false })),
+    })])]
+    const saved = await reconcilePlan('p', weeks)
+    const body = vi.mocked(plans.batchDays).mock.calls[0][1]
+    expect(body.upsert_days[0].exercises[0].sets).toEqual([1, 2].map(set_number => expect.objectContaining({
+      set_number, set_type: 'failed', target_reps: 1, target_reps_max: null,
+    })))
+    expect(saved.weeks[0].days[0].rows[0].reps).toBe('力竭')
+    const reread = mapPlanToWeeks(serverPlan(serverDaysFromBatch(body.upsert_days)), new Map([['ex1', { name: 'Squat', custom: false }]]))
+    expect(reread[0].days[0].rows[0].reps).toBe('力竭')
   })
 })

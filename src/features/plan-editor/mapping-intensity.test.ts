@@ -204,3 +204,18 @@ it('reads the 015 failure-reps placeholder as 力竭', () => {
   })])]), new Map())[0].days[0].rows[0]
   expect(row.reps).toBe('力竭')
 })
+
+
+it('requires the full legacy rpe/10 marker shape and keeps weighted or RPE-8 notes', () => {
+  const rows = mapPlanToWeeks(plan([
+    exercise('legacy', [set('legacy', { load_mode: null, intensity_mode: 'rpe', target_value: '10.00', coach_note: '自重' })]),
+    exercise('weighted', [set('weighted', { load_mode: null, intensity_mode: 'weight', target_value: '60', coach_note: '自重' })]),
+    exercise('rpe8', [set('rpe8', { load_mode: null, intensity_mode: 'rpe', target_value: '8', coach_note: '自重' })]),
+    exercise('explicit', [set('explicit', { load_mode: 'rpe', intensity_mode: 'rpe', target_value: '10', target_rpe: '10', coach_note: '自重' })]),
+  ]), new Map())[0].days[0].rows
+  expect(rows.map(row => row.mode)).toEqual(['bodyweight', 'kg', 'rpe', 'kg'])
+  expect(rows[0].boxes).toEqual([{ val: '', empty: true }])
+  expect(rows[1].boxes).toEqual([{ val: '60', empty: false }])
+  expect(rowIntensity(rows[2])).toEqual({ mode: 'rpe', value: '8', high: '' })
+  expect(rows[1].opaqueSets?.[0].coach_note).toBe('自重')
+})

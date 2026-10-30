@@ -1,3 +1,4 @@
+import { STABLE_ZH } from '../../i18n/stable-zh'
 import type { IntensityModeWire, LoadModeWire, PctAnchorWire, SetType } from '../../api/types'
 
 export type IntensityMode = 'kg' | 'rpe' | 'bodyweight'
@@ -68,8 +69,11 @@ export function snapshotOpaqueSets(sets: readonly OpaqueSetSpec[]): OpaqueSetSpe
   }))
 }
 
+export type ImportDoubt = 'new_exercise' | 'note_fallback' | 'inferred' | 'no_date' | 'empty_week'
+
 /** One exercise line inside a day. */
 export interface ExerciseRow {
+  importDoubts?: ImportDoubt[]
   id: string
   /** Persisted plan_exercise identity. UI-only/new/imported rows have no server identity yet. */
   serverRowId: string | null
@@ -155,7 +159,7 @@ export function hasOpaqueSetSettings(row: ExerciseRow): boolean {
     || set.target_reps_max !== first.target_reps_max
     || set.rest_seconds != null
     || (row.mode !== 'bodyweight' && set.coach_note != null)
-    || set.set_type !== (row.reps.includes('+') && index === lastIndex ? 'amrap' : 'working')
+    || set.set_type !== (row.reps === STABLE_ZH.failureReps ? 'failed' : row.reps.includes('+') && index === lastIndex ? 'amrap' : 'working')
   ))
 }
 
@@ -182,6 +186,8 @@ export interface DayCol {
 }
 
 export interface Week {
+  /** Week-level doubts also cover weeks without any rows. Snapshot-only. */
+  importDoubts?: ImportDoubt[]
   num: number
   num2: string         // zero-padded, e.g. "03"
   range: string

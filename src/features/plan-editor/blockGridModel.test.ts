@@ -215,3 +215,40 @@ it.each(['by-week', 'by-day'] as const)('uses the same cross-week fill addresses
   expect(blockFillTargets(grid, source, 99)).toHaveLength(3)
   expect(blockFillTargets(grid, source, 1)).toEqual([])
 })
+
+it('orders the reported October block columns and every week by calendar date', () => {
+  const weeks = relabelWeeksForStartDate(fixture([[5, 6], [1, 2, 5, 6], [1, 2, 5, 6]]), '2026-10-26')
+  const grid = buildBlockGrid(weeks, '2026-10-26', [5, 6, 1, 2])
+  expect.soft(grid.columns.map(column => column.weekday)).toEqual([1, 2, 5, 6])
+  expect.soft(grid.rows.map(week => week.cells.map(cell => cell.day?.dateLabel ?? null))).toEqual([
+    [null, null, '10/31', '11/1'], ['11/3', '11/4', '11/7', '11/8'], ['11/10', '11/11', '11/14', '11/15'],
+  ])
+  expect.soft(grid.rows.map(week => week.cells.map(cell => cell.dayNumber))).toEqual([
+    [null, null, 1, 2], [1, 2, 3, 4], [1, 2, 3, 4],
+  ])
+})
+
+it('orders columns relative to a Friday start without changing offsets or pattern edit identities', () => {
+  const weeks = relabelWeeksForStartDate(fixture([[0, 3, 6], [0, 3, 6]]), '2026-10-30')
+  const previous = [3, 4, 0] // Thursday, Friday, Monday: saved slot order, not display order.
+  const before = JSON.stringify(weeks)
+  const grid = buildBlockGrid(weeks, '2026-10-30', previous)
+  expect.soft(grid.columns.map(c => c.weekday)).toEqual([4, 0, 3])
+  expect.soft(grid.rows[0].cells.map(c => c.day?.dateLabel)).toEqual(['10/30', '11/2', '11/5'])
+  expect(JSON.stringify(weeks)).toBe(before)
+  expect(previous).toEqual([3, 4, 0])
+  // Editing the original Thursday slot must still move Thursday, not Friday.
+  const changed = changeBlockPattern(weeks, [2, 4, 0], '2026-10-30', previous)!
+  expect(changed[0].days[5].rows[0].id).toBe('w1-6')
+  expect(changed[0].days[0].rows[0].id).toBe('w1-0')
+  expect(changed[0].days[3].rows[0].id).toBe('w1-3')
+})
+
+it('merges extra weekdays into an out-of-order saved pattern without moving prescriptions', () => {
+  const weeks = fixture([[1, 2, 5, 6], [1, 5, 6]])
+  const before = JSON.stringify(weeks)
+  const grid = buildBlockGrid(weeks, '2026-10-19', [5, 6, 1], [2])
+  expect.soft(grid.columns.map(c => c.weekday)).toEqual([1, 2, 5, 6])
+  expect.soft(grid.rows.map(w => w.cells.map(c => c.day?.dow ?? null))).toEqual([[1, 2, 5, 6], [1, null, 5, 6]])
+  expect(JSON.stringify(weeks)).toBe(before)
+})

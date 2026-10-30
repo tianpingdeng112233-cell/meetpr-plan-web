@@ -10,6 +10,7 @@ import { rowSetGridSignature, snapshotOpaqueSets } from './types'
 import { fmt, localizedArray, S } from '../../i18n/strings'
 import { zhCommon } from '../../i18n/strings-common'
 import { STABLE_ZH } from '../../i18n/stable-zh'
+import { isLegacyBodyweightSet } from './legacyBodyweight'
 import { trainingDayOrdinalFromDows } from './weekBandModel'
 
 export const DOW_LABELS = localizedArray(zhCommon.weekdaysMondayFirst, () => S.common.weekdaysMondayFirst)
@@ -348,7 +349,7 @@ export function resizeWeeksForCount(weeks: Week[], count: number, startDate: str
   return next
 }
 
-function mapExercise(ex: PlanExerciseResponse, catalog: Catalog): ExerciseRow {
+export function mapExercise(ex: PlanExerciseResponse, catalog: Catalog): ExerciseRow {
   const entry = catalog.get(ex.exercise_id)
   const name = entry?.name ?? STABLE_ZH.unknownExercise
   const custom = entry?.custom ?? false
@@ -365,7 +366,7 @@ function mapExercise(ex: PlanExerciseResponse, catalog: Catalog): ExerciseRow {
   }
 
   const bodyweight = sets.every((s) => s.load_mode === 'bodyweight'
-    || (s.load_mode == null && STABLE_ZH.patterns.bodyweight.test(s.coach_note ?? '')))
+    || isLegacyBodyweightSet(s))
   const legacyRpeSource = !bodyweight && sets.every((set) => (
     set.load_mode == null && set.intensity_mode === 'rpe'
   ))
@@ -388,7 +389,7 @@ function mapExercise(ex: PlanExerciseResponse, catalog: Catalog): ExerciseRow {
   const baseReps = sets[0].target_reps
   const repsMax = sets[0].target_reps_max
   const hasAmrap = sets.some((s) => s.set_type === 'amrap')
-  const reps = sets.every(set => set.set_type === 'failed') ? '力竭' : repsMax != null && repsMax > baseReps
+  const reps = sets.every(set => set.set_type === 'failed') ? STABLE_ZH.failureReps : repsMax != null && repsMax > baseReps
     ? `${baseReps}-${repsMax}`
     : hasAmrap ? `${baseReps}+` : String(baseReps)
   return withOpaqueSets({
