@@ -116,6 +116,7 @@ export interface StudentSetLog {
   weight_kg: string
   reps: number
   rpe: string | null
+  actual_rir?: number | null
   coach_rpe: string | null
   completed: boolean
   failed: boolean
@@ -130,6 +131,7 @@ export interface ExerciseHistorySet {
   weight_kg: string
   reps: number
   rpe: string | null
+  actual_rir?: number | null
   completed: boolean
   failed: boolean
   assumed: boolean
@@ -266,6 +268,7 @@ interface ChatSetRefV1Base {
   reps: number | null
   reps_max: number | null
   rpe: string | null
+  actual_rir?: number | null
   day_date: string
 }
 
