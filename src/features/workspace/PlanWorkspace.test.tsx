@@ -2056,15 +2056,18 @@ describe('PlanWorkspace editor remount', () => {
       .toBe('已发布 · 有未推送修改')
   })
 
-  it('patches start/end together and keeps the plan week count unchanged', async () => {
-    const updated = {
+  it('keeps the calendar anchor consistent when changing the start date', async () => {
+    let stored = {
       ...plan('加载时快照'),
-      start_date: '2026-01-07',
-      end_date: '2026-01-13',
+      start_date: '2026-11-04',
+      end_date: '2026-11-10',
       anchor_weekday: 3,
     }
-    api.patchPlan.mockResolvedValue(updated)
-    api.getPlan.mockResolvedValue(plan('加载时快照'))
+    api.patchPlan.mockImplementation(async (_id, patch) => {
+      stored = { ...stored, ...patch }
+      return stored
+    })
+    api.getPlan.mockImplementation(async () => stored)
 
     await act(async () => {
       root.render(<PlanWorkspace onLogout={vi.fn()} me={me} />)
@@ -2073,19 +2076,16 @@ describe('PlanWorkspace editor remount', () => {
     const editorProps = api.captureEditorProps.mock.calls.at(-1)?.[0] as {
       onChangeStartDate: (startDate: string) => Promise<void>
     }
-    await act(async () => {
-      await editorProps.onChangeStartDate('2026-01-07')
-    })
+    await act(async () => { await editorProps.onChangeStartDate('2026-11-03') })
 
-    expect(api.patchPlan).toHaveBeenCalledWith('plan', {
-      start_date: '2026-01-07',
-      end_date: '2026-01-13',
+    expect(stored).toMatchObject({
+      start_date: '2026-11-03', end_date: '2026-11-09', anchor_weekday: 2,
     })
     const latestProps = api.captureEditorProps.mock.calls.at(-1)?.[0] as {
       planStartDate: string
       weeksCount: number
     }
-    expect(latestProps.planStartDate).toBe('2026-01-07')
+    expect(latestProps.planStartDate).toBe('2026-11-03')
     expect(latestProps.weeksCount).toBe(1)
   })
   it('renames another plan in place and opens settings only after switching to that plan', async () => {
