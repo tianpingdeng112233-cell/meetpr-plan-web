@@ -2,6 +2,22 @@ import type { Translations } from './types'
 import { countUnit } from './plural'
 
 export const zhWorkspace = {
+  studentRail: {
+    title: (n: number) => `学员 · ${n}`, collapse: '折叠学员栏', expand: '展开学员栏', search: '搜索姓名 / 备注 / 拼音',
+    completedGroup: '今天已完成', scheduledGroup: '今天有安排', restGroup: '今天休息',
+    activeCount: (n: number) => `在训 · ${n}`, endedCount: (n: number) => `已解绑 · ${n}`, ended: '已解绑',
+    unboundAt: (date: string) => `解绑于 ${date}`, empty: '没有匹配的学员', emptyHint: '试试拼音首字母，如 wym',
+    returningStudent: (date: string) => `老学员 · 上次解绑于 ${date}`,
+    import: '导入',
+    aliasFailed: '保存备注失败，请稍后重试',
+    editAlias: '修改学员备注', aliasHint: '备注只有你看得到，学员 App 里的名字不变',
+    endedDate: (date: string) => `已解绑 · ${date}`, endedNote: '不进总览、不计入角标与提醒。学员用邀请码重新申请、你接受后恢复编辑。',
+    unbind: '解绑', confirmUnbind: '确认解绑', unbindTitle: (name: string) => `解绑 ${name}？`,
+    unbound: (name: string) => `已与 ${name} 解绑`, unbindFailed: '解绑失败，请稍后重试',
+    unbindConsequences: ['对方会收到通知', '对方 App 会回到输入邀请码页面，训练记录全部保留', '解绑后你只能查看，不能再编辑或发布计划'],
+    readOnly: '已解绑 · 只读', readOnlyHint: '已解绑学员只能查看：计划、历史、反馈视频都可看，格子不可编辑',
+    completed: (time: string) => `${time} 完成`, scheduled: '今日未练', rest: '休息日',
+  },
   overview: {
     setNumber: (n: number) => `第 ${n} 组`, invite: '邀请学员', attention: '需要注意', normal: '正常', reminders: '提醒',
     steps: ['把邀请消息或二维码发给学员', '学员装 App、注册账号', '在「输入邀请码」页粘贴邀请码并提交', '申请出现在右边，你点「接受」'],
@@ -110,6 +126,22 @@ export const zhWorkspace = {
 } as const
 
 export const enWorkspace = {
+  studentRail: {
+    title: (n: number) => `Students · ${n}`, collapse: 'Collapse student rail', expand: 'Expand student rail', search: 'Search name / alias / pinyin',
+    completedGroup: 'Completed today', scheduledGroup: 'Scheduled today', restGroup: 'Resting today',
+    activeCount: (n: number) => `Active · ${n}`, endedCount: (n: number) => `Unbound · ${n}`, ended: 'Unbound',
+    unboundAt: (date: string) => `Unbound on ${date}`, empty: 'No matching students', emptyHint: 'Try pinyin initials, such as wym',
+    returningStudent: (date: string) => `Returning student · Last unbound on ${date}`,
+    import: 'Import',
+    aliasFailed: 'Could not save the alias. Please try again later.',
+    editAlias: 'Edit student alias', aliasHint: 'Only you can see this alias. Their name in the app stays the same.',
+    endedDate: (date: string) => `Unbound · ${date}`, endedNote: 'Excluded from overview, badges, and reminders. Editing resumes when the student reapplies with your invite code and you accept.',
+    unbind: 'Unbind', confirmUnbind: 'Confirm unbind', unbindTitle: (name: string) => `Unbind ${name}?`,
+    unbound: (name: string) => `Unbound from ${name}`, unbindFailed: 'Could not unbind. Please try again later.',
+    unbindConsequences: ['The student will be notified', 'Their app will return to the invite code screen. All training records are retained.', 'You can only view their plans after unbinding, not edit or publish them.'],
+    readOnly: 'Unbound · Read only', readOnlyHint: 'Unbound students are read only: plans, history, and feedback videos remain available. Cells cannot be edited.',
+    completed: (time: string) => `Completed at ${time}`, scheduled: 'Not trained today', rest: 'Rest day',
+  },
   overview: {
     setNumber: (n: number) => `Set ${n}`, invite: 'Invite students', attention: 'Needs attention', normal: 'Normal', reminders: 'Reminders',
     steps: ['Send the invitation or QR to your student', 'Student installs the app and registers', 'Paste the code on the invite code screen and submit', 'Accept the request on the right'],

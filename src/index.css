@@ -3695,3 +3695,42 @@ textarea {
 .plan-editor[data-row-drag="cross-section"], .plan-editor[data-row-drag="cross-section"] * { cursor: not-allowed !important; }
 .row-drag-status { padding: 8px 16px; flex: none; border-top: 1px solid var(--bd); background: var(--page-bg); color: var(--ink); font-size: 12px; }
 .row-drag-status.is-warning { color: var(--warn); }
+/* Spec 021: the roster sits between the workspace navigation and editor. */
+.student-rail { width:252px; flex:0 0 252px; min-height:0; display:flex; flex-direction:column; border-right:1px solid var(--bd); background:var(--panel-bg); color:var(--txt); }
+.student-rail.collapsed { width:44px; flex-basis:44px; }
+.student-rail > header { display:flex; align-items:center; justify-content:space-between; padding:12px; gap:8px; }
+.student-rail > header button { width:28px; height:28px; border:1px solid var(--bd); background:var(--card-bg); color:var(--ink); border-radius:6px; cursor:pointer; flex-shrink:0; }
+.student-rail.collapsed > header { padding:12px 8px; }
+.student-rail.collapsed > header b { display:none; }
+.student-rail > input { min-width:0; margin:0 10px 10px; padding:9px 8px; font:12px var(--font-sans); border:1px solid var(--bd); border-radius:7px; color:var(--txt); background:var(--card-bg); }
+.student-rail > input:focus { outline:1px solid var(--ink); box-shadow:0 0 0 3px var(--tint); }
+.student-rail-list { flex:1; overflow:auto; min-height:0; padding:0 8px 10px; }
+.student-rail h3 { margin:14px 8px 7px; font-size:11px; color:var(--mut); font-weight:500; }
+.student-rail-row { width:100%; min-height:48px; display:flex; align-items:center; gap:6px; border:0; border-radius:7px; padding:8px; background:transparent; color:var(--txt); text-align:left; cursor:pointer; font:inherit; }
+.student-rail-row:hover { background:var(--tint); }
+.student-rail-name { flex:1; min-width:0; }
+.student-rail-name b { display:block; overflow-wrap:anywhere; font-size:14px; font-weight:500; }
+.student-rail-row small { display:block; font-size:11px; color:var(--mut); }
+.student-rail-row > small { white-space:nowrap; }
+.student-rail-row[aria-current="true"] { background:var(--tint); box-shadow:inset 0 0 0 1px var(--tint-bd); }
+.student-rail-row[aria-current="true"] b { color:var(--ink); font-weight:700; }
+.student-rail-row.ended { color:var(--mut); }
+.student-rail-row.ended[aria-current="true"] { background:var(--bd); }
+.student-rail-status.completed { color:var(--ok); }
+.student-rail-status.scheduled { color:var(--warn); }
+.student-rail-video-count { min-width:18px; padding:2px 5px; box-sizing:border-box; text-align:center; border-radius:10px; color:white; background:var(--bad); font:11px var(--font-mono); }
+.student-rail-ended { border-top:1px solid var(--bd); padding:8px; max-height:40%; display:flex; flex-direction:column; }
+.student-rail-ended > div { overflow:auto; }
+.student-rail-ended-toggle { flex-shrink:0; padding:8px; border:0; background:transparent; color:var(--mut); text-align:left; font:inherit; cursor:pointer; }
+.student-rail-empty { margin:14px 4px; padding:16px 10px; border:1px solid var(--bd); border-radius:8px; text-align:center; font-size:13px; }
+.student-rail-empty small { display:block; color:var(--mut); font-size:11px; margin-top:8px; }
+.returning-student { display:inline-block; margin-left:8px; padding:3px 7px; border:1px solid var(--tint-bd); border-radius:20px; background:var(--tint); color:var(--ink); font-size:11px; font-weight:500; }
+.student-unbind-overlay { position:fixed; inset:0; background:#11182780; z-index:210; display:flex; align-items:center; justify-content:center; padding:20px; }
+.student-unbind-dialog { width:100%; max-width:440px; box-sizing:border-box; background:var(--card-bg); color:var(--txt); border-radius:14px; padding:24px; box-shadow:0 20px 60px #0003; }
+.student-unbind-dialog h3 { margin:0 0 16px; font-size:18px; }
+.student-unbind-dialog ul { padding-left:20px; font-size:14px; line-height:1.7; }
+.student-unbind-dialog li + li { margin-top:8px; }
+.student-unbind-dialog footer { display:flex; justify-content:flex-end; gap:10px; margin-top:24px; }
+.student-unbind-dialog button { border:1px solid var(--bd); border-radius:8px; padding:8px 14px; font:inherit; background:var(--panel-bg); color:var(--txt); cursor:pointer; }
+.student-unbind-dialog button.danger { background:var(--bad); color:white; border-color:var(--bad); }
+.student-unbind-dialog button:disabled { opacity:.5; cursor:default; }

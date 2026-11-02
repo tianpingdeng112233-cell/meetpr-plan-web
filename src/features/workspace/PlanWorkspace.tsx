@@ -13,8 +13,8 @@ import { saveBlockWeekdays } from './blockPlanSettings'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { AuthUser, ChatConversation, ChatReadState, CoachBindRequest, CoachStudent, ExerciseResponse, ExerciseStatsOverview, PlanResponse, PlanWithChildren, StudentOnboardingProfile, StudentVideo } from '../../api/types'
 import {
-  getCoachStudents, getStudentPlans, getPlan, publishPlan, createPlan, patchPlan, getStudentOnboarding,
-  markImportedHistory, renameCoachStudent, deletePlan,
+  getStudentPlans, getPlan, publishPlan, createPlan, patchPlan, getStudentOnboarding,
+  markImportedHistory, deletePlan,
 } from '../../api/plans'
 import { createCustomExercise, deleteCustomExercise, getExerciseUsageStats, listExercises, updateCustomExercise } from '../../api/exercises'
 import type { CreateCustomExerciseInput } from '../../api/exercises'
@@ -30,6 +30,7 @@ import type { Week } from '../plan-editor/types'
 import { planEndISO, todayISO, weekdayIndex } from '../plan-editor/components/PlanCalendarControls'
 import { BackfillHistoryDialog, CompletePlanDialog, DeletePlanDialog, NewPlanDialog } from './PlanDialogs'
 import { getBindRequests, getExerciseStatsOverview, getStudentVideos, refreshCoachStudents } from '../../api/coach'
+import { StudentRail } from './StudentRail'
 import { CoachShell, type CoachView } from './CoachShell'
 import { StudentBoard } from './StatsViews'
 import { REQUEST_POLL_INTERVAL_MS, RequestsPanel } from './RequestsPage'
@@ -79,6 +80,7 @@ export function PlanWorkspace({ onLogout, me }: Props) {
   const [exerciseList, setExerciseList] = useState<ExerciseResponse[]>([])
   const [index, setIndex] = useState<ExerciseIndex | null>(null)
   const [students, setStudents] = useState<CoachStudent[]>([])
+  const activeStudents = useMemo(() => students.filter(student => student.bond_status !== 'ended'), [students])
   const [studentId, setStudentId] = useState<string>('')
   const [editorFeedback, setEditorFeedback] = useState<{ studentId: string; session: FeedbackSession | null } | null>(null)
   // Card B can call editorFeedbackRef.current.openFeedbackVideo(id), or omit id for first pending.
@@ -144,6 +146,7 @@ export function PlanWorkspace({ onLogout, me }: Props) {
   const loadGeneration = useRef(0)
   const inboxRequest = useRef(0)
   const rosterBackgroundGeneration = useRef(0)
+  const rosterVersion = useRef(0)
   const planRequestVersions = useRef(createKeyedRequestVersions())
   const videoRequestVersions = useRef(createKeyedRequestVersions())
   const rosterDataRequestVersions = useRef(createKeyedRequestVersions())
@@ -187,6 +190,7 @@ export function PlanWorkspace({ onLogout, me }: Props) {
     if (view === 'board') void refreshAlerts()
   }, [view, refreshAlerts])
   const acknowledgePlanView = (id: string) => {
+    if (students.find(student => student.id === id)?.bond_status === 'ended') return
     // Only explicit plan-opening actions acknowledge reminders; hydration does not.
     void markPlanViewed(id).then(() => {
       ++alertsVersion.current
@@ -600,18 +604,18 @@ export function PlanWorkspace({ onLogout, me }: Props) {
         const [ex, usage, st] = await Promise.all([
           listExercises(),
           getExerciseUsageStats().catch(() => []),
-          getCoachStudents(),
+          refreshCoachStudents({ include_ended: true }),
           refreshBindRequests(),
         ])
         exerciseUsage.current = new Map(usage.map((stat) => [stat.exercise_id, stat.plan_count]))
         const cat: Catalog = new Map(ex.map((e) => [e.id, { name: displayExerciseName(e.name), nameEn: e.name_en, custom: e.created_by_coach_id != null }]))
         setExerciseList(ex); setCatalog(cat); setIndex(new ExerciseIndex(ex, {}, exerciseUsage.current)); setStudents(st)
         if (st.length > 0) {
-          const initialStudentId = st.find(student => student.id === legacyStudentFromLocation())?.id ?? st[0].id
+          const initialStudentId = st.find(student => student.id === legacyStudentFromLocation())?.id ?? st.find(student => student.bond_status !== 'ended')?.id ?? st[0].id
           await loadStudent(initialStudentId, cat, ex)
           if (!alive) return
           void refreshInbox()
-          void loadRosterBackground(st, initialStudentId)
+          void loadRosterBackground(st.filter(student => student.bond_status !== 'ended'), initialStudentId)
         }
         setLastSyncedAt(new Date())
       } catch (e) {
@@ -644,6 +648,19 @@ export function PlanWorkspace({ onLogout, me }: Props) {
     if (view === 'editor' && students.length > 0 && !sessionDead) void refreshInbox()
   }, [refreshInbox, sessionDead, students.length, view])
 
+  useEffect(() => {
+    let alive = true
+    const refresh = async () => {
+      const version = ++rosterVersion.current
+      try {
+        const next = await refreshCoachStudents({ include_ended: true })
+        if (alive && version === rosterVersion.current) setStudents(next)
+      } catch { /* Keep the last roster available; retry on the next focus. */ }
+    }
+    window.addEventListener('focus', refresh)
+    return () => { alive = false; window.removeEventListener('focus', refresh) }
+  }, [])
+
   const cancelEditorIntent = () => { intentSequence.current += 1; setEditorIntent(null); setChatVideoIntent(null); setDayIntent(null) }
 
   const switchStudent = async (id: string) => {
@@ -662,18 +679,20 @@ export function PlanWorkspace({ onLogout, me }: Props) {
     setStudentId(id)
   }
   const refreshStudentsAfterAccept = async () => {
-    const previousIds = new Set(students.map((student) => student.id))
+    const previousIds = new Set(activeStudents.map((student) => student.id))
+    const version = ++rosterVersion.current
     const [next] = await Promise.all([
-      refreshCoachStudents().catch(() => null),
+      refreshCoachStudents({ include_ended: true }).catch(() => null),
       refreshBindRequests(),
     ])
-    if (!next) return
+    if (!next || version !== rosterVersion.current) return
     setStudents(next)
+    setBindLostIds(previous => new Set([...previous].filter(id => !next.some(student => student.id === conversations?.find(conversation => conversation.id === id)?.other_party.id && student.bond_status !== 'ended'))))
     const firstStudentId = !studentId ? next[0]?.id : undefined
     if (firstStudentId && catalog) await loadStudent(firstStudentId, catalog)
     const addedStudents = next.filter((student) => !previousIds.has(student.id))
     if (addedStudents.length > 0) {
-      void loadRosterBackground(next, firstStudentId ?? studentId)
+      void loadRosterBackground(next.filter(student => student.bond_status !== 'ended'), firstStudentId ?? studentId)
     }
     setLastSyncedAt(new Date())
   }
@@ -688,12 +707,12 @@ export function PlanWorkspace({ onLogout, me }: Props) {
     }
   }
   const newPlan = () => {
-    if (!catalog || !studentId) return
+    if (!catalog || !studentId || students.find(student => student.id === studentId)?.bond_status === 'ended') return
     setNewPlanStart(undefined)
     setNewPlanOpen(true)
   }
   const createNewPlan = async (name: string, weeks: number, startDate: string, anchorWeekday: number, weekdays: number[]) => {
-    if (!catalog || !studentId) throw new Error('PLAN_CONTEXT_MISSING')
+    if (!catalog || !studentId || students.find(student => student.id === studentId)?.bond_status === 'ended') throw new Error('PLAN_CONTEXT_MISSING')
     const generation = ++loadGeneration.current
     const targetStudentId = studentId
     try {
@@ -723,7 +742,7 @@ export function PlanWorkspace({ onLogout, me }: Props) {
 
   const deleteCurrentPlan = async () => {
     const target = actionPlan ?? loaded?.plan
-    if (!target || target.status !== 'draft' || !catalog || deleting) return
+    if (!target || students.find(student => student.id === target.trainee_id)?.bond_status === 'ended' || target.status !== 'draft' || !catalog || deleting) return
     const generation = loadGeneration.current
     setDeleting(true); setDeleteError('')
     try {
@@ -741,7 +760,7 @@ export function PlanWorkspace({ onLogout, me }: Props) {
   }
 
   const backfillHistory = async () => {
-    if (!loaded || backfilling) return
+    if (!loaded || students.find(student => student.id === loaded.plan.trainee_id)?.bond_status === 'ended' || backfilling) return
     setBackfilling(true)
     setBackfillError('')
     try {
@@ -759,7 +778,7 @@ export function PlanWorkspace({ onLogout, me }: Props) {
 
   const markCurrentComplete = async () => {
     const target = actionPlan ?? loaded?.plan
-    if (!target || target.status !== 'published' || completing) return
+    if (!target || students.find(student => student.id === target.trainee_id)?.bond_status === 'ended' || target.status !== 'published' || completing) return
     setCompleting(true); setCompleteError('')
     try {
       const updated = await patchPlan(target.id, { status: 'completed' })
@@ -772,7 +791,7 @@ export function PlanWorkspace({ onLogout, me }: Props) {
 
   const handlePlanAction = async (id: string, action: PlanAction) => {
     const target = plans.find(plan => plan.id === id)
-    if (!target || !catalog) return
+    if (!target || !catalog || students.find(student => student.id === target.trainee_id)?.bond_status === 'ended') return
     const generation = loadGeneration.current
     try {
       if (action === 'rename') {
@@ -901,9 +920,9 @@ export function PlanWorkspace({ onLogout, me }: Props) {
   }
 
   const overviewBoard = useMemo(() => deriveOverviewBoard({
-    students, dataByStudent: rosterDataByStudent, plansByStudent, conversations, videosByStudent,
+    students: activeStudents, dataByStudent: rosterDataByStudent, plansByStudent, conversations, videosByStudent,
     alerts, requestCount: bindRequests.length,
-  }), [students, rosterDataByStudent, plansByStudent, conversations, videosByStudent, alerts, bindRequests.length])
+  }), [activeStudents, rosterDataByStudent, plansByStudent, conversations, videosByStudent, alerts, bindRequests.length])
 
   const retryWorkspace = async () => {
     if (!error || errorRetrying) return
@@ -972,15 +991,17 @@ export function PlanWorkspace({ onLogout, me }: Props) {
 
   const hasStudents = students.length > 0
   const sampleWeeks = hasStudents ? [] : buildSampleWeeks()
-  const studentName = students.find((s) => s.id === studentId)?.display_name ?? ''
-  const studentOpts = students.map((s) => ({ id: s.id, label: s.display_name, tag: s.status === 'in_evaluation' ? S.workspace.plan.assessment : undefined }))
-  const hasEveryVideoArray = students.every((student) => Array.isArray(videosByStudent[student.id]))
+  const selectedStudent = students.find(student => student.id === studentId)
+  const studentEnded = selectedStudent?.bond_status === 'ended'
+  const studentName = selectedStudent?.alias ?? selectedStudent?.display_name ?? ''
+  const studentOpts = students.map((s) => ({ id: s.id, label: s.alias ?? s.display_name, tag: s.status === 'in_evaluation' ? S.workspace.plan.assessment : undefined }))
+  const hasEveryVideoArray = activeStudents.every((student) => Array.isArray(videosByStudent[student.id]))
   const videoCount = hasEveryVideoArray
-    ? students.reduce((total, student) => (
+    ? activeStudents.reduce((total, student) => (
         total + (videosByStudent[student.id] ?? []).filter((video) => video.viewed_at == null).length
       ), 0)
     : null
-  const unreadCount = unreadTotal(conversations)
+  const unreadCount = unreadTotal(conversations?.filter(conversation => !students.some(student => student.id === conversation.other_party.id && student.bond_status === 'ended')) ?? null)
   const openStudentEditor = async (id: string, preserveIntent = false, targetDayId?: string) => {
     if (!preserveIntent) cancelEditorIntent()
     const sequence = intentSequence.current
@@ -1048,7 +1069,7 @@ export function PlanWorkspace({ onLogout, me }: Props) {
     tag: `${statusTag(p.status)}${p.pending_revision_saved_at ? ` · ${S.common.pendingChanges}` : ''}`,
   }))
   const historicalReadOnly = loaded?.plan.status === 'completed' || loaded?.plan.status === 'paused'
-  const planContentEditable = loaded?.plan.status === 'draft' || loaded?.plan.status === 'published'
+  const planContentEditable = !studentEnded && (loaded?.plan.status === 'draft' || loaded?.plan.status === 'published')
   const activePublishedPlanId = plans.find((plan) => plan.status === 'published')?.id
   const studentPlanCursor = loaded?.plan.trainee_id === studentId && loaded.plan.id === activePublishedPlanId
     ? deriveStudentPlanCursor(loaded.plan)
@@ -1067,7 +1088,7 @@ export function PlanWorkspace({ onLogout, me }: Props) {
       lastSyncedAt={lastSyncedAt}
       onLogout={onLogout}
       onConfirmLeave={confirmWorkspaceLeave}
-      commandStudents={students.map((student) => ({ id: student.id, label: student.display_name }))}
+      commandStudents={students.map((student) => ({ id: student.id, label: student.alias ?? student.display_name, student }))}
       commandExercises={exerciseList.map((exercise) => ({
         id: exercise.id,
         label: fmt.exerciseName({ name: catalog?.get(exercise.id)?.name ?? displayExerciseName(exercise.name), name_en: exercise.name_en, created_by_coach_id: exercise.created_by_coach_id }),
@@ -1075,6 +1096,7 @@ export function PlanWorkspace({ onLogout, me }: Props) {
       }))}
       onCommandStudent={async id => { await openStudentEditor(id) }}
       onCommandExercise={openExerciseFromCommand}
+      studentRail={view === 'editor' && hasStudents ? <StudentRail students={students.map(student => Array.isArray(videosByStudent[student.id]) ? { ...student, pending_video_count: videosByStudent[student.id]!.filter(video => video.viewed_at == null).length } : student)} currentStudentId={studentId} onSelect={async id => { await openStudentEditor(id) }} /> : undefined}
     >
       {sessionDead && <div className="chat-session-banner">{S.workspace.plan.sessionExpired}</div>}
       {view === 'editor' && !hasStudents && (
@@ -1118,10 +1140,18 @@ export function PlanWorkspace({ onLogout, me }: Props) {
             : current)
         } : undefined}
         studentPlanCursor={studentPlanCursor}
-        readOnly={historicalReadOnly}
+        readOnly={historicalReadOnly || studentEnded}
+        student={selectedStudent}
+        onStudentChanged={updated => {
+          ++rosterVersion.current
+          setStudents(previous => previous.map(student => student.id === updated.id ? { ...student, ...updated } : student))
+          if (updated.bond_status === 'ended') {
+            void refreshAlerts()
+          }
+        }}
         initialPublished={loaded?.plan.status === 'published'}
         onBackfillAfterPublish={loaded ? async () => { await markImportedHistory(loaded.plan.id) } : undefined}
-        onPublish={loaded?.plan.status === 'draft' ? async () => {
+        onPublish={!studentEnded && loaded?.plan.status === 'draft' ? async () => {
           const updated = await publishPlan(loaded.plan.id)
           // Reflect the now-live status in the parent-owned list + loaded plan, so the plan
           // switcher's「草稿/已发布」tag can't contradict the editor — no UI shows「草稿」for a
@@ -1183,7 +1213,7 @@ export function PlanWorkspace({ onLogout, me }: Props) {
             ? { ...prev, plan: { ...prev.plan, ...nextPlan } }
             : prev)
         } : undefined}
-        onChangePlanWeeks={loaded ? async (planWeeks) => {
+        onChangePlanWeeks={loaded && !studentEnded ? async (planWeeks) => {
           if (loaded.plan.status !== 'draft') throw new Error('PLAN_NOT_DRAFT')
           await resizeServerPlanWeeks(loaded.plan.id, planWeeks)
           updateStudentPlans(loaded.plan.trainee_id, (prev) => prev.map((plan) => plan.id === loaded.plan.id ? { ...plan, plan_weeks: planWeeks } : plan))
@@ -1199,12 +1229,6 @@ export function PlanWorkspace({ onLogout, me }: Props) {
               }
             : prev)
         } : undefined}
-        onRenameStudent={studentId ? async (name) => {
-          const updated = await renameCoachStudent(studentId, name)
-          setStudents((prev) => prev.map((student) => (
-            student.id === updated.id ? { ...student, display_name: updated.display_name } : student
-          )))
-        } : undefined}
         exerciseIndex={index}
         onCreateExercise={handleCreateExercise}
         students={studentOpts}
@@ -1213,13 +1237,13 @@ export function PlanWorkspace({ onLogout, me }: Props) {
         plans={planOpts}
         currentPlanId={planId}
         onSwitchPlan={switchPlan}
-        onPlanAction={handlePlanAction}
+        onPlanAction={studentEnded ? undefined : handlePlanAction}
         openSettingsRequest={settingsTarget === planId}
         onSettingsRequestHandled={() => setSettingsTarget(null)}
-        onNewPlan={newPlan}
-        onDeleteCurrentDraft={loaded?.plan.status === 'draft' ? () => { setDeleteError(''); setDeleteOpen(true) } : undefined}
-        onMarkComplete={loaded?.plan.status === 'published' ? () => { setCompleteError(''); setCompleteOpen(true) } : undefined}
-        onBackfillHistory={loaded && loaded.plan.status !== 'draft' && loaded.plan.start_date < todayISO()
+        onNewPlan={studentEnded ? undefined : newPlan}
+        onDeleteCurrentDraft={!studentEnded && loaded?.plan.status === 'draft' ? () => { setDeleteError(''); setDeleteOpen(true) } : undefined}
+        onMarkComplete={!studentEnded && loaded?.plan.status === 'published' ? () => { setCompleteError(''); setCompleteOpen(true) } : undefined}
+        onBackfillHistory={!studentEnded && loaded && loaded.plan.status !== 'draft' && loaded.plan.start_date < todayISO()
           ? () => { setBackfillError(''); setBackfillOpen(true) }
           : undefined}
         onOpenVideos={() => editorFeedbackRef.current?.openFeedbackVideo()}
@@ -1257,12 +1281,12 @@ export function PlanWorkspace({ onLogout, me }: Props) {
             ? <div style={{ color: 'var(--fg-tertiary)' }}>{S.common.loadingEllipsis}</div>
             : <>
                 <div style={{ color: 'var(--fg-secondary)', marginBottom: 14 }}>{S.workspace.plan.studentNoPlan(studentName)}</div>
-                <button onClick={newPlan} style={{ ...btn, pointerEvents: 'auto' }}>{S.workspace.plan.newPlan}</button>
+                <button disabled={studentEnded} onClick={newPlan} style={{ ...btn, pointerEvents: 'auto' }}>{S.workspace.plan.newPlan}</button>
               </>}
         </div>
       )}
       <BackfillHistoryDialog
-        open={backfillOpen && !!loaded}
+        open={!studentEnded && backfillOpen && !!loaded}
         name={loaded?.plan.name ?? ''}
         weeks={loaded?.plan.plan_weeks ?? 0}
         busy={backfilling}
@@ -1270,9 +1294,9 @@ export function PlanWorkspace({ onLogout, me }: Props) {
         onClose={() => { if (!backfilling) setBackfillOpen(false) }}
         onConfirm={() => { void backfillHistory() }}
       />
-      <NewPlanDialog initialStartDate={newPlanStart} open={newPlanOpen} traineeId={studentId} exerciseIndex={index} onImported={acceptImportedPlan} studentName={studentName} onClose={() => setNewPlanOpen(false)} onCreate={createNewPlan} />
+      <NewPlanDialog initialStartDate={newPlanStart} open={!studentEnded && newPlanOpen} traineeId={studentId} exerciseIndex={index} onImported={acceptImportedPlan} studentName={studentName} onClose={() => setNewPlanOpen(false)} onCreate={createNewPlan} />
       <DeletePlanDialog
-        open={deleteOpen && (actionPlan ?? loaded?.plan)?.status === 'draft'}
+        open={!studentEnded && deleteOpen && (actionPlan ?? loaded?.plan)?.status === 'draft'}
         name={(actionPlan ?? loaded?.plan)?.name ?? ''}
         weeks={(actionPlan ?? loaded?.plan)?.plan_weeks ?? 0}
         trainingDays={actionPlan ? actionTrainingDays : loaded?.plan.days.length ?? 0}
@@ -1282,7 +1306,7 @@ export function PlanWorkspace({ onLogout, me }: Props) {
         onDelete={() => { void deleteCurrentPlan() }}
       />
       <CompletePlanDialog
-        open={completeOpen && (actionPlan ?? loaded?.plan)?.status === 'published'}
+        open={!studentEnded && completeOpen && (actionPlan ?? loaded?.plan)?.status === 'published'}
         name={(actionPlan ?? loaded?.plan)?.name ?? ''}
         weeks={(actionPlan ?? loaded?.plan)?.plan_weeks ?? 0}
         completing={completing}
@@ -1306,8 +1330,8 @@ export function PlanWorkspace({ onLogout, me }: Props) {
     {view === 'board' && <div className="overview-page">
       <div className="overview-top"><OverviewInvite loadInvitation={loadOverviewInvitation} /><RequestsPanel requests={bindRequests} onRequestsChanged={applyBindRequests} onAccepted={refreshStudentsAfterAccept} /></div>
       {alerts.status === 'failed' && <div className="overview-alert-error" role="alert">{S.workspace.overview.failed} · <button onClick={() => void refreshAlerts()}>{S.common.retry}</button></div>}
-      {hasStudents ? <StudentBoard
-          students={students} selectedStudentId={studentId} dataByStudent={rosterDataByStudent}
+      {activeStudents.length > 0 ? <StudentBoard
+          students={activeStudents} selectedStudentId={studentId} dataByStudent={rosterDataByStudent}
           plansByStudent={plansByStudent} conversations={conversations} board={overviewBoard}
           onSelect={selectBoardStudent} onOpen={(id) => { void openStudentEditor(id) }}
           videosByStudent={videosByStudent} onOpenTag={(id, tag) => { void openOverviewTag(id, tag) }}

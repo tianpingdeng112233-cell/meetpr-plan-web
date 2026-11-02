@@ -211,3 +211,19 @@
 .day-feedback-cards p { margin:4px 0 0; color:#111827; white-space:pre-wrap; overflow-wrap:anywhere; }
 .day-feedback-detail textarea { margin-top:auto; flex-shrink:0; }
 .day-feedback-detail footer { padding-bottom:2px; }
+
+.block-student-name { font-size:14px; font-weight:600; }
+.block-history-body:has(.student-profile) { display:flex; flex-direction:column; min-height:calc(100% - 54px); box-sizing:border-box; }
+.student-profile { flex:1; display:flex; flex-direction:column; }
+.student-profile > header { display:flex; align-items:center; gap:8px; justify-content:space-between; }
+.student-profile > header h3 { font-size:18px; overflow-wrap:anywhere; }
+.student-profile .student-alias-link { color:var(--ink); background:transparent; border:0; font-size:12px; padding:0; flex-shrink:0; }
+.student-profile > p { font-size:12px; }
+.student-profile button:disabled { color:var(--mut); opacity:.5; cursor:default; }
+.student-profile .student-unbind { margin-top:auto; width:100%; padding:9px; background:var(--card-bg); border:1px solid var(--reject-border); color:var(--bad); }
+.student-ended-label { align-self:flex-start; background:var(--panel-bg); color:var(--mut); font-size:12px; padding:5px 8px; border-radius:6px; }
+.student-profile .student-ended-note { margin-top:auto; padding-top:24px; }
+.student-alias-form { display:flex; flex-wrap:wrap; gap:6px; margin:8px 0; }
+.student-alias-form input { width:100%; box-sizing:border-box; padding:8px; border:1px solid var(--bd); border-radius:6px; font:inherit; }
+.block-readonly:has(button) { display:flex; align-items:center; flex-wrap:wrap; gap:10px; }
+.block-readonly button { border:1px dashed var(--bd); border-radius:6px; background:var(--panel-bg); color:var(--mut); padding:7px 10px; }

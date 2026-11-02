@@ -29,6 +29,27 @@ describe('plan editor context bar', () => {
     setLocale('zh')
   })
 
+  it('shows the student as plain text without the old student menu', async () => {
+    await act(async () => root.render(<TopBar studentName="王学员" planName="力量计划" published={false}
+      statusText="" onPublish={vi.fn()} />))
+    expect(host.textContent).toContain('王学员')
+    expect([...host.querySelectorAll('button')].some(button => button.textContent?.includes('王学员'))).toBe(false)
+    await act(async () => host.querySelector<HTMLButtonElement>('[data-plan-menu-trigger]')!.click())
+    expect(document.body.textContent).not.toContain('← 总览')
+    expect(document.body.textContent).not.toContain('修改学员姓名')
+  })
+
+  it('keeps ended students read-only while allowing plan switching', async () => {
+    await act(async () => root.render(<TopBar studentName="王学员" planName="力量计划" published={false}
+      readOnly studentEnded statusText="" onPublish={vi.fn()} onNewPlan={vi.fn()} onPlanAction={vi.fn()}
+      plans={[{ id: 'plan', label: '力量计划', status: 'draft' }]} />))
+    expect(buttonByText(host, '已解绑 · 只读').disabled).toBe(true)
+    await act(async () => host.querySelector<HTMLButtonElement>('[data-plan-menu-trigger]')!.click())
+    expect(buttonByText(document.body, '力量计划').disabled).toBe(false)
+    expect(buttonByText(document.body, '＋ 新建计划').disabled).toBe(true)
+    expect(document.querySelector('[aria-label="力量计划 · 更多操作"]')).toBeNull()
+  })
+
   it.each(['zh', 'en'] as const)('marks the whole current plan row and offers the new-plan action in %s', async locale => {
     setLocale(locale)
     const onNewPlan = vi.fn()
