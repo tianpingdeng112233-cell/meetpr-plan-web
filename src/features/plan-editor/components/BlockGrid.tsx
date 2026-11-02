@@ -10,6 +10,7 @@ import { addDays, DOW_LABELS, mdLabel } from '../mapping'
 import { fmt, S } from '../../../i18n/strings'
 import { orderRowsForDisplay, planDayKey, type PlanDayTarget } from '../selectionModel'
 import './block-grid.css'
+import { createPortal } from 'react-dom'
 import type { FeedbackEntry } from '../feedbackModel'
 
 interface Props {
@@ -41,6 +42,8 @@ interface Props {
   onOpen: (week: Week, day: DayCol, event: React.MouseEvent) => void
   onClose: () => void
   onSelectRow: (week: Week, day: DayCol, rowId: string, modifiers: { toggle: boolean; range: boolean }) => void
+  onRowDragState: (state: 'allowed' | 'blocked' | 'cross-section' | null) => void
+  onReorderRow: (weekNumber: number, dow: number, rowId: string, targetId: string, position: 'before' | 'after') => void
   onSelectRectangle: (days: PlanDayTarget[], rows: string[]) => void
   onInsert: (weekNumber: number, date: string) => void
   onFill: (source: BlockAddress, endWeek: number) => void
@@ -79,6 +82,10 @@ export function BlockGrid(props: Props) {
   const ref = useRef<HTMLDivElement>(null)
   const cleanup = useRef<(() => void) | null>(null)
   const suppressClick = useRef(false)
+  const [brickDrag, setBrickDrag] = useState<{
+    row: ExerciseRow; left: number; top: number; width: number
+    drop: { rowId: string; position: 'before' | 'after' } | null
+  } | null>(null)
   const [fill, setFill] = useState<{ source: BlockAddress; endWeek: number } | null>(null)
   const fillTargets = fill ? blockFillTargets(grid, fill.source, fill.endWeek) : []
   const [rectangle, setRectangle] = useState<{ left: number; top: number; width: number; height: number } | null>(null)
@@ -147,6 +154,71 @@ export function BlockGrid(props: Props) {
     cleanup.current?.(); cleanup.current = cancel
     setFill({ source, endWeek: end })
     window.addEventListener('mousemove', move); window.addEventListener('mouseup', finish); window.addEventListener('blur', cancel)
+  }
+
+  const startBrickDrag = (event: React.MouseEvent, week: Week, day: DayCol, row: ExerciseRow) => {
+    if (event.button !== 0 || props.readOnly || day.rows.some(r => r.hasLogs)
+      || (event.target as HTMLElement).closest('button,input,select,a,[data-video-marker]')) return
+    event.stopPropagation()
+    event.preventDefault()
+    cleanup.current?.()
+    const bounds = event.currentTarget.getBoundingClientRect()
+    const x = event.clientX, y = event.clientY
+    const previousCursor = document.body.style.cursor
+    const previousUserSelect = document.body.style.userSelect
+    let moved = false
+    let drop: { rowId: string; position: 'before' | 'after' } | null = null
+    const update = (e: MouseEvent) => {
+      const target = document.elementsFromPoint(e.clientX, e.clientY)
+        .map(el => el.closest<HTMLElement>('.block-brick'))
+        .find(el => el != null)
+      const cell = target?.closest<HTMLElement>('[data-block-week]')
+      const targetRow = day.rows.find(r => r.id === target?.dataset.rowid)
+      const sameDay = !!cell && Number(cell.dataset.blockWeek) === week.num && Number(cell.dataset.dow) === day.dow
+      const crossSection = sameDay && !!targetRow && props.rowTier(targetRow) !== props.rowTier(row)
+      drop = null
+      if (target && sameDay && targetRow && targetRow.id !== row.id && !target.hasAttribute('data-student-added') && !crossSection) {
+        const rect = target.getBoundingClientRect()
+        drop = { rowId: targetRow.id, position: e.clientY < rect.top + rect.height / 2 ? 'before' : 'after' }
+      }
+      document.body.style.cursor = drop ? 'grabbing' : 'not-allowed'
+      props.onRowDragState(crossSection ? 'cross-section' : drop ? 'allowed' : 'blocked')
+      setBrickDrag({ row, width: bounds.width,
+        left: bounds.left + e.clientX - x, top: bounds.top + e.clientY - y, drop })
+    }
+    const cancel = () => {
+      window.removeEventListener('mousemove', move)
+      window.removeEventListener('mouseup', finish)
+      window.removeEventListener('blur', cancel)
+      document.body.style.cursor = previousCursor
+      document.body.style.userSelect = previousUserSelect
+      setBrickDrag(null)
+      props.onRowDragState(null)
+      cleanup.current = null
+      if (moved) window.setTimeout(() => { suppressClick.current = false }, 0)
+    }
+    const move = (e: MouseEvent) => {
+      if (e.buttons === 0) { cancel(); return }
+      if (!moved && Math.hypot(e.clientX - x, e.clientY - y) < 5) return
+      e.preventDefault()
+      if (!moved) {
+        moved = true; suppressClick.current = true
+        document.body.style.userSelect = 'none'
+        props.onSelectRow(week, day, row.id, { toggle: false, range: false })
+      }
+      update(e)
+    }
+    const finish = (e: MouseEvent) => {
+      if (moved) {
+        update(e)
+        if (drop) props.onReorderRow(week.num, day.dow, row.id, drop.rowId, drop.position)
+      }
+      cancel()
+    }
+    cleanup.current = cancel
+    window.addEventListener('mousemove', move)
+    window.addEventListener('mouseup', finish)
+    window.addEventListener('blur', cancel)
   }
 
   const startRectangle = (event: React.MouseEvent) => {
@@ -224,6 +296,7 @@ export function BlockGrid(props: Props) {
           const selected = !!day && props.selectedDays.has(planDayKey({ wnum: week.num, dow: day.dow }))
           const preview = fill && fillTargets.some(target => target.weekNumber === week.num && target.dx === cell.dx)
           const rows = day ? orderRowsForDisplay(day.rows, props.rowTier) : []
+          const dragLocked = rows.some(row => row.hasLogs)
           const selectedCount = rows.filter(row => props.selectedRows.has(row.id)).length
           const fillRows = preview ? grid.rows.find(row => row.week.num === fill.source.weekNumber)?.cells[cell.dx]?.day?.rows ?? [] : []
           return <div key={cell.dx} className={`block-cell${day?.serverDayId && props.highlightedDayId === day.serverDayId ? ' day-feedback-highlight' : ''}${!day ? ' is-blank' : ''}${selected ? ' is-selected' : ''}${editing ? ' is-editing' : ''}${preview ? ' fill-preview' : ''}`}
@@ -247,8 +320,11 @@ export function BlockGrid(props: Props) {
                 const actuals = props.actualsForRow?.(row)
                 const actual = props.showActuals && !!actuals?.length
                 const summary = actual ? actualShorthand(row, actuals!) : shorthand(row)
-                return <div key={row.id} className={`block-brick${actual ? ' actual-display' : ''}${props.showActuals && !actual ? ' prescribed-muted' : ''}${props.highlightedVideo?.rowId === row.id ? ' video-highlight' : ''}${props.selectedRows.has(row.id) ? ' row-sel' : ''}${props.rowTier(row) === 'aux' ? ' aux' : ''}${i > 0 && props.rowTier(rows[i - 1]) !== props.rowTier(row) ? ' section-start' : ''}`}
-                data-rowid={row.id} data-import-doubt={activeImportDoubts(row.importDoubts).length ? "true" : undefined} data-locked={row.hasLogs} role="button" tabIndex={0} title={actual ? S.block.prescription(shorthand(row)) : `${name} ${summary}${row.hasLogs ? ' ✓' : ''}`} data-hint={actual ? S.block.prescription(shorthand(row)) : undefined}
+                const hint = [dragLocked ? S.editor.dayLockedForDrag : '', actual ? S.block.prescription(shorthand(row)) : ''].filter(Boolean).join(' · ')
+                return <div key={row.id} className={`block-brick${brickDrag?.row.id === row.id ? ' brick-dragging' : ''}${brickDrag?.drop?.rowId === row.id ? ` brick-drop-${brickDrag.drop.position}` : ''}${actual ? ' actual-display' : ''}${props.showActuals && !actual ? ' prescribed-muted' : ''}${props.highlightedVideo?.rowId === row.id ? ' video-highlight' : ''}${props.selectedRows.has(row.id) ? ' row-sel' : ''}${props.rowTier(row) === 'aux' ? ' aux' : ''}${i > 0 && props.rowTier(rows[i - 1]) !== props.rowTier(row) ? ' section-start' : ''}`}
+                data-drag-disabled={props.readOnly || dragLocked} onMouseDown={event => { if (day) startBrickDrag(event, week, day, row) }}
+                data-rowid={row.id} data-import-doubt={activeImportDoubts(row.importDoubts).length ? "true" : undefined} data-locked={row.hasLogs} role="button" tabIndex={0} title={hint || `${name} ${summary}${row.hasLogs ? ' ✓' : ''}`} data-hint={hint || undefined}
+                onDragStart={event => event.preventDefault()}
                 onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); event.stopPropagation(); event.currentTarget.click() } }}
                 onClick={event => { event.stopPropagation(); if (day) props.onSelectRow(week, day, row.id, { toggle: event.metaKey || event.ctrlKey, range: event.shiftKey }) }}>
                 <span>{name}</span><div className="block-brick-summary"><code>{summary}</code><span className="block-brick-status">{row.hasLogs && <span>✓</span>}{props.videoMarker?.(row)}</span></div>
@@ -288,6 +364,11 @@ export function BlockGrid(props: Props) {
         })}
       </div>
     })}
+    {brickDrag && createPortal(<div aria-hidden="true" className={`block-brick brick-drag-ghost${brickDrag.drop ? '' : ' is-invalid'}`}
+      style={{ left: brickDrag.left, top: brickDrag.top, width: brickDrag.width }}>
+      <span>{fmt.exerciseName({ name: brickDrag.row.name, name_en: brickDrag.row.nameEn, custom: brickDrag.row.custom }) || S.common.unnamed}</span>
+      <div className="block-brick-summary"><code>{shorthand(brickDrag.row)}</code></div>
+    </div>, document.body)}
     {rectangle && <div className="block-marquee" style={rectangle} />}
   </div>
 }

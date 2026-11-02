@@ -107,6 +107,54 @@ describe('day tier sections', () => {
     expect(orderedIds).toEqual(['sq', 'row1'])
   })
 
+  it('reorders from the row number after moving 5px', () => {
+    const reorder = vi.fn()
+    act(() => root?.render(<DayColumn day={{ dow: 0, dowLabel: '周一', dateLabel: '1/1', rest: false,
+      rows: [row('sq', { isMain: true }), row('bp', { isMain: true })] }}
+      colW={COLW} selected rowTier={tierByIsMain} onReorderRow={reorder}
+      weekBand={{ badgeFor: () => null, trainingDayOrdinal: 1, weekdayLabel: '周一' }} {...noop} />))
+    const index = host.querySelector<HTMLElement>('[data-rowid="sq"] [data-c="index"]')!
+    const target = host.querySelector<HTMLElement>('[data-rowid="bp"]')!
+    Object.defineProperty(document, 'elementsFromPoint', { configurable: true, value: () => [target] })
+    act(() => index.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, button: 0 })))
+    act(() => window.dispatchEvent(new MouseEvent('mousemove', { buttons: 1, clientY: 5 })))
+    act(() => window.dispatchEvent(new MouseEvent('mouseup', { clientY: 5 })))
+    expect(reorder).toHaveBeenCalledWith('sq', 'bp', 'after')
+  })
+
+  it.each(['name', 'sets', 'reps', 'note'])('does not drag when pressed inside the %s input', (field) => {
+    const reorder = vi.fn()
+    act(() => root?.render(<DayColumn day={{ dow: 0, dowLabel: '周一', dateLabel: '1/1', rest: false,
+      rows: [row('sq', { isMain: true }), row('bp', { isMain: true })] }}
+      colW={COLW} selected rowTier={tierByIsMain} onReorderRow={reorder} {...noop} />))
+    const input = host.querySelector<HTMLElement>(`[data-rowid="sq"] [data-c="${field}"] input`)!
+    const target = host.querySelector<HTMLElement>('[data-rowid="bp"]')!
+    Object.defineProperty(document, 'elementsFromPoint', { configurable: true, value: () => [target] })
+    act(() => input.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, button: 0 })))
+    act(() => window.dispatchEvent(new MouseEvent('mousemove', { buttons: 1, clientY: 19 })))
+    act(() => window.dispatchEvent(new MouseEvent('mouseup', { clientY: 19 })))
+    expect(reorder).not.toHaveBeenCalled()
+    expect(host.querySelector('.row-dragging')).toBeNull()
+  })
+
+  it.each(['space', 'handle', 'under-threshold', 'locked', 'read-only', 'blur', 'released-outside'])('handles expanded drag from %s', (kind) => {
+    const reorder = vi.fn()
+    act(() => root?.render(<DayColumn day={{ dow: 0, dowLabel: '周一', dateLabel: '1/1', rest: false,
+      rows: [row('sq', { isMain: true }), row('bp', { isMain: true, hasLogs: kind === 'locked' })] }}
+      colW={COLW} selected rowTier={tierByIsMain} onReorderRow={reorder} readOnly={kind === 'read-only'} {...noop} />))
+    const handle = host.querySelector<HTMLElement>(`[data-rowid="sq"] ${kind === 'space' ? '.exercise-row-main' : '.rowdrag'}`)!
+    const target = host.querySelector<HTMLElement>('[data-rowid="bp"]')!
+    Object.defineProperty(document, 'elementsFromPoint', { configurable: true, value: () => [target] })
+    act(() => handle.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, button: 0 })))
+    act(() => window.dispatchEvent(new MouseEvent('mousemove', { buttons: 1, clientY: kind === 'under-threshold' ? 4 : 19 })))
+    if (kind === 'blur') act(() => window.dispatchEvent(new Event('blur')))
+    if (kind === 'released-outside') act(() => window.dispatchEvent(new MouseEvent('mousemove', { buttons: 0, clientY: 19 })))
+    act(() => window.dispatchEvent(new MouseEvent('mouseup', { clientY: 19 })))
+    if (kind === 'space' || kind === 'handle') expect(reorder).toHaveBeenCalledWith('sq', 'bp', 'after')
+    else expect(reorder).not.toHaveBeenCalled()
+    expect(host.querySelector('.row-dragging')).toBeNull()
+  })
+
   it('rejects cross-section drops but allows in-section reorder', () => {
     const reorder = vi.fn()
     act(() => root?.render(
@@ -128,6 +176,7 @@ describe('day tier sections', () => {
       ;(document as Document & { elementsFromPoint: (x: number, y: number) => Element[] })
         .elementsFromPoint = () => [target]
       act(() => { handle.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, button: 0 })) })
+      act(() => { window.dispatchEvent(new MouseEvent('mousemove', { buttons: 1, clientY: 9 })) })
       act(() => { window.dispatchEvent(new MouseEvent('mouseup', { clientX: 0, clientY: 9 })) })
     }
 

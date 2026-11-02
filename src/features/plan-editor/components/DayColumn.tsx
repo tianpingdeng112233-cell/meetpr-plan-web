@@ -86,6 +86,7 @@ interface Props {
   rowTier?: (row: ExerciseRow) => 'main' | 'aux'
   onConfirmImport?: (rowId: string) => void
   onEditRow: (rowId: string, updater: (r: ExerciseRow) => ExerciseRow) => void
+  onRowDragState?: (state: 'allowed' | 'blocked' | 'cross-section' | null) => void
   onReorderRow?: (dragRowId: string, targetRowId: string, position: 'before' | 'after') => void
   onDeleteRow: (rowId: string) => void
   /** Focused week-band presentation; omitted for the legacy standalone view/tests. */
@@ -843,6 +844,7 @@ export function DayColumn({
   onEditRow,
   onConfirmImport,
   onReorderRow,
+  onRowDragState,
   onDeleteRow,
   weekBand,
   actualsForRow,
@@ -855,8 +857,11 @@ export function DayColumn({
   const [dateOpen, setDateOpen] = useState(false)
   const [dragRowId, setDragRowId] = useState<string | null>(null)
   const [dropTarget, setDropTarget] = useState<{ rowId: string; position: 'before' | 'after' } | null>(null)
-  const dragDisabled = day.rows.some((row) => row.hasLogs)
-  const dragDisabledTitle = S.editor.dayLockedForDrag
+  const dragDisabled = readOnly || !onReorderRow || day.rows.some((row) => row.hasLogs)
+  const dragCleanup = useRef<(() => void) | null>(null)
+  const suppressRowClick = useRef(false)
+  useLayoutEffect(() => () => dragCleanup.current?.(), [])
+  const dragDisabledTitle = readOnly ? S.editor.historyReadOnlyBanner : S.editor.dayLockedForDrag
   const dayMoveClass = dayMoveState ? ` day-move-${dayMoveState}` : ''
   const dayMoveTitle = dayMoveDisabledHint ?? S.editor.moveDayHint
   const dayMoveCursor = dayMoveDisabledHint ? 'not-allowed' : 'grab'
@@ -890,68 +895,69 @@ export function DayColumn({
   })
 
   const startRowDrag = (e: React.MouseEvent, rowId: string) => {
-    if (e.button !== 0 || dragDisabled) return
+    if (e.button !== 0 || dragDisabled
+      || (e.target as HTMLElement).closest('input,textarea,select,button,a,[role="button"],[contenteditable],.rowdel,[data-video-marker]')) return
     e.preventDefault()
     e.stopPropagation()
-    setDragRowId(rowId)
-
+    dragCleanup.current?.()
+    const x = e.clientX, y = e.clientY
+    let moved = false
     let currentDrop: { rowId: string; position: 'before' | 'after' } | null = null
     const previousUserSelect = document.body.style.userSelect
     const previousCursor = document.body.style.cursor
-    document.body.style.userSelect = 'none'
-    document.body.style.cursor = 'grabbing'
-
-    // Tier sections are derived from the catalog, so a cross-section drop would
-    // snap back on re-render; constrain reordering to the dragged row's section.
-    const dragRow = day.rows.find((r) => r.id === rowId)
-    const dragTier = rowTier && dragRow ? rowTier(dragRow) : null
+    const dragRow = day.rows.find(r => r.id === rowId)!
 
     const updateDropTarget = (clientX: number, clientY: number) => {
       const target = document.elementsFromPoint(clientX, clientY)
-        .map((el) => el.closest<HTMLElement>('[data-rowid]'))
-        .find((el): el is HTMLElement => el != null)
-      const targetRowId = target?.dataset.rowid
-      const targetRow = targetRowId ? day.rows.find((r) => r.id === targetRowId) : undefined
-      if (!target || !targetRowId || targetRowId === rowId || !targetRow
-        || (dragTier != null && rowTier && rowTier(targetRow) !== dragTier)) {
-        currentDrop = null
-        setDropTarget(null)
-        return
+        .map(el => el.closest<HTMLElement>('[data-rowid],[data-student-added]'))
+        .find(el => el != null)
+      const targetRow = day.rows.find(r => r.id === target?.dataset.rowid)
+      const crossSection = !!targetRow && resolveTier(targetRow) !== resolveTier(dragRow)
+      currentDrop = null
+      if (target && targetRow && targetRow.id !== rowId && !target.hasAttribute('data-student-added') && !crossSection) {
+        const rect = target.getBoundingClientRect()
+        currentDrop = { rowId: targetRow.id, position: clientY < rect.top + rect.height / 2 ? 'before' : 'after' }
       }
-      const rect = target.getBoundingClientRect()
-      const position = clientY < rect.top + rect.height / 2 ? 'before' : 'after'
-      currentDrop = { rowId: targetRowId, position }
       setDropTarget(currentDrop)
-    }
-
-    // Surface invalid targets (cross-section, locked day edges) instead of failing silently.
-    const syncCursor = () => {
       document.body.style.cursor = currentDrop ? 'grabbing' : 'not-allowed'
+      onRowDragState?.(crossSection ? 'cross-section' : currentDrop ? 'allowed' : 'blocked')
     }
-
-    const onMove = (ev: MouseEvent) => {
-      ev.preventDefault()
-      updateDropTarget(ev.clientX, ev.clientY)
-      syncCursor()
-    }
-
     const cleanup = () => {
       window.removeEventListener('mousemove', onMove)
       window.removeEventListener('mouseup', onUp)
+      window.removeEventListener('blur', cleanup)
       document.body.style.userSelect = previousUserSelect
       document.body.style.cursor = previousCursor
       setDragRowId(null)
       setDropTarget(null)
+      onRowDragState?.(null)
+      dragCleanup.current = null
+      if (moved) window.setTimeout(() => { suppressRowClick.current = false }, 0)
     }
-
-    const onUp = (ev: MouseEvent) => {
+    const onMove = (ev: MouseEvent) => {
+      if (ev.buttons === 0) { cleanup(); return }
+      if (!moved && Math.hypot(ev.clientX - x, ev.clientY - y) < 5) return
+      ev.preventDefault()
+      if (!moved) {
+        moved = true
+        suppressRowClick.current = true
+        setDragRowId(rowId)
+        onSelectRow?.(rowId, { toggle: false, range: false })
+        document.body.style.userSelect = 'none'
+      }
       updateDropTarget(ev.clientX, ev.clientY)
-      if (currentDrop) onReorderRow?.(rowId, currentDrop.rowId, currentDrop.position)
+    }
+    const onUp = (ev: MouseEvent) => {
+      if (moved) {
+        updateDropTarget(ev.clientX, ev.clientY)
+        if (currentDrop) onReorderRow?.(rowId, currentDrop.rowId, currentDrop.position)
+      }
       cleanup()
     }
-
+    dragCleanup.current = cleanup
     window.addEventListener('mousemove', onMove)
     window.addEventListener('mouseup', onUp)
+    window.addEventListener('blur', cleanup)
   }
 
   if (isRestDay(day) && !weekBand) {
@@ -1073,6 +1079,8 @@ export function DayColumn({
               data-locked={row.hasLogs ? 'true' : 'false'}
               data-drag-disabled={dragDisabled ? 'true' : 'false'}
               className={`exrow${highlightedVideo?.rowId === row.id ? ' video-highlight' : ''}${resolveTier(row) === 'aux' ? ' aux' : ''}${row.hasLogs ? ' locked' : ''}${(actualsForRow?.(row)?.length ?? 0) > 0 ? ' has-actuals' : ''}${isSelectedRow ? ' row-sel' : ''}${dragRowId === row.id ? ' row-dragging' : ''}${dropPosition ? ` row-drop-${dropPosition}` : ''}`}
+              onMouseDown={e => startRowDrag(e, row.id)}
+              onClickCapture={e => { if (suppressRowClick.current) { e.stopPropagation(); e.preventDefault() } }}
               onMouseDownCapture={(e) => {
                 if ((e.target as HTMLElement).closest('[data-video-marker]')) return
                 if (blockView && (e.target as HTMLElement).closest('input,select')) return
@@ -1083,7 +1091,7 @@ export function DayColumn({
               <div className="exercise-row-main">
                 {weekBand && (
                   <div className="gcell week-band-frozen week-band-index" data-c="index" style={{ width: 28 }}>
-                    {rowNumber}
+                    <span className="row-number">{rowNumber}</span><span className="row-number-grip" aria-hidden="true">⋮</span>
                   </div>
                 )}
                 <div
@@ -1096,7 +1104,6 @@ export function DayColumn({
                   <span
                     className="rowdrag"
                     title={dragDisabled ? dragDisabledTitle : S.editor.dragRowHint}
-                    onMouseDown={(e) => startRowDrag(e, row.id)}
                     onClick={(e) => {
                       e.stopPropagation()
                       if (e.detail === 0) onSelectRow?.(row.id, rowSelectionModifiers(e))
