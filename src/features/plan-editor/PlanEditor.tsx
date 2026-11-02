@@ -42,6 +42,7 @@ import {
 } from './reconcile'
 import { createSaveController } from './autosave'
 import { classifySaveFailure } from './saveFailure'
+import { clipboardStore } from './clipboardStore'
 import { formatTranslatedDaysPasteStatus, parseClipboardRows, serializeDayForClipboard, serializeRowsForClipboard } from './clipboard'
 import {
   addDays,
@@ -99,7 +100,6 @@ interface RowSelection { anchor: RowTarget | null; rowIds: Set<string> }
 interface DaySelection { anchor: Sel | null; days: Set<string> }
 interface RowSelectionModifiers { toggle: boolean; range: boolean }
 interface CreateExerciseState { open: boolean; initialName: string; bindTarget: RowTarget | null }
-type ClipboardKind = 'day' | 'days' | 'row'
 interface DayMoveVisual {
   fromWnum: number
   fromDow: number
@@ -272,8 +272,6 @@ export function findIssueRows(wks: Week[]): IssueRow[] {
 
 type WeeksUpdate = Week[] | ((prev: Week[]) => Week[])
 interface DayClipboard { rows: ExerciseRow[] }
-interface DaysClipboardDay extends DayClipboard { offset: number }
-interface DaysClipboard { days: DaysClipboardDay[] }
 
 function cloneRow(row: ExerciseRow, prefix: string, index: number): ExerciseRow {
   const source = materializeIntensityRow(row)
@@ -747,11 +745,6 @@ export function PlanEditor(props: PlanEditorProps) {
     const day = snapshot.find(week => week.num === deleted.weekNumber)?.days.find(day => day.dow === deleted.dow)
     return !day || (day.rest && !day.rows.length)
   }).flatMap(deleted => deleted.id ? [deleted.id] : [])
-  const dayClipboardRef = useRef<DayClipboard | null>(null)
-  const daysClipboardRef = useRef<DaysClipboard | null>(null)
-  const rowClipboardRef = useRef<ExerciseRow[] | null>(null)
-  const clipboardKindRef = useRef<ClipboardKind | null>(null)
-  const clipboardTextRef = useRef('')
   const nameComposingRef = useRef(false)
   const suppressDayClickRef = useRef(false)
   const dayMoveCleanupRef = useRef<((updateVisual?: boolean) => void) | null>(null)
@@ -1687,16 +1680,13 @@ export function PlanEditor(props: PlanEditorProps) {
     const text = selected.map(({ weekNum2, day }) => (
       `# W${weekNum2} ${day.dowLabel} ${day.dateLabel}\n${serializeRowsForClipboard(day.rows)}`
     )).join('\n')
-    daysClipboardRef.current = {
+    clipboardStore.write({
+      kind: 'days', text,
       days: selected.map(({ wnum, day }) => ({
         offset: absoluteDayIndex({ wnum, dow: day.dow }) - firstAbs,
         ...cloneDayClipboard(day),
       })),
-    }
-    dayClipboardRef.current = null
-    rowClipboardRef.current = null
-    clipboardKindRef.current = 'days'
-    clipboardTextRef.current = text
+    })
     try { await navigator.clipboard?.writeText(text) } catch { /* internal clipboard still works */ }
     setStatusText(S.editor.copiedDays(selected.length))
   }, [selectedDaysValue])
@@ -1706,10 +1696,7 @@ export function PlanEditor(props: PlanEditorProps) {
     const week = sel ? weeks.find((candidate) => candidate.num === sel.wnum) : null
     if (!day || !week) return
     const text = serializeDayForClipboard(day)
-    dayClipboardRef.current = cloneDayClipboard(day)
-    rowClipboardRef.current = null
-    clipboardKindRef.current = 'day'
-    clipboardTextRef.current = text
+    clipboardStore.write({ kind: 'day', text, ...cloneDayClipboard(day) })
     try { await navigator.clipboard?.writeText(text) } catch { /* internal clipboard still works */ }
     setStatusText(S.editor.copiedDay(dayDisplay(week, day)))
   }, [sel, selectedDay, weeks])
@@ -1721,9 +1708,7 @@ export function PlanEditor(props: PlanEditorProps) {
       return
     }
     const text = serializeRowsForClipboard(rows)
-    rowClipboardRef.current = cloneRows(rows, 'clip-row')
-    clipboardKindRef.current = 'row'
-    clipboardTextRef.current = text
+    clipboardStore.write({ kind: 'row', text, rows: cloneRows(rows, 'clip-row') })
     try { await navigator.clipboard?.writeText(text) } catch { /* internal clipboard still works */ }
     setStatusText(rows.length === 1
       ? S.editor.copiedExercise(
@@ -1756,13 +1741,14 @@ export function PlanEditor(props: PlanEditorProps) {
 
   const pasteSelectedRows = useCallback(async () => {
     if (!sel) return
+    const clipboard = clipboardStore.read()
     let externalRows: ExerciseRow[] | null = null
     try {
       const text = await navigator.clipboard?.readText()
-      if (text && text !== clipboardTextRef.current) externalRows = parseClipboardRows(text, props.exerciseIndex)
+      if (text && text !== (clipboard?.text ?? '')) externalRows = parseClipboardRows(text, props.exerciseIndex)
     } catch { /* use internal clipboard below */ }
 
-    const rows = externalRows ?? (clipboardKindRef.current === 'row' ? rowClipboardRef.current : null)
+    const rows = externalRows ?? (clipboard?.kind === 'row' ? clipboard.rows : null)
     if (!rows) {
       setStatusText(S.editor.nothingToPasteExercise)
       return
@@ -1772,12 +1758,13 @@ export function PlanEditor(props: PlanEditorProps) {
 
   const pasteSelectedDay = useCallback(async () => {
     if (!sel) return
+    const clipboard = clipboardStore.read()
     let externalRows: ExerciseRow[] | null = null
     try {
       const text = await navigator.clipboard?.readText()
       if (
         text
-        && text.replace(/\r/g, '') !== clipboardTextRef.current.replace(/\r/g, '')
+        && text.replace(/\r/g, '') !== (clipboard?.text ?? '').replace(/\r/g, '')
       ) externalRows = parseClipboardRows(text, props.exerciseIndex)
     } catch { /* use internal clipboard below */ }
 
@@ -1786,8 +1773,8 @@ export function PlanEditor(props: PlanEditorProps) {
       return
     }
 
-    if (clipboardKindRef.current === 'days' && daysClipboardRef.current) {
-      const { inRange, skipped } = placePlanDayOffsets(daysClipboardRef.current.days, sel, weeks)
+    if (clipboard?.kind === 'days') {
+      const { inRange, skipped } = placePlanDayOffsets(clipboard.days, sel, weeks)
       if (inRange.length === 0) {
         setWeeksWithHistory((prev) => applyPlanDayPlacements(prev, inRange, (day) => day))
         setStatusText(formatTranslatedDaysPasteStatus(0, skipped))
@@ -1812,7 +1799,7 @@ export function PlanEditor(props: PlanEditorProps) {
       return
     }
 
-    const clip = dayClipboardRef.current
+    const clip = clipboard?.kind === 'day' ? clipboard : null
     if (!clip) {
       setStatusText(S.editor.nothingToPaste)
       return
@@ -2091,8 +2078,8 @@ export function PlanEditor(props: PlanEditorProps) {
       return true
     } else if (key === 'v') {
       e.preventDefault()
-      if (clipboardKindRef.current === 'days') void pasteSelectedDay()
-      else if (selectedRow || clipboardKindRef.current === 'row') void pasteSelectedRows()
+      if (clipboardStore.read()?.kind === 'days') void pasteSelectedDay()
+      else if (selectedRow || clipboardStore.read()?.kind === 'row') void pasteSelectedRows()
       else void pasteSelectedDay()
       return true
     } else if (key === 'z' && e.shiftKey) {
@@ -3166,7 +3153,7 @@ export function PlanEditor(props: PlanEditorProps) {
       </div>
       {blockMenu && <div className="block-context-menu" role="menu" style={{ left: blockMenu.x, top: blockMenu.y }}>
         <button type="button" role="menuitem" onClick={() => { void copySelectedDay(); setBlockMenu(null) }}>{S.editor.blockCopy}</button>
-        <button type="button" role="menuitem" disabled={readOnly} onClick={() => { if (clipboardKindRef.current === 'row') void pasteSelectedRows(); else void pasteSelectedDay(); setBlockMenu(null) }}>{S.editor.blockPaste}</button>
+        <button type="button" role="menuitem" disabled={readOnly} onClick={() => { if (clipboardStore.read()?.kind === 'row') void pasteSelectedRows(); else void pasteSelectedDay(); setBlockMenu(null) }}>{S.editor.blockPaste}</button>
         <button type="button" role="menuitem" disabled={readOnly} onClick={() => { handleClearDay(); setBlockMenu(null) }}>{S.editor.blockClear}</button>
         <button type="button" role="menuitem" disabled={readOnly || !selectedBlockDay || !isBlockTrainingDay(selectedBlockDay) || deleteBlockLocked}
           title={deleteBlockLocked ? S.editor.blockDeleteLocked : undefined}
