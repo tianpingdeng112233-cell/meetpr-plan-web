@@ -2,6 +2,9 @@ import type { Translations } from './types'
 import { countUnit } from './plural'
 
 export const zhWorkspace = {
+  studentRail: {
+    completed: (time: string) => `${time} 完成`, scheduled: '今日未练', rest: '休息日',
+  },
   overview: {
     setNumber: (n: number) => `第 ${n} 组`, invite: '邀请学员', attention: '需要注意', normal: '正常', reminders: '提醒',
     steps: ['把邀请消息或二维码发给学员', '学员装 App、注册账号', '在「输入邀请码」页粘贴邀请码并提交', '申请出现在右边，你点「接受」'],
@@ -110,6 +113,9 @@ export const zhWorkspace = {
 } as const
 
 export const enWorkspace = {
+  studentRail: {
+    completed: (time: string) => `Completed at ${time}`, scheduled: 'Not trained today', rest: 'Rest day',
+  },
   overview: {
     setNumber: (n: number) => `Set ${n}`, invite: 'Invite students', attention: 'Needs attention', normal: 'Normal', reminders: 'Reminders',
     steps: ['Send the invitation or QR to your student', 'Student installs the app and registers', 'Paste the code on the invite code screen and submit', 'Accept the request on the right'],

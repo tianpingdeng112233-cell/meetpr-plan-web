@@ -833,6 +833,9 @@ const hantVideo = {
 } as const satisfies Translations<typeof zhVideo>
 
 const hantWorkspace = {
+    studentRail: {
+        completed: (time: string) => `${time} \u5B8C\u6210`, scheduled: "\u4ECA\u65E5\u672A\u7DF4", rest: "\u4F11\u606F\u65E5",
+    },
     overview: {
         setNumber: (n: number) => `\u7B2C ${n} \u7D44`, invite: "\u9080\u8ACB\u5B78\u54E1", attention: "\u9700\u8981\u6CE8\u610F", normal: "\u6B63\u5E38", reminders: "\u63D0\u9192",
         steps: ["\u628A\u9080\u8ACB\u8A0A\u606F\u6216QR Code\u767C\u7D66\u5B78\u54E1", "\u5B78\u54E1\u88DD App\u3001\u8A3B\u518A\u5E33\u865F", "\u5728\u300C\u8F38\u5165\u9080\u8ACB\u78BC\u300D\u9801\u8CBC\u4E0A\u9080\u8ACB\u78BC\u4E26\u63D0\u4EA4", "\u7533\u8ACB\u51FA\u73FE\u5728\u53F3\u908A\uFF0C\u4F60\u9EDE\u300C\u63A5\u53D7\u300D"],
