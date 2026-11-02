@@ -19,6 +19,7 @@ interface Props {
   published: boolean
   publishedDirty?: boolean
   readOnly?: boolean
+  studentEnded?: boolean
   statusText: string
   onPublish: () => void
   // optional switchers (connected mode)
@@ -39,8 +40,6 @@ interface Props {
   onBackfillHistory?: () => void | Promise<void>
   /** Rename the current plan (plan dropdown's ✎ row). */
   onRenamePlan?: () => void
-  /** Rename the selected student (student dropdown's ✎ row). */
-  onRenameStudent?: () => void
   onSave?: () => void
   saving?: boolean
   draftSaveFailed?: boolean
@@ -64,9 +63,8 @@ interface Props {
 
 
 export function TopBar(p: Props) {
-  const [menu, setMenu] = useState<'student' | 'plan' | null>(null)
+  const [menu, setMenu] = useState<'plan' | null>(null)
   const [actions, setActions] = useState<{ option: Option; top: number; left: number } | null>(null)
-  const studentAnchor = useRef<HTMLButtonElement>(null)
   const planAnchor = useRef<HTMLButtonElement>(null)
   const close = () => { setMenu(null); setActions(null) }
   useEffect(() => {
@@ -74,10 +72,10 @@ export function TopBar(p: Props) {
     window.addEventListener('keydown', escape)
     return () => window.removeEventListener('keydown', escape)
   }, [])
-  const anchor = menu === 'student' ? studentAnchor.current : planAnchor.current
+  const anchor = planAnchor.current
   const rect = anchor?.getBoundingClientRect()
-  const options: Option[] = menu === 'student' ? p.students ?? [] : p.plans?.length ? p.plans : [{ id: p.currentPlanId ?? 'current', label: p.planName, status: p.currentPlanStatus, startDate: p.planStartDate }]
-  const currentId = menu === 'student' ? p.currentStudentId : p.currentPlanId
+  const options: Option[] = p.plans?.length ? p.plans : [{ id: p.currentPlanId ?? 'current', label: p.planName, status: p.currentPlanStatus, startDate: p.planStartDate }]
+  const currentId = p.currentPlanId
   const action = (label: string, callback?: () => void | Promise<void>, danger = false, disabled = false) => callback && <button type="button" role="menuitem" className={danger ? 'danger' : ''} disabled={disabled} onClick={() => { close(); void callback() }}>{label}</button>
   const callback = (option: Option, kind: PlanAction) => {
     if (p.onPlanAction) return () => p.onPlanAction!(option.id, kind)
@@ -91,7 +89,7 @@ export function TopBar(p: Props) {
     <div className="plan-context-bar block-topbar" data-plan-context-bar="" aria-label={S.editor.planContext}
       style={{ height:56, flex:'0 0 56px', flexWrap:'nowrap', overflowX:'auto', overflowY:'hidden', whiteSpace:'nowrap' }}>
       <img src="/meetpr-icon-64.png" alt="MeetPR" width="30" height="30" /><b className="block-brand">MeetPR</b><span className="plan-context-divider" />
-      <button ref={studentAnchor} aria-expanded={menu === 'student'} aria-haspopup="menu" onClick={() => setMenu(menu === 'student' ? null : 'student')}><small>{S.block.student}</small> {p.studentName} ▾</button>
+      <span className="block-student-name"><small>{S.block.student}</small> {p.studentName}</span>
       <button ref={planAnchor} data-plan-menu-trigger="" aria-expanded={menu === 'plan'} aria-haspopup="menu" onClick={() => setMenu(menu === 'plan' ? null : 'plan')}><small>{S.block.plan}</small> {p.planName}{p.planStartDate ? ` · ${mmdd(p.planStartDate)}` : ''}{p.weeksCount ? ` · ${S.common.countWeeks(p.weeksCount)}` : ''} ▾</button>
       <span className="plan-context-spacer" />
       {(p.issueCount ?? 0) > 0 && <button title={p.issueHint} onClick={p.onJumpIssue}>{S.editor.issuesToReview(p.issueCount!)}</button>}
@@ -102,8 +100,8 @@ export function TopBar(p: Props) {
       <button type="button" className="show-actuals" role="switch" aria-label={S.block.showActuals} aria-checked={p.showActuals ?? false} onClick={p.onToggleActuals}>{S.block.showActuals}<i aria-hidden="true" /></button>
       <span className={`plan-autosave-status${p.publishedDirty ? ' published-dirty' : ''}`} data-testid="plan-save-status" role="status"><span className={p.published ? 'published' : ''} aria-hidden="true" />{p.statusText}</span>
       {!p.published && !p.readOnly && p.draftSaveFailed && p.onSave && <button type="button" disabled={p.saving} onClick={p.onSave}>{S.block.retrySave}</button>}
-      <button className="block-primary" disabled={p.readOnly || p.saving || (p.published && !p.onSave)} onClick={p.published ? p.onSave : p.onPublish} title={p.readOnly ? S.editor.historicalReadOnlyHint : undefined}>
-        {p.readOnly ? S.editor.historicalReadOnly : p.saving ? S.editor.saving : p.published ? S.editor.updatePlan : S.editor.publishToStudent}
+      <button className="block-primary" disabled={p.studentEnded || p.readOnly || p.saving || (p.published && !p.onSave)} onClick={p.published ? p.onSave : p.onPublish} title={p.studentEnded ? S.workspace.studentRail.readOnlyHint : p.readOnly ? S.editor.historicalReadOnlyHint : undefined}>
+        {p.studentEnded ? S.workspace.studentRail.readOnly : p.readOnly ? S.editor.historicalReadOnly : p.saving ? S.editor.saving : p.published ? S.editor.updatePlan : S.editor.publishToStudent}
       </button>
 
     </div>
@@ -112,23 +110,18 @@ export function TopBar(p: Props) {
       <div role="menu" className="block-plan-menu" style={{ top:rect.bottom + 6, left:Math.min(rect.left, window.innerWidth - 316) }}>
         {menu === 'plan' && <header>{S.block.switchPlan}</header>}
         {options.map(option => <div key={option.id} className={`plan-menu-row${option.id === currentId ? ' current' : ''}`}>
-          <button type="button" role="menuitem" onClick={() => { close(); void (menu === 'student' ? p.onSwitchStudent : p.onSwitchPlan)?.(option.id) }}><span>{option.label}</span><small>{option.startDate ? `${mmdd(option.startDate)} · ` : ''}{option.tag}</small></button>
-          {menu === 'plan' && <button type="button" aria-label={S.sheetImport.planActions(option.label)} aria-haspopup="menu" aria-expanded={actions?.option.id === option.id} onClick={event => {
+          <button type="button" role="menuitem" onClick={() => { close(); void p.onSwitchPlan?.(option.id) }}><span>{option.label}</span><small>{option.startDate ? `${mmdd(option.startDate)} · ` : ''}{option.tag}</small></button>
+          {!p.studentEnded && menu === 'plan' && <button type="button" aria-label={S.sheetImport.planActions(option.label)} aria-haspopup="menu" aria-expanded={actions?.option.id === option.id} onClick={event => {
             const bounds = event.currentTarget.getBoundingClientRect()
             setActions(actions?.option.id === option.id ? null : { option, top: Math.min(bounds.top, window.innerHeight - 260), left: Math.min(bounds.right + 6, window.innerWidth - 316) })
           }}>⋯</button>}
         </div>)}
         <hr />
-        {menu === 'student' ? <>
-          {action(S.editor.renameStudent, p.onRenameStudent)}
-          {action(S.editor.backToOverview, p.onBackToBoard)}
-        </> : <>
-          {p.onNewPlan && <button type="button" role="menuitem" className="plan-menu-new"
-            onClick={() => { close(); p.onNewPlan?.() }}>{S.editor.newPlan}</button>}
+        {p.onNewPlan && <button type="button" role="menuitem" className="plan-menu-new" disabled={p.studentEnded}
+          onClick={() => { close(); p.onNewPlan?.() }}>{S.editor.newPlan}</button>}
 
-        </>}
       </div>
-      {actions && menu === 'plan' && <div role="menu" data-plan-actions="" className="block-plan-menu plan-row-actions" style={{ top: Math.max(8, actions.top), left: Math.max(8, actions.left) }}>
+      {!p.studentEnded && actions && menu === 'plan' && <div role="menu" data-plan-actions="" className="block-plan-menu plan-row-actions" style={{ top: Math.max(8, actions.top), left: Math.max(8, actions.left) }}>
         {editableAction && action(S.block.settingsMenu, callback(actions.option, 'settings'), false, p.saving)}
         {editableAction && action(S.editor.renameCurrentPlan, callback(actions.option, 'rename'), false, p.saving)}
         {actionStatus !== 'draft' && (actions.option.startDate ?? p.planStartDate ?? '') < todayISO() && action(S.editor.backfillPastTraining, callback(actions.option, 'backfill'), false, p.saving)}

@@ -1,3 +1,5 @@
+import { StudentProfile } from './StudentProfile'
+import type { StudentProfileProps } from './StudentProfile'
 import { useEffect, useRef, useState } from 'react'
 import { getExerciseStats } from '../../../api/coach'
 import type { CoachFeedbackResponse, ExerciseHistorySession, ExerciseHistorySet, ExerciseStatsDetail, ExerciseStatsOverview, StudentOnboardingProfile, StudentVideo } from '../../../api/types'
@@ -14,7 +16,11 @@ const noRefresh = async () => {}
 
 const setLabel = (set: ExerciseHistorySet) => `${kg(set.weight_kg)}×${set.reps}${set.actual_rir != null ? ` RIR ${set.actual_rir}` : set.rpe ? ` @${Number(set.rpe)}` : ''}`
 
-export function BlockHistory({ datesFailed, onRetryDates, days = [], feedbackFailed, feedbackLoaded, onRetryFeedback, onFeedbackSent, onRefreshFeedback, onOpenDay, hoveredDayId, onHoverDay, studentId, studentName, row, profile, overview, onVideos, onVideoVisibilityChange, videos, entries = [], feedback = null, onFeedbackChange, onHighlight, onVideoViewed, onRefreshVideos }: {
+export function BlockHistory({ student, onStudentChanged, onBeforeUnbind, readOnly = false, datesFailed, onRetryDates, days = [], feedbackFailed, feedbackLoaded, onRetryFeedback, onFeedbackSent, onRefreshFeedback, onOpenDay, hoveredDayId, onHoverDay, studentId, studentName, row, profile, overview, onVideos, onVideoVisibilityChange, videos, entries = [], feedback = null, onFeedbackChange, onHighlight, onVideoViewed, onRefreshVideos }: {
+  student?: StudentProfileProps['student']
+  onStudentChanged?: StudentProfileProps['onChanged']
+  onBeforeUnbind?: StudentProfileProps['onBeforeUnbind']
+  readOnly?: boolean
   datesFailed?: boolean
   onRetryDates?: () => void
   days?: FeedbackDay[]
@@ -142,11 +148,14 @@ export function BlockHistory({ datesFailed, onRetryDates, days = [], feedbackFai
   const entryPlace = (entry: FeedbackEntry) => entry.inPlan ? `W${entry.week} · D${entry.day}` : shortDate(entry.video.logged_at ?? entry.video.created_at)
   const title = activeEntry ? `${entryPlace(activeEntry)} · ${entryName(activeEntry)} · ${S.video.setNumber((activeVideo?.set_index ?? 0) + 1)} ${activeVideo?.weight_kg != null ? kg(activeVideo.weight_kg) : '—'}×${activeVideo?.reps ?? '—'}${activeVideo?.rpe ? ` @${Number(activeVideo.rpe)}` : ''}` : ''
   const currentPlayer = feedback && activeVideo ? { video: activeVideo, title } : null
+  const profileContent = <><Profile profile={profile} compact />
+    <div className="history-metrics">{metricCells({ level: 1, profile, detail: null, overview, reps: 0, weight: null }).map(cell => <div key={cell.label}><b>{cell.value}</b><small>{cell.label}</small></div>)}</div>
+    <p>{S.block.historyHint}</p></>
   return <><aside ref={rail} data-block-history="" data-feedback-mode={feedback ? "" : undefined} tabIndex={-1} className={`block-history${collapsed && !feedback ? ' collapsed' : ''}`} onMouseDown={event => {
     const active = document.activeElement
     if (active instanceof HTMLElement && active.closest('.block-cell')) editorFocus.current = active
     // History controls never move the edit caret or invoke block-selection gestures.
-    if (!feedback && !(event.target instanceof HTMLVideoElement)) event.preventDefault()
+    if (!feedback && !(event.target instanceof HTMLVideoElement) && !(event.target instanceof Element && event.target.closest('.student-profile'))) event.preventDefault()
     event.stopPropagation()
   }}>
     {feedback ? <>
@@ -176,14 +185,12 @@ export function BlockHistory({ datesFailed, onRetryDates, days = [], feedbackFai
         </section>)}
       </div>}
       <div ref={setSidebar} className="feedback-sidebar">
-        {selectedDay && studentId && <DayFeedbackDetail datesFailed={datesFailed} onRetryDates={onRetryDates} key={`${studentId}:${selectedDay.dayId}`} day={selectedDay} studentId={studentId} onSent={item => onFeedbackSent?.(item)} />}
+        {selectedDay && studentId && <DayFeedbackDetail readOnly={readOnly} datesFailed={datesFailed} onRetryDates={onRetryDates} key={`${studentId}:${selectedDay.dayId}`} day={selectedDay} studentId={studentId} onSent={item => onFeedbackSent?.(item)} />}
       </div>
     </> : <>
     <header><span>{S.block.history}</span>{!collapsed && onFeedbackChange && (videos === null ? <button className="pending-entry" onClick={() => { if (studentId) void onRefreshVideos?.(studentId) }}>{S.block.videosFailed} · {S.common.retry}</button> : <button className="pending-entry" onClick={() => openEntry(entries.find(entry => entry.video.viewed_at == null))}><i className="feedback-play-icon" aria-hidden="true">▶</i> {S.block.feedbackEntry(pending)}</button>)}<button aria-label={collapsed ? S.block.expand : S.block.collapse} onClick={toggle}>{collapsed ? '‹' : '›'}</button></header>
     {!collapsed && <div className="block-history-body">
-      {!query ? <><h3>{studentName}</h3><Profile profile={profile} compact />
-        <div className="history-metrics">{metricCells({ level: 1, profile, detail: null, overview, reps: 0, weight: null }).map(cell => <div key={cell.label}><b>{cell.value}</b><small>{cell.label}</small></div>)}</div>
-        <p>{S.block.historyHint}</p></> : <>
+      {!query ? (student && onStudentChanged ? <StudentProfile key={student.id} student={student} onChanged={onStudentChanged} onBeforeUnbind={onBeforeUnbind}>{profileContent}</StudentProfile> : <><h3>{studentName}</h3>{profileContent}</>) : <>
         <nav aria-label={S.block.history} className="history-breadcrumbs">
           <button className={level === 2 ? 'current' : ''} onClick={() => setCeiling(2)}>{fmt.exerciseName({ name: row!.name, name_en: row!.nameEn, custom: row!.custom })}</button>
           {contextRailLevel(row) >= 3 && <><span>›</span><button className={level === 3 ? 'current' : ''} onClick={() => setCeiling(3)}>{S.common.countSets(row!.boxes.length)}</button></>}
@@ -205,7 +212,7 @@ export function BlockHistory({ datesFailed, onRetryDates, days = [], feedbackFai
     </div>}
     </>}
   </aside>
-    {currentPlayer && (!collapsed || feedback) && <VideoWorkbench studentId={studentId ?? ''} videos={videos} onRefreshVideos={onRefreshVideos ?? noRefresh}
+    {currentPlayer && (!collapsed || feedback) && <VideoWorkbench readOnly={readOnly} studentId={studentId ?? ''} videos={videos} onRefreshVideos={onRefreshVideos ?? noRefresh}
       embedded={{ ...currentPlayer, playerOpen: feedback ? feedback.playerOpen : true, anchor: rail, onClose: closePlayer, onVideoViewed, sidebar: feedback ? sidebar : null, studentName,
         replyTitle: activeEntry ? `${S.block.replyVideo} · ${entryPlace(activeEntry)} ${entryName(activeEntry)} ${S.video.setNumber((activeVideo?.set_index ?? 0) + 1)}` : undefined,
         onFeedbackSent: item => { onFeedbackSent?.(item); void onRefreshFeedback?.() },

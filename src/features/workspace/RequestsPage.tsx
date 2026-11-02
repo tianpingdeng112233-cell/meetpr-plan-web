@@ -1,3 +1,4 @@
+import { previouslyEnded } from './studentRailModel'
 import { useState } from 'react'
 import { acceptBindRequest, rejectBindRequest } from '../../api/coach'
 import type { CoachBindRequest } from '../../api/types'
@@ -87,6 +88,7 @@ export function RequestsPanel({ requests, onRequestsChanged, onAccepted }: Props
           </div>
         )}
         {requests.map((request) => {
+          const endedDate = previouslyEnded(request)
           const profile = request.onboarding
           const expanded = open.has(request.id)
           const processing = busy === request.id
@@ -107,7 +109,7 @@ export function RequestsPanel({ requests, onRequestsChanged, onAccepted }: Props
               >
                 <span className="request-avatar">{request.display_name.slice(0, 1)}</span>
                 <span className="request-who">
-                  <b>{request.display_name}</b>
+                  <b>{request.display_name}{endedDate && <span className="returning-student">{S.workspace.studentRail.returningStudent(endedDate)}</span>}</b>
                   <small>{request.masked_phone || S.workspace.requests.phoneMissing} · {requestTime(request.submitted_at)}</small>
                   <span>{requestSummary(request)}</span>
                 </span>

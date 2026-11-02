@@ -79,12 +79,14 @@ export const videoAssociation = (video: {
 }
 
 export function VideoWorkbench({
+  readOnly = false,
   studentId,
   onRefreshVideos,
   conversation = null,
   onConversationOpened,
   embedded,
 }: {
+  readOnly?: boolean
   embedded: {
     video: StudentVideo
     playerOpen?: boolean
@@ -371,7 +373,8 @@ export function VideoWorkbench({
     const nextTime = video.currentTime
     setCurrentTime(nextTime)
     if (
-      !active
+      readOnly
+      || !active
       || active.viewed_at != null
       || viewedRequests.current.has(active.id)
       || !Number.isFinite(nextTime)
@@ -525,7 +528,7 @@ export function VideoWorkbench({
   }
 
   const openAnnotation = () => {
-    if (annotateUnavailable || annotationOpen || annotationSending) return
+    if (readOnly || annotateUnavailable || annotationOpen || annotationSending) return
     annotationGeneration.current += 1
     annotationSession.current = { clientId: newClientId() }
     annotationExport.current = null
@@ -701,6 +704,7 @@ export function VideoWorkbench({
   }
 
   const sendAnnotation = async () => {
+    if (readOnly) return
     if (annotationSending) return
     const videoId = activeVideoIdRef.current
     if (videoId == null) return
@@ -745,7 +749,7 @@ export function VideoWorkbench({
   }
 
   const sendFeedback = async () => {
-    if (!active || feedbackState === 'sending') return
+    if (readOnly || !active || feedbackState === 'sending') return
     const draft = feedback
     const text = draft.trim()
     if (!text || text.length > 2000) return
@@ -781,7 +785,7 @@ export function VideoWorkbench({
   }
 
   const saveCoachRpe = async (next: number | null) => {
-    if (!active?.set_log_id || coachRpeSaving) return
+    if (readOnly || !active?.set_log_id || coachRpeSaving) return
     const videoId = active.id
     const setLogId = active.set_log_id
     const previous = coachRpe
@@ -808,7 +812,7 @@ export function VideoWorkbench({
   }
 
   const addMarker = async () => {
-    if (!active || markerSaving) return
+    if (readOnly || !active || markerSaving) return
     const videoId = active.id
     const note = markerNote.trim()
     if (!note || note.length > 500) return
@@ -832,7 +836,7 @@ export function VideoWorkbench({
     }
   }
   const removeMarker = async (marker: VideoMarker) => {
-    if (!active || deletingMarkerIds.has(marker.id)) return
+    if (readOnly || !active || deletingMarkerIds.has(marker.id)) return
     const videoId = active.id
     setDeletingMarkerIds((current) => new Set(current).add(marker.id))
     try {
@@ -869,14 +873,14 @@ export function VideoWorkbench({
                         className="video-annotate"
                         aria-label={embedded ? S.block.drawLine : undefined}
                         title={embedded ? S.block.drawLine : undefined}
-                        disabled={duration <= 0 || annotationOpen || annotationSending}
+                        disabled={readOnly || duration <= 0 || annotationOpen || annotationSending}
                         onClick={openAnnotation}
                       >{embedded ? S.block.drawLineCompact : <><i>✏️</i>{S.video.annotation}</>}</button>
                     )}
                     {markerServiceVisible && (
                       <button
                         type="button"
-                        className="video-add-marker"
+                        className="video-add-marker" disabled={readOnly}
                         aria-label={embedded ? S.video.addMarkerHere : undefined}
                         title={embedded ? S.video.addMarkerHere : undefined}
                         onClick={() => {
@@ -1087,7 +1091,7 @@ export function VideoWorkbench({
                   <button
                     type="button"
                     className="video-marker-save"
-                    disabled={!markerNote.trim() || markerSaving}
+                    disabled={readOnly || !markerNote.trim() || markerSaving}
                     onClick={() => void addMarker()}
                   >{markerSaving ? S.video.saving : S.video.saveMarker}</button>
                   <button
@@ -1103,7 +1107,7 @@ export function VideoWorkbench({
                   <b>{embedded.replyTitle ?? (embedded.studentName ? S.block.replyTo(embedded.studentName) : S.video.feedbackTitle)}</b>
                   <span>{videoAssociation(active)}</span>
                 </header>
-                <textarea
+                <textarea disabled={readOnly}
                   value={feedback}
                   maxLength={2000}
                   placeholder={embedded?.studentName ? S.block.feedbackPlaceholder(embedded.studentName) : S.video.feedbackPlaceholder}
@@ -1123,7 +1127,7 @@ export function VideoWorkbench({
                   <span>{feedbackError}</span>
                   <button
                     type="button"
-                    disabled={!feedback.trim() || feedback.length > 2000 || feedbackState === 'sending'}
+                    disabled={readOnly || !feedback.trim() || feedback.length > 2000 || feedbackState === 'sending'}
                     onClick={() => void sendFeedback()}
                   >
                     {feedbackState === 'sending' ? S.video.sending : feedbackState === 'sent' ? S.video.sent : S.video.sendFeedback}
@@ -1162,7 +1166,7 @@ export function VideoWorkbench({
                                 type="button"
                                 className="video-marker-delete"
                                 aria-label={S.video.deleteMarker(timeLabel(marker.time_ms / 1000))}
-                                disabled={deletingMarkerIds.has(marker.id)}
+                                disabled={readOnly || deletingMarkerIds.has(marker.id)}
                                 onClick={() => void removeMarker(marker)}
                               >×</button>
                             </div>
@@ -1188,7 +1192,7 @@ export function VideoWorkbench({
           <select
             aria-label={S.video.calibrateRpeAria}
             value={coachRpe == null ? '' : String(Number(coachRpe))}
-            disabled={coachRpeSaving}
+            disabled={readOnly || coachRpeSaving}
             onChange={(event) => void saveCoachRpe(Number(event.target.value))}
           >
             <option value="" disabled>{embedded ? S.block.calibrateRpe : S.video.calibrateRpe}</option>
@@ -1199,7 +1203,7 @@ export function VideoWorkbench({
           <button
             type="button"
             className="video-rpe-clear"
-            disabled={coachRpe == null || coachRpeSaving}
+            disabled={readOnly || coachRpe == null || coachRpeSaving}
             onClick={() => void saveCoachRpe(null)}
           >
             {embedded ? S.block.clearCalibration : S.video.clearCalibration}

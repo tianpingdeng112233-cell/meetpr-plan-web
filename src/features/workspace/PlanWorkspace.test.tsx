@@ -19,7 +19,6 @@ const api = vi.hoisted(() => ({
   markPlanViewed: vi.fn(),
   getStudentSetLogs: vi.fn(),
   markVideoViewed: vi.fn(),
-  getCoachStudents: vi.fn(),
   getStudentPlans: vi.fn(),
   getPlan: vi.fn(),
   publishPlan: vi.fn(),
@@ -61,7 +60,6 @@ vi.mock('../../api/onboarding', () => ({ getPublicInvite: api.publicInvite }))
 vi.mock('../../api/overviewAlerts', () => ({ getOverviewAlerts: api.getOverviewAlerts, markPlanViewed: api.markPlanViewed }))
 vi.mock('../../api/invite', async importOriginal => ({ ...await importOriginal<typeof import('../../api/invite')>(), getInviteCodes: api.getInviteCodes }))
 vi.mock('../../api/plans', () => ({
-  getCoachStudents: api.getCoachStudents,
   getStudentPlans: api.getStudentPlans,
   getPlan: api.getPlan,
   getStudentOnboarding: api.getStudentOnboarding,
@@ -69,7 +67,6 @@ vi.mock('../../api/plans', () => ({
   createPlan: api.createPlan,
   patchPlan: api.patchPlan,
   markImportedHistory: vi.fn(),
-  renameCoachStudent: vi.fn(),
   deletePlan: api.deletePlan,
 }))
 vi.mock('../../api/exercises', () => ({
@@ -548,7 +545,7 @@ describe('PlanWorkspace editor remount', () => {
   it('013 overview waits for the target plan and videos, then opens the first in-plan pending video', async () => {
     api.realEditor = true
     api.getPlan.mockResolvedValue(plan('初始计划'))
-    api.getCoachStudents.mockResolvedValue([
+    api.refreshCoachStudents.mockResolvedValue([
       { id: 'student', display_name: '学员', status: 'active', evaluation: null },
       { id: 'second', display_name: '乙', status: 'active', evaluation: null },
     ])
@@ -592,7 +589,7 @@ describe('PlanWorkspace editor remount', () => {
 
   it('013 unread opens chat, remembers collapse, and switches the conversation with the editor athlete', async () => {
     api.getPlan.mockResolvedValue(plan('聊天计划'))
-    api.getCoachStudents.mockResolvedValue([
+    api.refreshCoachStudents.mockResolvedValue([
       { id: 'student', display_name: '学员', status: 'active', evaluation: null },
       { id: 'second', display_name: '乙', status: 'active', evaluation: null },
     ])
@@ -617,7 +614,7 @@ describe('PlanWorkspace editor remount', () => {
 
   it('013 legacy messages address keeps its athlete and lands in the plan editor', async () => {
     window.history.replaceState(null, '', '?view=messages&studentId=second')
-    api.getCoachStudents.mockResolvedValue([
+    api.refreshCoachStudents.mockResolvedValue([
       { id: 'student', display_name: '学员', status: 'active', evaluation: null },
       { id: 'second', display_name: '乙', status: 'active', evaluation: null },
     ])
@@ -708,7 +705,7 @@ describe('PlanWorkspace editor remount', () => {
     const first = { ...plan('first'), name: 'First plan' }
     const second = { ...plan('second'), id: 'second', name: 'Second plan', days: [] }
     const other = { ...plan('other'), id: 'other', name: 'Other plan', trainee_id: 'other-student', days: [] }
-    api.getCoachStudents.mockResolvedValue([{ id: 'student', display_name: '甲', status: 'active', evaluation: null }, { id: 'other-student', display_name: '乙', status: 'active', evaluation: null }])
+    api.refreshCoachStudents.mockResolvedValue([{ id: 'student', display_name: '甲', status: 'active', evaluation: null }, { id: 'other-student', display_name: '乙', status: 'active', evaluation: null }])
     api.getStudentPlans.mockImplementation((id: string) => Promise.resolve(id === 'student' ? [first, second] : [other]))
     api.getPlan.mockImplementation((id: string) => Promise.resolve(id === 'second' ? second : id === 'other' ? other : first))
     api.getStudentVideos.mockResolvedValue([video('v1', '深蹲'), video('v2', '深蹲'), video('v3', '深蹲')])
@@ -737,8 +734,10 @@ describe('PlanWorkspace editor remount', () => {
     expect(host.querySelector('.feedback-queue')?.textContent).toContain('不在本计划')
     expect(host.querySelector('[data-feedback-video="v1"]')?.textContent).not.toContain('W1')
     const switchStudent = async (name: string) => {
-      await act(async () => { const button = [...host.querySelectorAll<HTMLButtonElement>('.block-topbar button')].find(el => el.textContent?.startsWith('学员'))!; button.click() })
-      await act(async () => { clickButton(document.body, name); await settle() })
+      await act(async () => {
+        const button = [...host.querySelectorAll<HTMLButtonElement>('.student-rail-row')].find(el => el.querySelector('b')?.textContent === name)!
+        button.click(); await settle()
+      })
     }
     await switchStudent('乙')
     expect(host.querySelector('[data-feedback-mode]')).toBeNull()
@@ -899,7 +898,7 @@ describe('PlanWorkspace editor remount', () => {
     api.markPlanViewed.mockResolvedValue(undefined)
     api.listExercises.mockResolvedValue([exercise])
     api.getExerciseUsageStats.mockResolvedValue([])
-    api.getCoachStudents.mockResolvedValue([{ id: 'student', display_name: '学员', status: 'active', evaluation: null }])
+    api.refreshCoachStudents.mockResolvedValue([{ id: 'student', display_name: '学员', status: 'active', evaluation: null }])
     api.getStudentPlans.mockResolvedValue([plan('加载时快照')])
     api.getStudentOnboarding.mockResolvedValue(null)
     api.publishPlan.mockResolvedValue(plan('发布完成'))
@@ -1079,7 +1078,7 @@ describe('PlanWorkspace editor remount', () => {
   })
 
   it.each(['double-click', 'Enter', 'switcher', 'command', 'same-student command'])('019 R1 marks only an explicitly opened student plan: %s', async entry => {
-    api.getCoachStudents.mockResolvedValue([
+    api.refreshCoachStudents.mockResolvedValue([
       { id: 'student', display_name: '学员', status: 'active', evaluation: null },
       { id: 'second', display_name: '乙', status: 'active', evaluation: null },
     ])
@@ -1296,7 +1295,7 @@ describe('PlanWorkspace editor remount', () => {
   })
 
   it('019 zero students keeps both top cards and the acceptance hint', async () => {
-    api.getCoachStudents.mockResolvedValue([])
+    api.refreshCoachStudents.mockResolvedValue([])
     await act(async () => { root.render(<PlanWorkspace me={me} onLogout={() => {}} />); await settle() })
     await act(async () => { clickNav(host, '总览'); await settle() })
     expect(host.querySelector('.overview-invite')).not.toBeNull()
@@ -1366,7 +1365,7 @@ describe('PlanWorkspace editor remount', () => {
   }, 15_000)
 
   it('keeps the first student workspace usable when roster badge loading fails', async () => {
-    api.getCoachStudents.mockResolvedValue([
+    api.refreshCoachStudents.mockResolvedValue([
       { id: 'student', display_name: '首位学员', status: 'active', evaluation: null },
       { id: 'student-2', display_name: '后台失败学员', status: 'active', evaluation: null },
     ])
@@ -1398,7 +1397,7 @@ describe('PlanWorkspace editor remount', () => {
     const onLogout = vi.fn()
     const mirrorKey = 'meetpr.planEditor.draftMirror.keep-me'
     window.localStorage.setItem(mirrorKey, 'local-draft')
-    api.getCoachStudents.mockRejectedValueOnce(new Error('offline'))
+    api.refreshCoachStudents.mockRejectedValueOnce(new Error('offline'))
     api.getPlan.mockResolvedValue(plan('重试后恢复'))
 
     await act(async () => {
@@ -1421,7 +1420,7 @@ describe('PlanWorkspace editor remount', () => {
     const studentAPlan = studentPlan({ id: 'plan-a', studentId: 'student-a', name: '甲学员计划' })
     const studentBPlan = studentPlan({ id: 'plan-b', studentId: 'student-b', name: '乙学员计划' })
     let studentBRequests = 0
-    api.getCoachStudents.mockResolvedValue([
+    api.refreshCoachStudents.mockResolvedValue([
       { id: 'student-a', display_name: '甲学员', status: 'active', evaluation: null },
       { id: 'student-b', display_name: '乙学员', status: 'active', evaluation: null },
     ])
@@ -1459,7 +1458,7 @@ describe('PlanWorkspace editor remount', () => {
     let resolveBackgroundB!: (rows: PlanResponse[]) => void
     let resolveForegroundB!: (rows: PlanResponse[]) => void
     let studentBRequests = 0
-    api.getCoachStudents.mockResolvedValue([
+    api.refreshCoachStudents.mockResolvedValue([
       { id: 'student-a', display_name: '甲学员', status: 'active', evaluation: null },
       { id: 'student-b', display_name: '乙学员', status: 'active', evaluation: null },
     ])
@@ -1523,7 +1522,7 @@ describe('PlanWorkspace editor remount', () => {
     let resolveBackgroundB!: (rows: PlanResponse[]) => void
     let resolveForegroundB!: (rows: PlanResponse[]) => void
     let studentBRequests = 0
-    api.getCoachStudents.mockResolvedValue([
+    api.refreshCoachStudents.mockResolvedValue([
       { id: 'student-a', display_name: '甲学员', status: 'active', evaluation: null },
       { id: 'student-b', display_name: '乙学员', status: 'active', evaluation: null },
     ])
@@ -1568,7 +1567,7 @@ describe('PlanWorkspace editor remount', () => {
     api.getExerciseStatsOverview.mockResolvedValue(null)
     api.getOverviewAlerts.mockRejectedValue(new ApiException(404, 'NOT_FOUND'))
     let keepSecondPending!: (rows: PlanResponse[]) => void
-    api.getCoachStudents.mockResolvedValue([
+    api.refreshCoachStudents.mockResolvedValue([
       { id: 'student', display_name: '已知待排', status: 'active', evaluation: null },
       { id: 'student-2', display_name: '状态未知', status: 'active', evaluation: null },
     ])
@@ -1687,7 +1686,7 @@ describe('PlanWorkspace editor remount', () => {
     const staleVideo = video('video-stale', '后台旧视频')
     let resolveBackgroundVideo!: (rows: StudentVideo[]) => void
     let studentAVideoRequests = 0
-    api.getCoachStudents.mockResolvedValue([
+    api.refreshCoachStudents.mockResolvedValue([
       { id: 'student-a', display_name: '甲学员', status: 'active', evaluation: null },
       { id: 'student-b', display_name: '乙学员', status: 'active', evaluation: null },
     ])
@@ -1750,7 +1749,7 @@ describe('PlanWorkspace editor remount', () => {
       id: 'conversation-b',
       other_party: { id: 'student-b', display_name: '乙学员' },
     }
-    api.getCoachStudents.mockResolvedValue([
+    api.refreshCoachStudents.mockResolvedValue([
       { id: 'student-a', display_name: '甲学员', status: 'active', evaluation: null },
       { id: 'student-b', display_name: '乙学员', status: 'active', evaluation: null },
     ])
@@ -1860,7 +1859,7 @@ describe('PlanWorkspace editor remount', () => {
   }, 15_000)
 
   it('零学员预览保留四项导航且无聊天浮窗、不发聊天请求', async () => {
-    api.getCoachStudents.mockResolvedValue([])
+    api.refreshCoachStudents.mockResolvedValue([])
 
     await act(async () => {
       root.render(<PlanWorkspace onLogout={vi.fn()} me={me} />)
@@ -1881,7 +1880,7 @@ describe('PlanWorkspace editor remount', () => {
   it('零学员时仍每 60 秒轮询学员申请', async () => {
     vi.useFakeTimers()
     Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' })
-    api.getCoachStudents.mockResolvedValue([])
+    api.refreshCoachStudents.mockResolvedValue([])
 
     await act(async () => {
       root.render(<PlanWorkspace onLogout={vi.fn()} me={me} />)
@@ -1931,7 +1930,7 @@ describe('PlanWorkspace editor remount', () => {
     })
 
     expect(api.acceptBindRequest).toHaveBeenCalledWith('request')
-    expect(api.refreshCoachStudents).toHaveBeenCalledTimes(1)
+    expect(api.refreshCoachStudents).toHaveBeenCalledTimes(2)
     expect(api.getBindRequests).toHaveBeenCalledTimes(2)
     expect(host.querySelector('.requests-count')).toBeNull()
     expect(host.querySelector('.request-list')?.textContent).not.toContain('新学员')
@@ -2135,7 +2134,7 @@ describe('PlanWorkspace editor remount', () => {
   it('discards a delayed delete dialog after switching athletes', async () => {
     const current = plan('current'), other = { ...plan('Synthetic other'), id: 'other-plan' }
     const next = { ...plan('Synthetic next athlete'), id: 'next-plan', trainee_id: 'student-2' }
-    api.getCoachStudents.mockResolvedValue([{ id: 'student', display_name: 'Synthetic A', status: 'active', evaluation: null }, { id: 'student-2', display_name: 'Synthetic B', status: 'active', evaluation: null }])
+    api.refreshCoachStudents.mockResolvedValue([{ id: 'student', display_name: 'Synthetic A', status: 'active', evaluation: null }, { id: 'student-2', display_name: 'Synthetic B', status: 'active', evaluation: null }])
     api.getStudentPlans.mockImplementation(async (id: string) => id === 'student' ? [current, other] : [next])
     let resolveOther!: (value: PlanWithChildren) => void
     api.getPlan.mockImplementation(async (id: string) => id === 'other-plan' ? new Promise<PlanWithChildren>(resolve => { resolveOther = resolve }) : id === 'next-plan' ? next : current)
