@@ -689,6 +689,7 @@ export function PlanEditor(props: PlanEditorProps) {
   // Published plans remain editable, but only through explicit confirmed updates;
   // rows with server-authoritative history are locked individually.
   const [published, setPublished] = useState(initialPublished)
+  const [rowDragState, setRowDragState] = useState<'allowed' | 'blocked' | 'cross-section' | null>(null)
   const [statusText, setStatusText] = useState(readOnly
     ? S.editor.readOnlyStatus(props.planStatus === 'completed' ? S.common.completed : S.common.paused)
     : initialPublished ? S.editor.publishedTo(studentName) : S.editor.draftSavedInitial)
@@ -2939,7 +2940,7 @@ export function PlanEditor(props: PlanEditorProps) {
   }
 
   return (
-    <div ref={rootRef} onMouseDownCapture={event => {
+    <div ref={rootRef} data-row-drag={rowDragState ?? undefined} onMouseDownCapture={event => {
       const target = event.target as HTMLElement
       if (!target.closest('.block-layout-switch,.show-actuals,.feedback-toggle,.block-history,.block-cell,.block-context-menu,.ex-popover,[data-popover],[role="dialog"]')) {
         closeBlockEditor(); setBlockMenu(null)
@@ -3023,7 +3024,7 @@ export function PlanEditor(props: PlanEditorProps) {
           <div ref={weeksRef}>
             <BlockGrid layout={blockLayout} onLayout={setBlockLayout} onConfirmWeekImport={num => setWeeksWithHistory(prev => prev.map(week => week.num === num ? { ...week, importDoubts: undefined } : week))} weeks={weeks} startDate={planStartDate} weekdays={blockWeekdays} extraWeekdays={extraWeekdays} editing={editingDay}
               selectedDays={daySelection.days} selectedRows={selectedRowIds} readOnly={readOnly}
-              rowTier={rowTier} onClose={closeBlockEditor}
+              rowTier={rowTier} onClose={closeBlockEditor} onReorderRow={reorderRow} onRowDragState={setRowDragState}
               showActuals={showActuals} actualsForRow={actualsForRow} studentAddedByDay={studentAddedByDay}
               exerciseName={id => { const names = props.exerciseIndex?.namesById(id); return names ? fmt.exerciseName(names) : id }}
               feedbackDayMarker={feedbackDayMarker} highlightedDayId={feedback ? hoveredFeedbackDay ?? feedback.dayId : null}
@@ -3130,6 +3131,7 @@ export function PlanEditor(props: PlanEditorProps) {
                         onAddRow={(tier) => addRowToDay(wk.num, day.dow, tier)}
                         onConfirmImport={rowId => setWeeksWithHistory(prev => prev.map(week => week.num !== wk.num ? week : { ...week, days: week.days.map(d => d.dow !== day.dow ? d : { ...d, rows: d.rows.map(row => row.id === rowId ? { ...row, importDoubts: undefined } : row) }) }))}
                         onEditRow={(rowId, updater) => editRow(wk.num, day.dow, rowId, updater)}
+                        onRowDragState={setRowDragState}
                         onReorderRow={(dragRowId, targetRowId, position) => reorderRow(wk.num, day.dow, dragRowId, targetRowId, position)}
                         onDeleteRow={(rowId) => deleteRow(wk.num, day.dow, rowId)}
                         weekBand={{
@@ -3175,6 +3177,9 @@ export function PlanEditor(props: PlanEditorProps) {
           onClick={() => { handleDeleteDay(); setBlockMenu(null) }}>{S.editor.blockDeleteDay}</button>
       </div>}
 
+      {rowDragState && <div role="status" className={`row-drag-status${rowDragState === 'cross-section' ? ' is-warning' : ''}`}>
+        {rowDragState === 'cross-section' ? S.editor.rowDragCrossSection : S.editor.rowDragHint}
+      </div>}
       <ExercisePopover
         visible={pop.visible} x={pop.x} y={pop.y}
         index={props.exerciseIndex ?? null} query={pop.query}

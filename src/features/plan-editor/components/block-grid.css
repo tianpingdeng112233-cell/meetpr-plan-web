@@ -56,7 +56,7 @@
 .block-edit-date { position: relative; display: inline-flex; gap: 6px; align-items: center; margin-left: 12px; font: 12px var(--font-mono); color: #5c6371; }
 .block-edit-date input { position: absolute; top: 24px; left: 0; z-index: 20; padding: 8px; border: 1px solid var(--bd); border-radius: 6px; background: white; color: var(--txt); width: 150px; font: inherit; }
 .block-edit-head button { color: #5c6371; font-size: 12px; border: 0; background: none; white-space: nowrap; cursor: pointer; }
-.block-cell .gridhead, .block-cell .exercise-row-main, .block-cell .student-added-row { display: grid !important; grid-template-columns: 22px minmax(100px,1.6fr) 48px 116px minmax(150px,1.3fr) minmax(116px,1fr) minmax(64px,1fr); }
+.block-cell .gridhead, .block-cell .exercise-row-main, .block-cell .student-added-row { display: grid !important; grid-template-columns: 30px minmax(100px,1.6fr) 48px 116px minmax(150px,1.3fr) minmax(116px,1fr) minmax(64px,1fr); }
 .block-cell .gcell { width: auto !important; min-width: 0; border: 0; position: static; }
 .block-cell .exrow { border: 1px solid #eef0f3; border-radius: 8px; background: #f5f6f8; margin: 4px 10px; min-height: 38px; }
 .block-cell .exercise-row-main { width: 100%; min-height: 38px; }
@@ -185,3 +185,23 @@
 .day-feedback-tooltip small { display:block; opacity:.7; margin-bottom:3px; }
 .day-feedback-tooltip > span > span { display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden; line-height:1.5; }
 .block-edit-head > .day-feedback-marker-wrap { margin-left:auto; }
+
+/* Spec 022: the array slot stays visible while the held brick follows the pointer. */
+.block-brick[data-drag-disabled="false"] { cursor: grab; }
+.block-brick.brick-dragging { background: #fafafb; border: 1px dashed #d1d5db; opacity: .45; }
+.block-brick.brick-drag-ghost {
+  position: fixed; z-index: 100; pointer-events: none; margin: 0;
+  background: #fff; border: 1px solid #111827; border-radius: 6px;
+  box-shadow: 0 8px 20px rgba(14,23,38,.14);
+}
+.block-brick.brick-drag-ghost.is-invalid { border-color: #98a0ac; opacity: .8; }
+.block-brick.brick-drop-before, .block-brick.brick-drop-after { position: relative; }
+.block-brick.brick-drop-before::after, .block-brick.brick-drop-after::after {
+  content: ''; position: absolute; left: -3px; right: -3px; height: 6px;
+  pointer-events: none; z-index: 4;
+  background: radial-gradient(circle at 3px 3px, #111827 3px, transparent 3px) left center / 6px 6px no-repeat,
+    radial-gradient(circle at 3px 3px, #111827 3px, transparent 3px) right center / 6px 6px no-repeat,
+    linear-gradient(#111827, #111827) center / calc(100% - 6px) 2px no-repeat;
+}
+.block-brick.brick-drop-before::after { top: -5px; }
+.block-brick.brick-drop-after::after { bottom: -5px; }

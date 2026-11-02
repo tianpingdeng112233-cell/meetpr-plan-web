@@ -67,7 +67,7 @@ it('retains section additions and reorders only the edited day', async () => {
   Object.defineProperty(document, 'elementsFromPoint', { configurable: true, value: () => [target] })
   act(() => {
     host.querySelector('.rowdrag')!.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, button: 0 }))
-    window.dispatchEvent(new MouseEvent('mousemove', { clientY: 10 }))
+    window.dispatchEvent(new MouseEvent('mousemove', { buttons: 1, clientY: 10 }))
     window.dispatchEvent(new MouseEvent('mouseup', { clientY: 10 }))
   })
   expect([...blockCell(host, 2, 0).querySelectorAll<HTMLElement>('[data-rowid]')].map(el => el.dataset.rowid)).toEqual(['w2-0-1','w2-0-2','w2-0-0'])
