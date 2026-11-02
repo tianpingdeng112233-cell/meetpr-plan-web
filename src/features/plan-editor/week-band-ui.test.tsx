@@ -2,7 +2,7 @@ import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { PlanEditor } from './PlanEditor'
-import { blockWeeks, openBlockDay, blockCell, blockKey } from './blockGridTestUtils'
+import { blockWeeks, blockRow, openBlockDay, blockCell, blockKey } from './blockGridTestUtils'
 import { readFileSync } from 'node:fs'
 
 let host: HTMLDivElement, root: Root
@@ -73,4 +73,26 @@ it('retains section additions and reorders only the edited day', async () => {
   expect([...blockCell(host, 2, 0).querySelectorAll<HTMLElement>('[data-rowid]')].map(el => el.dataset.rowid)).toEqual(['w2-0-1','w2-0-2','w2-0-0'])
   expect([...blockCell(host, 1, 0).querySelectorAll<HTMLElement>('[data-rowid]')].map(el => el.dataset.rowid)).toEqual(['w1-0-0','w1-0-1','w1-0-2'])
   Reflect.deleteProperty(document, 'elementsFromPoint')
+})
+
+it.each([false, true])('delivers the displayed main/aux order (published=%s)', async (published) => {
+  const source = blockWeeks([[0]], 0)
+  source[0].days[0].rows = [
+    blockRow('deadlift'), blockRow('leg-curl', { isMain: false }), blockRow('rdl'),
+  ]
+  const onSave = vi.fn(async (weeks) => ({ weeks, changedDays: 1, degradedRows: 0, skippedRows: 0 }))
+  vi.spyOn(window, 'confirm').mockReturnValue(true)
+  await act(async () => root.render(<PlanEditor initialWeeks={source} weeksCount={1}
+    studentName="学员" planName="计划" initialPublished={published} onSave={onSave} />))
+  openBlockDay(host)
+  expect([...host.querySelectorAll<HTMLElement>('.exrow[data-rowid]')].map(el => el.dataset.rowid))
+    .toEqual(['deadlift', 'rdl', 'leg-curl'])
+  await act(async () => {
+    if (published) [...host.querySelectorAll('button')].find(button => button.textContent === '更新计划')!.click()
+    else window.dispatchEvent(new KeyboardEvent('keydown', { key: 's', ctrlKey: true, bubbles: true, cancelable: true }))
+  })
+  expect(onSave).toHaveBeenCalledOnce()
+  expect(source[0].days[0].rows.map(row => row.id)).toEqual(['deadlift', 'leg-curl', 'rdl'])
+  expect(onSave.mock.calls[0][0][0].days[0].rows.map((row: { id: string }) => row.id))
+    .toEqual(['deadlift', 'rdl', 'leg-curl'])
 })
