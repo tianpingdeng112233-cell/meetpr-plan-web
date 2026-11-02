@@ -36,6 +36,7 @@ const viewCrumbs = (): Record<CoachView, string> => ({
 
 export interface CoachShellProps {
   children: React.ReactNode
+  studentRail?: React.ReactNode
   view: CoachView
   onChange: (view: CoachView) => void
   me: AuthUser
@@ -55,6 +56,7 @@ export interface CoachShellProps {
 
 export function CoachShell({
   children,
+  studentRail,
   view,
   onChange,
   me,
@@ -119,6 +121,7 @@ export function CoachShell({
           onChange={onChange}
           lastSyncedAt={lastSyncedAt}
         />
+        {studentRail}
         <main className="coach-main">{children}</main>
       </div>
       <footer className="coach-statusbar">

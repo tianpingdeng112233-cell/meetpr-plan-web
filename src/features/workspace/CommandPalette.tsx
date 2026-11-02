@@ -1,3 +1,5 @@
+import type { CoachStudent } from '../../api/types'
+import { buildStudentRail } from './studentRailModel'
 import { normalizeTraditionalInput } from '../../i18n/stable-zh'
 import { useEffect, useMemo, useRef, useState, type RefObject } from 'react'
 import type { CoachView } from './CoachShell'
@@ -5,6 +7,7 @@ import { useGlobalKeyboardHandler } from './globalKeyboard'
 import { S } from '../../i18n/strings'
 
 export interface CommandStudent {
+  student?: CoachStudent
   id: string
   label: string
 }
@@ -31,6 +34,7 @@ interface CommandItem {
   label: string
   detail: string
   search: string
+  student?: CoachStudent
   run: () => void | Promise<void>
 }
 
@@ -62,8 +66,9 @@ export function CommandPalette({
     const all: CommandItem[] = [
       ...students.map((student) => ({
         id: `student:${student.id}`,
-        label: student.label,
-        detail: S.workspace.command.studentOpen,
+        label: student.student?.alias ?? student.student?.display_name ?? student.label,
+        student: student.student,
+        detail: student.student?.bond_status === 'ended' ? S.workspace.studentRail.ended : S.workspace.command.studentOpen,
         search: normalized(`${student.label} ${S.common.student} ${S.common.plan}`),
         run: () => onOpenStudent(student.id),
       })),
@@ -83,8 +88,12 @@ export function CommandPalette({
       })),
     ]
     if (!queryValue) return all.slice(0, Math.max(students.length + screenCommands().length, 12))
-    return all.filter((item) => item.search.includes(queryValue)).slice(0, 50)
-  }, [exercises, onOpenExercise, onOpenStudent, onOpenView, queryValue, students])
+    return all.filter(item => {
+      if (!item.student) return item.search.includes(queryValue)
+      const result = buildStudentRail([item.student], query)
+      return result.active.length + result.ended.length > 0
+    }).slice(0, 50)
+  }, [exercises, onOpenExercise, onOpenStudent, onOpenView, query, queryValue, students])
 
   useEffect(() => {
     if (!open) return

@@ -25,7 +25,7 @@ export function DayFeedbackMarker({ day, onOpen }: { day?: FeedbackDay; onOpen: 
   </span>
 }
 
-export function DayFeedbackDetail({ day, studentId, onSent, datesFailed, onRetryDates }: { datesFailed?: boolean; onRetryDates?: () => void; day: FeedbackDay; studentId: string; onSent: (item: CoachFeedbackResponse) => void }) {
+export function DayFeedbackDetail({ readOnly = false, day, studentId, onSent, datesFailed, onRetryDates }: { readOnly?: boolean; datesFailed?: boolean; onRetryDates?: () => void; day: FeedbackDay; studentId: string; onSent: (item: CoachFeedbackResponse) => void }) {
   const [text, setText] = useState('')
   const draft = useRef('')
   const sending = useRef(false)
@@ -35,7 +35,7 @@ export function DayFeedbackDetail({ day, studentId, onSent, datesFailed, onRetry
   useEffect(() => { mounted.current = true; return () => { mounted.current = false } }, [])
   const send = async () => {
     const submitted = draft.current
-    if (!day.date || sending.current || !submitted.trim() || submitted.trim().length > 2000) return
+    if (readOnly || !day.date || sending.current || !submitted.trim() || submitted.trim().length > 2000) return
     sending.current = true; setBusy(true); setError(false)
     try {
       const result = await postCoachFeedback({ student_id: studentId, day_date: day.date, plan_exercise_id: null, video_id: null, text: submitted.trim() })
@@ -51,9 +51,9 @@ export function DayFeedbackDetail({ day, studentId, onSent, datesFailed, onRetry
       <p>{item.feedback.text}</p>
     </article>)}</div>
     {!day.date && <p role="status">{S.block.trainingDateUnavailable}{datesFailed && <button onClick={onRetryDates}>{S.common.retry}</button>}</p>}
-    <textarea disabled={!day.date} aria-label={S.block.dayFeedback} value={text} maxLength={2000} placeholder={S.block.dayFeedbackPlaceholder(feedbackDayPlace(day))}
+    <textarea disabled={readOnly || !day.date} aria-label={S.block.dayFeedback} value={text} maxLength={2000} placeholder={S.block.dayFeedbackPlaceholder(feedbackDayPlace(day))}
       onChange={event => { draft.current = event.target.value; setText(event.target.value); setError(false) }}
       onKeyDown={event => { if (event.key === 'Enter' && (event.metaKey || event.ctrlKey) && !event.nativeEvent.isComposing) { event.preventDefault(); void send() } }} />
-    <footer>{error && <p role="alert">{S.video.feedbackFailed}</p>}<button disabled={!day.date || busy || !text.trim()} onClick={() => void send()}>{busy ? S.video.sending : S.video.sendFeedback} <small>⌘↵</small></button></footer>
+    <footer>{error && <p role="alert">{S.video.feedbackFailed}</p>}<button disabled={readOnly || !day.date || busy || !text.trim()} onClick={() => void send()}>{busy ? S.video.sending : S.video.sendFeedback} <small>⌘↵</small></button></footer>
   </section>
 }

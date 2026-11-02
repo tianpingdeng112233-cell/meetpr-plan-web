@@ -31,4 +31,8 @@ export const patchCoachRpe = (setLogId: string, coachRpe: number | null) =>
     coach_rpe: coachRpe,
   })
 export const getInviteCodes = () => api.get<{ invite_codes: InviteCode[] }>('/coach/invite-codes').then((r) => r.invite_codes)
-export const refreshCoachStudents = () => api.get<{ students: CoachStudent[] }>('/coach/students').then((r) => r.students)
+export const refreshCoachStudents = (options: { include_ended?: boolean } = {}) =>
+  api.get<{ students: CoachStudent[] }>(`/coach/students${options.include_ended ? '?include_ended=1' : ''}`).then((r) => r.students)
+export const unbindCoachStudent = (id: string) => api.post(`/coach/students/${id}/unbind`)
+export const setCoachStudentAlias = (id: string, alias: string | null) =>
+  api.patch(`/coach/students/${id}`, { alias })

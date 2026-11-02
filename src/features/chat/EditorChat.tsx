@@ -39,7 +39,7 @@ export function EditorChat({ open, onOpenChange, editor, entries, ...messages }:
       <header className="editor-chat-head"><b>{student?.display_name}</b><span>{S.common.student}</span>
         <button type="button" aria-label={S.chat.collapse} onClick={() => onOpenChange(false)}>⌄</button>
       </header>
-      <MessagesPage key={messages.selectedStudentId} {...messages} floating renderVideoCapsule={message => {
+      <MessagesPage key={messages.selectedStudentId} {...messages} students={messages.students.filter(student => student.bond_status !== 'ended')} floating renderVideoCapsule={message => {
         const parsed = parseSetRefMessage(message)
         if (!parsed || !message.video_url) return undefined
         const ref = parsed.setRef

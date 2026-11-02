@@ -35,7 +35,7 @@ import type {
   PlanShiftSummary,
   PlanStatus,
   PlanWithChildren,
-  StudentOnboardingProfile, StudentVideo, StudentSetLog,
+  CoachStudent, StudentOnboardingProfile, StudentVideo, StudentSetLog,
 } from '../../api/types'
 import {
   LockedRowMutationError, ReconcileConflict, ReconciliationError, type SaveResult,
@@ -139,6 +139,8 @@ export interface PlanEditorProps {
   weeksCount: number
   studentName: string
   studentId?: string
+  student?: CoachStudent
+  onStudentChanged?: (patch: Pick<CoachStudent, 'id'> & Partial<Pick<CoachStudent, 'alias' | 'bond_status' | 'ended_at'>>) => void
   onboardingProfile?: StudentOnboardingProfile | null
   /** Already-cached one-request overview; the editor never fans out per exercise. */
   exerciseStatsOverview?: ExerciseStatsOverview | null
@@ -167,8 +169,6 @@ export interface PlanEditorProps {
   ) => Promise<SaveResult>
   /** Rename the current plan (backend PATCH); parent also refreshes its plan list. */
   onRename?: (name: string) => Promise<void> | void
-  /** Rename the selected student (backend PATCH); parent refreshes the roster label. */
-  onRenameStudent?: (name: string) => Promise<void> | void
   /** Exercise catalog + alias index for name-cell binding. */
   exerciseIndex?: ExerciseIndex | null
   /** Create a custom exercise and return its id+name (adds to the index). */
@@ -383,7 +383,8 @@ export function replaceUnlockedRows(day: DayCol, sourceRows: ExerciseRow[], pref
 
 export function PlanEditor(props: PlanEditorProps) {
   const { initialWeeks, weeksCount, studentName, planName, initialPublished = false, onPublish } = props
-  const readOnly = props.readOnly ?? (props.planStatus === 'completed' || props.planStatus === 'paused')
+  const studentEnded = props.student?.bond_status === 'ended'
+  const readOnly = studentEnded || (props.readOnly ?? (props.planStatus === 'completed' || props.planStatus === 'paused'))
   /** Display tier for a row: catalog exercise_type is authoritative (main lift +
    *  variations vs accessories); unbound/unknown rows fall back to is_main_lift. */
   const rowTier = useCallback((row: ExerciseRow): 'main' | 'aux' => {
@@ -437,6 +438,9 @@ export function PlanEditor(props: PlanEditorProps) {
   const pendingRevisionChangeRef = useRef(props.onPendingRevisionSavedAtChange)
   pendingRevisionChangeRef.current = props.onPendingRevisionSavedAtChange
   const remoteWriter = useRef<RemoteMirrorWriter | null>(null)
+  useEffect(() => {
+    if (readOnly) remoteWriter.current?.cancel()
+  }, [readOnly])
   const [publishedDirty, setPublishedDirty] = useState(false)
   const publishedDirtyRef = useRef(publishedDirty)
   publishedDirtyRef.current = publishedDirty
@@ -690,7 +694,7 @@ export function PlanEditor(props: PlanEditorProps) {
   // rows with server-authoritative history are locked individually.
   const [published, setPublished] = useState(initialPublished)
   const [statusText, setStatusText] = useState(readOnly
-    ? S.editor.readOnlyStatus(props.planStatus === 'completed' ? S.common.completed : S.common.paused)
+    ? (studentEnded ? S.workspace.studentRail.readOnly : S.editor.readOnlyStatus(props.planStatus === 'completed' ? S.common.completed : S.common.paused))
     : initialPublished ? S.editor.publishedTo(studentName) : S.editor.draftSavedInitial)
   const undoShiftInFlight = useRef(false)
   const [undoingShift, setUndoingShift] = useState(false)
@@ -2949,17 +2953,17 @@ export function PlanEditor(props: PlanEditorProps) {
       overflow: 'hidden', background: 'var(--page-bg)', color: 'var(--txt)',
       fontFamily: 'var(--font-sans)', fontSize: 13, WebkitFontSmoothing: 'antialiased',
     }}>
-      <TopBar feedbackOpen={!!feedback} pendingVideoCount={videoFeedback.entries.filter(entry => entry.video.viewed_at == null).length} onToggleFeedback={() => feedback ? changeFeedback(null) : openFeedbackVideo()} showActuals={showActuals} onToggleActuals={toggleActuals}
+      <TopBar feedbackOpen={!!feedback} pendingVideoCount={studentEnded ? 0 : videoFeedback.entries.filter(entry => entry.video.viewed_at == null).length} onToggleFeedback={() => feedback ? changeFeedback(null) : openFeedbackVideo()} showActuals={showActuals} onToggleActuals={toggleActuals}
         studentName={studentName} planName={planName} published={published} publishedDirty={publishedDirty}
-        readOnly={readOnly} statusText={visibleStatusText} onPublish={() => void handlePublish()}
+        readOnly={readOnly} studentEnded={studentEnded} statusText={studentEnded ? S.workspace.studentRail.readOnly : visibleStatusText} onPublish={() => void handlePublish()}
         students={props.students} currentStudentId={props.currentStudentId} onSwitchStudent={guardLeaveId(props.onSwitchStudent)}
         plans={props.plans} currentPlanId={props.currentPlanId} onSwitchPlan={guardLeaveId(props.onSwitchPlan)}
-        onPlanAction={props.onPlanAction ? async (id, action) => {
+        onPlanAction={!studentEnded && props.onPlanAction ? async (id, action) => {
           if (id === props.currentPlanId && action === 'settings') { setSettingsOpen(true); return }
           if (['settings', 'backfill', 'delete'].includes(action) && !(await confirmLeave())) return
           await props.onPlanAction!(id, action)
         } : undefined}
-        onNewPlan={guardLeave(props.onNewPlan)}
+        onNewPlan={studentEnded ? undefined : guardLeave(props.onNewPlan)}
         onBackToBoard={props.onBackToBoard}
         currentPlanStatus={props.planStatus ?? (published ? 'published' : 'draft')}
         onDeleteCurrentDraft={guardLeave(props.onDeleteCurrentDraft)}
@@ -2968,14 +2972,6 @@ export function PlanEditor(props: PlanEditorProps) {
         onRenamePlan={!readOnly && props.onRename ? () => {
           const name = window.prompt(S.editor.planNamePrompt, planName)?.trim()
           if (name && name !== planName) void props.onRename!(name)
-        } : undefined}
-        onRenameStudent={props.onRenameStudent ? () => {
-          const name = window.prompt(S.editor.studentNamePrompt, studentName)?.trim()
-          if (name && name !== studentName) {
-            void Promise.resolve(props.onRenameStudent!(name)).catch(() => {
-              window.alert(S.editor.renameStudentFailed)
-            })
-          }
         } : undefined}
           onSave={!readOnly && props.onSave ? handleSave : undefined} saving={saving} draftSaveFailed={draftSaveFailed}
         planStartDate={planStartDate ?? undefined}
@@ -2993,7 +2989,7 @@ export function PlanEditor(props: PlanEditorProps) {
         weeksCount={weeks.length}
         onPlanSettings={!readOnly && planStartDate ? () => setSettingsOpen(true) : undefined}
       />
-      {publishConfirmOpen && <div className="import-overlay"><section className="import-dialog" data-publish-confirm="" role="dialog" aria-modal="true" aria-label={S.sheetImport.publishTitle}>
+      {!readOnly && publishConfirmOpen && <div className="import-overlay"><section className="import-dialog" data-publish-confirm="" role="dialog" aria-modal="true" aria-label={S.sheetImport.publishTitle}>
         <h3>{S.sheetImport.publishTitle}</h3>
         {countImportDoubts(weeks) > 0 && <p>{S.sheetImport.publishDoubts(countImportDoubts(weeks))}</p>}
         {pastTrainingWeeks.length > 0 && <>
@@ -3002,14 +2998,14 @@ export function PlanEditor(props: PlanEditorProps) {
         </>}
         <footer><button onClick={() => setPublishConfirmOpen(false)}>{S.common.cancel}</button><button className="primary" onClick={() => void handlePublish(true)}>{S.editor.publishToStudent}</button></footer>
       </section></div>}
-      {planStartDate && <NewPlanDialog open={settingsOpen} studentName={studentName}
+      {!readOnly && planStartDate && <NewPlanDialog open={settingsOpen} studentName={studentName}
         settings={{ name: planName, weeks: weeks.length, startDate: planStartDate, weekdays: blockWeekdays }}
         calendarLocked={calendarLocked || !props.onChangeStartDate}
         calendarLockedHint={calendarLockedHint}
         weeksLocked={calendarLocked || !props.onChangePlanWeeks}
         onClose={() => setSettingsOpen(false)} onCreate={applyPlanSettings} />}
 
-      {recoveryMirror && (
+      {!readOnly && recoveryMirror && (
         <DraftMirrorBanner
           savedAt={recoveryMirror.mirror.savedAt}
           source={recoveryMirror.source}
@@ -3019,7 +3015,7 @@ export function PlanEditor(props: PlanEditorProps) {
       )}
       <div className="plan-with-rail block-layout">
         <div className="scroller" ref={scrollerRef} aria-readonly={readOnly || undefined}>
-          {readOnly && <div role="status" className="block-readonly">{S.editor.historyReadOnlyBanner}</div>}
+          {readOnly && <div role="status" className="block-readonly">{studentEnded ? <><button disabled>{S.editor.newPlan}</button><button disabled>{S.workspace.studentRail.import}</button><span>{S.workspace.studentRail.readOnlyHint}</span></> : S.editor.historyReadOnlyBanner}</div>}
           <div ref={weeksRef}>
             <BlockGrid layout={blockLayout} onLayout={setBlockLayout} onConfirmWeekImport={num => setWeeksWithHistory(prev => prev.map(week => week.num === num ? { ...week, importDoubts: undefined } : week))} weeks={weeks} startDate={planStartDate} weekdays={blockWeekdays} extraWeekdays={extraWeekdays} editing={editingDay}
               selectedDays={daySelection.days} selectedRows={selectedRowIds} readOnly={readOnly}
@@ -3151,7 +3147,7 @@ export function PlanEditor(props: PlanEditorProps) {
             />
           </div>
         </div>
-        <BlockHistory datesFailed={setLogsFailed} onRetryDates={() => setSetLogsRetry(value => value + 1)} days={dayFeedback.days} feedbackFailed={studentFeedback.failed} feedbackLoaded={!!studentFeedback.items && !studentFeedback.failed}
+        <BlockHistory student={props.student} onStudentChanged={props.onStudentChanged} onBeforeUnbind={confirmLeave} readOnly={studentEnded} datesFailed={setLogsFailed} onRetryDates={() => setSetLogsRetry(value => value + 1)} days={dayFeedback.days} feedbackFailed={studentFeedback.failed} feedbackLoaded={!!studentFeedback.items && !studentFeedback.failed}
           onRetryFeedback={studentFeedback.refresh} onFeedbackSent={item => { studentFeedback.append(item); if (studentFeedback.failed) void studentFeedback.refresh() }} onRefreshFeedback={studentFeedback.refresh}
           onOpenDay={openFeedbackDay} hoveredDayId={hoveredFeedbackDay} onHoverDay={setHoveredFeedbackDay}
           videos={props.videos} entries={videoFeedback.entries} feedback={feedback} onFeedbackChange={changeFeedback}

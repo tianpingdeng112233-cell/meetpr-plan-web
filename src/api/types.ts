@@ -33,6 +33,12 @@ export interface CoachStudent {
   display_name: string
   status: 'active' | 'in_evaluation'
   evaluation: { id: string; expected_end_at: string; overdue: boolean } | null
+  /** Optional until backend 057 has reached every environment. */
+  alias?: string | null
+  bond_status?: 'active' | 'ended'
+  ended_at?: string | null
+  today?: { state: 'completed' | 'scheduled' | 'rest'; completed_at: string | null } | null
+  pending_video_count?: number
 }
 
 export interface StudentOnboardingProfile {
@@ -164,6 +170,7 @@ export interface CoachBindRequest {
   expired_at: string
   masked_phone?: string | null
   invite_code?: string | null
+  previously_ended_at?: string | null
   onboarding: BindRequestOnboarding
 }
 export interface StudentVideo {
