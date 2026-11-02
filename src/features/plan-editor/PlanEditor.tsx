@@ -2317,6 +2317,19 @@ export function PlanEditor(props: PlanEditorProps) {
     0,
   )
 
+  // Persist the same tier order the coach sees. Logged days retain their
+  // server slots: reconciliation must never reorder training history.
+  const orderWeeksForSave = (source: Week[]): Week[] => {
+    const ordered = source.map((week) => {
+      const days = week.days.map((day) => {
+        if (day.rows.some((row) => row.hasLogs)) return day
+        const rows = orderRowsForDisplay(day.rows, rowTier)
+        return rows.every((row, index) => row === day.rows[index]) ? day : { ...day, rows }
+      })
+      return days.every((day, index) => day === week.days[index]) ? week : { ...week, days }
+    })
+    return ordered.every((week, index) => week === source[index]) ? source : ordered
+  }
   // The save queue is DRAFT-ONLY. Reassigned every render so it always persists the latest weeks.
   // A published plan is refused here so no queued, latched, or flushed write
   // can ever rewrite a plan the student is watching.
@@ -2393,7 +2406,7 @@ export function PlanEditor(props: PlanEditorProps) {
       const savedWeeks = latestWeeks.current
       const savedDeletedIds = requestedDeletedDayIds(savedWeeks)
       const savedPlanStart = importStart ?? currentPlanStart.current
-      const res = await props.onSave(savedWeeks, importStart, false, onProgress, savedDeletedIds)
+      const res = await props.onSave(orderWeeksForSave(savedWeeks), importStart, false, onProgress, savedDeletedIds)
       lastSaveFailureAlert.current = null
       // Clear only the token this save consumed: an import landing mid-flight writes a fresh
       // token, and the drain loop's next pass must still deliver it via reconcileImportedPlan —
@@ -2669,7 +2682,7 @@ export function PlanEditor(props: PlanEditorProps) {
       try {
         for (let attempt = 1; ; attempt++) {
           try {
-            const res = await props.onSave(savedWeeks, null, false, onProgress, savedDeletedIds)
+            const res = await props.onSave(orderWeeksForSave(savedWeeks), null, false, onProgress, savedDeletedIds)
             // Edits typed during the round-trip aren't in what was pushed — keep the guards armed.
             // A published update never writes calendar metadata, so the covered
             // hash must use the server-persisted date/weeks, not local values.
