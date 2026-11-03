@@ -1068,7 +1068,7 @@ describe('reconcilePlan — exercise-granularity history locks', () => {
     expect(plans.deleteExercise).not.toHaveBeenCalled()
   })
 
-  it('never sends calendar plan_patch from published reconcile and rejects published import defensively', async () => {
+  it('omits plan_patch when published duration is unchanged and rejects published import defensively', async () => {
     vi.mocked(plans.getPlan).mockResolvedValue(serverPlan([], 'published'))
     await reconcilePlan('p', [weekWithMondayRows([])], undefined, { published: true })
     expect(plans.patchPlan).not.toHaveBeenCalled()
@@ -1076,6 +1076,132 @@ describe('reconcilePlan — exercise-granularity history locks', () => {
     await expect(reconcileImportedPlan('p', [weekWithMondayRows([])], '2026-01-01', undefined, { published: true }))
       .rejects.toMatchObject({ code: 'PUBLISHED_IMPORT_FORBIDDEN' })
     expect(plans.patchPlan).not.toHaveBeenCalled()
+  })
+
+  it.each(['draft', 'published'] as const)('extends a %s plan with history in the leading batch without changing its start or locked days', async (status) => {
+    const locked = serverExercise('locked', 'locked-ex', 0, '90', true)
+    const lockedDay = { ...serverDay([locked]), shifted_to_date: '2026-01-03' }
+    const baseline = serverPlan([lockedDay], status)
+    vi.mocked(plans.getPlan).mockResolvedValue(baseline)
+    vi.mocked(plans.batchDays).mockImplementation(async (_id, body) => ({
+      ...baseline, ...body.plan_patch,
+      days: [lockedDay, ...serverDaysFromBatch(body.upsert_days)],
+    }))
+    const weeks = [
+      ...mapPlanToWeeks(baseline, new Map([['locked-ex', { name: 'locked-ex', custom: false }]])),
+      numberedWeekWithMondayRows(2, [boundRow('new', null, 'new-ex')]),
+    ]
+    const result = await reconcilePlan('p', weeks, undefined, { published: status === 'published' })
+    expect(plans.batchDays).toHaveBeenCalledOnce()
+    expect(vi.mocked(plans.batchDays).mock.calls[0][1]).toEqual({
+      plan_patch: { plan_weeks: 2, end_date: '2026-01-14' },
+      delete_day_ids: [],
+      upsert_days: [expect.objectContaining({ week_number: 2, day_of_week: 1 })],
+    })
+    expect(plans.patchPlan).not.toHaveBeenCalled()
+    expect(plans.deleteDay).not.toHaveBeenCalled()
+    expect(plans.deleteExercise).not.toHaveBeenCalled()
+    expect(result).toMatchObject({ planWeeks: 2, planStartDate: '2026-01-01', planEndDate: '2026-01-14' })
+    expect(result.weeks[0].days[0]).toMatchObject(weeks[0].days[0])
+  })
+
+  it('shrinks an autosaved draft extension and deletes its removed days together on undo', async () => {
+    const originalDay = serverDay([serverExercise('original', 'ex', 0)])
+    const pastedDay = { ...serverDay([serverExercise('pasted', 'ex', 0)], 'pasted-day'), week_number: 2 }
+    let live = { ...serverPlan([originalDay, pastedDay], 'draft'), plan_weeks: 2, end_date: '2026-01-14' }
+    vi.mocked(plans.getPlan).mockImplementation(async () => live)
+    vi.mocked(plans.batchDays).mockImplementation(async (_id, body) => {
+      live = { ...live, ...body.plan_patch, days: live.days.filter(day => !body.delete_day_ids.includes(day.id)) }
+      return live
+    })
+    const catalog = new Map([['ex', { name: 'ex', custom: false }]])
+    const beforePaste = mapPlanToWeeks(serverPlan([originalDay], 'draft'), catalog)
+    const result = await reconcilePlan('p', beforePaste)
+    expect(plans.batchDays).toHaveBeenCalledWith('p', {
+      plan_patch: { plan_weeks: 1, end_date: '2026-01-07' },
+      delete_day_ids: ['pasted-day'], upsert_days: [],
+    })
+    expect(result).toMatchObject({ planWeeks: 1, planEndDate: '2026-01-07' })
+    expect(live.days).toEqual([originalDay])
+    expect(mapPlanToWeeks(await plans.getPlan('p'), catalog)).toEqual(beforePaste)
+  })
+
+  it.each([
+    { status: 'published' as const, hasLogs: false },
+    { status: 'published' as const, hasLogs: true },
+    { status: 'draft' as const, hasLogs: true },
+  ])('keeps persisted weeks but deletes undone paste days for $status with history=$hasLogs', async ({ status, hasLogs }) => {
+    const originalDay = serverDay([serverExercise('original', 'ex', 0, '100', hasLogs)])
+    const pastedDay = { ...serverDay([serverExercise('pasted', 'ex', 0)], 'pasted-day'), week_number: 2 }
+    let live = { ...serverPlan([originalDay, pastedDay], status), plan_weeks: 2, end_date: '2026-01-14' }
+    vi.mocked(plans.getPlan).mockImplementation(async () => live)
+    vi.mocked(plans.batchDays).mockImplementation(async (_id, body) => {
+      live = { ...live, ...body.plan_patch, days: live.days.filter(day => !body.delete_day_ids.includes(day.id)) }
+      return live
+    })
+    const catalog = new Map([['ex', { name: 'ex', custom: false }]])
+    const beforePaste = mapPlanToWeeks(serverPlan([originalDay], status), catalog)
+    const result = await reconcilePlan('p', beforePaste)
+    expect(plans.batchDays).toHaveBeenCalledWith('p', { delete_day_ids: ['pasted-day'], upsert_days: [] })
+    expect(plans.patchPlan).not.toHaveBeenCalled()
+    expect(result).toMatchObject({ planWeeks: 2, planStartDate: '2026-01-01', planEndDate: '2026-01-14' })
+    expect(result.weeks).toHaveLength(2)
+    expect(result.weeks[1].days.every(day => day.rest && !day.rows.length)).toBe(true)
+    expect(live.days).toEqual([originalDay])
+    expect(result.weeks).toMatchObject(mapPlanToWeeks(await plans.getPlan('p'), catalog))
+  })
+
+  it('sends extension only in the first chunk and does not resend it on an unchanged retry', async () => {
+    let live = serverPlan([], 'published')
+    vi.mocked(plans.getPlan).mockImplementation(async () => live)
+    vi.mocked(plans.batchDays).mockImplementation(async (_id, body) => {
+      live = { ...live, ...body.plan_patch, days: [...live.days, ...serverDaysFromBatch(body.upsert_days)] }
+      return live
+    })
+    const weeks = Array.from({ length: 16 }, (_, index) => ({
+      ...numberedWeekWithMondayRows(index + 1, []),
+      days: Array.from({ length: 7 }, (_, dow) => ({ dow, dowLabel: '', dateLabel: '', rest: false,
+        rows: [boundRow(`r-${index}-${dow}`, null, 'ex')] })),
+    }))
+    const result = await reconcilePlan('p', weeks, undefined, { published: true })
+    expect(plans.batchDays).toHaveBeenCalledTimes(2)
+    expect(vi.mocked(plans.batchDays).mock.calls[0][1].plan_patch)
+      .toEqual({ plan_weeks: 16, end_date: '2026-04-22' })
+    expect(vi.mocked(plans.batchDays).mock.calls[1][1]).not.toHaveProperty('plan_patch')
+    vi.mocked(plans.batchDays).mockClear()
+    await reconcilePlan('p', result.weeks, undefined, { published: true })
+    expect(plans.batchDays).not.toHaveBeenCalled()
+  })
+
+  it('persists an empty extension in a metadata-only batch', async () => {
+    vi.mocked(plans.getPlan).mockResolvedValue(serverPlan([], 'published'))
+    vi.mocked(plans.batchDays).mockResolvedValue({ ...serverPlan([]), plan_weeks: 2, end_date: '2026-01-14' })
+    await reconcilePlan('p', [weekWithMondayRows([]), numberedWeekWithMondayRows(2, [])], undefined, { published: true })
+    expect(plans.batchDays).toHaveBeenCalledWith('p', {
+      plan_patch: { plan_weeks: 2, end_date: '2026-01-14' }, delete_day_ids: [], upsert_days: [],
+    })
+  })
+
+  it('acknowledges the extended server calendar on retry after a successful batch response is lost', async () => {
+    let live = serverPlan([], 'published')
+    vi.mocked(plans.getPlan).mockImplementation(async () => live)
+    vi.mocked(plans.batchDays).mockImplementationOnce(async (_id, body) => {
+      live = { ...live, ...body.plan_patch, days: serverDaysFromBatch(body.upsert_days) }
+      throw new Error('response lost after commit')
+    })
+    const weeks = [weekWithMondayRows([]), numberedWeekWithMondayRows(2, [boundRow('new', null, 'ex')])]
+    await expect(reconcilePlan('p', weeks, undefined, { published: true })).rejects.toThrow('response lost')
+    const retried = await reconcilePlan('p', weeks, undefined, { published: true })
+    expect(retried).toMatchObject({ changedDays: 0, planWeeks: 2, planStartDate: '2026-01-01', planEndDate: '2026-01-14' })
+    expect(plans.batchDays).toHaveBeenCalledOnce()
+  })
+
+  it.each([1, 2])('does not patch published duration when local %s weeks do not exceed the server', async (count) => {
+    vi.mocked(plans.getPlan).mockResolvedValue({ ...serverPlan([]), plan_weeks: 2, end_date: '2026-01-14' })
+    const weeks = Array.from({ length: count }, (_, i) => numberedWeekWithMondayRows(i + 1, [boundRow(`r-${i}`, null, 'ex')]))
+    await reconcilePlan('p', weeks, undefined, { published: true })
+    expect(plans.batchDays).toHaveBeenCalledOnce()
+    expect(vi.mocked(plans.batchDays).mock.calls[0][1]).not.toHaveProperty('plan_patch')
   })
 
   it('runs the unlocked batch before mixed-day row CRUD and reports both progress routes', async () => {
