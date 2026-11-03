@@ -421,6 +421,7 @@ const hantEditor = {
     clearDays: (count: number) => `\u6E05\u7A7A ${count} \u5929`,
     copiedDays: (count: number) => `\u5DF2\u8907\u88FD ${count} \u5929`,
     pastedDays: (count: number) => `\u5DF2\u8CBC\u4E0A ${count} \u5929`,
+    pasteExtended: (weeks: number, skipped: number) => `\u8AB2\u8868\u5DF2\u5EF6\u9577\u5230 ${weeks} \u9031${skipped ? `\uFF0C${skipped} \u5929\u8D85\u51FA\u4E0A\u9650\u5DF2\u8DF3\u904E` : ""}`,
     skippedDays: (count: number) => `${count} \u5929\u8D85\u51FA\u8AB2\u8868\u7BC4\u570D\u5DF2\u8DF3\u904E`,
     skippedAllDays: (count: number) => `${count} \u5929\u5168\u90E8\u8D85\u51FA\u8AB2\u8868\u7BC4\u570D\u5DF2\u8DF3\u904E`,
     overwriteDaysConfirm: (count: number) => `\u6709 ${count} \u500B\u843D\u9EDE\u65E5\u5DF2\u6709\u8A13\u7DF4\u5167\u5BB9\uFF0C\u8CBC\u4E0A\u6703\u8986\u84CB\u9019\u4E9B\u5929\u7684\u53EF\u7DE8\u8F2F\u5167\u5BB9\u3002\u662F\u5426\u7E7C\u7E8C\uFF1F`,

@@ -57,7 +57,7 @@ export function placePlanDayOffsets<T extends { offset: number }>(
   sources: readonly T[],
   anchor: PlanDayTarget,
   weeks: readonly Week[],
-): { inRange: Array<{ source: T; target: PlanDayTarget }>; skipped: number } {
+): { requiredWeeks: number; inRange: Array<{ source: T; target: PlanDayTarget }>; skipped: number } {
   const anchorAbs = absoluteDayIndex(anchor)
   const planKeys = new Set(weeks.flatMap((week) => (
     week.days.map((day) => planDayKey({ wnum: week.num, dow: day.dow }))
@@ -66,8 +66,11 @@ export function placePlanDayOffsets<T extends { offset: number }>(
     source,
     target: planDayFromAbsoluteIndex(anchorAbs + source.offset),
   }))
-  const inRange = placements.filter(({ target }) => planKeys.has(planDayKey(target)))
-  return { inRange, skipped: placements.length - inRange.length }
+  const currentWeeks = Math.max(0, ...weeks.map(week => week.num))
+  const requiredWeeks = Math.max(currentWeeks, Math.min(52, Math.max(currentWeeks, ...placements.map(({ target }) => target.wnum))))
+  const inRange = placements.filter(({ target }) => planKeys.has(planDayKey(target))
+    || (target.wnum > currentWeeks && target.wnum <= requiredWeeks))
+  return { requiredWeeks, inRange, skipped: placements.length - inRange.length }
 }
 
 export function applyPlanDayPlacements<T>(

@@ -14,7 +14,7 @@ import {
   getPlan, batchDays, deleteDay, createExercise, deleteExercise, createSet, patchPlan,
 } from '../../api/plans'
 import { ApiException } from '../../api/client'
-import { addDays, mapExercise, syncPlanScheduleToWeeks, type Catalog } from './mapping'
+import { addDays, mapExercise, resizeWeeksForCount, syncPlanScheduleToWeeks, type Catalog } from './mapping'
 import { isLegacyRpeRow, rowIntensity, rowIntensityBoxes, rowWeightBoxes } from './intensityModel'
 import { S } from '../../i18n/strings'
 import { STABLE_ZH } from '../../i18n/stable-zh'
@@ -678,7 +678,33 @@ export async function reconcilePlan(
   options: ReconcileOptions = {},
 ): Promise<SaveResult> {
   const server: PlanWithChildren = await getPlan(planId)
-  return reconcileFromBaseline(planId, weeks, server, onProgress, options)
+  // A pure extension is permitted even with history. Keep the start date out
+  // of the request, and patch in the first batch before any new-week days.
+  const extending = weeks.length > server.plan_weeks
+  const historyLocked = options.published || server.status !== 'draft'
+    || server.days.some(day => day.exercises.some(exercise => exercise.has_logs))
+  const shrinking = !historyLocked && weeks.length < server.plan_weeks
+  const planPatch = extending || shrinking ? {
+    plan_weeks: weeks.length,
+    end_date: fmtISO(addDays(server.start_date, weeks.length * 7 - 1)),
+  } : undefined
+  // Persisted locked calendars cannot shrink. Missing local weeks represent
+  // undone content, so reconcile their empty shells against the live days too.
+  const desiredWeeks = historyLocked && weeks.length < server.plan_weeks
+    ? resizeWeeksForCount(weeks, server.plan_weeks, server.start_date) : weeks
+  const result = await reconcileFromBaseline(planId, desiredWeeks, server, onProgress, options, {
+    ...(planPatch ? { plan_patch: planPatch } : {}),
+    // Draft undo removes the whole extension, including days absent locally.
+    delete_day_ids: shrinking ? server.days.filter(day => day.week_number > weeks.length).map(day => day.id) : [],
+  })
+  // A retry may read an extension already committed by the previous attempt.
+  // Return that acknowledged calendar even when this attempt needs no patch.
+  return {
+    ...result,
+    planWeeks: planPatch?.plan_weeks ?? server.plan_weeks,
+    planStartDate: server.start_date,
+    planEndDate: planPatch?.end_date ?? server.end_date,
+  }
 }
 
 async function reconcileFromBaseline(

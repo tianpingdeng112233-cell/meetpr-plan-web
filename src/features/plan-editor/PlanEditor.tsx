@@ -692,9 +692,14 @@ export function PlanEditor(props: PlanEditorProps) {
   // rows with server-authoritative history are locked individually.
   const [published, setPublished] = useState(initialPublished)
   const [rowDragState, setRowDragState] = useState<'allowed' | 'blocked' | 'cross-section' | null>(null)
-  const [statusText, setStatusText] = useState(readOnly
+  const [statusText, setStatusTextValue] = useState(readOnly
     ? (studentEnded ? S.workspace.studentRail.readOnly : S.editor.readOnlyStatus(props.planStatus === 'completed' ? S.common.completed : S.common.paused))
     : initialPublished ? S.editor.publishedTo(studentName) : S.editor.draftSavedInitial)
+  const [pasteNotice, setPasteNotice] = useState(false)
+  const setStatusText = useCallback((text: string, isPasteNotice = false) => {
+    setStatusTextValue(text)
+    setPasteNotice(isPasteNotice)
+  }, [])
   const undoShiftInFlight = useRef(false)
   const [undoingShift, setUndoingShift] = useState(false)
   const [undoNeedsRefresh, setUndoNeedsRefresh] = useState(false)
@@ -1774,10 +1779,10 @@ export function PlanEditor(props: PlanEditorProps) {
     }
 
     if (clipboard?.kind === 'days') {
-      const { inRange, skipped } = placePlanDayOffsets(clipboard.days, sel, weeks)
+      const { requiredWeeks, inRange, skipped } = placePlanDayOffsets(clipboard.days, sel, weeks)
       if (inRange.length === 0) {
         setWeeksWithHistory((prev) => applyPlanDayPlacements(prev, inRange, (day) => day))
-        setStatusText(formatTranslatedDaysPasteStatus(0, skipped))
+        setStatusText(formatTranslatedDaysPasteStatus(0, skipped), true)
         return
       }
       const occupied = inRange.filter(({ target }) => {
@@ -1789,13 +1794,17 @@ export function PlanEditor(props: PlanEditorProps) {
         && !window.confirm(S.editor.overwriteDaysConfirm(occupied))
       ) return
       setWeeksWithHistory((prev) => applyPlanDayPlacements(
-        prev,
+        requiredWeeks > prev.length
+          ? resizeWeeksForCount(prev, requiredWeeks, currentPlanStart.current ?? isoDate(new Date()))
+          : prev,
         inRange,
         (day, source) => replaceUnlockedRows(day, source.rows),
       ))
       setRowSelection(singleRowSelection(null))
       setCellSelection(null)
-      setStatusText(formatTranslatedDaysPasteStatus(inRange.length, skipped))
+      setStatusText(requiredWeeks > weeks.length
+        ? S.editor.pasteExtended(requiredWeeks, skipped)
+        : formatTranslatedDaysPasteStatus(inRange.length, skipped), true)
       return
     }
 
@@ -2328,10 +2337,17 @@ export function PlanEditor(props: PlanEditorProps) {
   const persistRef = useRef<() => Promise<boolean>>(async () => true)
   const lastSaveFailureAlert = useRef<string | null>(null)
   const applyingSavedWeeks = useRef(false)
-  const applyReconciledWeeks = (reconciled: Week[], replaceContent = true) => {
-    if (published) {
+  const applyReconciledWeeks = (reconciled: Week[], replaceContent = true, persistedWeekCount = 0) => {
+    if (calendarLocked || reconciled.some(week => week.days.some(day => day.rows.some(row => row.hasLogs)))) {
       applyScheduleUpdate(
-        (snapshot) => projectWeekSchedule(snapshot, reconciled),
+        // Once persisted, a locked calendar's extension survives content undo.
+        // Pad history with empty weeks, then carry over authoritative day IDs.
+        (snapshot) => projectWeekSchedule(
+          snapshot.length < persistedWeekCount
+            ? resizeWeeksForCount(snapshot, persistedWeekCount, currentPlanStart.current ?? isoDate(new Date()))
+            : snapshot,
+          reconciled,
+        ),
         replaceContent ? { currentWeeks: reconciled } : undefined,
       )
     } else {
@@ -2365,7 +2381,7 @@ export function PlanEditor(props: PlanEditorProps) {
     }
     // Even when an edit arrived during the request, the returned day identities
     // and schedule are authoritative. Only prescription replacement is conditional.
-    applyReconciledWeeks(res.weeks, sameContent)
+    applyReconciledWeeks(res.weeks, sameContent, res.planWeeks ?? res.weeks.length)
   }
   const applySaveFailure = (error: unknown): string | null => {
     if (error instanceof ReconcileConflict) {
@@ -2676,12 +2692,13 @@ export function PlanEditor(props: PlanEditorProps) {
           try {
             const res = await props.onSave(orderWeeksForSave(savedWeeks), null, false, onProgress, savedDeletedIds)
             // Edits typed during the round-trip aren't in what was pushed — keep the guards armed.
-            // A published update never writes calendar metadata, so the covered
-            // hash must use the server-persisted date/weeks, not local values.
+            // Extension can persist a new duration; use the acknowledged metadata
+            // rather than the parent's pre-update week count for the covered hash.
             // A published update reconciles with degrade disabled (spec 039 §1.2), so
             // degradedRows is structurally 0 here — the pre-039 covered-mark rule stands.
             if (res.skippedRows === 0) {
-              markMirrorCovered(mirrorContent(res.weeks, persistedPlanStart.current, props.weeksCount))
+              markMirrorCovered(mirrorContent(res.weeks, res.planStartDate ?? persistedPlanStart.current,
+                res.planWeeks ?? props.weeksCount))
               setRecoveryMirror(null)
             }
             applySuccessfulSave(res, savedWeeks)
@@ -2845,7 +2862,7 @@ export function PlanEditor(props: PlanEditorProps) {
     }
   }
 
-  const visibleStatusText = published && publishedDirty
+  const saveStatusText = published && publishedDirty
     ? remoteMirrorState.status === 'saved'
       ? S.editor.publishedDirtyStashed(studentName, savedClock(remoteMirrorState.savedAt))
       : remoteMirrorState.status === 'stashing'
@@ -2860,6 +2877,9 @@ export function PlanEditor(props: PlanEditorProps) {
           ? S.editor.degradedSavedLocal(degradedSaveStatus.base, degradedSaveStatus.count)
           : S.editor.degradedSavedStashing(degradedSaveStatus.base, degradedSaveStatus.count)
       : statusText
+  const visibleStatusText = published && publishedDirty && pasteNotice
+    ? `${statusText} · ${saveStatusText}`
+    : saveStatusText
   const moveStateForDay = (wnum: number, dow: number): 'source' | 'target' | 'invalid' | undefined => {
     if (!dayMoveVisual) return undefined
     if (dayMoveVisual.fromWnum === wnum && dayMoveVisual.fromDow === dow) return 'source'

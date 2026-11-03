@@ -81,11 +81,35 @@ describe('plan cell selection model', () => {
 })
 
 describe('plan day absolute order', () => {
+  it('extends a four-week plan to five weeks for three weeks pasted at W3', () => {
+    const weeks = Array.from({ length: 4 }, (_, i) => ({ ...week31(), num: i + 1 }))
+    const result = placePlanDayOffsets([{ offset: 0 }, { offset: 7 }, { offset: 20 }], { wnum: 3, dow: 0 }, weeks)
+    expect(result).toEqual({
+      requiredWeeks: 5,
+      inRange: [
+        { source: { offset: 0 }, target: { wnum: 3, dow: 0 } },
+        { source: { offset: 7 }, target: { wnum: 4, dow: 0 } },
+        { source: { offset: 20 }, target: { wnum: 5, dow: 6 } },
+      ],
+      skipped: 0,
+    })
+  })
   it('uses Monday as zero and crosses week boundaries without a gap', () => {
     expect(absoluteDayIndex({ wnum: 1, dow: 0 })).toBe(0)
     expect(absoluteDayIndex({ wnum: 1, dow: 6 })).toBe(6)
     expect(absoluteDayIndex({ wnum: 2, dow: 0 })).toBe(7)
     expect(planDayFromAbsoluteIndex(9)).toEqual({ wnum: 2, dow: 2 })
+  })
+
+  it('caps extension at 52 weeks and skips only targets beyond the cap', () => {
+    const weeks = Array.from({ length: 51 }, (_, i) => ({ ...week31(), num: i + 1 }))
+    expect(placePlanDayOffsets([{ offset: 0 }, { offset: 7 }, { offset: 8 }], { wnum: 51, dow: 6 }, weeks))
+      .toEqual({ requiredWeeks: 52, skipped: 1, inRange: [
+        { source: { offset: 0 }, target: { wnum: 51, dow: 6 } },
+        { source: { offset: 7 }, target: { wnum: 52, dow: 6 } },
+      ] })
+    expect(placePlanDayOffsets([], { wnum: 1, dow: 0 }, weeks))
+      .toEqual({ requiredWeeks: 51, skipped: 0, inRange: [] })
   })
 
   it('keeps a negative absolute index outside W1 instead of wrapping into it', () => {
@@ -104,7 +128,7 @@ describe('plan day absolute order', () => {
         skipped: 1,
       })
     const allOut = placePlanDayOffsets([{ offset: -8 }, { offset: -1 }], { wnum: 1, dow: 0 }, [plan])
-    expect(allOut).toEqual({ inRange: [], skipped: 2 })
+    expect(allOut).toEqual({ requiredWeeks: 1, inRange: [], skipped: 2 })
     const weeks = [plan]
     expect(applyPlanDayPlacements(weeks, allOut.inRange, () => {
       throw new Error('an out-of-range placement must not update a day')

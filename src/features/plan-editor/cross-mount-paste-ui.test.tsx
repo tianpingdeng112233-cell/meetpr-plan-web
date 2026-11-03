@@ -78,7 +78,7 @@ it.each(['row', 'day', 'days'])('copies %s across editor mounts without the syst
   render('student-B-plan-B', target, onSave, kind !== 'days')
   select(1, 0)
   await blockKey('v', { metaKey: true })
-  if (kind === 'days') expect(host.querySelector('[data-testid="plan-save-status"]')?.textContent).toContain('1 天超出计划范围已跳过')
+  if (kind === 'days') expect(host.querySelector('[data-testid="plan-save-status"]')?.textContent).toContain('计划已延长到 2 周')
   expect(onSave).not.toHaveBeenCalled()
   await blockKey('z', { metaKey: true })
   expect(host.textContent).not.toContain('竞技深蹲')
@@ -91,7 +91,8 @@ it.each(['row', 'day', 'days'])('copies %s across editor mounts without the syst
   if (kind === 'row') expect(onSave.mock.calls[0][0][0].days[0].rows.map(row => row.name)).toEqual(['竞技深蹲', 'target'])
   if (kind === 'days') {
     expect(onSave.mock.calls[0][0][0].days[2].rows[0].name).toBe('w1-2-0')
-    expect(onSave.mock.calls[0][0]).toHaveLength(1)
+    expect(onSave.mock.calls[0][0]).toHaveLength(2)
+    expect(onSave.mock.calls[0][0][1].days[0].rows[0].name).toBe('w2-0-0')
   }
 })
 
