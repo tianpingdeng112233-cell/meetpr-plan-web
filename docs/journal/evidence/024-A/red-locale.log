@@ -1,0 +1,34 @@
+
+> meetpr-plan-web@0.1.0 test
+> vitest run src/features/plan-editor/components/StudentProfile.test.tsx
+
+
+ RUN  v2.1.9 /Users/david/Projects/apps/meetpr-plan-web-wt-024
+
+ ❯ src/features/plan-editor/components/StudentProfile.test.tsx (10 tests | 1 failed) 340ms
+   × 024 translates all three surfaces when the locale changes and retains service errors in the active locale 44ms
+     → expected '剩 3 天' to be '3 d left' // Object.is equality
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/features/plan-editor/components/StudentProfile.test.tsx > 024 translates all three surfaces when the locale changes and retains service errors in the active locale
+AssertionError: expected '剩 3 天' to be '3 d left' // Object.is equality
+
+Expected: "3 d left"
+Received: "剩 3 天"
+
+ ❯ src/features/plan-editor/components/StudentProfile.test.tsx:203:91
+    201|       expect(host.querySelector('.service-term-card')?.textContent).to…
+    202|       expect(host.querySelector('.service-term-card .service-term-caps…
+    203|       expect(host.querySelector('.student-rail-name .service-term-caps…
+       |                                                                                           ^
+    204|       expect(host.querySelector('[data-alert-kind=service_term]')?.tex…
+    205|       const nameColumn = host.querySelector('.student-rail-name')!
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 9 passed (10)
+   Start at  05:28:48
+   Duration  3.56s (transform 1.00s, setup 33ms, collect 1.05s, tests 340ms, environment 985ms, prepare 425ms)
+

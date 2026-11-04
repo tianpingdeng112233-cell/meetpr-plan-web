@@ -836,6 +836,13 @@ const hantVideo = {
 } as const satisfies Translations<typeof zhVideo>
 
 const hantWorkspace = {
+    serviceTerm: {
+        set: "\u8A2D\u5B9A\u670D\u52D9\u671F", label: "\u670D\u52D9\u81F3", optional: "\u670D\u52D9\u81F3\uFF08\u9078\u586B\uFF09", edit: "\u4FEE\u6539", clear: "\u6E05\u9664\u670D\u52D9\u671F",
+        remaining: (n: number) => `\u670D\u52D9\u5269 ${n} \u5929`, today: "\u670D\u52D9\u4ECA\u5929\u5230\u671F", expired: (n: number) => `\u670D\u52D9\u5DF2\u904E\u671F ${n} \u5929`,
+        shortRemaining: (n: number) => `\u5269 ${n} \u5929`, shortToday: "\u4ECA\u5929\u5230\u671F", shortExpired: (n: number) => `\u904E\u671F ${n} \u5929`,
+        addMonth: "+1 \u500B\u6708", addThreeMonths: "+3 \u500B\u6708", fromToday: "\u5F9E\u4ECA\u5929\u5F80\u5F8C\u7B97",
+        fromDate: (date: string) => `\u5F9E\u539F\u65E5\u671F ${date} \u5F80\u5F8C\u7B97`, failed: "\u5132\u5B58\u670D\u52D9\u671F\u5931\u6557\uFF0C\u8ACB\u7A0D\u5F8C\u91CD\u8A66",
+    },
     studentRail: {
         title: (n: number) => `\u5B78\u54E1 \u00B7 ${n}`, collapse: "\u647A\u758A\u5B78\u54E1\u6B04", expand: "\u5C55\u958B\u5B78\u54E1\u6B04", search: "\u641C\u5C0B\u59D3\u540D / \u5099\u8A3B / \u62FC\u97F3",
         completedGroup: "\u4ECA\u5929\u5DF2\u5B8C\u6210", scheduledGroup: "\u4ECA\u5929\u6709\u5B89\u6392", restGroup: "\u4ECA\u5929\u4F11\u606F",
@@ -912,6 +919,7 @@ const hantWorkspace = {
         newMin: (min: number) => `\u65B0\u5BC6\u78BC\uFF08\u81F3\u5C11 ${min} \u4F4D\uFF09`, repeat: "\u518D\u8F38\u4E00\u6B21\u65B0\u5BC6\u78BC", submitting: "\u63D0\u4EA4\u4E2D\u2026", confirm: "\u78BA\u8A8D\u4FEE\u6539",
     },
     requests: {
+        serviceTermHint: "\u670D\u52D9\u671F\u53EF\u5728\u5B78\u54E1\u8CC7\u6599\u6B04\u96A8\u6642\u4FEE\u6539\u3002",
         experienceMissing: "\u8A13\u7DF4\u5E74\u9650\u672A\u586B\u5BEB", copied: "\u9080\u8ACB\u78BC\u5DF2\u8907\u88FD", copyFailed: "\u8907\u88FD\u5931\u6557\uFF0C\u8ACB\u624B\u52D5\u8907\u88FD\u9080\u8ACB\u78BC",
         pending: "\u5F85\u8655\u7406\u7533\u8ACB", autoRefresh: (seconds: number) => `${seconds}s \u81EA\u52D5\u91CD\u65B0\u6574\u7406`, empty: "\u66AB\u7121\u5F85\u8655\u7406\u7533\u8ACB",
         requestCount: (count: number) => `${count} \u689D`,

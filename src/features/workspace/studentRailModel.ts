@@ -1,3 +1,4 @@
+import { getServiceTerm, type ServiceTerm } from './serviceTerm'
 import type { CoachBindRequest, CoachStudent } from '../../api/types'
 import charPinyinData from '../../data/char-pinyin.json'
 import { matchesPinyin } from '../plan-editor/pinyin'
@@ -9,6 +10,7 @@ function nameSortKey(name: string): string {
 }
 
 export interface StudentRailRow {
+  serviceTerm: ServiceTerm | null
   student: CoachStudent
   displayName: string
   subtitle: string | null
@@ -29,13 +31,14 @@ function trainingStatus(student: CoachStudent): StudentRailRow['status'] {
   return { key: student.today?.state ?? 'rest' }
 }
 
-export function buildStudentRail(students: readonly CoachStudent[], query: string): { active: StudentRailRow[]; ended: StudentRailRow[] } {
+export function buildStudentRail(students: readonly CoachStudent[], query: string, today = new Date()): { active: StudentRailRow[]; ended: StudentRailRow[] } {
   const search = query.trim().toLowerCase()
   const rank = { completed: 0, scheduled: 1, rest: 2 }
   const rows = students.filter(student => [student.alias, student.display_name].some(name =>
     name != null && (name.toLowerCase().includes(search) || matchesPinyin(name, search)),
   )).map(student => ({
     student,
+    serviceTerm: student.bond_status === 'ended' ? null : getServiceTerm(student.service_until, today),
     displayName: student.alias ?? student.display_name,
     subtitle: student.alias != null ? student.display_name : null,
     endedAt: student.ended_at ?? null,

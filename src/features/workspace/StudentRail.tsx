@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { CoachStudent } from '../../api/types'
-import { S } from '../../i18n/strings'
+import { localDate } from './serviceTerm'
+import { S, resolveLocale } from '../../i18n/strings'
 import { buildStudentRail, previouslyEnded, type StudentRailRow } from './studentRailModel'
 import { usePersistentCollapse } from './usePersistentCollapse'
 
@@ -12,7 +13,9 @@ export function StudentRail({ students, currentStudentId, onSelect }: {
   const [query, setQuery] = useState('')
   const [collapsed, toggle] = usePersistentCollapse('meetpr:student-rail:collapsed')
   const [endedCollapsed, toggleEnded, setEndedCollapsed] = usePersistentCollapse('meetpr:student-rail:ended-collapsed', true)
-  const { active, ended } = useMemo(() => buildStudentRail(students, query), [students, query])
+  const locale = resolveLocale()
+  const today = localDate()
+  const { active, ended } = useMemo(() => buildStudentRail(students, query), [students, query, locale, today])
   const selectedEndedId = students.find(student => student.id === currentStudentId && student.bond_status === 'ended')?.id
   useEffect(() => {
     if (selectedEndedId) setEndedCollapsed(false)
@@ -20,9 +23,9 @@ export function StudentRail({ students, currentStudentId, onSelect }: {
   const searching = !!query.trim()
   const labels = S.workspace.studentRail
   const row = (item: StudentRailRow) => <button type="button" key={item.student.id}
-    className={`student-rail-row${item.student.bond_status === 'ended' ? ' ended' : ''}`}
+    className={`student-rail-row${item.student.bond_status === 'ended' ? ' ended' : ''}${item.serviceTerm ? ' has-service-term' : ''}`}
     aria-current={item.student.id === currentStudentId ? 'true' : undefined} onClick={() => void onSelect(item.student.id)}>
-    <span className="student-rail-name"><b>{item.displayName}</b>{item.status && item.subtitle && <small>{item.subtitle}</small>}</span>
+    <span className="student-rail-name"><b>{item.displayName}</b>{item.status && item.subtitle && <small>{item.subtitle}</small>}{item.serviceTerm && <span className={`service-term-capsule ${item.serviceTerm.tone}`}>{item.serviceTerm.shortLabel}</span>}</span>
     {item.status ? <>
       <small className={`student-rail-status ${item.status.key}`}>{item.status.key === 'completed' ? labels.completed(item.status.time) : labels[item.status.key]}</small>
       {item.pendingVideoCount > 0 && <span className="student-rail-video-count">{item.pendingVideoCount}</span>}

@@ -1,0 +1,562 @@
+
+> meetpr-plan-web@0.1.0 test
+> vitest run
+
+
+ RUN  v2.1.9 /Users/david/Projects/apps/meetpr-plan-web-wt-024
+
+ ✓ src/features/plan-editor/reconcile.test.ts (99 tests) 140ms
+ ✓ src/features/chat/MessagesPage-ui.test.tsx (27 tests) 1203ms
+(node:76093) Warning: `--localstorage-file` was provided without a valid path
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:76091) Warning: `--localstorage-file` was provided without a valid path
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:76125) Warning: `--localstorage-file` was provided without a valid path
+(Use `node --trace-warnings ...` to show where the warning was created)
+ ✓ src/features/admin/AdminWorkspace.test.tsx (24 tests) 3765ms
+   ✓ AdminWorkspace > retries failed conflict refreshes inside the dialog without another mutation or losing the draft 580ms
+   ✓ AdminWorkspace > filters all four application states, searches name or email and sorts newest first 374ms
+stderr | src/features/plan-editor/block-history-ui.test.tsx > 020 floats one video beside feedback, selects the historical video and restores history before closing the edit card
+Error: Not implemented: HTMLMediaElement.prototype.pause
+    at module.exports (/Users/david/Projects/apps/meetpr-plan-web-wt-024/node_modules/jsdom/lib/jsdom/browser/not-implemented.js:9:17)
+    at HTMLVideoElementImpl.pause (/Users/david/Projects/apps/meetpr-plan-web-wt-024/node_modules/jsdom/lib/jsdom/living/nodes/HTMLMediaElement-impl.js:121:5)
+    at HTMLVideoElement.pause (/Users/david/Projects/apps/meetpr-plan-web-wt-024/node_modules/jsdom/lib/jsdom/living/generated/HTMLMediaElement.js:162:34)
+    at releaseVideo (/Users/david/Projects/apps/meetpr-plan-web-wt-024/src/features/workspace/VideoWorkbench.tsx:50:9)
+    at /Users/david/Projects/apps/meetpr-plan-web-wt-024/src/features/workspace/VideoWorkbench.tsx:299:31
+    at safelyCallDestroy (/Users/david/Projects/apps/meetpr-plan-web-wt-024/node_modules/react-dom/cjs/react-dom.development.js:22971:5)
+    at commitDeletionEffectsOnFiber (/Users/david/Projects/apps/meetpr-plan-web-wt-024/node_modules/react-dom/cjs/react-dom.development.js:24142:23)
+    at commitDeletionEffects (/Users/david/Projects/apps/meetpr-plan-web-wt-024/node_modules/react-dom/cjs/react-dom.development.js:24015:5)
+    at recursivelyTraverseMutationEffects (/Users/david/Projects/apps/meetpr-plan-web-wt-024/node_modules/react-dom/cjs/react-dom.development.js:24298:9)
+    at commitMutationEffectsOnFiber (/Users/david/Projects/apps/meetpr-plan-web-wt-024/node_modules/react-dom/cjs/react-dom.development.js:24332:9) undefined
+Error: Not implemented: HTMLMediaElement.prototype.load
+    at module.exports (/Users/david/Projects/apps/meetpr-plan-web-wt-024/node_modules/jsdom/lib/jsdom/browser/not-implemented.js:9:17)
+    at HTMLVideoElementImpl.load (/Users/david/Projects/apps/meetpr-plan-web-wt-024/node_modules/jsdom/lib/jsdom/living/nodes/HTMLMediaElement-impl.js:112:5)
+    at HTMLVideoElement.load (/Users/david/Projects/apps/meetpr-plan-web-wt-024/node_modules/jsdom/lib/jsdom/living/generated/HTMLMediaElement.js:111:34)
+    at releaseVideo (/Users/david/Projects/apps/meetpr-plan-web-wt-024/src/features/workspace/VideoWorkbench.tsx:52:9)
+    at /Users/david/Projects/apps/meetpr-plan-web-wt-024/src/features/workspace/VideoWorkbench.tsx:299:31
+    at safelyCallDestroy (/Users/david/Projects/apps/meetpr-plan-web-wt-024/node_modules/react-dom/cjs/react-dom.development.js:22971:5)
+    at commitDeletionEffectsOnFiber (/Users/david/Projects/apps/meetpr-plan-web-wt-024/node_modules/react-dom/cjs/react-dom.development.js:24142:23)
+    at commitDeletionEffects (/Users/david/Projects/apps/meetpr-plan-web-wt-024/node_modules/react-dom/cjs/react-dom.development.js:24015:5)
+    at recursivelyTraverseMutationEffects (/Users/david/Projects/apps/meetpr-plan-web-wt-024/node_modules/react-dom/cjs/react-dom.development.js:24298:9)
+    at commitMutationEffectsOnFiber (/Users/david/Projects/apps/meetpr-plan-web-wt-024/node_modules/react-dom/cjs/react-dom.development.js:24332:9) undefined
+
+ ✓ src/features/workspace/VideoWorkbench-ui.test.tsx (41 tests) 4968ms
+   ✓ Feedback history rail and shared portrait workbench > 013 repair 2 keeps compact accessible portrait controls in en 1340ms
+   ✓ Feedback history rail and shared portrait workbench > does not write an out-of-order marker POST response into the newly selected video 302ms
+ ✓ src/features/plan-editor/locked-ui.test.tsx (20 tests) 2681ms
+   ✓ exercise history lock UI > disables every editable field, renders the lock tooltip, and hides row delete 301ms
+stderr | src/features/plan-editor/block-history-ui.test.tsx > 020 floats one video beside feedback, selects the historical video and restores history before closing the edit card
+Error: Not implemented: HTMLMediaElement.prototype.pause
+    at module.exports (/Users/david/Projects/apps/meetpr-plan-web-wt-024/node_modules/jsdom/lib/jsdom/browser/not-implemented.js:9:17)
+    at HTMLVideoElementImpl.pause (/Users/david/Projects/apps/meetpr-plan-web-wt-024/node_modules/jsdom/lib/jsdom/living/nodes/HTMLMediaElement-impl.js:121:5)
+    at HTMLVideoElement.pause (/Users/david/Projects/apps/meetpr-plan-web-wt-024/node_modules/jsdom/lib/jsdom/living/generated/HTMLMediaElement.js:162:34)
+    at releaseVideo (/Users/david/Projects/apps/meetpr-plan-web-wt-024/src/features/workspace/VideoWorkbench.tsx:50:9)
+    at /Users/david/Projects/apps/meetpr-plan-web-wt-024/src/features/workspace/VideoWorkbench.tsx:296:52
+    at commitHookEffectListMount (/Users/david/Projects/apps/meetpr-plan-web-wt-024/node_modules/react-dom/cjs/react-dom.development.js:23189:26)
+    at commitLayoutEffectOnFiber (/Users/david/Projects/apps/meetpr-plan-web-wt-024/node_modules/react-dom/cjs/react-dom.development.js:23312:15)
+    at commitLayoutMountEffects_complete (/Users/david/Projects/apps/meetpr-plan-web-wt-024/node_modules/react-dom/cjs/react-dom.development.js:24727:9)
+    at commitLayoutEffects_begin (/Users/david/Projects/apps/meetpr-plan-web-wt-024/node_modules/react-dom/cjs/react-dom.development.js:24713:7)
+    at commitLayoutEffects (/Users/david/Projects/apps/meetpr-plan-web-wt-024/node_modules/react-dom/cjs/react-dom.development.js:24651:3) undefined
+Error: Not implemented: HTMLMediaElement.prototype.load
+    at module.exports (/Users/david/Projects/apps/meetpr-plan-web-wt-024/node_modules/jsdom/lib/jsdom/browser/not-implemented.js:9:17)
+    at HTMLVideoElementImpl.load (/Users/david/Projects/apps/meetpr-plan-web-wt-024/node_modules/jsdom/lib/jsdom/living/nodes/HTMLMediaElement-impl.js:112:5)
+    at HTMLVideoElement.load (/Users/david/Projects/apps/meetpr-plan-web-wt-024/node_modules/jsdom/lib/jsdom/living/generated/HTMLMediaElement.js:111:34)
+    at releaseVideo (/Users/david/Projects/apps/meetpr-plan-web-wt-024/src/features/workspace/VideoWorkbench.tsx:52:9)
+    at /Users/david/Projects/apps/meetpr-plan-web-wt-024/src/features/workspace/VideoWorkbench.tsx:296:52
+    at commitHookEffectListMount (/Users/david/Projects/apps/meetpr-plan-web-wt-024/node_modules/react-dom/cjs/react-dom.development.js:23189:26)
+    at commitLayoutEffectOnFiber (/Users/david/Projects/apps/meetpr-plan-web-wt-024/node_modules/react-dom/cjs/react-dom.development.js:23312:15)
+    at commitLayoutMountEffects_complete (/Users/david/Projects/apps/meetpr-plan-web-wt-024/node_modules/react-dom/cjs/react-dom.development.js:24727:9)
+    at commitLayoutEffects_begin (/Users/david/Projects/apps/meetpr-plan-web-wt-024/node_modules/react-dom/cjs/react-dom.development.js:24713:7)
+    at commitLayoutEffects (/Users/david/Projects/apps/meetpr-plan-web-wt-024/node_modules/react-dom/cjs/react-dom.development.js:24651:3) undefined
+
+ ✓ src/features/plan-editor/plan-shift-ui.test.tsx (19 tests) 4723ms
+   ✓ coach plan shift UI > 019 opens a day and its shift panel from a deep link in by-week layout 346ms
+   ✓ coach plan shift UI > retains saved day identity when undoing draft edits after publication 335ms
+   ✓ coach plan shift UI > keeps the shifted schedule while undoing and redoing prescription edits when refresh succeeds 411ms
+   ✓ coach plan shift UI > keeps the shifted schedule while undoing and redoing prescription edits when refresh fails 579ms
+   ✓ coach plan shift UI > keeps recreated day schedule through prescription undo/redo when save has concurrent edits: false 434ms
+   ✓ coach plan shift UI > keeps the refreshed schedule through undo/redo after a save conflict 374ms
+   ✓ coach plan shift UI > retries only the refresh after undo succeeds but loading the remaining schedule fails 402ms
+stderr | src/features/plan-editor/block-history-ui.test.tsx > fits the zh player in the viewport and supports speed, frame, progress and time controls
+Error: Not implemented: HTMLMediaElement.prototype.load
+    at module.exports (/Users/david/Projects/apps/meetpr-plan-web-wt-024/node_modules/jsdom/lib/jsdom/browser/not-implemented.js:9:17)
+    at HTMLVideoElementImpl.load (/Users/david/Projects/apps/meetpr-plan-web-wt-024/node_modules/jsdom/lib/jsdom/living/nodes/HTMLMediaElement-impl.js:112:5)
+    at HTMLVideoElement.load (/Users/david/Projects/apps/meetpr-plan-web-wt-024/node_modules/jsdom/lib/jsdom/living/generated/HTMLMediaElement.js:111:34)
+    at releaseVideo (/Users/david/Projects/apps/meetpr-plan-web-wt-024/src/features/workspace/VideoWorkbench.tsx:52:9)
+    at /Users/david/Projects/apps/meetpr-plan-web-wt-024/src/features/workspace/VideoWorkbench.tsx:296:52
+    at commitHookEffectListMount (/Users/david/Projects/apps/meetpr-plan-web-wt-024/node_modules/react-dom/cjs/react-dom.development.js:23189:26)
+    at commitLayoutEffectOnFiber (/Users/david/Projects/apps/meetpr-plan-web-wt-024/node_modules/react-dom/cjs/react-dom.development.js:23312:15)
+    at commitLayoutMountEffects_complete (/Users/david/Projects/apps/meetpr-plan-web-wt-024/node_modules/react-dom/cjs/react-dom.development.js:24727:9)
+    at commitLayoutEffects_begin (/Users/david/Projects/apps/meetpr-plan-web-wt-024/node_modules/react-dom/cjs/react-dom.development.js:24713:7)
+    at commitLayoutEffects (/Users/david/Projects/apps/meetpr-plan-web-wt-024/node_modules/react-dom/cjs/react-dom.development.js:24651:3) undefined
+
+stderr | src/features/plan-editor/block-history-ui.test.tsx > fits the en player in the viewport and supports speed, frame, progress and time controls
+Error: Not implemented: HTMLMediaElement.prototype.load
+    at module.exports (/Users/david/Projects/apps/meetpr-plan-web-wt-024/node_modules/jsdom/lib/jsdom/browser/not-implemented.js:9:17)
+    at HTMLVideoElementImpl.load (/Users/david/Projects/apps/meetpr-plan-web-wt-024/node_modules/jsdom/lib/jsdom/living/nodes/HTMLMediaElement-impl.js:112:5)
+    at HTMLVideoElement.load (/Users/david/Projects/apps/meetpr-plan-web-wt-024/node_modules/jsdom/lib/jsdom/living/generated/HTMLMediaElement.js:111:34)
+    at releaseVideo (/Users/david/Projects/apps/meetpr-plan-web-wt-024/src/features/workspace/VideoWorkbench.tsx:52:9)
+    at /Users/david/Projects/apps/meetpr-plan-web-wt-024/src/features/workspace/VideoWorkbench.tsx:296:52
+    at commitHookEffectListMount (/Users/david/Projects/apps/meetpr-plan-web-wt-024/node_modules/react-dom/cjs/react-dom.development.js:23189:26)
+    at commitLayoutEffectOnFiber (/Users/david/Projects/apps/meetpr-plan-web-wt-024/node_modules/react-dom/cjs/react-dom.development.js:23312:15)
+    at commitLayoutMountEffects_complete (/Users/david/Projects/apps/meetpr-plan-web-wt-024/node_modules/react-dom/cjs/react-dom.development.js:24727:9)
+    at commitLayoutEffects_begin (/Users/david/Projects/apps/meetpr-plan-web-wt-024/node_modules/react-dom/cjs/react-dom.development.js:24713:7)
+    at commitLayoutEffects (/Users/david/Projects/apps/meetpr-plan-web-wt-024/node_modules/react-dom/cjs/react-dom.development.js:24651:3) undefined
+
+stderr | src/features/plan-editor/block-history-ui.test.tsx > closes the video before a name field can consume Escape (focus: before)
+Error: Not implemented: HTMLMediaElement.prototype.pause
+    at module.exports (/Users/david/Projects/apps/meetpr-plan-web-wt-024/node_modules/jsdom/lib/jsdom/browser/not-implemented.js:9:17)
+    at HTMLVideoElementImpl.pause (/Users/david/Projects/apps/meetpr-plan-web-wt-024/node_modules/jsdom/lib/jsdom/living/nodes/HTMLMediaElement-impl.js:121:5)
+    at HTMLVideoElement.pause (/Users/david/Projects/apps/meetpr-plan-web-wt-024/node_modules/jsdom/lib/jsdom/living/generated/HTMLMediaElement.js:162:34)
+    at releaseVideo (/Users/david/Projects/apps/meetpr-plan-web-wt-024/src/features/workspace/VideoWorkbench.tsx:50:9)
+    at /Users/david/Projects/apps/meetpr-plan-web-wt-024/src/features/workspace/VideoWorkbench.tsx:296:52
+    at commitHookEffectListMount (/Users/david/Projects/apps/meetpr-plan-web-wt-024/node_modules/react-dom/cjs/react-dom.development.js:23189:26)
+    at commitLayoutEffectOnFiber (/Users/david/Projects/apps/meetpr-plan-web-wt-024/node_modules/react-dom/cjs/react-dom.development.js:23312:15)
+    at commitLayoutMountEffects_complete (/Users/david/Projects/apps/meetpr-plan-web-wt-024/node_modules/react-dom/cjs/react-dom.development.js:24727:9)
+    at commitLayoutEffects_begin (/Users/david/Projects/apps/meetpr-plan-web-wt-024/node_modules/react-dom/cjs/react-dom.development.js:24713:7)
+    at commitLayoutEffects (/Users/david/Projects/apps/meetpr-plan-web-wt-024/node_modules/react-dom/cjs/react-dom.development.js:24651:3) undefined
+Error: Not implemented: HTMLMediaElement.prototype.load
+    at module.exports (/Users/david/Projects/apps/meetpr-plan-web-wt-024/node_modules/jsdom/lib/jsdom/browser/not-implemented.js:9:17)
+    at HTMLVideoElementImpl.load (/Users/david/Projects/apps/meetpr-plan-web-wt-024/node_modules/jsdom/lib/jsdom/living/nodes/HTMLMediaElement-impl.js:112:5)
+    at HTMLVideoElement.load (/Users/david/Projects/apps/meetpr-plan-web-wt-024/node_modules/jsdom/lib/jsdom/living/generated/HTMLMediaElement.js:111:34)
+    at releaseVideo (/Users/david/Projects/apps/meetpr-plan-web-wt-024/src/features/workspace/VideoWorkbench.tsx:52:9)
+    at /Users/david/Projects/apps/meetpr-plan-web-wt-024/src/features/workspace/VideoWorkbench.tsx:296:52
+    at commitHookEffectListMount (/Users/david/Projects/apps/meetpr-plan-web-wt-024/node_modules/react-dom/cjs/react-dom.development.js:23189:26)
+    at commitLayoutEffectOnFiber (/Users/david/Projects/apps/meetpr-plan-web-wt-024/node_modules/react-dom/cjs/react-dom.development.js:23312:15)
+    at commitLayoutMountEffects_complete (/Users/david/Projects/apps/meetpr-plan-web-wt-024/node_modules/react-dom/cjs/react-dom.development.js:24727:9)
+    at commitLayoutEffects_begin (/Users/david/Projects/apps/meetpr-plan-web-wt-024/node_modules/react-dom/cjs/react-dom.development.js:24713:7)
+    at commitLayoutEffects (/Users/david/Projects/apps/meetpr-plan-web-wt-024/node_modules/react-dom/cjs/react-dom.development.js:24651:3) undefined
+
+stderr | src/features/plan-editor/block-history-ui.test.tsx > closes the video before a name field can consume Escape (focus: after)
+Error: Not implemented: HTMLMediaElement.prototype.pause
+    at module.exports (/Users/david/Projects/apps/meetpr-plan-web-wt-024/node_modules/jsdom/lib/jsdom/browser/not-implemented.js:9:17)
+    at HTMLVideoElementImpl.pause (/Users/david/Projects/apps/meetpr-plan-web-wt-024/node_modules/jsdom/lib/jsdom/living/nodes/HTMLMediaElement-impl.js:121:5)
+    at HTMLVideoElement.pause (/Users/david/Projects/apps/meetpr-plan-web-wt-024/node_modules/jsdom/lib/jsdom/living/generated/HTMLMediaElement.js:162:34)
+    at releaseVideo (/Users/david/Projects/apps/meetpr-plan-web-wt-024/src/features/workspace/VideoWorkbench.tsx:50:9)
+    at /Users/david/Projects/apps/meetpr-plan-web-wt-024/src/features/workspace/VideoWorkbench.tsx:296:52
+    at commitHookEffectListMount (/Users/david/Projects/apps/meetpr-plan-web-wt-024/node_modules/react-dom/cjs/react-dom.development.js:23189:26)
+    at commitLayoutEffectOnFiber (/Users/david/Projects/apps/meetpr-plan-web-wt-024/node_modules/react-dom/cjs/react-dom.development.js:23312:15)
+    at commitLayoutMountEffects_complete (/Users/david/Projects/apps/meetpr-plan-web-wt-024/node_modules/react-dom/cjs/react-dom.development.js:24727:9)
+    at commitLayoutEffects_begin (/Users/david/Projects/apps/meetpr-plan-web-wt-024/node_modules/react-dom/cjs/react-dom.development.js:24713:7)
+    at commitLayoutEffects (/Users/david/Projects/apps/meetpr-plan-web-wt-024/node_modules/react-dom/cjs/react-dom.development.js:24651:3) undefined
+Error: Not implemented: HTMLMediaElement.prototype.load
+    at module.exports (/Users/david/Projects/apps/meetpr-plan-web-wt-024/node_modules/jsdom/lib/jsdom/browser/not-implemented.js:9:17)
+    at HTMLVideoElementImpl.load (/Users/david/Projects/apps/meetpr-plan-web-wt-024/node_modules/jsdom/lib/jsdom/living/nodes/HTMLMediaElement-impl.js:112:5)
+    at HTMLVideoElement.load (/Users/david/Projects/apps/meetpr-plan-web-wt-024/node_modules/jsdom/lib/jsdom/living/generated/HTMLMediaElement.js:111:34)
+    at releaseVideo (/Users/david/Projects/apps/meetpr-plan-web-wt-024/src/features/workspace/VideoWorkbench.tsx:52:9)
+    at /Users/david/Projects/apps/meetpr-plan-web-wt-024/src/features/workspace/VideoWorkbench.tsx:296:52
+    at commitHookEffectListMount (/Users/david/Projects/apps/meetpr-plan-web-wt-024/node_modules/react-dom/cjs/react-dom.development.js:23189:26)
+    at commitLayoutEffectOnFiber (/Users/david/Projects/apps/meetpr-plan-web-wt-024/node_modules/react-dom/cjs/react-dom.development.js:23312:15)
+    at commitLayoutMountEffects_complete (/Users/david/Projects/apps/meetpr-plan-web-wt-024/node_modules/react-dom/cjs/react-dom.development.js:24727:9)
+    at commitLayoutEffects_begin (/Users/david/Projects/apps/meetpr-plan-web-wt-024/node_modules/react-dom/cjs/react-dom.development.js:24713:7)
+    at commitLayoutEffects (/Users/david/Projects/apps/meetpr-plan-web-wt-024/node_modules/react-dom/cjs/react-dom.development.js:24651:3) undefined
+
+stderr | src/features/plan-editor/block-history-ui.test.tsx > closes the video before a name field can consume Escape (focus: progress)
+Error: Not implemented: HTMLMediaElement.prototype.pause
+    at module.exports (/Users/david/Projects/apps/meetpr-plan-web-wt-024/node_modules/jsdom/lib/jsdom/browser/not-implemented.js:9:17)
+    at HTMLVideoElementImpl.pause (/Users/david/Projects/apps/meetpr-plan-web-wt-024/node_modules/jsdom/lib/jsdom/living/nodes/HTMLMediaElement-impl.js:121:5)
+    at HTMLVideoElement.pause (/Users/david/Projects/apps/meetpr-plan-web-wt-024/node_modules/jsdom/lib/jsdom/living/generated/HTMLMediaElement.js:162:34)
+    at releaseVideo (/Users/david/Projects/apps/meetpr-plan-web-wt-024/src/features/workspace/VideoWorkbench.tsx:50:9)
+    at /Users/david/Projects/apps/meetpr-plan-web-wt-024/src/features/workspace/VideoWorkbench.tsx:296:52
+    at commitHookEffectListMount (/Users/david/Projects/apps/meetpr-plan-web-wt-024/node_modules/react-dom/cjs/react-dom.development.js:23189:26)
+    at commitLayoutEffectOnFiber (/Users/david/Projects/apps/meetpr-plan-web-wt-024/node_modules/react-dom/cjs/react-dom.development.js:23312:15)
+    at commitLayoutMountEffects_complete (/Users/david/Projects/apps/meetpr-plan-web-wt-024/node_modules/react-dom/cjs/react-dom.development.js:24727:9)
+    at commitLayoutEffects_begin (/Users/david/Projects/apps/meetpr-plan-web-wt-024/node_modules/react-dom/cjs/react-dom.development.js:24713:7)
+    at commitLayoutEffects (/Users/david/Projects/apps/meetpr-plan-web-wt-024/node_modules/react-dom/cjs/react-dom.development.js:24651:3) undefined
+Error: Not implemented: HTMLMediaElement.prototype.load
+    at module.exports (/Users/david/Projects/apps/meetpr-plan-web-wt-024/node_modules/jsdom/lib/jsdom/browser/not-implemented.js:9:17)
+    at HTMLVideoElementImpl.load (/Users/david/Projects/apps/meetpr-plan-web-wt-024/node_modules/jsdom/lib/jsdom/living/nodes/HTMLMediaElement-impl.js:112:5)
+    at HTMLVideoElement.load (/Users/david/Projects/apps/meetpr-plan-web-wt-024/node_modules/jsdom/lib/jsdom/living/generated/HTMLMediaElement.js:111:34)
+    at releaseVideo (/Users/david/Projects/apps/meetpr-plan-web-wt-024/src/features/workspace/VideoWorkbench.tsx:52:9)
+    at /Users/david/Projects/apps/meetpr-plan-web-wt-024/src/features/workspace/VideoWorkbench.tsx:296:52
+    at commitHookEffectListMount (/Users/david/Projects/apps/meetpr-plan-web-wt-024/node_modules/react-dom/cjs/react-dom.development.js:23189:26)
+    at commitLayoutEffectOnFiber (/Users/david/Projects/apps/meetpr-plan-web-wt-024/node_modules/react-dom/cjs/react-dom.development.js:23312:15)
+    at commitLayoutMountEffects_complete (/Users/david/Projects/apps/meetpr-plan-web-wt-024/node_modules/react-dom/cjs/react-dom.development.js:24727:9)
+    at commitLayoutEffects_begin (/Users/david/Projects/apps/meetpr-plan-web-wt-024/node_modules/react-dom/cjs/react-dom.development.js:24713:7)
+    at commitLayoutEffects (/Users/david/Projects/apps/meetpr-plan-web-wt-024/node_modules/react-dom/cjs/react-dom.development.js:24651:3) undefined
+
+stderr | src/features/plan-editor/block-history-ui.test.tsx > 020 selects only the opened historical video among separate prescriptions on the same date
+Error: Not implemented: HTMLMediaElement.prototype.pause
+    at module.exports (/Users/david/Projects/apps/meetpr-plan-web-wt-024/node_modules/jsdom/lib/jsdom/browser/not-implemented.js:9:17)
+    at HTMLVideoElementImpl.pause (/Users/david/Projects/apps/meetpr-plan-web-wt-024/node_modules/jsdom/lib/jsdom/living/nodes/HTMLMediaElement-impl.js:121:5)
+    at HTMLVideoElement.pause (/Users/david/Projects/apps/meetpr-plan-web-wt-024/node_modules/jsdom/lib/jsdom/living/generated/HTMLMediaElement.js:162:34)
+    at releaseVideo (/Users/david/Projects/apps/meetpr-plan-web-wt-024/src/features/workspace/VideoWorkbench.tsx:50:9)
+    at /Users/david/Projects/apps/meetpr-plan-web-wt-024/src/features/workspace/VideoWorkbench.tsx:299:31
+    at safelyCallDestroy (/Users/david/Projects/apps/meetpr-plan-web-wt-024/node_modules/react-dom/cjs/react-dom.development.js:22971:5)
+    at commitDeletionEffectsOnFiber (/Users/david/Projects/apps/meetpr-plan-web-wt-024/node_modules/react-dom/cjs/react-dom.development.js:24142:23)
+    at recursivelyTraverseDeletionEffects (/Users/david/Projects/apps/meetpr-plan-web-wt-024/node_modules/react-dom/cjs/react-dom.development.js:24028:5)
+    at commitDeletionEffectsOnFiber (/Users/david/Projects/apps/meetpr-plan-web-wt-024/node_modules/react-dom/cjs/react-dom.development.js:24157:9)
+    at recursivelyTraverseDeletionEffects (/Users/david/Projects/apps/meetpr-plan-web-wt-024/node_modules/react-dom/cjs/react-dom.development.js:24028:5) undefined
+Error: Not implemented: HTMLMediaElement.prototype.load
+    at module.exports (/Users/david/Projects/apps/meetpr-plan-web-wt-024/node_modules/jsdom/lib/jsdom/browser/not-implemented.js:9:17)
+    at HTMLVideoElementImpl.load (/Users/david/Projects/apps/meetpr-plan-web-wt-024/node_modules/jsdom/lib/jsdom/living/nodes/HTMLMediaElement-impl.js:112:5)
+    at HTMLVideoElement.load (/Users/david/Projects/apps/meetpr-plan-web-wt-024/node_modules/jsdom/lib/jsdom/living/generated/HTMLMediaElement.js:111:34)
+    at releaseVideo (/Users/david/Projects/apps/meetpr-plan-web-wt-024/src/features/workspace/VideoWorkbench.tsx:52:9)
+    at /Users/david/Projects/apps/meetpr-plan-web-wt-024/src/features/workspace/VideoWorkbench.tsx:299:31
+    at safelyCallDestroy (/Users/david/Projects/apps/meetpr-plan-web-wt-024/node_modules/react-dom/cjs/react-dom.development.js:22971:5)
+    at commitDeletionEffectsOnFiber (/Users/david/Projects/apps/meetpr-plan-web-wt-024/node_modules/react-dom/cjs/react-dom.development.js:24142:23)
+    at recursivelyTraverseDeletionEffects (/Users/david/Projects/apps/meetpr-plan-web-wt-024/node_modules/react-dom/cjs/react-dom.development.js:24028:5)
+    at commitDeletionEffectsOnFiber (/Users/david/Projects/apps/meetpr-plan-web-wt-024/node_modules/react-dom/cjs/react-dom.development.js:24157:9)
+    at recursivelyTraverseDeletionEffects (/Users/david/Projects/apps/meetpr-plan-web-wt-024/node_modules/react-dom/cjs/react-dom.development.js:24028:5) undefined
+
+stderr | src/features/plan-editor/block-history-ui.test.tsx > keeps history open for a complete row, filters, caches and plays without closing the edit card
+Error: Not implemented: HTMLMediaElement.prototype.pause
+    at module.exports (/Users/david/Projects/apps/meetpr-plan-web-wt-024/node_modules/jsdom/lib/jsdom/browser/not-implemented.js:9:17)
+    at HTMLVideoElementImpl.pause (/Users/david/Projects/apps/meetpr-plan-web-wt-024/node_modules/jsdom/lib/jsdom/living/nodes/HTMLMediaElement-impl.js:121:5)
+    at HTMLVideoElement.pause (/Users/david/Projects/apps/meetpr-plan-web-wt-024/node_modules/jsdom/lib/jsdom/living/generated/HTMLMediaElement.js:162:34)
+    at releaseVideo (/Users/david/Projects/apps/meetpr-plan-web-wt-024/src/features/workspace/VideoWorkbench.tsx:50:9)
+    at /Users/david/Projects/apps/meetpr-plan-web-wt-024/src/features/workspace/VideoWorkbench.tsx:296:52
+    at commitHookEffectListMount (/Users/david/Projects/apps/meetpr-plan-web-wt-024/node_modules/react-dom/cjs/react-dom.development.js:23189:26)
+    at commitLayoutEffectOnFiber (/Users/david/Projects/apps/meetpr-plan-web-wt-024/node_modules/react-dom/cjs/react-dom.development.js:23312:15)
+    at commitLayoutMountEffects_complete (/Users/david/Projects/apps/meetpr-plan-web-wt-024/node_modules/react-dom/cjs/react-dom.development.js:24727:9)
+    at commitLayoutEffects_begin (/Users/david/Projects/apps/meetpr-plan-web-wt-024/node_modules/react-dom/cjs/react-dom.development.js:24713:7)
+    at commitLayoutEffects (/Users/david/Projects/apps/meetpr-plan-web-wt-024/node_modules/react-dom/cjs/react-dom.development.js:24651:3) undefined
+Error: Not implemented: HTMLMediaElement.prototype.load
+    at module.exports (/Users/david/Projects/apps/meetpr-plan-web-wt-024/node_modules/jsdom/lib/jsdom/browser/not-implemented.js:9:17)
+    at HTMLVideoElementImpl.load (/Users/david/Projects/apps/meetpr-plan-web-wt-024/node_modules/jsdom/lib/jsdom/living/nodes/HTMLMediaElement-impl.js:112:5)
+    at HTMLVideoElement.load (/Users/david/Projects/apps/meetpr-plan-web-wt-024/node_modules/jsdom/lib/jsdom/living/generated/HTMLMediaElement.js:111:34)
+    at releaseVideo (/Users/david/Projects/apps/meetpr-plan-web-wt-024/src/features/workspace/VideoWorkbench.tsx:52:9)
+    at /Users/david/Projects/apps/meetpr-plan-web-wt-024/src/features/workspace/VideoWorkbench.tsx:296:52
+    at commitHookEffectListMount (/Users/david/Projects/apps/meetpr-plan-web-wt-024/node_modules/react-dom/cjs/react-dom.development.js:23189:26)
+    at commitLayoutEffectOnFiber (/Users/david/Projects/apps/meetpr-plan-web-wt-024/node_modules/react-dom/cjs/react-dom.development.js:23312:15)
+    at commitLayoutMountEffects_complete (/Users/david/Projects/apps/meetpr-plan-web-wt-024/node_modules/react-dom/cjs/react-dom.development.js:24727:9)
+    at commitLayoutEffects_begin (/Users/david/Projects/apps/meetpr-plan-web-wt-024/node_modules/react-dom/cjs/react-dom.development.js:24713:7)
+    at commitLayoutEffects (/Users/david/Projects/apps/meetpr-plan-web-wt-024/node_modules/react-dom/cjs/react-dom.development.js:24651:3) undefined
+
+ ✓ src/features/catalog/CatalogPage.test.tsx (12 tests) 1377ms
+   ✓ CatalogPage > keeps the coach alias visible in English after adoption and renaming 510ms
+ ✓ src/features/plan-editor/draftMirror-ui.test.tsx (39 tests) 7184ms
+   ✓ PlanEditor local draft recovery > offers a non-blocking banner and restores weeks through the undoable history path 541ms
+   ✓ PlanEditor local draft recovery > restores published prescription content without restoring an obsolete shift schedule 330ms
+   ✓ PlanEditor local draft recovery > freezes the published calendar across undo and redo of a restored 1-week draft 629ms
+   ✓ PlanEditor local draft recovery > freezes the published calendar across undo and redo of a restored 2-week draft 912ms
+   ✓ PlanEditor local draft recovery > keeps the remote snapshot on the latest editor content across an in-flight degraded save 354ms
+   ✓ PlanEditor local draft recovery > 丢弃 followed by immediate unmount still DELETEs after an in-flight PUT 463ms
+ ✓ src/features/plan-editor/remoteMirror.test.ts (16 tests) 153ms
+ ✓ src/features/plan-editor/block-history-ui.test.tsx (15 tests) 4888ms
+   ✓ 020 floats one video beside feedback, selects the historical video and restores history before closing the edit card 1727ms
+   ✓ fits the zh player in the viewport and supports speed, frame, progress and time controls 350ms
+   ✓ fits the en player in the viewport and supports speed, frame, progress and time controls 505ms
+   ✓ closes the video before a name field can consume Escape (focus: after) 587ms
+   ✓ uses the unfiltered list and video-page fallback on an old backend without 051 332ms
+ ✓ src/features/workspace/RosterBoard.test.tsx (12 tests) 395ms
+ ✓ src/features/plan-editor/import/ImportPlanDialog.test.tsx (92 tests) 8392ms
+   ✓ selects the latest block, switches its week list and recognizes only the chosen block 334ms
+   ✓ keeps an all-unreadable week in its own editable block and never creates an empty plan after skip 419ms
+   ✓ W1 contains a wide unreadable table inside its own scroll container 411ms
+   ✓ W3 retains the pending revision and 力竭 after importing degraded rows and remounting the editor (import doubts: false) 408ms
+   ✓ W3 retains the pending revision and 力竭 after importing degraded rows and remounting the editor (import doubts: true) 357ms
+ ✓ src/features/onboarding/onboarding.test.tsx (21 tests) 1514ms
+   ✓ takes a welcomed coach to explicit web login even with a cached session, without a sample detour 770ms
+ ✓ src/features/plan-editor/blockGridModel.test.ts (28 tests) 74ms
+ ✓ src/features/workspace/CoachShell.test.tsx (12 tests) 609ms
+ ✓ src/features/plan-editor/exerciseIndex.test.ts (21 tests) 26ms
+ ✓ src/features/plan-editor/components/StudentProfile.test.tsx (10 tests) 635ms
+(node:76196) Warning: `--localstorage-file` was provided without a valid path
+(Use `node --trace-warnings ...` to show where the warning was created)
+ ✓ src/features/plan-editor/block-date-save.test.ts (12 tests) 74ms
+ ❯ src/features/workspace/PlanWorkspace.test.tsx (76 tests | 2 failed) 11052ms
+   ✓ PlanWorkspace editor remount > 020 sends whole-day feedback with the actual date, appends the response and restores it after reopening 842ms
+   ✓ PlanWorkspace editor remount > 020 historical viewed video outside the plan stays selected and exits to the original history level 551ms
+   ✓ PlanWorkspace editor remount > 020 keeps training days on read failure, retries, preserves a failed send and switches between day and video replies 660ms
+   ✓ PlanWorkspace editor remount > 020 day selection and hover link both ways and retain the marker in edit mode: by-week 743ms
+   ✓ PlanWorkspace editor remount > 020 day selection and hover link both ways and retain the marker in edit mode: by-day 668ms
+   ✓ PlanWorkspace editor remount > 013 unread opens chat, remembers collapse, and switches the conversation with the editor athlete 486ms
+   ✓ PlanWorkspace editor remount > 013 retries failed video loads, expands a collapsed rail temporarily, and keeps confirmed viewed state through stale refreshes 478ms
+   ✓ PlanWorkspace editor remount > 013 keeps feedback across plans, resets it across students, and preserves queue focus after opening 438ms
+   ✓ PlanWorkspace editor remount > 013 show actuals persists per coach, leaves unlogged prescriptions gray, keeps student additions read-only and copies prescriptions 457ms
+   ✓ PlanWorkspace editor remount > 019 R1 caches invitation requests across overview visits within one workspace session 331ms
+   ✓ PlanWorkspace editor remount > 反馈刷新后的新视频不会被较早发出的后台响应覆盖 312ms
+   × PlanWorkspace editor remount > 接受申请后立即刷新学员列表和申请计数 94ms
+     → expected "spy" to be called with arguments: [ 'request' ]
+
+Received: 
+
+
+
+Number of calls: 0
+
+   × PlanWorkspace editor remount > 接受申请后丢弃更早发出的轮询响应，申请卡片和角标不复活 34ms
+     → expected "spy" to be called 3 times, but got 2 times
+ ✓ src/features/plan-editor/block-drag-ui.test.tsx (17 tests) 1904ms
+   ✓ saves the collapsed brick reorder through the draft save boundary 577ms
+ ✓ src/features/plan-editor/import/import-dates.test.ts (18 tests) 83ms
+ ✓ src/features/plan-editor/import/import-doubts-ui.test.tsx (14 tests) 1743ms
+   ✓ keeps only the active import doubt tag and confirmation in the trailing cell after notes 398ms
+(node:76219) Warning: `--localstorage-file` was provided without a valid path
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:76215) Warning: `--localstorage-file` was provided without a valid path
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:76221) Warning: `--localstorage-file` was provided without a valid path
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:76216) Warning: `--localstorage-file` was provided without a valid path
+(Use `node --trace-warnings ...` to show where the warning was created)
+ ✓ src/features/plan-editor/mapping-intensity.test.ts (9 tests) 13ms
+ ✓ src/features/plan-editor/by-day-layout-ui.test.tsx (19 tests) 5121ms
+   ✓ defaults to by-week and remembers by-day across refresh, plans and students without saving 807ms
+   ✓ inserts between vertical neighbours, adds a single-week row, and deletes it with undo 409ms
+   ✓ preserves an in-progress sets input and published pending status when switching, without requests 325ms
+   ✓ scrolls to a rendered week header when navigating a six-week by-day plan 553ms
+   ✓ reveals the previous week when moving left to an editor already inside the horizontal viewport 333ms
+   ✓ keeps horizontal alignment when jumping to an issue (row) 303ms
+   ✓ keeps horizontal alignment when jumping to an issue (empty day) 311ms
+ ✓ src/features/plan-editor/actuals-ui.test.tsx (6 tests) 1859ms
+   ✓ plan editor actual-set chips (SPEC-038) > renders per-set actuals under the target cells with 红/黄 tones and thresholds 528ms
+   ✓ plan editor actual-set chips (SPEC-038) > keeps old-backend rendering unchanged and shows catalog names in completed read-only plans 445ms
+   ✓ plan editor actual-set chips (SPEC-038) > includes today's logs by requesting tomorrow as the exclusive upper bound 392ms
+ ✓ src/features/plan-editor/cell-selection-ui.test.tsx (8 tests) 2901ms
+   ✓ plan editor cell selection UI > selects one independent cell, and collapses editing with Escape 841ms
+   ✓ plan editor cell selection UI > switches the one editing cell to another week 320ms
+   ✓ plan editor cell selection UI > moves through the Tab chain, wraps to the next row, and keeps Enter in the same column 344ms
+   ✓ plan editor cell selection UI > commits a set-count draft through blur before Tab moves 441ms
+   ✓ plan editor cell selection UI > fills per-set weights with ⌘D and refuses mutation in read-only plans 430ms
+ ✓ src/features/plan-editor/multirow-selection-ui.test.tsx (9 tests) 3380ms
+   ✓ plan editor multi-row selection UI > adds a row with Command-click while keeping the original row as anchor 541ms
+   ✓ plan editor multi-row selection UI > toggles rows off, moves a removed anchor to the earliest remaining row, and collapses extras on Escape 615ms
+   ✓ plan editor multi-row selection UI > resets to a single row when clicking a different day, even with Command held 324ms
+   ✓ plan editor multi-row selection UI > copies all selected rows when Command-C originates from a focused grid input 352ms
+   ✓ plan editor multi-row selection UI > clears an out-of-range intensity cell after reducing sets while preserving the valid row selection 562ms
+   ✓ plan editor multi-row selection UI > pastes the whole copied selection into another day in one Command-V 317ms
+ ✓ src/features/plan-editor/clipboard.test.ts (12 tests) 63ms
+ ✓ src/features/plan-editor/draftMirror.test.ts (10 tests) 118ms
+ ✓ src/features/workspace/TrackingDashboard.test.tsx (8 tests) 2011ms
+   ✓ TrackingDashboard > draws all eight cards from the injected overview with the lift color contract 620ms
+   ✓ TrackingDashboard > aligns weekly points on a card-wide shared week axis 698ms
+ ✓ src/features/plan-editor/multiday-selection-ui.test.tsx (11 tests) 6114ms
+   ✓ adds and removes whole days with Command-click and retains selections while scrolling 782ms
+   ✓ copies multiple days with calendar offsets in one paste and one undo 475ms
+   ✓ auto-extends a draft with empty weeks and undoes the paste and extension together at onSave 541ms
+   ✓ batch-clears selected days in one undo record and preserves all logged rows 337ms
+   ✓ shows extension on a published plan with history, preserving locked days and writing only on Update plan 1039ms
+   ✓ shows extension and clipping together at 52 weeks on published plans, including subsequent pastes at the cap 2019ms
+ ✓ src/features/plan-editor/load-types-ui.test.tsx (18 tests) 3570ms
+   ✓ 056 editor load types > keeps free weight hidden and reps-only rows incomplete with gate  460ms
+   ✓ 056 editor load types > shows the free-weight explanation on the dropdown item and supports keyboard selection 305ms
+   ✓ 056 editor load types > keeps failure reps independent of the load selector 426ms
+   ✓ 056 editor load types > reclassifies automatic raise after rebinding to 引体向上 373ms
+ ✓ src/features/plan-editor/components/TopBar.test.tsx (11 tests) 356ms
+ ✓ src/features/plan-editor/inputGuard.test.ts (37 tests) 18ms
+(node:76259) Warning: `--localstorage-file` was provided without a valid path
+(Use `node --trace-warnings ...` to show where the warning was created)
+ ✓ src/i18n/zh-hant-smoke.test.tsx (6 tests) 740ms
+   ✓ Traditional Chinese locale smoke > renders the login page and PlanEditor top bar without simplified-only copy 406ms
+(node:76294) Warning: `--localstorage-file` was provided without a valid path
+(Use `node --trace-warnings ...` to show where the warning was created)
+ ✓ src/features/workspace/RequestsPage.test.tsx (11 tests) 578ms
+   ✓ Overview invitation (moved from RequestsPage) > copies the same complete invitation as welcome and also copies its link 311ms
+ ✓ src/features/plan-editor/tier-sections.test.tsx (17 tests) 1989ms
+   ✓ day tier sections > groups rows under 主项及变式 and 辅助项 preserving in-group order 478ms
+ ✓ src/features/plan-editor/contextRail.test.ts (17 tests) 93ms
+(node:76311) Warning: `--localstorage-file` was provided without a valid path
+(Use `node --trace-warnings ...` to show where the warning was created)
+ ✓ src/features/plan-editor/student-added-ui.test.tsx (6 tests) 978ms
+ ✓ src/features/plan-editor/saveFailure-ui.test.tsx (17 tests) 1837ms
+   ✓ PlanEditor save failure reasons > retries a failed zh auto draft save from the top bar 611ms
+(node:76306) Warning: `--localstorage-file` was provided without a valid path
+(Use `node --trace-warnings ...` to show where the warning was created)
+ ✓ src/features/plan-editor/context-rail-ui.test.tsx (5 tests) 778ms
+   ✓ retained day-header context view > shows the full student profile inline in the day header when no row is selected 455ms
+ ✓ src/features/plan-editor/updateRetry.test.tsx (7 tests) 1524ms
+   ✓ published plan update: automatic retry + modal error > retries once automatically after a transient failure and then reports success 608ms
+   ✓ published plan update: automatic retry + modal error > shows a delivery-failure modal for a history conflict instead of only changing the status line 342ms
+ ✓ src/features/plan-editor/exercise-picker-ui.test.tsx (7 tests) 1915ms
+   ✓ PlanEditor exercise picker keyboard binding > moves the controlled highlight and binds the highlighted hit with Enter 689ms
+ ✓ src/features/plan-editor/actuals.test.ts (14 tests) 10ms
+ ✓ src/api/exercises.test.ts (10 tests) 83ms
+ ✓ src/features/workspace/student-plan-capacity-ui.test.tsx (3 tests) 208ms
+ ✓ src/features/plan-editor/import/import.test.ts (16 tests) 83ms
+ ✓ src/features/workspace/overviewBoard.test.ts (13 tests) 32ms
+ ✓ src/features/auth/ForgotPasswordScreen.test.tsx (10 tests) 522ms
+(node:76344) Warning: `--localstorage-file` was provided without a valid path
+(Use `node --trace-warnings ...` to show where the warning was created)
+ ✓ src/features/workspace/ChangePasswordDialog.behavior.test.tsx (10 tests) 837ms
+ ✓ src/features/plan-editor/autosave.test.ts (11 tests) 11ms
+ ✓ src/features/chat/setRef.test.tsx (51 tests) 361ms
+ ✓ src/features/plan-editor/reconcile-import.test.ts (5 tests) 58ms
+ ✓ src/features/workspace/studentRailModel.test.ts (16 tests) 15ms
+ ✓ src/features/plan-editor/cross-mount-paste-ui.test.tsx (9 tests) 2757ms
+   ✓ copies row across editor mounts without the system clipboard, preserving set settings at onSave 936ms
+   ✓ copies day across editor mounts without the system clipboard, preserving set settings at onSave 348ms
+   ✓ copies days across editor mounts without the system clipboard, preserving set settings at onSave 461ms
+ ✓ src/api/client.test.ts (7 tests) 23ms
+(node:76383) Warning: `--localstorage-file` was provided without a valid path
+(Use `node --trace-warnings ...` to show where the warning was created)
+ ✓ src/i18n/en-smoke.test.tsx (3 tests) 975ms
+   ✓ English locale smoke > renders the login page and PlanEditor top bar without CJK copy 758ms
+ ✓ src/features/plan-editor/feedbackModel.test.ts (5 tests) 10ms
+ ✓ src/features/plan-editor/dayMove.test.ts (9 tests) 9ms
+ ✓ src/features/chat/chatOutbox.test.ts (7 tests) 17ms
+ ✓ src/i18n/locale.test.ts (17 tests) 78ms
+ ✓ src/features/plan-editor/selectionModel.test.ts (9 tests) 14ms
+ ✓ src/features/plan-editor/weeklySummary.test.ts (6 tests) 6ms
+ ✓ src/features/plan-editor/pct-anchor-ui.test.tsx (5 tests) 1510ms
+   ✓ pct anchor secondary selector > keeps the five intensity choices and resets the pct anchor after a type switch 722ms
+(node:76399) Warning: `--localstorage-file` was provided without a valid path
+(Use `node --trace-warnings ...` to show where the warning was created)
+ ✓ src/i18n/zh-hant-generated.test.ts (8 tests) 4497ms
+   ✓ keeps checked-in generation current and reproducible 3717ms
+   ✓ scans all generated literal branches, not only the exercised interpolation branches 568ms
+ ✓ src/features/plan-editor/mapping-shift.test.ts (7 tests) 9ms
+ ✓ src/features/plan-editor/week-band-ui.test.tsx (7 tests) 4178ms
+   ✓ keeps edit-row drag handles hidden without hover and transparent even when selected 2361ms
+   ✓ keeps eight actions and every note in one expanding edit card, with only title and collapse in its header 395ms
+   ✓ retains section additions and reorders only the edited day 400ms
+   ✓ delivers the displayed main/aux order (published=false) 665ms
+ ✓ src/api/uploads.test.ts (3 tests) 16ms
+ ✓ src/features/auth/LoginScreen.test.tsx (21 tests) 299ms
+ ✓ src/components/states/states.test.tsx (7 tests) 199ms
+(node:76445) Warning: `--localstorage-file` was provided without a valid path
+(Use `node --trace-warnings ...` to show where the warning was created)
+ ✓ src/features/plan-editor/saveFailure.test.ts (32 tests) 13ms
+(node:76446) Warning: `--localstorage-file` was provided without a valid path
+(Use `node --trace-warnings ...` to show where the warning was created)
+ ✓ src/features/plan-editor/leave-guard.test.tsx (3 tests) 542ms
+   ✓ PlanEditor external leave guard > flushes draft edits through the existing save controller before allowing rail navigation 334ms
+ ✓ src/features/plan-editor/input-guard-e2e.test.tsx (3 tests) 1250ms
+   ✓ plan editor intensity-or-weight save and publish chain > 纯强度无重量：可保存可发布且零告警 378ms
+   ✓ plan editor intensity-or-weight save and publish chain > 纯重量无强度：可保存可发布且零告警 735ms
+ ✓ src/features/plan-editor/import/aiWeeks.test.ts (5 tests) 11ms
+ ✓ src/features/plan-editor/components/CustomExerciseDialog.test.tsx (5 tests) 1054ms
+   ✓ custom exercise dialog 分类 > defaults to 主项变式 with the guessed family when opened from the main section 830ms
+ ✓ src/features/chat/chatModel.test.ts (14 tests) 33ms
+ ✓ src/api/coach.test.ts (6 tests) 76ms
+(node:76464) Warning: `--localstorage-file` was provided without a valid path
+(Use `node --trace-warnings ...` to show where the warning was created)
+ ✓ src/features/plan-editor/week-capacity-ui.test.tsx (2 tests) 237ms
+ ✓ src/features/chat/useVisiblePolling.test.tsx (4 tests) 44ms
+ ✓ src/features/plan-editor/weekBandModel.test.ts (5 tests) 5ms
+ ✓ src/api/markers.test.ts (6 tests) 45ms
+ ✓ src/features/plan-editor/mapping-cursor.test.ts (5 tests) 5ms
+ ✓ src/features/workspace/StudentRail.test.tsx (2 tests) 94ms
+ ✓ src/features/workspace/PlanDialogs.test.tsx (4 tests) 195ms
+ ✓ src/features/plan-editor/import/sheets.test.ts (7 tests) 108ms
+ ✓ src/App.test.tsx (6 tests) 113ms
+ ✓ src/features/workspace/studentPlanCapacity.test.ts (6 tests) 21ms
+ ✓ src/features/plan-editor/clipboardStore.test.ts (11 tests) 10ms
+ ✓ src/features/plan-editor/block-grid-ui.test.tsx (68 tests) 41299ms
+   ✓ renders a 4×4 block and opens only W2D1, with notes on every row and lossless Escape 1026ms
+   ✓ opens legacy 12-week import without changing any prescription or date and without saving 9161ms
+   ✓ opens legacy published with logs without changing any prescription or date and without saving 1873ms
+   ✓ opens legacy student-added without changing any prescription or date and without saving 1459ms
+   ✓ opens legacy shifted without changing any prescription or date and without saving 2737ms
+   ✓ opens legacy uneven weeks without changing any prescription or date and without saving 2574ms
+   ✓ opens legacy irregular weekdays without changing any prescription or date and without saving 2008ms
+   ✓ fills W1D1 through W4 with confirmation and one-step undo 456ms
+   ✓ box-selects two bricks then appends them to another day with one undo 611ms
+   ✓ retains every Dx slot after clearing a draft and allows rebuilding its final day 550ms
+   ✓ box-selects edit-card bricks across covered columns without selecting hidden days 449ms
+   ✓ renders the new block and editing controls in English 389ms
+   ✓ keeps the edit header compact and opens the date picker only on demand 355ms
+   ✓ lays out intensity and weight controls as one horizontal prescription line 758ms
+   ✓ wraps all 3 per-set RPE and weight boxes in an auto-height edit row 823ms
+   ✓ wraps all 10 per-set RPE and weight boxes in an auto-height edit row 1273ms
+   ✓ shows only weekdays for extra columns in a legacy 12-week plan ([ 2, 3, 5 ]) 396ms
+   ✓ shows only weekdays for extra columns in a legacy 12-week plan ([ 2, 3, 5, 8, 10, 12 ]) 455ms
+   ✓ clips legacy 12-week column headers to one line and exposes their full labels on hover 428ms
+   ✓ lets long per-set bricks wrap below a six-character name without losing hover text 312ms
+   ✓ confirms whole-day deletion, renumbers, collapses the extra column, and restores it with undo 346ms
+   ✓ removes an inserted extra column on undo and restores it only on redo (saved=true) 456ms
+   ✓ ignores stale extra weekdays after saving an insertion, undoing it, and remounting 1048ms
+   ✓ retains all pending insertion removals across consecutive undo and redo before saving 924ms
+   ✓ disables whole-day deletion with logs but keeps clear-day and brick deletion separate 415ms
+   ✓ lists only available start/end dates, reuses a pattern column, and hides insertion in read-only mode 1030ms
+   ✓ shows gap and empty-cell plus signs without hover, but hides both in read-only plans 342ms
+   ✓ labels insertion, weekday columns, delete confirmation and locked deletion in English 314ms
+   ✓ keeps published insert local until Update plan and reopens the saved structure 333ms
+   ✓ keeps published delete local until Update plan and reopens the saved structure 410ms
+   ✓ blocks empty training days before publishing or updating (published=true, locale=zh), and cycles the review chip 910ms
+   ✓ blocks empty training days before publishing or updating (published=false, locale=en), and cycles the review chip 434ms
+   ✓ blocks empty training days before publishing or updating (published=true, locale=en), and cycles the review chip 450ms
+   ✓ passes only explicitly deleted server IDs to saving, with undo/redo (menu) 321ms
+   ✓ keeps explicit deletion intent through save, undo/save with a new server ID, and redo/save 309ms
+ ✓ src/features/workspace/coachViewNavigation.test.ts (5 tests) 7ms
+ ✓ src/api/pendingRevision.test.ts (3 tests) 17ms
+ ✓ src/buildUpdate.test.ts (5 tests) 70ms
+(node:76512) Warning: `--localstorage-file` was provided without a valid path
+(Use `node --trace-warnings ...` to show where the warning was created)
+ ✓ src/features/workspace/annotationDrawing.test.ts (4 tests) 11ms
+ ✓ src/features/plan-editor/dayMove-ui.test.tsx (3 tests) 1516ms
+   ✓ changes one cell date only and supports undo 393ms
+   ✓ changes a Dx weekday on unlogged days and retains logged dates 665ms
+   ✓ preserves shifted dates and their explanation on scan and edit views 457ms
+ ✓ src/api/auth.test.ts (4 tests) 41ms
+ ✓ src/features/chat/EditorChat.test.tsx (1 test) 152ms
+ ✓ src/features/workspace/ChangePasswordDialog.test.ts (11 tests) 8ms
+ ✓ src/features/plan-editor/components/ContextRail.view.test.tsx (1 test) 234ms
+ ✓ src/features/catalog/catalogModel.test.ts (4 tests) 8ms
+ ❯ src/features/plan-editor/pinyin.test.ts (7 tests | 1 failed) 3139ms
+   × matchesPinyin > stays bounded on adversarial state-accumulating input 3134ms
+     → expected 3125.092625 to be less than 1000
+(node:76531) Warning: `--localstorage-file` was provided without a valid path
+(Use `node --trace-warnings ...` to show where the warning was created)
+ ✓ src/features/workspace/pendingPlan.test.ts (3 tests) 4ms
+ ✓ src/features/workspace/serviceTerm.test.ts (12 tests) 13ms
+ ✓ src/api/auth.email-login.test.ts (2 tests) 67ms
+ ✓ src/features/plan-editor/copy-last-week.test.tsx (3 tests) 1278ms
+   ✓ copies last week via whole-cell shortcuts and confirms occupied targets: true 780ms
+ ✓ src/features/admin/adoptionCandidates.test.ts (3 tests) 9ms
+ ✓ src/features/chat/chatSync.test.ts (3 tests) 6ms
+ ✓ src/features/plan-editor/actualShorthand.test.ts (3 tests) 8ms
+ ✓ src/features/plan-editor/mapping-lock.test.ts (3 tests) 7ms
+ ✓ src/api/admin.test.ts (1 test) 18ms
+ ✓ src/features/workspace/videoPlayback.test.ts (4 tests) 17ms
+ ✓ src/features/plan-editor/components/ContextBar.test.tsx (1 test) 179ms
+ ✓ src/features/plan-editor/calendar.test.ts (3 tests) 8ms
+ ✓ src/features/workspace/VideoWorkbench.test.ts (2 tests) 3ms
+ ✓ src/features/workspace/metricThresholds.test.ts (2 tests) 3ms
+ ✓ src/i18n/date-only.test.ts (1 test) 182ms
+ ✓ src/i18n/stable-zh.test.ts (11 tests) 8ms
+ ✓ src/i18n/plural.test.ts (2 tests) 3ms
+ ✓ src/features/workspace/blockPlanSettings.test.ts (1 test) 4ms
+ ✓ src/reloadSafety.test.ts (1 test) 2ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 3 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/features/plan-editor/pinyin.test.ts > matchesPinyin > stays bounded on adversarial state-accumulating input
+AssertionError: expected 3125.092625 to be less than 1000
+ ❯ src/features/plan-editor/pinyin.test.ts:53:41
+     51|     const started = performance.now()
+     52|     for (let i = 0; i < 1251; i++) matchesPinyin(name, query)
+     53|     expect(performance.now() - started).toBeLessThan(1000)
+       |                                         ^
+     54|   })
+     55| })
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/3]⎯
+
+ FAIL  src/features/workspace/PlanWorkspace.test.tsx > PlanWorkspace editor remount > 接受申请后立即刷新学员列表和申请计数
+AssertionError: expected "spy" to be called with arguments: [ 'request' ]
+
+Received: 
+
+
+
+Number of calls: 0
+
+ ❯ src/features/workspace/PlanWorkspace.test.tsx:1932:35
+    1930|     })
+    1931| 
+    1932|     expect(api.acceptBindRequest).toHaveBeenCalledWith('request')
+       |                                   ^
+    1933|     expect(api.refreshCoachStudents).toHaveBeenCalledTimes(2)
+    1934|     expect(api.getBindRequests).toHaveBeenCalledTimes(2)
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/3]⎯
+
+ FAIL  src/features/workspace/PlanWorkspace.test.tsx > PlanWorkspace editor remount > 接受申请后丢弃更早发出的轮询响应，申请卡片和角标不复活
+AssertionError: expected "spy" to be called 3 times, but got 2 times
+ ❯ src/features/workspace/PlanWorkspace.test.tsx:1976:33
+    1974|       await settle()
+    1975|     })
+    1976|     expect(api.getBindRequests).toHaveBeenCalledTimes(3)
+       |                                 ^
+    1977|     expect(host.querySelector('.requests-count')).toBeNull()
+    1978|     expect(requestsTab?.querySelector('.coach-nav-badge')).toBeNull()
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/3]⎯
+
+ Test Files  2 failed | 117 passed (119)
+      Tests  3 failed | 1485 passed (1488)
+   Start at  05:31:48
+   Duration  56.28s (transform 11.18s, setup 2.53s, collect 71.87s, tests 162.53s, environment 148.92s, prepare 27.03s)
+

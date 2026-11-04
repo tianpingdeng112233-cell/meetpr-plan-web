@@ -1,0 +1,276 @@
+
+> meetpr-plan-web@0.1.0 test
+> vitest run src/features/workspace/serviceTerm.test.ts src/features/workspace/studentRailModel.test.ts src/features/workspace/overviewBoard.test.ts src/features/workspace/RequestsPage.test.tsx src/features/plan-editor/components/StudentProfile.test.tsx
+
+
+ RUN  v2.1.9 /Users/david/Projects/apps/meetpr-plan-web-wt-024
+
+ ❯ src/features/workspace/serviceTerm.test.ts (0 test)
+ ❯ src/features/workspace/studentRailModel.test.ts (16 tests | 1 failed) 41ms
+   × 024 exposes a service capsule only on an active binding, including the gray tier 18ms
+     → expected undefined to match object { daysLeft: 8, tone: 'gray', …(1) }
+ ❯ src/features/workspace/overviewBoard.test.ts (13 tests | 7 failed) 24ms
+   × 024 only red service terms affect attention (2026-11-12) 11ms
+     → expected undefined to match object { kind: 'service_term', tone: 'gray' }
+   × 024 only red service terms affect attention (2026-11-11) 1ms
+     → expected undefined to match object { Object (kind, tone) }
+   × 024 only red service terms affect attention (2026-11-08) 1ms
+     → expected undefined to match object { Object (kind, tone) }
+   × 024 only red service terms affect attention (2026-11-07) 0ms
+     → expected undefined to match object { kind: 'service_term', tone: 'red' }
+   × 024 only red service terms affect attention (2026-11-05) 0ms
+     → expected undefined to match object { kind: 'service_term', tone: 'red' }
+   × 024 only red service terms affect attention (2026-11-04) 0ms
+     → expected undefined to match object { kind: 'service_term', tone: 'red' }
+   × 024 only red service terms affect attention (2026-11-03) 0ms
+     → expected undefined to match object { kind: 'service_term', tone: 'red' }
+ ❯ src/features/plan-editor/components/StudentProfile.test.tsx (8 tests | 4 failed) 144ms
+   × 024 sets a past service date via PUT, shows the response and retains it on remount 9ms
+     → Missing button: 设置服务期
+   × 024 shortcuts use the original date, cancel does not write, and clearing sends null 3ms
+     → Missing button: 修改
+   × 024 preserves edits on failed PUT (400) and hides the entire term for ended bindings 5ms
+     → Missing button: 修改
+   × 024 preserves edits on failed PUT (404) and hides the entire term for ended bindings 2ms
+     → Missing button: 修改
+ ❯ src/features/workspace/RequestsPage.test.tsx (11 tests | 4 failed) 190ms
+   × 024 accept with an optional service term > accepts with or without a date at the API boundary in zh 16ms
+     → expected '学员申请1 条每 60 秒自动刷新王王明老学员 · 上次解绑于 10/01…' to contain '服务期可在学员资料栏随时修改。'
+   × 024 accept with an optional service term > accepts with or without a date at the API boundary in zh-Hant 4ms
+     → expected '學員申請1 條每 60 秒自動重新整理王王明老學員 · 上次解綁於 10/…' to contain '服務期可在學員資料欄隨時修改。'
+   × 024 accept with an optional service term > accepts with or without a date at the API boundary in en 4ms
+     → expected 'Athlete requests1 requestRefreshes ev…' to contain 'You can change the term anytime in th…'
+   × 024 accept with an optional service term > month shortcuts only edit the input and always start from today 5ms
+     → Cannot read properties of undefined (reading 'click')
+
+⎯⎯⎯⎯⎯⎯ Failed Suites 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/features/workspace/serviceTerm.test.ts [ src/features/workspace/serviceTerm.test.ts ]
+Error: Failed to resolve import "./serviceTerm" from "src/features/workspace/serviceTerm.test.ts". Does the file exist?
+  Plugin: vite:import-analysis
+  File: /Users/david/Projects/apps/meetpr-plan-web-wt-024/src/features/workspace/serviceTerm.test.ts:3:60
+  1  |  import { afterEach, expect, it } from "vitest";
+  2  |  import { setLocale } from "../../i18n/strings";
+  3  |  import { addServiceMonths, getServiceTerm, localDate } from "./serviceTerm";
+     |                                                               ^
+  4  |  afterEach(() => setLocale("zh"));
+  5  |  const today = new Date(2026, 10, 4, 23, 59);
+ ❯ TransformPluginContext._formatError node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:49258:41
+ ❯ TransformPluginContext.error node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:49253:16
+ ❯ normalizeUrl node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:64307:23
+ ❯ node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:64439:39
+ ❯ TransformPluginContext.transform node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:64366:7
+ ❯ PluginContainer.transform node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:49099:18
+ ❯ loadAndTransform node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:51978:27
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/17]⎯
+
+⎯⎯⎯⎯⎯⎯ Failed Tests 16 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/features/workspace/RequestsPage.test.tsx > 024 accept with an optional service term > accepts with or without a date at the API boundary in zh
+AssertionError: expected '学员申请1 条每 60 秒自动刷新王王明老学员 · 上次解绑于 10/01…' to contain '服务期可在学员资料栏随时修改。'
+
+Expected: "服务期可在学员资料栏随时修改。"
+Received: "学员申请1 条每 60 秒自动刷新王王明老学员 · 上次解绑于 10/01手机号未提供 · 11-04 10:00自报 S — / B — / D — · 训练年限未填写拒绝接受"
+
+ ❯ src/features/workspace/RequestsPage.test.tsx:114:30
+    112|     setLocale(locale)
+    113|     await act(async () => root.render(<RequestsPanel requests={[reques…
+    114|     expect(host.textContent).toContain(hint)
+       |                              ^
+    115|     const input = host.querySelector<HTMLInputElement>('input[type=dat…
+    116|     expect(input).not.toBeNull()
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/17]⎯
+
+ FAIL  src/features/workspace/RequestsPage.test.tsx > 024 accept with an optional service term > accepts with or without a date at the API boundary in zh-Hant
+AssertionError: expected '學員申請1 條每 60 秒自動重新整理王王明老學員 · 上次解綁於 10/…' to contain '服務期可在學員資料欄隨時修改。'
+
+Expected: "服務期可在學員資料欄隨時修改。"
+Received: "學員申請1 條每 60 秒自動重新整理王王明老學員 · 上次解綁於 10/01手機號碼未提供 · 11-04 10:00自報 S — / B — / D — · 訓練年限未填寫拒絕接受"
+
+ ❯ src/features/workspace/RequestsPage.test.tsx:114:30
+    112|     setLocale(locale)
+    113|     await act(async () => root.render(<RequestsPanel requests={[reques…
+    114|     expect(host.textContent).toContain(hint)
+       |                              ^
+    115|     const input = host.querySelector<HTMLInputElement>('input[type=dat…
+    116|     expect(input).not.toBeNull()
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/17]⎯
+
+ FAIL  src/features/workspace/RequestsPage.test.tsx > 024 accept with an optional service term > accepts with or without a date at the API boundary in en
+AssertionError: expected 'Athlete requests1 requestRefreshes ev…' to contain 'You can change the term anytime in th…'
+
+Expected: "You can change the term anytime in the student panel."
+Received: "Athlete requests1 requestRefreshes every 60 seconds王王明Returning student · Last unbound on 10/01Phone number not provided · 11 04, 10:00Self-reported S — / B — / D — · Training experience not providedRejectAccept"
+
+ ❯ src/features/workspace/RequestsPage.test.tsx:114:30
+    112|     setLocale(locale)
+    113|     await act(async () => root.render(<RequestsPanel requests={[reques…
+    114|     expect(host.textContent).toContain(hint)
+       |                              ^
+    115|     const input = host.querySelector<HTMLInputElement>('input[type=dat…
+    116|     expect(input).not.toBeNull()
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/17]⎯
+
+ FAIL  src/features/workspace/RequestsPage.test.tsx > 024 accept with an optional service term > month shortcuts only edit the input and always start from today
+TypeError: Cannot read properties of undefined (reading 'click')
+ ❯ src/features/workspace/RequestsPage.test.tsx:134:130
+    132|     const post = vi.spyOn(api, 'post').mockResolvedValue({})
+    133|     await act(async () => root.render(<RequestsPanel requests={[reques…
+    134|     const click = async (label: string) => act(async () => [...host.qu…
+       |                                                                                                                                  ^
+    135|     await click('+1 个月')
+    136|     expect(host.querySelector<HTMLInputElement>('input[type=date]')?.v…
+ ❯ Proxy.act node_modules/react/cjs/react.development.js:2512:16
+ ❯ click src/features/workspace/RequestsPage.test.tsx:134:44
+ ❯ src/features/workspace/RequestsPage.test.tsx:135:11
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/17]⎯
+
+ FAIL  src/features/workspace/overviewBoard.test.ts > 024 only red service terms affect attention (2026-11-12)
+AssertionError: expected undefined to match object { kind: 'service_term', tone: 'gray' }
+
+- Expected: 
+Object {
+  "kind": "service_term",
+  "tone": "gray",
+}
+
++ Received: 
+undefined
+
+ ❯ src/features/workspace/overviewBoard.test.ts:82:23
+     80|   const board = deriveOverviewBoard(input)
+     81|   const row = [...board.attention, ...board.normal][0]
+     82|   expect(row.tags[0]).toMatchObject({ kind: 'service_term', tone })
+       |                       ^
+     83|   expect(board.attention).toHaveLength(attention ? 1 : 0)
+     84|   expect(board.redCount).toBe(attention ? 1 : 0)
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[6/17]⎯
+
+ FAIL  src/features/workspace/overviewBoard.test.ts > 024 only red service terms affect attention (2026-11-11)
+ FAIL  src/features/workspace/overviewBoard.test.ts > 024 only red service terms affect attention (2026-11-08)
+AssertionError: expected undefined to match object { Object (kind, tone) }
+
+- Expected: 
+Object {
+  "kind": "service_term",
+  "tone": "yellow",
+}
+
++ Received: 
+undefined
+
+ ❯ src/features/workspace/overviewBoard.test.ts:82:23
+     80|   const board = deriveOverviewBoard(input)
+     81|   const row = [...board.attention, ...board.normal][0]
+     82|   expect(row.tags[0]).toMatchObject({ kind: 'service_term', tone })
+       |                       ^
+     83|   expect(board.attention).toHaveLength(attention ? 1 : 0)
+     84|   expect(board.redCount).toBe(attention ? 1 : 0)
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[7/17]⎯
+
+ FAIL  src/features/workspace/overviewBoard.test.ts > 024 only red service terms affect attention (2026-11-07)
+ FAIL  src/features/workspace/overviewBoard.test.ts > 024 only red service terms affect attention (2026-11-05)
+ FAIL  src/features/workspace/overviewBoard.test.ts > 024 only red service terms affect attention (2026-11-04)
+ FAIL  src/features/workspace/overviewBoard.test.ts > 024 only red service terms affect attention (2026-11-03)
+AssertionError: expected undefined to match object { kind: 'service_term', tone: 'red' }
+
+- Expected: 
+Object {
+  "kind": "service_term",
+  "tone": "red",
+}
+
++ Received: 
+undefined
+
+ ❯ src/features/workspace/overviewBoard.test.ts:82:23
+     80|   const board = deriveOverviewBoard(input)
+     81|   const row = [...board.attention, ...board.normal][0]
+     82|   expect(row.tags[0]).toMatchObject({ kind: 'service_term', tone })
+       |                       ^
+     83|   expect(board.attention).toHaveLength(attention ? 1 : 0)
+     84|   expect(board.redCount).toBe(attention ? 1 : 0)
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[8/17]⎯
+
+ FAIL  src/features/workspace/studentRailModel.test.ts > 024 exposes a service capsule only on an active binding, including the gray tier
+AssertionError: expected undefined to match object { daysLeft: 8, tone: 'gray', …(1) }
+
+- Expected: 
+Object {
+  "daysLeft": 8,
+  "shortLabel": "剩 8 天",
+  "tone": "gray",
+}
+
++ Received: 
+undefined
+
+ ❯ src/features/workspace/studentRailModel.test.ts:103:77
+    101|     student('ended', { bond_status: 'ended', service_until: '2026-11-0…
+    102|   const rows = buildStudentRail(roster, '', new Date(2026, 10, 4))
+    103|   expect(rows.active.find(row => row.student.id === 'active')?.service…
+       |                                                                             ^
+    104|   expect(rows.active.find(row => row.student.id === 'unset')?.serviceT…
+    105|   expect(rows.ended[0].serviceTerm).toBeNull()
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[9/17]⎯
+
+ FAIL  src/features/plan-editor/components/StudentProfile.test.tsx > 024 sets a past service date via PUT, shows the response and retains it on remount
+Error: Missing button: 设置服务期
+ ❯ button src/features/plan-editor/components/StudentProfile.test.tsx:15:21
+     13| function button(text: string) {
+     14|   const found = [...document.querySelectorAll<HTMLButtonElement>('butt…
+     15|   if (!found) throw new Error(`Missing button: ${text}`)
+       |                     ^
+     16|   return found
+     17| }
+ ❯ src/features/plan-editor/components/StudentProfile.test.tsx:76:27
+ ❯ Proxy.act node_modules/react/cjs/react.development.js:2512:16
+ ❯ src/features/plan-editor/components/StudentProfile.test.tsx:76:11
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[10/17]⎯
+
+ FAIL  src/features/plan-editor/components/StudentProfile.test.tsx > 024 shortcuts use the original date, cancel does not write, and clearing sends null
+Error: Missing button: 修改
+ ❯ button src/features/plan-editor/components/StudentProfile.test.tsx:15:21
+     13| function button(text: string) {
+     14|   const found = [...document.querySelectorAll<HTMLButtonElement>('butt…
+     15|   if (!found) throw new Error(`Missing button: ${text}`)
+       |                     ^
+     16|   return found
+     17| }
+ ❯ src/features/plan-editor/components/StudentProfile.test.tsx:101:27
+ ❯ Proxy.act node_modules/react/cjs/react.development.js:2512:16
+ ❯ src/features/plan-editor/components/StudentProfile.test.tsx:101:11
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[11/17]⎯
+
+ FAIL  src/features/plan-editor/components/StudentProfile.test.tsx > 024 preserves edits on failed PUT (400) and hides the entire term for ended bindings
+ FAIL  src/features/plan-editor/components/StudentProfile.test.tsx > 024 preserves edits on failed PUT (404) and hides the entire term for ended bindings
+Error: Missing button: 修改
+ ❯ button src/features/plan-editor/components/StudentProfile.test.tsx:15:21
+     13| function button(text: string) {
+     14|   const found = [...document.querySelectorAll<HTMLButtonElement>('butt…
+     15|   if (!found) throw new Error(`Missing button: ${text}`)
+       |                     ^
+     16|   return found
+     17| }
+ ❯ src/features/plan-editor/components/StudentProfile.test.tsx:122:27
+ ❯ Proxy.act node_modules/react/cjs/react.development.js:2512:16
+ ❯ src/features/plan-editor/components/StudentProfile.test.tsx:122:11
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[12/17]⎯
+
+ Test Files  5 failed (5)
+      Tests  16 failed | 32 passed (48)
+   Start at  05:25:24
+   Duration  2.35s (transform 1.43s, setup 251ms, collect 3.51s, tests 399ms, environment 2.46s, prepare 387ms)
+

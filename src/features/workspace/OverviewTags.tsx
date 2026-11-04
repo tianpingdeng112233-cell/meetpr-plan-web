@@ -44,11 +44,11 @@ export function OverviewTags({ tags, onOpen }: { tags: readonly OverviewTag[]; o
     observer?.observe(element)
     return () => observer?.disconnect()
   }, [tags])
-  const button = (tag: OverviewTag) => <button key={tag.kind} type="button" className={`overview-tag ${tag.tone}`} data-alert-kind={tag.kind}
+  const button = (tag: OverviewTag) => <button key={tag.kind} type="button" className={`overview-tag ${tag.tone}${tag.kind === 'service_term' ? ' service-term-tag' : ''}`} data-alert-kind={tag.kind}
     onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') event.stopPropagation() }}
     onDoubleClick={event => event.stopPropagation()} onClick={event => { event.stopPropagation(); close(); onOpen(tag) }}><TagText tag={tag} /></button>
   return <div className="overview-tags" ref={ref}>
-    <span className="overview-tags-measure" aria-hidden="true">{tags.map(tag => <span key={tag.kind} className={`overview-tag ${tag.tone}`}><TagText tag={tag} /></span>)}</span>
+    <span className="overview-tags-measure" aria-hidden="true">{tags.map(tag => <span key={tag.kind} className={`overview-tag ${tag.tone}${tag.kind === 'service_term' ? ' service-term-tag' : ''}`}><TagText tag={tag} /></span>)}</span>
     {tags.slice(0, visibleCount).map(button)}
     {visibleCount < tags.length && <span className="overview-overflow" onMouseEnter={show} onMouseLeave={deferClose} onDoubleClick={event => event.stopPropagation()}>
       <button ref={overflowRef} type="button" className="overview-tag white" title={tags.map(overviewTagLabel).join(' · ')}

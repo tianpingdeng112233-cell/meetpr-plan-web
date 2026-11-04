@@ -3734,3 +3734,46 @@ textarea {
 .student-unbind-dialog button { border:1px solid var(--bd); border-radius:8px; padding:8px 14px; font:inherit; background:var(--panel-bg); color:var(--txt); cursor:pointer; }
 .student-unbind-dialog button.danger { background:var(--bad); color:white; border-color:var(--bad); }
 .student-unbind-dialog button:disabled { opacity:.5; cursor:default; }
+
+/* 024: service terms use the approved compact capsules and inline date controls. */
+.service-term-capsule { display:inline-flex; width:fit-content; align-items:center; padding:0 6px; border-radius:10px; font-size:12px; line-height:20px; white-space:nowrap; }
+.service-term-capsule.gray { color:var(--mut); background:#F1F3F5; }
+.service-term-capsule.yellow { color:var(--warn); background:#FDF3E3; }
+.service-term-capsule.red { color:var(--bad); background:#FCEBEA; }
+.student-rail-row.has-service-term { min-height:48px; padding-top:6px; padding-bottom:6px; }
+.student-rail-name .service-term-capsule { display:flex; margin-top:3px; font-size:11px; line-height:16px; border-radius:8px; }
+.service-term-card { margin:12px 0; padding:12px; border:1px solid var(--bd); border-radius:8px; }
+.service-term-card.editing { border-color:var(--tint-bd); background:var(--tint); }
+.service-term-heading { display:flex; justify-content:space-between; align-items:baseline; gap:8px; margin-bottom:8px; color:var(--mut); font-size:13px; }
+.service-term-heading b { color:var(--txt); }
+.service-term-date { display:flex; flex-direction:column; gap:6px; color:var(--mut); font-size:13px; min-width:0; }
+.service-term-date input { box-sizing:border-box; width:100%; min-width:0; height:36px; border:1px solid var(--bd); border-radius:var(--r-sm); padding:0 8px; color:var(--txt); background:var(--card-bg); font:inherit; }
+.service-term-shortcuts { display:flex; flex-wrap:wrap; gap:8px; }
+.service-term-shortcuts button { height:32px; border:1px solid var(--bd); border-radius:16px; background:var(--card-bg); color:var(--ink); font:inherit; font-size:12px; padding:0 12px; cursor:pointer; }
+.service-term-card .service-term-shortcuts { margin-top:8px; }
+.service-term-card .service-term-base { color:var(--mut); font-size:12px; margin:8px 0 12px; }
+.service-term-card footer { display:flex; flex-wrap:wrap; align-items:center; gap:8px; }
+.service-term-spacer { flex:1; }
+.service-term-card footer button { height:32px; border:1px solid var(--bd); border-radius:var(--r-sm); background:var(--card-bg); color:var(--txt); padding:0 10px; font:inherit; font-size:12px; cursor:pointer; }
+.service-term-card footer .service-term-clear { padding:0; border:0; background:transparent; color:var(--bad); }
+.service-term-card footer .service-term-save { background:var(--ink); border-color:var(--ink); color:var(--white); }
+.service-term-card [role=alert] { color:var(--bad); font-size:12px; }
+.overview-tag.service-term-tag { box-shadow:inset 0 0 0 1px currentColor; border-style:solid; border-color:transparent; }
+.overview-tag.service-term-tag.gray { color:var(--mut); background:#F1F3F5; }
+.overview-tag.service-term-tag.yellow { color:var(--warn); background:#FDF3E3 !important; }
+.overview-tag.service-term-tag.red { color:var(--bad); background:#FCEBEA; }
+.request-actions { display:flex; flex-wrap:wrap; align-items:center; gap:12px; border-top:1px solid var(--bd); padding:12px 16px 0; }
+.request-term-fields { display:flex; align-items:flex-end; gap:12px; min-width:0; max-width:100%; }
+.request-term-fields .service-term-shortcuts { flex:none; flex-wrap:nowrap; }
+.request-actions .service-term-date { flex:1 1 auto; flex-direction:row; align-items:center; flex-wrap:wrap; gap:8px; }
+.request-decision-buttons { display:flex; flex:none; gap:12px; margin-left:auto; }
+.request-actions .service-term-date input { width:180px; max-width:100%; }
+.request-decision-buttons > button { height:32px; padding:0 14px; border:1px solid var(--bd); border-radius:var(--r-sm); color:var(--sec); background:var(--card-bg); font-size:12px; cursor:pointer; }
+.request-decision-buttons > .request-reject { border-color:var(--reject-border); color:var(--bad); }
+.request-decision-buttons > .accept { background:var(--ink); border-color:var(--ink); color:var(--white); font-weight:600; }
+.request-actions button:disabled { opacity:.5; cursor:default; }
+.request-service-hint { color:var(--mut); font-size:12px; margin:8px 16px 12px; }
+.overview-tags:has(.service-term-tag) .overview-tag,
+.overview-tag-popover:has(.service-term-tag) .overview-tag { height:24px; line-height:24px; border-radius:12px; }
+
+.student-rail-row.has-service-term .student-rail-status { font-size:12px; }
