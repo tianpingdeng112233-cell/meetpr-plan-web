@@ -1,0 +1,14 @@
+
+> meetpr-plan-web@0.1.0 test
+> vitest run src/features/workspace/PlanWorkspace.test.tsx
+
+
+ RUN  v2.1.9 /Users/david/Projects/apps/meetpr-plan-web-wt-024
+
+ ✓ src/features/workspace/PlanWorkspace.test.tsx (76 tests) 2784ms
+
+ Test Files  1 passed (1)
+      Tests  76 passed (76)
+   Start at  05:33:20
+   Duration  6.68s (transform 1.96s, setup 52ms, collect 2.70s, tests 2.78s, environment 698ms, prepare 64ms)
+

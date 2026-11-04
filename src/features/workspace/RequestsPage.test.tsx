@@ -93,3 +93,57 @@ describe('RequestsPanel', () => {
     }
   })
 })
+
+describe('024 accept with an optional service term', () => {
+  let host: HTMLDivElement, root: Root
+  const request: CoachBindRequest = { id: 'term-request', student_id: 'student', display_name: '王明',
+    submitted_at: '2026-11-04T10:00:00Z', expired_at: '2026-11-11T10:00:00Z', previously_ended_at: '2026-10-01T10:00:00Z',
+    onboarding: { completed: true, upload_count: 0, deadlift_style: null } }
+  beforeEach(() => { host = document.createElement('div'); document.body.append(host); root = createRoot(host); vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(new Date(2026, 0, 31)) })
+  afterEach(() => { act(() => root.unmount()); host.remove(); setLocale('zh'); vi.restoreAllMocks(); vi.useRealTimers() })
+  it.each([
+    ['zh', '接受', '服务期可在学员资料栏随时修改。'],
+    ['zh-Hant', '接受', '服務期可在學員資料欄隨時修改。'],
+    ['en', 'Accept', 'You can change the term anytime in the student panel.'],
+  ] as const)('accepts with or without a date at the API boundary in %s', async (locale, accept, hint) => {
+    const { api } = await import('../../api/client')
+    const post = vi.spyOn(api, 'post').mockResolvedValue({})
+    const changed = vi.fn(), accepted = vi.fn()
+    setLocale(locale)
+    await act(async () => root.render(<RequestsPanel requests={[request]} onRequestsChanged={changed} onAccepted={accepted} />))
+    expect(host.textContent).toContain(hint)
+    const actions = host.querySelector('.request-actions')!
+    const decisions = actions.querySelector('.request-decision-buttons')!
+    expect(decisions).not.toBeNull()
+    expect([...decisions.querySelectorAll('button')].map(button => button.className)).toEqual(['request-reject', 'accept'])
+    const fields = actions.querySelector('.request-term-fields')!
+    expect(fields.querySelector('input[type=date]')).not.toBeNull()
+    expect(fields.querySelectorAll('.service-term-shortcuts button')).toHaveLength(2)
+    expect([...actions.children]).toEqual([fields, decisions])
+    const input = host.querySelector<HTMLInputElement>('input[type=date]')!
+    expect(input).not.toBeNull()
+    expect(input.value).toBe('') // A returning student's old term must not come back.
+    const click = async (label: string) => act(async () => [...host.querySelectorAll('button')].find(b => b.textContent === label)!.click())
+    await click(accept)
+    expect(post).toHaveBeenLastCalledWith('/coach/bind-requests/term-request/accept', { skip_evaluation: true })
+    expect(accepted).toHaveBeenCalledTimes(1)
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, '2026-11-07')
+      input.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+    await click(accept)
+    expect(post).toHaveBeenLastCalledWith('/coach/bind-requests/term-request/accept', { skip_evaluation: true, service_until: '2026-11-07' })
+    expect(changed).toHaveBeenLastCalledWith([])
+  })
+  it('month shortcuts only edit the input and always start from today', async () => {
+    const { api } = await import('../../api/client')
+    const post = vi.spyOn(api, 'post').mockResolvedValue({})
+    await act(async () => root.render(<RequestsPanel requests={[request]} onRequestsChanged={vi.fn()} onAccepted={vi.fn()} />))
+    const click = async (label: string) => act(async () => [...host.querySelectorAll('button')].find(b => b.textContent === label)!.click())
+    await click('+1 个月')
+    expect(host.querySelector<HTMLInputElement>('input[type=date]')?.value).toBe('2026-02-28')
+    await click('+3 个月')
+    expect(host.querySelector<HTMLInputElement>('input[type=date]')?.value).toBe('2026-04-30')
+    expect(post).not.toHaveBeenCalled()
+  })
+})

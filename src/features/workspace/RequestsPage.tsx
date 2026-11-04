@@ -1,3 +1,5 @@
+import { ServiceTermDateInput } from './ServiceTermDateInput'
+import { localDate } from './serviceTerm'
 import { previouslyEnded } from './studentRailModel'
 import { useState } from 'react'
 import { acceptBindRequest, rejectBindRequest } from '../../api/coach'
@@ -36,12 +38,13 @@ function requestSummary(request: CoachBindRequest): string {
 export function RequestsPanel({ requests, onRequestsChanged, onAccepted }: Props) {
   const [open, setOpen] = useState<Set<string>>(new Set())
   const [busy, setBusy] = useState('')
+  const [serviceDates, setServiceDates] = useState<Record<string, string>>({})
   const remove = (id: string) => onRequestsChanged(requests.filter((request) => request.id !== id))
 
   const accept = async (request: CoachBindRequest) => {
     setBusy(request.id)
     try {
-      await acceptBindRequest(request.id)
+      await acceptBindRequest(request.id, serviceDates[request.id] || undefined)
       remove(request.id)
       await onAccepted()
     } finally {
@@ -113,24 +116,6 @@ export function RequestsPanel({ requests, onRequestsChanged, onAccepted }: Props
                   <small>{request.masked_phone || S.workspace.requests.phoneMissing} · {requestTime(request.submitted_at)}</small>
                   <span>{requestSummary(request)}</span>
                 </span>
-                <button
-                  type="button"
-                  className="request-reject"
-                  disabled={processing}
-                  onClick={(event) => {
-                    event.stopPropagation()
-                    void reject(request)
-                  }}
-                >{S.workspace.requests.reject}</button>
-                <button
-                  type="button"
-                  className="accept"
-                  disabled={processing}
-                  onClick={(event) => {
-                    event.stopPropagation()
-                    void accept(request)
-                  }}
-                >{processing ? S.workspace.requests.processing : S.workspace.requests.accept}</button>
               </div>
               {expanded && (
                 <div className="request-detail">
@@ -146,6 +131,29 @@ export function RequestsPanel({ requests, onRequestsChanged, onAccepted }: Props
                   {profile.note_to_coach && <blockquote>“{profile.note_to_coach}”</blockquote>}
                 </div>
               )}
+              <form className="request-actions" onSubmit={event => { event.preventDefault(); void accept(request) }}>
+                <div className="request-term-fields">
+                  <ServiceTermDateInput optional value={serviceDates[request.id] ?? ''} base={localDate()} disabled={processing}
+                    onChange={value => setServiceDates(previous => ({ ...previous, [request.id]: value }))} />
+                </div>
+                <div className="request-decision-buttons">
+                  <button
+                    type="button"
+                    className="request-reject"
+                    disabled={processing}
+                    onClick={(event) => {
+                      event.stopPropagation()
+                      void reject(request)
+                    }}
+                  >{S.workspace.requests.reject}</button>
+                  <button
+                    type="submit"
+                    className="accept"
+                    disabled={processing}
+                  >{processing ? S.workspace.requests.processing : S.workspace.requests.accept}</button>
+                </div>
+              </form>
+              <p className="request-service-hint">{S.workspace.requests.serviceTermHint}</p>
             </section>
           )
         })}

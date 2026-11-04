@@ -70,3 +70,29 @@ it('orders plan-ending reminders by when the three-day window began, not the fut
   })
   expect(board.attention.map(row => row.student.id)).toEqual(['message', 'ending'])
 })
+
+it.each([
+  ['2026-11-12', 'gray', false], ['2026-11-11', 'yellow', false], ['2026-11-08', 'yellow', false],
+  ['2026-11-07', 'red', true], ['2026-11-05', 'red', true], ['2026-11-04', 'red', true], ['2026-11-03', 'red', true],
+] as const)('024 only red service terms affect attention (%s)', (service_until, tone, attention) => {
+  const input = { students: [{ id: 'a', display_name: 'A', status: 'active' as const, evaluation: null, service_until }],
+    dataByStudent: {}, plansByStudent: {}, conversations: [], reference: new Date(2026, 10, 4) }
+  const board = deriveOverviewBoard(input)
+  const row = [...board.attention, ...board.normal][0]
+  expect(row.tags[0]).toMatchObject({ kind: 'service_term', tone })
+  expect(board.attention).toHaveLength(attention ? 1 : 0)
+  expect(board.redCount).toBe(attention ? 1 : 0)
+  const mixed = deriveOverviewBoard({ ...input, alerts: { status: 'ready', data: { generated_at: '', plan_ending: [], training: [
+    { student_id: 'a', latest_at: '2026-11-04T08:00:00Z', items: [{ type: 'incomplete', date: '2026-11-04', plan_day_id: 'd', plan_exercise_id: 'e', exercise_id: 'squat', set_index: 1, reason: 'missing' }] },
+  ] } } })
+  expect(mixed.attention[0].tags.map(tag => tag.kind)).toEqual(['service_term', 'incomplete'])
+  expect(mixed.redCount).toBe(1)
+})
+it('024 leaves unset terms and ended bindings without tags', () => {
+  const board = deriveOverviewBoard({ students: [
+    { id: 'old', display_name: 'Old', status: 'active', evaluation: null, service_until: null },
+    { id: 'ended', display_name: 'Ended', status: 'active', evaluation: null, bond_status: 'ended', service_until: '2026-11-03' },
+  ], dataByStudent: {}, plansByStudent: {}, conversations: [], reference: new Date(2026, 10, 4) })
+  expect([...board.normal, ...board.attention].flatMap(row => row.tags)).toEqual([])
+  expect(board.redCount).toBe(0)
+})

@@ -1,3 +1,4 @@
+import { getServiceTerm } from './serviceTerm'
 import type { OverviewAlerts, TrainingAlert } from '../../api/overviewAlerts'
 import { deriveRosterRows, isFailedRosterDatum, type RosterOverviewRow } from './rosterOverview'
 import { completionRateTone } from './metricThresholds'
@@ -5,7 +6,7 @@ import { S } from '../../i18n/strings'
 
 export type AlertsState = { status: 'ready'; data: OverviewAlerts } | { status: 'loading' | 'failed' | 'unavailable' }
 export type OverviewTag = {
-  kind: TrainingAlert['type'] | 'plan_ending' | 'completion' | 'chat' | 'videos'
+  kind: TrainingAlert['type'] | 'plan_ending' | 'completion' | 'chat' | 'videos' | 'service_term'
   tone: 'red' | 'yellow' | 'white' | 'gray'
   count: number
   at: string | null
@@ -16,10 +17,17 @@ export type OverviewTag = {
 export interface OverviewRow extends RosterOverviewRow { tags: OverviewTag[]; latestAt: number }
 export interface OverviewBoard { attention: OverviewRow[]; normal: OverviewRow[]; redCount: number }
 
+// Service terms deliberately differ from other yellow reminders (spec 024).
+function isAttentionTag(tag: OverviewTag): boolean {
+  return tag.kind === 'service_term' ? tag.tone === 'red' : tag.tone !== 'gray'
+}
+
 export function deriveOverviewBoard(input: Parameters<typeof deriveRosterRows>[0] & { alerts?: AlertsState; requestCount?: number }): OverviewBoard {
   const rows = deriveRosterRows(input).map((row): OverviewRow => {
     const id = row.student.id
     const tags: OverviewTag[] = []
+    const service = row.student.bond_status === 'ended' ? null : getServiceTerm(row.student.service_until, input.reference)
+    if (service) tags.push({ kind: 'service_term', tone: service.tone, count: 1, at: null, daysLeft: service.daysLeft, endDate: row.student.service_until! })
     if (input.alerts?.status === 'ready') {
       const training = input.alerts.data.training.find(item => item.student_id === id)
       for (const kind of ['rpe_over', 'incomplete', 'behind'] as const) {
@@ -48,7 +56,7 @@ export function deriveOverviewBoard(input: Parameters<typeof deriveRosterRows>[0
     if (row.pendingVideoCount) tags.push({ kind: 'videos', tone: 'white', count: row.pendingVideoCount, at: (input.videosByStudent?.[id] ?? []).filter(video => video.viewed_at == null).map(video => video.created_at).sort().at(-1) ?? null })
     // Behind is always last; it cannot promote a student or affect attention ordering.
     tags.sort((a, b) => Number(a.kind === 'behind') - Number(b.kind === 'behind'))
-    return { ...row, tags, needsAttention: tags.some(tag => tag.tone !== 'gray'), latestAt: Math.max(0, ...tags.filter(tag => tag.tone !== 'gray').map(tag => Date.parse(tag.at ?? '') || 0)) }
+    return { ...row, tags, needsAttention: tags.some(isAttentionTag), latestAt: Math.max(0, ...tags.filter(isAttentionTag).map(tag => Date.parse(tag.at ?? '') || 0)) }
   })
   const attention = rows.filter(row => row.needsAttention).sort((a, b) => b.latestAt - a.latestAt || a.ordinal - b.ordinal)
   return { attention, normal: rows.filter(row => !row.needsAttention), redCount: attention.length + (input.requestCount ?? 0) }
@@ -69,6 +77,7 @@ export function splitOverviewTags(tags: readonly OverviewTag[], widths: readonly
 export function overviewTagLabel(tag: OverviewTag): string {
   const copy = S.workspace.overview
   switch (tag.kind) {
+    case 'service_term': return tag.daysLeft! > 0 ? S.workspace.serviceTerm.remaining(tag.daysLeft!) : tag.daysLeft === 0 ? S.workspace.serviceTerm.today : S.workspace.serviceTerm.expired(-tag.daysLeft!)
     case 'rpe_over': return copy.rpeOver(tag.count)
     case 'incomplete': return copy.incomplete(tag.count)
     case 'behind': return copy.behind(tag.count)

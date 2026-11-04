@@ -140,7 +140,7 @@ export interface PlanEditorProps {
   studentName: string
   studentId?: string
   student?: CoachStudent
-  onStudentChanged?: (patch: Pick<CoachStudent, 'id'> & Partial<Pick<CoachStudent, 'alias' | 'bond_status' | 'ended_at'>>) => void
+  onStudentChanged?: (patch: Pick<CoachStudent, 'id'> & Partial<Pick<CoachStudent, 'alias' | 'bond_status' | 'ended_at' | 'service_until'>>) => void
   onboardingProfile?: StudentOnboardingProfile | null
   /** Already-cached one-request overview; the editor never fans out per exercise. */
   exerciseStatsOverview?: ExerciseStatsOverview | null

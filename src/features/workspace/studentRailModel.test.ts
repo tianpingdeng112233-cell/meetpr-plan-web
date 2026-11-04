@@ -95,3 +95,13 @@ it('sorts scheduled and rest groups by display-name pinyin, including legacy stu
     ['陈强', '王强'], ['周明', null], ['李明', null], ['王明', null], ['张明', null],
   ])
 })
+
+it('024 exposes a service capsule only on an active binding, including the gray tier', () => {
+  const roster = [student('active', { service_until: '2026-11-12' }), student('unset'),
+    student('ended', { bond_status: 'ended', service_until: '2026-11-07' })]
+  const rows = buildStudentRail(roster, '', new Date(2026, 10, 4))
+  expect(rows.active.find(row => row.student.id === 'active')?.serviceTerm).toMatchObject({ daysLeft: 8, tone: 'gray', shortLabel: '剩 8 天' })
+  expect(rows.active.find(row => row.student.id === 'unset')?.serviceTerm).toBeNull()
+  expect(rows.ended[0].serviceTerm).toBeNull()
+  expect(buildStudentRail([student('ended', { bond_status: 'active', service_until: null })], '').active[0].serviceTerm).toBeNull()
+})

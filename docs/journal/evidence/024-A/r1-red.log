@@ -1,0 +1,55 @@
+
+> meetpr-plan-web@0.1.0 test
+> vitest run src/features/plan-editor/components/StudentProfile.test.tsx src/features/workspace/RequestsPage.test.tsx
+
+
+ RUN  v2.1.9 /Users/david/Projects/apps/meetpr-plan-web-wt-024
+
+ ❯ src/features/plan-editor/components/StudentProfile.test.tsx (10 tests | 1 failed) 65ms
+   × 024 sets a past service date via PUT, shows the response and retains it on remount 4ms
+     → expected '设置服务期' to be '备注只有你看得到，学员 App 里的名字不变' // Object.is equality
+ ❯ src/features/workspace/RequestsPage.test.tsx (11 tests | 3 failed) 52ms
+   × 024 accept with an optional service term > accepts with or without a date at the API boundary in zh 4ms
+     → expected null not to be null
+   × 024 accept with an optional service term > accepts with or without a date at the API boundary in zh-Hant 2ms
+     → expected null not to be null
+   × 024 accept with an optional service term > accepts with or without a date at the API boundary in en 1ms
+     → expected null not to be null
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 4 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/features/workspace/RequestsPage.test.tsx > 024 accept with an optional service term > accepts with or without a date at the API boundary in zh
+ FAIL  src/features/workspace/RequestsPage.test.tsx > 024 accept with an optional service term > accepts with or without a date at the API boundary in zh-Hant
+ FAIL  src/features/workspace/RequestsPage.test.tsx > 024 accept with an optional service term > accepts with or without a date at the API boundary in en
+AssertionError: expected null not to be null
+ ❯ src/features/workspace/RequestsPage.test.tsx:117:27
+    115|     const actions = host.querySelector('.request-actions')!
+    116|     const decisions = actions.querySelector('.request-decision-buttons…
+    117|     expect(decisions).not.toBeNull()
+       |                           ^
+    118|     expect([...decisions.querySelectorAll('button')].map(button => but…
+    119|     const fields = actions.querySelector('.request-term-fields')!
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/4]⎯
+
+ FAIL  src/features/plan-editor/components/StudentProfile.test.tsx > 024 sets a past service date via PUT, shows the response and retains it on remount
+AssertionError: expected '设置服务期' to be '备注只有你看得到，学员 App 里的名字不变' // Object.is equality
+
+Expected: "备注只有你看得到，学员 App 里的名字不变"
+Received: "设置服务期"
+
+ ❯ src/features/plan-editor/components/StudentProfile.test.tsx:81:52
+     79|     await act(async () => render())
+     80|     const header = host.querySelector('.student-profile > header')!
+     81|     expect(header.nextElementSibling?.textContent).toBe('备注只有你看…
+       |                                                    ^
+     82|     expect(header.nextElementSibling?.nextElementSibling?.classList.co…
+     83|     await act(async () => button('设置服务期').click())
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/4]⎯
+
+ Test Files  2 failed (2)
+      Tests  4 failed | 17 passed (21)
+   Start at  05:43:32
+   Duration  1.29s (transform 411ms, setup 43ms, collect 666ms, tests 117ms, environment 772ms, prepare 165ms)
+

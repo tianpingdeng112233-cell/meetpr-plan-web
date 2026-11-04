@@ -29,6 +29,8 @@ export interface TokenPair {
 }
 
 export interface CoachStudent {
+  /** Optional while backend 059 rolls out; absent/null means no service term. */
+  service_until?: string | null
   id: string
   display_name: string
   status: 'active' | 'in_evaluation'

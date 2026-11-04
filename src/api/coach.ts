@@ -16,8 +16,12 @@ export const getExerciseStats = (studentId: string, exerciseId: string, filter: 
 }
 export const getBindRequests = () =>
   api.get<{ bind_requests: CoachBindRequest[] }>('/coach/bind-requests').then((r) => r.bind_requests)
-export const acceptBindRequest = (id: string) =>
-  api.post(`/coach/bind-requests/${id}/accept`, { skip_evaluation: true })
+export const acceptBindRequest = (id: string, serviceUntil?: string | null) =>
+  api.post(`/coach/bind-requests/${id}/accept`, { skip_evaluation: true,
+    ...(serviceUntil === undefined ? {} : { service_until: serviceUntil }),
+  })
+export const setStudentServiceTerm = (id: string, serviceUntil: string | null) =>
+  api.put<{ service_until: string | null }>(`/coach/students/${id}/service-term`, { service_until: serviceUntil })
 export const rejectBindRequest = (id: string) =>
   api.post(`/coach/bind-requests/${id}/reject`, {})
 export const getStudentVideos = (studentId: string) =>

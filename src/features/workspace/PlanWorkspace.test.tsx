@@ -1925,11 +1925,11 @@ describe('PlanWorkspace editor remount', () => {
     expect(host.querySelector('.requests-count')?.textContent).toBe('1 条')
     expect(host.querySelector('.request-list')?.textContent).toContain('新学员')
     await act(async () => {
-      host.querySelector<HTMLButtonElement>('.request-row button.accept')?.click()
+      host.querySelector<HTMLButtonElement>('.request-actions button.accept')!.click()
       await settle()
     })
 
-    expect(api.acceptBindRequest).toHaveBeenCalledWith('request')
+    expect(api.acceptBindRequest).toHaveBeenCalledWith('request', undefined)
     expect(api.refreshCoachStudents).toHaveBeenCalledTimes(2)
     expect(api.getBindRequests).toHaveBeenCalledTimes(2)
     expect(host.querySelector('.requests-count')).toBeNull()
@@ -1970,7 +1970,7 @@ describe('PlanWorkspace editor remount', () => {
     expect(api.getBindRequests).toHaveBeenCalledTimes(2)
 
     await act(async () => {
-      host.querySelector<HTMLButtonElement>('.request-row button.accept')?.click()
+      host.querySelector<HTMLButtonElement>('.request-actions button.accept')!.click()
       await settle()
     })
     expect(api.getBindRequests).toHaveBeenCalledTimes(3)

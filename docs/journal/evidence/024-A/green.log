@@ -1,0 +1,18 @@
+
+> meetpr-plan-web@0.1.0 test
+> vitest run src/features/workspace/serviceTerm.test.ts src/features/workspace/studentRailModel.test.ts src/features/workspace/overviewBoard.test.ts src/features/workspace/RequestsPage.test.tsx src/features/plan-editor/components/StudentProfile.test.tsx
+
+
+ RUN  v2.1.9 /Users/david/Projects/apps/meetpr-plan-web-wt-024
+
+ ✓ src/features/workspace/serviceTerm.test.ts (12 tests) 11ms
+ ✓ src/features/workspace/studentRailModel.test.ts (16 tests) 54ms
+ ✓ src/features/workspace/overviewBoard.test.ts (13 tests) 15ms
+ ✓ src/features/plan-editor/components/StudentProfile.test.tsx (10 tests) 313ms
+ ✓ src/features/workspace/RequestsPage.test.tsx (11 tests) 202ms
+
+ Test Files  5 passed (5)
+      Tests  62 passed (62)
+   Start at  05:29:15
+   Duration  3.37s (transform 1.55s, setup 134ms, collect 4.20s, tests 596ms, environment 3.42s, prepare 769ms)
+
