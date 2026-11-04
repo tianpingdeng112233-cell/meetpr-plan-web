@@ -1,6 +1,6 @@
 # 023 补充 — 粘贴超出计划末尾时自动延长
 
-- **状态**: Ready（2026-11-02 /grill 共识「确认」）。无新界面。依赖 backend `specs/058-plan-extend-with-history`；**上线顺序：先部署后端 058，再上网页**。
+- **状态**: 已上线国内 staging（backend #367 sha-e3bc8c2 先行；plan-web #152 → backend #370，sha-c4ba51d，2026-11-03）；2026-11-04 David 亲验通过（含两端学员 App）。无新界面。依赖 backend `specs/058-plan-extend-with-history`；**上线顺序：先部署后端 058，再上网页**。
 - **级别 / 节奏**: T2 / P1（跨仓）。网页卡见 `CARD-B.md`。
 
 ## 现状事实（已核实，plan-web main@62792be / backend staging@6d2e285）

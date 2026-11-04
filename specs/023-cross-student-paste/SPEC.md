@@ -1,6 +1,6 @@
 # 023 — 跨学员 / 跨计划复制粘贴
 
-- **状态**: 已上线 staging（plan-web #149 → backend #364，sha-6d2e285）。补充「粘贴超出末尾自动延长」见 `AMEND-auto-extend.md`（2026-11-02 确认）。
+- **状态**: 已上线国内 staging（plan-web #149 → backend #364，sha-6d2e285）；补充「粘贴超出末尾自动延长」见 `AMEND-auto-extend.md`。2026-11-04 David 亲验通过（含两端学员 App）。
 - **来源**: 11/02 David 在 022 定稿时追加「本次额外加个新功能，跨学员复制粘贴」。
 - **产品正典**: 本文件。只改本仓；后端与两端 App 不改。
 - **级别 / 节奏**: T2 / P1。本仓无 CI，合并闸门 = 本地全量测试 + `tsc --noEmit` + build + Opus 浏览器亲验。
