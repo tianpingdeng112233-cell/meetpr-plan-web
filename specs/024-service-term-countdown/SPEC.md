@@ -87,7 +87,7 @@
 | 已过期 | 服务已过期 N 天 | 服務已過期 N 天 | Ended N days ago |
 | 清除 | 清除服务期 | 清除服務期 | Clear term |
 | 失败 | 保存服务期失败，请稍后重试 | 儲存服務期失敗，請稍後重試 | Couldn't save the term. Try again later. |
-| 接收卡提示 | 服务时限可在学员资料栏随时修改。 | 服務時限可在學員資料欄隨時修改。 | You can change the term anytime in the student panel. |
+| 接收卡提示 | 服务期可在学员资料栏随时修改。 | 服務期可在學員資料欄隨時修改。 | You can change the term anytime in the student panel. |
 | 选填标签 | 服务至（选填） | 服務至（選填） | Coaching until (optional) |
 
 学员栏胶囊的短文案同理（剩 N 天 / 今天到期 / 过期 N 天；繁体、英文 `N d left` / `Ends today` / `Ended N d ago`）。
@@ -144,4 +144,4 @@
 
 ### ④ 接收申请卡片
 - 申请卡片（姓名 + 自报信息）下加分隔线，其下一行从左到右：「服务至（选填）」标签 + 日期输入（宽 180，高 36）、「+1 个月」「+3 个月」（基准今天）、弹性空白、「拒绝」、「接受」。窄屏时整行换行。
-- 卡片底部 12px 灰字：「服务时限可在学员资料栏随时修改。」（David 定稿时改的文案，照抄）。
+- 卡片底部 12px 灰字：「服务期可在学员资料栏随时修改。」（David 定稿时改的文案，11/04 统一叫「服务期」）。
