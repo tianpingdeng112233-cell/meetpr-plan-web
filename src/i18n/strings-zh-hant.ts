@@ -15,7 +15,27 @@ import type { zhVideo } from './strings-video'
 import type { zhWorkspace } from './strings-workspace'
 
 const hantAdmin = {
-    page: { overview: "\u7E3D\u89BD", applications: "\u6559\u7DF4\u7533\u8ACB", users: "\u4F7F\u7528\u8005", exercises: "\u52D5\u4F5C\u5EAB" },
+    page: { overview: "\u7E3D\u89BD", applications: "\u6559\u7DF4\u7533\u8ACB", users: "\u4F7F\u7528\u8005", exercises: "\u52D5\u4F5C\u5EAB", coachReviews: "\u6559\u7DF4\u9EDE\u8A55" },
+    coachReviews: {
+        pages: { roster: "\u540D\u9304\u6559\u7DF4", submissions: "\u5F85\u7A3D\u6838", reports: "\u8209\u5831", words: "\u6514\u622A\u8A5E\u8868" },
+        status: { published: "\u5DF2\u4E0A\u7DDA", hidden: "\u5DF2\u4E0B\u67B6", pending: "\u5F85\u7A3D\u6838", rejected: "\u5DF2\u62D2\u7D55" },
+        import: "\u532F\u5165\u540D\u55AE\uFF08CSV\uFF09", importResult: (created: number, updated: number, skipped: number) => `\u65B0\u5EFA ${created} \u00B7 \u66F4\u65B0 ${updated} \u00B7 \u8DF3\u904E ${skipped}`,
+        skipDetails: "\u6AA2\u8996\u8DF3\u904E\u539F\u56E0", skipRow: (row: number, reason: string) => `\u7B2C ${row} \u884C\uFF1A${reason}`,
+        skipReasons: { example: "\u793A\u4F8B\u884C", invalid_fields: "\u6B04\u4F4D\u4E0D\u5B8C\u6574\u6216\u683C\u5F0F\u932F\u8AA4" },
+        search: "\u641C\u5C0B\u59D3\u540D\u3001\u7DB2\u540D\u6216\u6296\u97F3\u865F", nameAndNickname: "\u59D3\u540D/\u7DB2\u540D", region: "\u5730\u5340", statusLabel: "\u72C0\u614B", actions: "\u64CD\u4F5C",
+        edit: "\u7DE8\u8F2F", editTitle: "\u7DE8\u8F2F\u540D\u9304\u6559\u7DF4", save: "\u5132\u5B58", cancel: "\u53D6\u6D88", hide: "\u4E0B\u67B6", restore: "\u6062\u5FA9\u4E0A\u7DDA",
+        fields: { name: "\u59D3\u540D/\u7A31\u547C", nickname: "\u7DB2\u540D", gender: "\u6027\u5225", douyin_handle: "\u6296\u97F3\u865F", douyin_url: "\u6296\u97F3\u4E3B\u9801\u9023\u7D50", province: "\u7701\u4EFD", city: "\u57CE\u5E02", gyms: "\u6240\u5C6C\u5834\u9928/\u5DE5\u4F5C\u5BA4", teaching_mode: "\u6388\u8AB2\u65B9\u5F0F", best_total_kg: "\u6700\u597D\u7E3D\u6210\u7E3E(kg)", competition_class: "\u6BD4\u8CFD\u7D1A\u5225", equipment: "\u88DD\u5099\u985E\u5225", certifications: "\u8CC7\u8CEA\u8A8D\u8B49", coaching_years: "\u57F7\u6559\u5E74\u9650" },
+        gymHint: "\u591A\u500B\u5834\u9928\u7528\u5206\u865F\u5206\u9694\uFF0C\u7121\u5834\u9928\u586B\u300C\u7121\u300D", optional: "\u672A\u586B\u5BEB", modes: { offline: "\u7DDA\u4E0B", online: "\u7DDA\u4E0A", both: "\u7DDA\u4E0A+\u7DDA\u4E0B" }, equipment: { raw: "\u7121\u88DD\u5099", single: "\u55AE\u5C64\u88DD\u5099", multi: "\u591A\u5C64\u88DD\u5099" },
+        approve: "\u901A\u904E", reject: "\u62D2\u7D55", rejectReason: "\u62D2\u7D55\u7406\u7531\uFF08\u9078\u586B\uFF09", submittedAt: "\u63D0\u4EA4\u6642\u9593",
+        overdue: "\u5DF2\u8D85\u671F", reportCount: (count: number) => `\u8209\u5831 ${count} \u6B21`, waited: (days: number, hours: number) => `\u5DF2\u7B49\u5F85 ${days} \u5929 ${hours} \u5C0F\u6642`,
+        reasons: { abuse: "\u8FB1\u7F75\u4EBA\u8EAB\u653B\u64CA", privacy: "\u6D29\u9732\u96B1\u79C1", advertising: "\u865B\u5047\u6216\u5EE3\u544A", other: "\u5176\u4ED6" },
+        keep: "\u4FDD\u7559", deleteReview: "\u522A\u9664\u9EDE\u8A55", deleted: "\u9EDE\u8A55\u5DF2\u522A\u9664\uFF1B\u4FDD\u7559\u4E0D\u6703\u6062\u5FA9\u9EDE\u8A55",
+        reportHint: "\u4FDD\u7559 = \u95DC\u9589\u8A72\u9EDE\u8A55\u7684\u5168\u90E8\u8209\u5831\uFF1B\u522A\u9664 = \u9EDE\u8A55\u4E0D\u518D\u5C55\u793A\u4E14\u4E0D\u8A08\u5165\u5E73\u5747\u5206\uFF0C\u8A18\u9304\u4FDD\u7559\u4F9B\u5BE9\u8A08\u3002",
+        word: "\u6514\u622A\u8A5E", addWord: "\u65B0\u589E", deleteWord: "\u522A\u9664",
+        empty: { roster: "\u6C92\u6709\u5339\u914D\u7684\u540D\u9304\u6559\u7DF4", submissions: "\u6C92\u6709\u5F85\u7A3D\u6838\u7684\u6559\u7DF4", reports: "\u6C92\u6709\u5F85\u8655\u7406\u7684\u8209\u5831", words: "\u66AB\u7121\u6514\u622A\u8A5E" },
+        saved: "\u64CD\u4F5C\u5DF2\u5B8C\u6210", writeDisabled: "\u7576\u524D\u672A\u958B\u653E\u5BEB\u5165",
+        errors: { INVALID_CSV: "CSV \u683C\u5F0F\u932F\u8AA4\uFF0C\u8ACB\u6AA2\u67E5\u6A94\u6848\u5F8C\u91CD\u8A66\u3002", INVALID_CSV_HEADERS: "CSV \u7F3A\u5C11\u5FC5\u9700\u8868\u982D\uFF0C\u8ACB\u6AA2\u67E5\u6A94\u6848\u5F8C\u91CD\u8A66\u3002", LISTED_COACH_EXISTS: "\u6296\u97F3\u865F\u5DF2\u5B58\u5728\uFF0C\u8ACB\u6838\u5C0D\u5F8C\u91CD\u8A66\u3002", LISTED_COACH_INVALID_STATE: "\u6559\u7DF4\u72C0\u614B\u5DF2\u8B8A\u5316\uFF0C\u8ACB\u91CD\u65B0\u6574\u7406\u5217\u8868\u3002", LISTED_COACH_NOT_FOUND: "\u6559\u7DF4\u4E0D\u5B58\u5728\uFF0C\u8ACB\u91CD\u65B0\u6574\u7406\u5217\u8868\u3002", COACH_REVIEW_NO_OPEN_REPORTS: "\u8A72\u9EDE\u8A55\u7684\u8209\u5831\u5DF2\u8655\u7406\uFF0C\u8ACB\u91CD\u65B0\u6574\u7406\u5217\u8868\u3002" },
+    },
     applications: {
         subtitle: "\u901A\u904E\u5F8C\u81EA\u52D5\u5EFA\u7ACB\u6559\u7DF4\u5E33\u865F\u548C\u6C38\u4E45\u9080\u8ACB\u78BC\uFF0C\u4F75\u767C\u9001\u6B61\u8FCE\u90F5\u4EF6", pending: "\u5F85\u8655\u7406", approved: "\u5DF2\u901A\u904E", rejected: "\u5DF2\u62D2\u7D55", all: "\u5168\u90E8",
         filters: "\u6309\u72C0\u614B\u7BE9\u9078", search: "\u641C\u5C0B\u59D3\u540D\u6216\u4FE1\u7BB1", list: "\u7533\u8ACB\u5217\u8868", applicant: "\u7533\u8ACB\u4EBA", contact: "\u806F\u7D61\u65B9\u5F0F", students: "\u5B78\u54E1\u6578", device: "\u5B78\u54E1\u88DD\u7F6E", submittedAt: "\u7533\u8ACB\u6642\u9593", actions: "\u64CD\u4F5C",
