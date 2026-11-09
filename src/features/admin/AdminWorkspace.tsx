@@ -1,10 +1,16 @@
+import { errorText } from '../onboarding/text'
 import { CustomExercisesPage } from './CustomExercisesPage'
 import { useResource, type ResourceState } from './useAdminResource'
 import { ApplicationsPage, applicationDevice } from './ApplicationsPage'
 import { getCoachApplications, type CoachApplication } from '../../api/onboarding'
 import { normalizeTraditionalInput } from '../../i18n/stable-zh'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
+  getAdminCoachReviewWords, addAdminCoachReviewWord, deleteAdminCoachReviewWord,
+  getAdminCoachReviewReports, decideAdminCoachReviewReport,
+  getAdminCoachSubmissions, decideAdminCoachSubmission,
+  importCoachRoster, getAdminListedCoaches, updateAdminListedCoach, setAdminListedCoachStatus,
+  type AdminListedCoach, type ListedCoachInput, type CoachRosterImportResult,
   getAdminBindings,
   getAdminExerciseUsage,
   getAdminOverview,
@@ -21,11 +27,13 @@ import { EmptyState, ErrorState, SkeletonRows } from '../../components/states'
 
 interface Props { onLogout: () => void }
 
-type AdminPage = 'applications' | 'overview' | 'users' | 'userDetail' | 'exercises'
-type RootPage = 'applications' | 'overview' | 'users' | 'exercises'
+type AdminPage = 'applications' | 'overview' | 'users' | 'userDetail' | 'exercises' | 'coachReviews'
+type RootPage = Exclude<AdminPage, 'userDetail'>
 type BadgeSpec = { label: string; color: string; background: string; border: string; weight?: number }
 
 export const ADMIN_WRITE_ENABLED = false
+// Independently enabled for spec 063; the legacy account danger actions stay disabled.
+export const ADMIN_COACH_REVIEWS_WRITE_ENABLED = true
 
 const pageTitle = (page: RootPage) => S.admin.page[page]
 
@@ -311,12 +319,12 @@ function ExerciseUsagePage({ state }: { state: ResourceState<Awaited<ReturnType<
 }
 
 function AdminRail({ page, pending, navigate, onLogout }: { page: AdminPage; pending: number; navigate: (page: RootPage) => void; onLogout: () => void }) {
-  const tabs: RootPage[] = ['overview', 'applications', 'users', 'exercises']
+  const tabs: RootPage[] = ['overview', 'applications', 'users', 'exercises', 'coachReviews']
   const activeRoot = page === 'userDetail' ? 'users' : page
   return <nav aria-label={S.admin.navigation} className="flex w-24 flex-none flex-col items-center border-r border-border bg-s1 px-2.5 py-[18px]">
     <div className="flex h-10 w-10 items-center justify-center rounded-lg border border-border-strong text-lg font-black">M</div>
     <div className="mt-2 rounded border border-[#E0B4B0] px-1.5 py-px font-mono text-[9.5px] tracking-[0.1em] text-[#A81E17]">ADMIN</div>
-    <div className="mt-[18px] flex w-full flex-col gap-1">{tabs.map(tab => <button type="button" key={tab} onClick={() => navigate(tab)} aria-current={activeRoot === tab ? 'page' : undefined} className={`relative flex flex-col items-center gap-[5px] rounded-lg py-[11px] text-[11.5px] ${activeRoot === tab ? 'bg-s3 font-semibold text-fg' : 'text-fg-tertiary hover:bg-s2 hover:text-fg'}`}><Icon name={tab}/><span>{pageTitle(tab)}</span>{tab === 'applications' && pending > 0 && <span className="admin-count absolute left-[46px] top-1.5">{pending}</span>}</button>)}</div>
+    <div className="mt-[18px] flex w-full flex-col gap-1">{tabs.map(tab => <button type="button" key={tab} onClick={() => navigate(tab)} aria-current={activeRoot === tab ? 'page' : undefined} className={`relative flex flex-col items-center gap-[5px] rounded-lg py-[11px] text-[11.5px] ${activeRoot === tab ? 'bg-s3 font-semibold text-fg' : 'text-fg-tertiary hover:bg-s2 hover:text-fg'}`}><Icon name={tab === 'coachReviews' ? 'applications' : tab}/><span>{pageTitle(tab)}</span>{tab === 'applications' && pending > 0 && <span className="admin-count absolute left-[46px] top-1.5">{pending}</span>}</button>)}</div>
     <div className="flex-1"/><div className="mt-4 h-px w-full bg-border"/><div className="mt-3.5 flex h-8 w-8 items-center justify-center rounded-full bg-s3 text-[13px] font-bold" title={S.admin.detail.founder}>{S.admin.detail.founderInitial}</div><button type="button" aria-label={S.common.signOut} onClick={onLogout} className="mt-2.5 flex h-11 w-11 items-center justify-center rounded-md text-fg-tertiary hover:bg-s2"><Icon name="logout" size={18}/></button>
   </nav>
 }
@@ -355,10 +363,11 @@ export function AdminWorkspace({ onLogout }: Props) {
     <div className="relative min-w-0 flex-1 overflow-y-auto">
       {active.loading && <div className="absolute inset-x-0 top-0 z-30 h-0.5 overflow-hidden"><div className="admin-loadbar absolute top-0 h-0.5 w-[30%] bg-[#111827]"/></div>}
       <main className={`flex min-w-0 max-w-[1240px] flex-col px-10 pb-12 ${page === 'userDetail' ? 'gap-6 pt-7' : page === 'overview' ? 'gap-7 pt-9' : 'gap-5 pt-9'}`}>
-        {page !== 'users' && page !== 'exercises' && <header className="flex flex-wrap items-end justify-between gap-4">
+        {page !== 'users' && page !== 'exercises' && page !== 'coachReviews' && <header className="flex flex-wrap items-end justify-between gap-4">
           {page === 'userDetail' ? <div className="flex items-center gap-2 text-[13px]"><button type="button" onClick={() => navigate(backPage)} className="flex items-center gap-1.5 text-fg-secondary"><Icon name="back" size={15}/>{S.admin.page.users}</button><span>/</span><span>{leaf}</span></div> : <div><h1 className="text-[26px] font-bold tracking-[-0.01em]">{leaf}</h1><p className="mt-1 text-[13px] text-fg-tertiary">{subtitle}</p></div>}
           <button type="button" onClick={refresh} disabled={active.loading || reviewBusy} className="admin-secondary">{S.admin.refresh}</button>
         </header>}
+        {page === 'coachReviews' && <CoachReviewsPage onToast={setToast}/>}
         {page === 'applications' && <ApplicationsPage applications={applications} loading={applicationState.loading} error={applicationState.error} retry={applicationState.retry} onChange={setApplications} onToast={setToast} mailFailures={mailFailures} onMailResult={setMailFailures} busy={reviewBusy} onBusyChange={setReviewBusy}/>}
         {page === 'overview' && <OverviewPage state={overview} applications={applications} applicationsLoading={applicationState.loading} applicationsError={applicationState.error} retryApplications={applicationState.retry} users={users} openUser={openUser} navigate={navigate}/>}
         {page === 'users' && <UsersPage state={users} openUser={openUser}/>}
@@ -367,5 +376,171 @@ export function AdminWorkspace({ onLogout }: Props) {
       </main>
     </div>
     {toast && <div role="status" className="fixed bottom-7 left-1/2 z-[60] max-w-[calc(100vw-48px)] -translate-x-1/2 rounded-lg border border-border-strong bg-[#111827] px-[18px] py-[11px] text-[13px] text-[#FFFFFF]">{toast}</div>}
+  </div>
+}
+
+type CoachReviewPage = 'roster' | 'submissions' | 'reports' | 'words'
+
+function useCoachReviewWrite(onToast: (text: string) => void, refresh: () => void) {
+  const [busy, setBusy] = useState(false)
+  const writing = useRef(false)
+  const run = async (write: () => Promise<unknown>) => {
+    if (!ADMIN_COACH_REVIEWS_WRITE_ENABLED || writing.current) return false
+    writing.current = true
+    setBusy(true)
+    try {
+      await write()
+      onToast(S.admin.coachReviews.saved)
+      refresh()
+      return true
+    } catch (error) {
+      const errors: Record<string, string> = S.admin.coachReviews.errors
+      const code = error && typeof error === 'object' && 'code' in error ? String(error.code) : ''
+      onToast(errors[code] ?? errorText(error))
+      return false
+    } finally {
+      writing.current = false
+      setBusy(false)
+    }
+  }
+  return { busy, run, disabled: busy || !ADMIN_COACH_REVIEWS_WRITE_ENABLED }
+}
+
+function CoachReviewsPage({ onToast }: { onToast: (text: string) => void }) {
+  const [page, setPage] = useState<CoachReviewPage>('roster')
+  const labels = S.admin.coachReviews
+  return <div className="flex flex-col gap-5" data-testid="admin-coach-reviews">
+    <h1 className="text-[26px] font-bold tracking-[-0.01em]">{S.admin.page.coachReviews}</h1>
+    <div className="overflow-x-auto"><FilterChips options={(Object.keys(labels.pages) as CoachReviewPage[]).map(key => [key, labels.pages[key]])} value={page} onChange={setPage}/></div>
+    {!ADMIN_COACH_REVIEWS_WRITE_ENABLED && <p className="text-fg-tertiary">{labels.writeDisabled}</p>}
+    {page === 'roster' && <CoachRosterPage onToast={onToast}/>}
+    {page === 'submissions' && <CoachSubmissionsPage onToast={onToast}/>}
+    {page === 'reports' && <CoachReportsPage onToast={onToast}/>}
+    {page === 'words' && <CoachReviewWordsPage onToast={onToast}/>}
+  </div>
+}
+
+function readRosterFile(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(String(reader.result))
+    reader.onerror = () => reject(reader.error)
+    reader.readAsText(file)
+  })
+}
+
+const coachFieldClass = 'mt-1 h-9 w-full rounded-md border border-border bg-s1 px-3 text-[13px] text-fg outline-none focus:border-[#111827]'
+
+function ListedCoachForm({ coach, disabled, save, cancel }: { coach: AdminListedCoach; disabled: boolean; save: (input: ListedCoachInput) => void; cancel: () => void }) {
+  const labels = S.admin.coachReviews
+  const textFields = ['name', 'nickname', 'gender', 'douyin_handle', 'douyin_url', 'province', 'city', 'competition_class', 'certifications'] as const
+  const optional = new Set<string>(['competition_class', 'certifications'])
+  return <Card><CardHeader title={labels.editTitle}/><form className="p-5" onSubmit={event => {
+    event.preventDefault()
+    const data = new FormData(event.currentTarget)
+    const text = (key: string) => String(data.get(key) ?? '').trim()
+    const numeric = (key: string) => text(key) === '' ? null : Number(text(key))
+    save({ name: text('name'), nickname: text('nickname'), gender: text('gender'), douyin_handle: text('douyin_handle'), douyin_url: text('douyin_url'), province: text('province'), city: text('city'), gyms: text('gyms').split(/[;；、]/).map(value => value.trim()).filter(Boolean), teaching_mode: text('teaching_mode') as ListedCoachInput['teaching_mode'], best_total_kg: numeric('best_total_kg'), competition_class: text('competition_class') || null, equipment: (text('equipment') || null) as ListedCoachInput['equipment'], certifications: text('certifications') || null, coaching_years: numeric('coaching_years') })
+  }}>
+    <fieldset disabled={disabled} className="grid grid-cols-2 gap-4 max-[800px]:grid-cols-1">
+      {textFields.map(key => <label key={key} className="text-xs text-fg-secondary">{labels.fields[key]}<input name={key} defaultValue={coach[key] ?? ''} required={!optional.has(key)} type={key === 'douyin_url' ? 'url' : 'text'} maxLength={key === 'douyin_url' ? 1000 : 200} className={coachFieldClass}/></label>)}
+      <label className="text-xs text-fg-secondary">{labels.fields.gyms}<input name="gyms" defaultValue={coach.gyms.join('; ')} required className={coachFieldClass}/><span className="mt-1 block text-fg-tertiary">{labels.gymHint}</span></label>
+      <label className="text-xs text-fg-secondary">{labels.fields.teaching_mode}<select name="teaching_mode" defaultValue={coach.teaching_mode} className={coachFieldClass}><option value="线下">{labels.modes.offline}</option><option value="线上">{labels.modes.online}</option><option value="线上+线下">{labels.modes.both}</option></select></label>
+      <label className="text-xs text-fg-secondary">{labels.fields.equipment}<select name="equipment" defaultValue={coach.equipment ?? ''} className={coachFieldClass}><option value="">{labels.optional}</option><option value="无装备">{labels.equipment.raw}</option><option value="单层装备">{labels.equipment.single}</option><option value="多层装备">{labels.equipment.multi}</option></select></label>
+      {(['best_total_kg', 'coaching_years'] as const).map(key => <label key={key} className="text-xs text-fg-secondary">{labels.fields[key]}<input name={key} type="number" min="0" step="any" defaultValue={coach[key] ?? ''} className={coachFieldClass}/></label>)}
+    </fieldset>
+    <div className="mt-5 flex justify-end gap-2"><button type="button" className="admin-secondary" disabled={disabled} onClick={cancel}>{labels.cancel}</button><button type="submit" className="admin-primary" disabled={disabled}>{labels.save}</button></div>
+  </form></Card>
+}
+
+function CoachRosterPage({ onToast }: { onToast: (text: string) => void }) {
+  const labels = S.admin.coachReviews
+  const [status, setStatus] = useState<'published' | 'hidden'>('published')
+  const [search, setSearch] = useState('')
+  const [editing, setEditing] = useState<AdminListedCoach | null>(null)
+  const [result, setResult] = useState<CoachRosterImportResult | null>(null)
+  const fileInput = useRef<HTMLInputElement>(null)
+  const state = useResource(`roster:${status}:${search}`, () => getAdminListedCoaches({ status, q: search.trim() }))
+  const write = useCoachReviewWrite(onToast, state.retry)
+  return <div className="flex flex-col gap-5">
+    <PageHeader title={labels.pages.roster} subtitle="" loading={state.loading || write.busy} refresh={state.retry}/>
+    <div className="flex flex-wrap items-center gap-3">
+      <FilterChips options={[["published", labels.status.published], ['hidden', labels.status.hidden]]} value={status} onChange={setStatus}/>
+      <SearchBox value={search} onChange={value => setSearch(value.slice(0, 200))} placeholder={labels.search}/>
+      <button type="button" className="admin-primary" disabled={write.disabled} onClick={() => fileInput.current?.click()}>{labels.import}</button>
+      <input ref={fileInput} type="file" accept=".csv,text/csv" aria-label={labels.import} className="hidden" disabled={write.disabled} onChange={event => {
+        const file = event.target.files?.[0]
+        event.target.value = ''
+        if (file) void write.run(async () => { setResult(null); setResult(await importCoachRoster(await readRosterFile(file))) })
+      }}/>
+    </div>
+    {result && <Card className="px-5 py-4"><p role="status">{labels.importResult(result.created, result.updated, result.skipped)}</p>{result.skips.length > 0 && <details className="mt-2 text-xs text-fg-secondary"><summary className="cursor-pointer">{labels.skipDetails}</summary><ul className="mt-2 space-y-1">{result.skips.map((skip, index) => <li key={`${skip.row}:${index}`}>{labels.skipRow(skip.row, labels.skipReasons[skip.reason])}</li>)}</ul></details>}</Card>}
+    {editing && <ListedCoachForm key={editing.id} coach={editing} disabled={write.disabled} cancel={() => setEditing(null)} save={input => { void write.run(() => updateAdminListedCoach(editing.id, input)).then(saved => { if (saved) setEditing(null) }) }}/>}
+    <Card><CardHeader title={labels.pages.roster}/>{state.loading ? <SkeletonRows/> : state.error ? <ErrorState retry={state.retry}/> : !state.data?.coaches.length ? <EmptyState text={labels.empty.roster}/> : <div className="overflow-x-auto"><table className="w-full min-w-[850px] text-left text-[13px]">
+      <thead className="border-b border-border text-xs text-fg-tertiary"><tr>{[labels.nameAndNickname, labels.fields.douyin_handle, labels.region, labels.fields.teaching_mode, labels.statusLabel, labels.actions].map(title => <th key={title} className="px-4 py-3 font-medium">{title}</th>)}</tr></thead>
+      <tbody>{state.data.coaches.map(coach => <tr key={coach.id} className="border-b border-border last:border-0"><td className="px-4 py-3"><span className="font-medium">{coach.name}</span><span className="mt-1 block text-xs text-fg-tertiary">{coach.nickname}</span></td><td className="px-4 py-3">{coach.douyin_handle}</td><td className="px-4 py-3">{coach.province} · {coach.city}</td><td className="px-4 py-3">{coachTeachingMode(coach.teaching_mode)}</td><td className="px-4 py-3"><Badge spec={{ ...bindBadge(coach.status === 'published' ? 'accepted' : 'cancelled'), label: labels.status[coach.status] }}/></td><td className="px-4 py-3"><div className="flex gap-2"><button type="button" className="admin-secondary" disabled={write.disabled} onClick={() => setEditing(coach)}>{labels.edit}</button><button type="button" className="admin-secondary" disabled={write.disabled} onClick={() => { void write.run(() => setAdminListedCoachStatus(coach.id, coach.status === 'published' ? 'hidden' : 'published')) }}>{coach.status === 'published' ? labels.hide : labels.restore}</button></div></td></tr>)}</tbody>
+    </table></div>}</Card>
+  </div>
+}
+
+function coachTeachingMode(mode: ListedCoachInput['teaching_mode']) {
+  const labels = S.admin.coachReviews.modes
+  return mode === '线下' ? labels.offline : mode === '线上' ? labels.online : labels.both
+}
+
+function coachEquipment(equipment: ListedCoachInput['equipment']) {
+  const labels = S.admin.coachReviews.equipment
+  return equipment === '无装备' ? labels.raw : equipment === '单层装备' ? labels.single : equipment === '多层装备' ? labels.multi : '—'
+}
+
+function CoachSubmissionsPage({ onToast }: { onToast: (text: string) => void }) {
+  const labels = S.admin.coachReviews
+  const state = useResource('review-submissions', getAdminCoachSubmissions)
+  const write = useCoachReviewWrite(onToast, state.retry)
+  return <div className="flex flex-col gap-5">
+    <PageHeader title={labels.pages.submissions} subtitle="" loading={state.loading || write.busy} refresh={state.retry}/>
+    <Card><CardHeader title={labels.pages.submissions}/>{state.loading ? <SkeletonRows/> : state.error ? <ErrorState retry={state.retry}/> : !state.data?.coaches.length ? <EmptyState text={labels.empty.submissions}/> : state.data.coaches.map(coach => <CoachSubmissionRow key={coach.id} coach={coach} disabled={write.disabled} decide={(action, reason) => { void write.run(() => decideAdminCoachSubmission(coach.id, action, reason)) }}/>)}</Card>
+  </div>
+}
+
+function CoachSubmissionRow({ coach, disabled, decide }: { coach: AdminListedCoach; disabled: boolean; decide: (action: 'approve' | 'reject', reason?: string) => void }) {
+  const labels = S.admin.coachReviews
+  const [reason, setReason] = useState('')
+  return <section className="border-b border-border p-5 last:border-0">
+    <h2 className="text-[15px] font-semibold">{coach.name} · {coach.nickname}</h2>
+    <p className="mt-1 text-xs text-fg-tertiary">{labels.submittedAt} · {dateOnly(coach.created_at)}</p>
+    <dl className="my-4 grid grid-cols-2 gap-x-6 gap-y-3 max-[800px]:grid-cols-1">{(Object.keys(labels.fields) as Array<keyof ListedCoachInput>).map(key => <div key={key} className="min-w-0"><dt className="text-xs text-fg-tertiary">{labels.fields[key]}</dt><dd className="mt-1 whitespace-pre-wrap break-words text-[13px]">{key === 'teaching_mode' ? coachTeachingMode(coach.teaching_mode) : key === 'gyms' ? coach.gyms.join(' · ') : key === 'equipment' ? coachEquipment(coach.equipment) : coach[key] ?? '—'}</dd></div>)}</dl>
+    <div className="flex flex-wrap items-center gap-2"><input aria-label={labels.rejectReason} placeholder={labels.rejectReason} maxLength={1000} value={reason} disabled={disabled} onChange={event => setReason(event.target.value)} className={`${coachFieldClass} max-w-[320px]`}/><button type="button" className="admin-primary" disabled={disabled} onClick={() => decide('approve')}>{labels.approve}</button><button type="button" className="admin-secondary" disabled={disabled} onClick={() => decide('reject', reason.trim() || undefined)}>{labels.reject}</button></div>
+  </section>
+}
+
+function CoachReportsPage({ onToast }: { onToast: (text: string) => void }) {
+  const labels = S.admin.coachReviews
+  const state = useResource('review-reports', getAdminCoachReviewReports)
+  const write = useCoachReviewWrite(onToast, state.retry)
+  return <div className="flex flex-col gap-5">
+    <PageHeader title={labels.pages.reports} subtitle={labels.reportHint} loading={state.loading || write.busy} refresh={state.retry}/>
+    <Card><CardHeader title={labels.pages.reports}/>{state.loading ? <SkeletonRows/> : state.error ? <ErrorState retry={state.retry}/> : !state.data?.reports.length ? <EmptyState text={labels.empty.reports}/> : state.data.reports.map(report => <section key={report.review_id} className="border-b border-border p-5 last:border-0">
+      <div className="mb-3 flex flex-wrap items-center gap-3"><span className="font-semibold tabular-nums">{labels.reportCount(report.report_count)}</span><span className="text-xs text-fg-tertiary">{labels.waited(Math.floor(report.age_seconds / 86400), Math.floor(report.age_seconds % 86400 / 3600))}</span>{report.overdue && <Badge spec={{ label: labels.overdue, color: '#A81E17', background: '#FFFFFF', border: '#E0B4B0', weight: 700 }}/>}</div>
+      <p className="whitespace-pre-wrap break-words text-[13px] leading-6">{report.body}</p>
+      {report.deleted_at && <p className="mt-2 text-xs text-fg-tertiary">{labels.deleted}</p>}
+      <ul className="my-3 space-y-1 text-xs text-fg-secondary">{report.reasons.map(reason => <li key={reason.id} className="whitespace-pre-wrap break-words">{labels.reasons[reason.reason]}{reason.explanation ? ` · ${reason.explanation}` : ''}</li>)}</ul>
+      <div className="flex gap-2"><button type="button" className="admin-secondary" disabled={write.disabled} onClick={() => { void write.run(() => decideAdminCoachReviewReport(report.review_id, 'keep')) }}>{labels.keep}</button><button type="button" className="admin-primary" disabled={write.disabled} onClick={() => { void write.run(() => decideAdminCoachReviewReport(report.review_id, 'delete')) }}>{labels.deleteReview}</button></div>
+    </section>)}</Card>
+  </div>
+}
+
+function CoachReviewWordsPage({ onToast }: { onToast: (text: string) => void }) {
+  const labels = S.admin.coachReviews
+  const state = useResource('review-words', getAdminCoachReviewWords)
+  const write = useCoachReviewWrite(onToast, state.retry)
+  const [word, setWord] = useState('')
+  return <div className="flex flex-col gap-5">
+    <PageHeader title={labels.pages.words} subtitle="" loading={state.loading || write.busy} refresh={state.retry}/>
+    <form className="flex items-center gap-2" onSubmit={event => {
+      event.preventDefault()
+      if (word.trim()) void write.run(() => addAdminCoachReviewWord(word.trim())).then(saved => { if (saved) setWord('') })
+    }}><input aria-label={labels.word} placeholder={labels.word} value={word} onChange={event => setWord(event.target.value)} required maxLength={100} disabled={write.disabled} className={`${coachFieldClass} max-w-[320px]`}/><button type="submit" className="admin-primary" disabled={write.disabled || !word.trim()}>{labels.addWord}</button></form>
+    <Card><CardHeader title={labels.pages.words}/>{state.loading ? <SkeletonRows/> : state.error ? <ErrorState retry={state.retry}/> : !state.data?.words.length ? <EmptyState text={labels.empty.words}/> : state.data.words.map(item => <div key={item.id} className="flex items-center justify-between gap-4 border-b border-border px-5 py-3 last:border-0"><span className="min-w-0 break-words">{item.word}</span><button type="button" className="admin-secondary shrink-0" disabled={write.disabled} onClick={() => { void write.run(() => deleteAdminCoachReviewWord(item.id)) }}>{labels.deleteWord}</button></div>)}</Card>
   </div>
 }

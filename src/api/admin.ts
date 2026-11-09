@@ -124,3 +124,81 @@ export type AdoptExercisesInput = { exercise_ids: string[] } & (
 // Consumers refresh the canonical lists; the success envelope is not specified further by 053.
 export const adoptCustomExercises = (body: AdoptExercisesInput) => api.post<unknown>('/admin/custom-exercises/adopt', body)
 export const unadoptCustomExercises = (exercise_ids: string[]) => api.post<unknown>('/admin/custom-exercises/unadopt', { exercise_ids })
+
+// Spec 063 admin contract; NUMERIC values can arrive as strings from PostgreSQL.
+export interface ListedCoachInput {
+  name: string
+  nickname: string
+  gender: string
+  douyin_handle: string
+  douyin_url: string
+  province: string
+  city: string
+  gyms: string[]
+  teaching_mode: '线下' | '线上' | '线上+线下'
+  best_total_kg: number | null
+  competition_class: string | null
+  equipment: '无装备' | '单层装备' | '多层装备' | null
+  certifications: string | null
+  coaching_years: number | null
+}
+export type ListedCoachStatus = 'pending' | 'published' | 'hidden' | 'rejected'
+export interface AdminListedCoach extends Omit<ListedCoachInput, 'best_total_kg' | 'coaching_years'> {
+  id: string
+  status: ListedCoachStatus
+  best_total_kg: number | string | null
+  coaching_years: number | string | null
+  rejection_reason: string | null
+  submitted_by: string | null
+  reviewed_by: string | null
+  reviewed_at: string | null
+  created_at: string
+  updated_at: string
+}
+export interface CoachRosterImportResult {
+  created: number
+  updated: number
+  skipped: number
+  skips: Array<{ row: number; reason: 'example' | 'invalid_fields' }>
+}
+export interface AdminReviewReport {
+  review_id: string
+  listed_coach_id: string
+  body: string
+  deleted_at: string | null
+  report_count: number
+  first_reported_at: string
+  age_seconds: number
+  overdue: boolean
+  reasons: Array<{ id: string; reason: 'abuse' | 'privacy' | 'advertising' | 'other'; explanation: string | null }>
+}
+export interface CoachReviewWord { id: string; word: string }
+
+const coachReviewsPath = '/admin/coach-reviews'
+
+export const importCoachRoster = (csv: string) => api.post<CoachRosterImportResult>(`${coachReviewsPath}/import`, { csv })
+
+export const getAdminListedCoaches = (filters: { status?: ListedCoachStatus; q?: string } = {}) => {
+  const query = new URLSearchParams()
+  if (filters.status) query.set('status', filters.status)
+  if (filters.q) query.set('q', filters.q)
+  return api.get<{ coaches: AdminListedCoach[] }>(`${coachReviewsPath}/coaches${query.size ? `?${query}` : ''}`)
+}
+
+export const updateAdminListedCoach = (id: string, input: ListedCoachInput) => api.patch<AdminListedCoach>(`${coachReviewsPath}/coaches/${encodeURIComponent(id)}`, input)
+
+export const setAdminListedCoachStatus = (id: string, status: 'published' | 'hidden') => api.post<AdminListedCoach>(`${coachReviewsPath}/coaches/${encodeURIComponent(id)}/status`, { status })
+
+export const getAdminCoachSubmissions = () => api.get<{ coaches: AdminListedCoach[] }>(`${coachReviewsPath}/submissions`)
+
+export const decideAdminCoachSubmission = (id: string, action: 'approve' | 'reject', reason?: string) => api.post<AdminListedCoach>(`${coachReviewsPath}/submissions/${encodeURIComponent(id)}/decision`, { action, ...(reason === undefined ? {} : { reason }) })
+
+export const getAdminCoachReviewReports = () => api.get<{ reports: AdminReviewReport[] }>(`${coachReviewsPath}/reports`)
+
+export const decideAdminCoachReviewReport = (reviewId: string, action: 'keep' | 'delete') => api.post<{ action: 'keep' | 'delete' }>(`${coachReviewsPath}/reports/${encodeURIComponent(reviewId)}/decision`, { action })
+
+export const getAdminCoachReviewWords = () => api.get<{ words: CoachReviewWord[] }>(`${coachReviewsPath}/words`)
+
+export const addAdminCoachReviewWord = (word: string) => api.post<CoachReviewWord>(`${coachReviewsPath}/words`, { word })
+
+export const deleteAdminCoachReviewWord = (id: string) => api.del<void>(`${coachReviewsPath}/words/${encodeURIComponent(id)}`)

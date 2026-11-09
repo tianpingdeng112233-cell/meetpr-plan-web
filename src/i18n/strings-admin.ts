@@ -2,7 +2,27 @@ import type { Translations } from './types'
 import { countUnit } from './plural'
 
 export const zhAdmin = {
-  page: { overview: '总览', applications: '教练申请', users: '用户', exercises: '动作库' },
+  page: { overview: '总览', applications: '教练申请', users: '用户', exercises: '动作库', coachReviews: '教练点评' },
+  coachReviews: {
+    pages: { roster: '名录教练', submissions: '待审核', reports: '举报', words: '拦截词表' },
+    status: { published: '已上线', hidden: '已下架', pending: '待审核', rejected: '已拒绝' },
+    import: '导入名单（CSV）', importResult: (created: number, updated: number, skipped: number) => `新建 ${created} · 更新 ${updated} · 跳过 ${skipped}`,
+    skipDetails: '查看跳过原因', skipRow: (row: number, reason: string) => `第 ${row} 行：${reason}`,
+    skipReasons: { example: '示例行', invalid_fields: '字段不完整或格式错误' },
+    search: '搜索姓名、网名或抖音号', nameAndNickname: '姓名/网名', region: '地区', statusLabel: '状态', actions: '操作',
+    edit: '编辑', editTitle: '编辑名录教练', save: '保存', cancel: '取消', hide: '下架', restore: '恢复上线',
+    fields: { name: '姓名/称呼', nickname: '网名', gender: '性别', douyin_handle: '抖音号', douyin_url: '抖音主页链接', province: '省份', city: '城市', gyms: '所属场馆/工作室', teaching_mode: '授课方式', best_total_kg: '最好总成绩(kg)', competition_class: '比赛级别', equipment: '装备类别', certifications: '资质认证', coaching_years: '执教年限' },
+    gymHint: '多个场馆用分号分隔，无场馆填「无」', optional: '未填写', modes: { offline: '线下', online: '线上', both: '线上+线下' }, equipment: { raw: '无装备', single: '单层装备', multi: '多层装备' },
+    approve: '通过', reject: '拒绝', rejectReason: '拒绝理由（选填）', submittedAt: '提交时间',
+    overdue: '已超期', reportCount: (count: number) => `举报 ${count} 次`, waited: (days: number, hours: number) => `已等待 ${days} 天 ${hours} 小时`,
+    reasons: { abuse: '辱骂人身攻击', privacy: '泄露隐私', advertising: '虚假或广告', other: '其他' },
+    keep: '保留', deleteReview: '删除点评', deleted: '点评已删除；保留不会恢复点评',
+    reportHint: '保留 = 关闭该点评的全部举报；删除 = 点评不再展示且不计入平均分，记录保留供审计。',
+    word: '拦截词', addWord: '添加', deleteWord: '删除',
+    empty: { roster: '没有匹配的名录教练', submissions: '没有待审核的教练', reports: '没有待处理的举报', words: '暂无拦截词' },
+    saved: '操作已完成', writeDisabled: '当前未开放写入',
+    errors: { INVALID_CSV: 'CSV 格式错误，请检查文件后重试。', INVALID_CSV_HEADERS: 'CSV 缺少必需表头，请检查文件后重试。', LISTED_COACH_EXISTS: '抖音号已存在，请核对后重试。', LISTED_COACH_INVALID_STATE: '教练状态已变化，请刷新列表。', LISTED_COACH_NOT_FOUND: '教练不存在，请刷新列表。', COACH_REVIEW_NO_OPEN_REPORTS: '该点评的举报已处理，请刷新列表。' },
+  },
   applications: {
     subtitle: '通过后自动创建教练账号和永久邀请码，并发送欢迎邮件', pending: '待处理', approved: '已通过', rejected: '已拒绝', all: '全部',
     filters: '按状态筛选', search: '搜索姓名或邮箱', list: '申请列表', applicant: '申请人', contact: '联系方式', students: '学员数', device: '学员设备', submittedAt: '申请时间', actions: '操作',
@@ -67,7 +87,27 @@ export const zhAdmin = {
 } as const
 
 export const enAdmin = {
-  page: { overview: 'Overview', applications: 'Coach applications', users: 'Users', exercises: 'Exercise library' },
+  page: { overview: 'Overview', applications: 'Coach applications', users: 'Users', exercises: 'Exercise library', coachReviews: 'Coach reviews' },
+  coachReviews: {
+    pages: { roster: 'Coach roster', submissions: 'Pending review', reports: 'Reports', words: 'Blocked words' },
+    status: { published: 'Published', hidden: 'Hidden', pending: 'Pending', rejected: 'Rejected' },
+    import: 'Import roster (CSV)', importResult: (created: number, updated: number, skipped: number) => `Created ${created} · Updated ${updated} · Skipped ${skipped}`,
+    skipDetails: 'Show skip reasons', skipRow: (row: number, reason: string) => `Row ${row}: ${reason}`,
+    skipReasons: { example: 'Example row', invalid_fields: 'Missing or invalid fields' },
+    search: 'Search name, nickname or Douyin ID', nameAndNickname: 'Name / nickname', region: 'Region', statusLabel: 'Status', actions: 'Actions',
+    edit: 'Edit', editTitle: 'Edit listed coach', save: 'Save', cancel: 'Cancel', hide: 'Take down', restore: 'Restore',
+    fields: { name: 'Name', nickname: 'Nickname', gender: 'Gender', douyin_handle: 'Douyin ID', douyin_url: 'Douyin profile URL', province: 'Province', city: 'City', gyms: 'Gyms / studios', teaching_mode: 'Coaching mode', best_total_kg: 'Best total (kg)', competition_class: 'Competition class', equipment: 'Equipment category', certifications: 'Certifications', coaching_years: 'Years coaching' },
+    gymHint: 'Separate gyms with semicolons; enter 无 if none', optional: 'Not specified', modes: { offline: 'In person', online: 'Online', both: 'Online + in person' }, equipment: { raw: 'Raw', single: 'Single ply', multi: 'Multi ply' },
+    approve: 'Approve', reject: 'Reject', rejectReason: 'Rejection reason (optional)', submittedAt: 'Submitted',
+    overdue: 'Overdue', reportCount: (count: number) => `${count} reports`, waited: (days: number, hours: number) => `Waiting ${days} days ${hours} hours`,
+    reasons: { abuse: 'Abuse', privacy: 'Privacy violation', advertising: 'False information or advertising', other: 'Other' },
+    keep: 'Keep', deleteReview: 'Delete review', deleted: 'Review already deleted; keeping will not restore it',
+    reportHint: 'Keep closes all reports on this review. Delete hides the review and excludes it from averages; the record is kept for audit.',
+    word: 'Blocked word', addWord: 'Add', deleteWord: 'Delete',
+    empty: { roster: 'No matching coaches', submissions: 'No pending coaches', reports: 'No open reports', words: 'No blocked words' },
+    saved: 'Done', writeDisabled: 'Writing is currently disabled',
+    errors: { INVALID_CSV: 'Invalid CSV. Check the file and try again.', INVALID_CSV_HEADERS: 'Required CSV headers are missing. Check the file.', LISTED_COACH_EXISTS: 'This Douyin ID already exists. Check and try again.', LISTED_COACH_INVALID_STATE: 'Coach status changed. Refresh the list.', LISTED_COACH_NOT_FOUND: 'Coach not found. Refresh the list.', COACH_REVIEW_NO_OPEN_REPORTS: 'These reports were already handled. Refresh the list.' },
+  },
   applications: {
     subtitle: 'Approval creates a coach account and permanent invite, then sends a welcome email', pending: 'Pending', approved: 'Approved', rejected: 'Rejected', all: 'All',
     filters: 'Filter by status', search: 'Search name or email', list: 'Applications', applicant: 'Applicant', contact: 'Contact', students: 'Athletes', device: 'Athlete phones', submittedAt: 'Submitted', actions: 'Actions',

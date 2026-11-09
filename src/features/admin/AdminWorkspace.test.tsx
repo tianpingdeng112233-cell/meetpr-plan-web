@@ -76,6 +76,184 @@ describe('AdminWorkspace', () => {
     setLocale('zh')
   })
 
+  const rosterCoach = {
+    id: 'listed-1', name: '林教练', nickname: '阿林', gender: '男', douyin_handle: 'lin', douyin_url: 'https://www.douyin.com/user/lin',
+    province: '浙江', city: '杭州', gyms: ['无'], teaching_mode: '线上', best_total_kg: '600.00', competition_class: '83kg', equipment: '无装备', certifications: null, coaching_years: '5.0',
+    status: 'published', rejection_reason: null, submitted_by: null, reviewed_by: null, reviewed_at: null, created_at: '2026-11-01', updated_at: '2026-11-09',
+  }
+
+  function mockReviews() {
+    vi.stubGlobal('fetch', vi.fn(async (url, init) => {
+      const path = String(url)
+      if (init?.method === 'DELETE') return new Response(null, { status: 204 })
+      if (path.endsWith('/import')) return new Response(JSON.stringify({ created: 3, updated: 1, skipped: 2, skips: [{ row: 5, reason: 'example' }, { row: 6, reason: 'invalid_fields' }] }))
+      if (path.includes('/coach-reviews/coaches')) return new Response(JSON.stringify(init?.method === 'PATCH' || init?.method === 'POST' ? rosterCoach : { coaches: [{ ...rosterCoach, status: path.includes('hidden') ? 'hidden' : 'published' }] }))
+      if (path.endsWith('/submissions')) return new Response(JSON.stringify({ coaches: [{ ...rosterCoach, status: 'pending' }] }))
+      if (path.endsWith('/reports')) return new Response(JSON.stringify({ reports: [{ review_id: 'review-1', listed_coach_id: 'listed-1', body: '这是一段需要核对的点评原文', deleted_at: null, report_count: 2, first_reported_at: '2026-11-01', age_seconds: 345600, overdue: true, reasons: [{ id: 'report-1', reason: 'privacy', explanation: '泄露地址' }, { id: 'report-2', reason: 'other', explanation: '请核实' }] }] }))
+      if (path.endsWith('/words')) return new Response(JSON.stringify(init?.method === 'POST' ? { id: 'word-2', word: '新词' } : { words: [{ id: 'word-1', word: '拦截示意词' }] }))
+      if (path.endsWith('/decision')) return new Response(JSON.stringify({ action: 'keep' }))
+      return new Response(JSON.stringify({ applications: [] }))
+    }))
+  }
+
+  async function openReviews(page = '名录教练') {
+    await act(async () => { root.render(<AdminWorkspace onLogout={vi.fn()}/>); await settle() })
+    await act(async () => { button(host.querySelector('nav')!, '教练点评').click(); await settle() })
+    if (page !== '名录教练') await act(async () => { button(host, page).click(); await settle() })
+  }
+
+  it('imports a CSV roster and displays counts and expandable skip reasons', async () => {
+    mockReviews()
+    await openReviews()
+    expect(host.textContent).toContain('林教练')
+    expect(host.textContent).toContain('阿林')
+    const input = host.querySelector<HTMLInputElement>('input[type="file"]')!
+    expect(input).not.toBeNull()
+    const file = new File(['姓名/称呼,网名\n林教练,阿林'], 'roster.csv', { type: 'text/csv' })
+    Object.defineProperty(input, 'files', { value: [file] })
+    await act(async () => { input.dispatchEvent(new Event('change', { bubbles: true })); await new Promise(resolve => setTimeout(resolve, 30)) })
+    expect(host.textContent).toContain('新建 3 · 更新 1 · 跳过 2')
+    expect(host.querySelector('details')?.textContent).toContain('第 5 行：示例行')
+    expect(host.querySelector('details')?.textContent).toContain('第 6 行：字段不完整或格式错误')
+    expect(fetch).toHaveBeenCalledWith('/api/admin/coach-reviews/import', expect.objectContaining({ method: 'POST', body: JSON.stringify({ csv: '姓名/称呼,网名\n林教练,阿林' }) }))
+  })
+
+  it('searches and filters roster, edits all fields and takes down or restores a coach', async () => {
+    mockReviews()
+    await openReviews()
+    const search = host.querySelector<HTMLInputElement>('input[placeholder="搜索姓名、网名或抖音号"]')!
+    await act(async () => { type(search, 'lin'); await settle() })
+    expect(fetch).toHaveBeenCalledWith('/api/admin/coach-reviews/coaches?status=published&q=lin', expect.anything())
+    await act(async () => { button(host, '编辑').click(); await settle() })
+    const form = host.querySelector('form')!
+    const name = form.querySelector<HTMLInputElement>('input[name="name"]')!
+    await act(async () => { type(name, '林老师'); form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })); await settle() })
+    expect(fetch).toHaveBeenCalledWith('/api/admin/coach-reviews/coaches/listed-1', expect.objectContaining({ method: 'PATCH', body: JSON.stringify({ name: '林老师', nickname: '阿林', gender: '男', douyin_handle: 'lin', douyin_url: 'https://www.douyin.com/user/lin', province: '浙江', city: '杭州', gyms: ['无'], teaching_mode: '线上', best_total_kg: 600, competition_class: '83kg', equipment: '无装备', certifications: null, coaching_years: 5 }) }))
+    await act(async () => { button(host, '下架').click(); await settle() })
+    expect(fetch).toHaveBeenCalledWith('/api/admin/coach-reviews/coaches/listed-1/status', expect.objectContaining({ method: 'POST', body: '{"status":"hidden"}' }))
+    await act(async () => { button(host, '已下架').click(); await settle() })
+    expect(fetch).toHaveBeenCalledWith('/api/admin/coach-reviews/coaches?status=hidden&q=lin', expect.anything())
+    await act(async () => { button(host, '恢复上线').click(); await settle() })
+    expect(fetch).toHaveBeenCalledWith('/api/admin/coach-reviews/coaches/listed-1/status', expect.objectContaining({ method: 'POST', body: '{"status":"published"}' }))
+  })
+
+  it('renders pending coaches and posts approve or reject with an optional reason', async () => {
+    mockReviews()
+    await openReviews('待审核')
+    expect(host.textContent).toContain('林教练')
+    expect(host.textContent).toContain('600.00')
+    await act(async () => { button(host, '通过').click(); button(host, '通过').click(); await settle() })
+    expect(vi.mocked(fetch).mock.calls.filter(([url, init]) => String(url).endsWith('/submissions/listed-1/decision') && init?.method === 'POST')).toHaveLength(1)
+    expect(fetch).toHaveBeenCalledWith('/api/admin/coach-reviews/submissions/listed-1/decision', expect.objectContaining({ method: 'POST', body: '{"action":"approve"}' }))
+    const reason = host.querySelector<HTMLInputElement>('input[placeholder="拒绝理由（选填）"]')!
+    await act(async () => { type(reason, '信息需要补充'); await settle() })
+    await act(async () => { button(host, '拒绝').click(); await settle() })
+    expect(fetch).toHaveBeenCalledWith('/api/admin/coach-reviews/submissions/listed-1/decision', expect.objectContaining({ method: 'POST', body: '{"action":"reject","reason":"信息需要补充"}' }))
+  })
+
+  it('renders report text, reasons, count and red overdue badge; keeps or deletes using review ID', async () => {
+    mockReviews()
+    await openReviews('举报')
+    expect(host.textContent).toContain('这是一段需要核对的点评原文')
+    expect(host.textContent).toContain('泄露隐私')
+    expect(host.textContent).toContain('泄露地址')
+    expect(host.textContent).toContain('举报 2 次')
+    expect(host.textContent).toContain('已等待 4 天 0 小时')
+    const badge = [...host.querySelectorAll('span')].find(item => item.textContent === '已超期')!
+    expect(badge).toBeDefined()
+    expect(badge.style.color).toBe('rgb(168, 30, 23)')
+    expect(host.textContent).toContain('不计入平均分')
+    await act(async () => { button(host, '保留').click(); button(host, '保留').click(); await settle() })
+    expect(vi.mocked(fetch).mock.calls.filter(([url, init]) => String(url).endsWith('/reports/review-1/decision') && init?.method === 'POST')).toHaveLength(1)
+    expect(fetch).toHaveBeenCalledWith('/api/admin/coach-reviews/reports/review-1/decision', expect.objectContaining({ method: 'POST', body: '{"action":"keep"}' }))
+    await act(async () => { button(host, '删除点评').click(); await settle() })
+    expect(fetch).toHaveBeenCalledWith('/api/admin/coach-reviews/reports/review-1/decision', expect.objectContaining({ method: 'POST', body: '{"action":"delete"}' }))
+  })
+
+  it('renders blocked words and supports adding and deleting', async () => {
+    mockReviews()
+    await openReviews('拦截词表')
+    expect(host.textContent).toContain('拦截示意词')
+    const word = host.querySelector<HTMLInputElement>('input[aria-label="拦截词"]')!
+    await act(async () => { type(word, ' 新词 '); await settle() })
+    await act(async () => { button(host, '添加').click(); await settle() })
+    expect(fetch).toHaveBeenCalledWith('/api/admin/coach-reviews/words', expect.objectContaining({ method: 'POST', body: '{"word":"新词"}' }))
+    expect(word.value).toBe('')
+    await act(async () => { button(host, '删除').click(); await settle() })
+    expect(fetch).toHaveBeenCalledWith('/api/admin/coach-reviews/words/word-1', expect.objectContaining({ method: 'DELETE' }))
+  })
+
+  it.each([
+    ['名录教练', 'coaches', 'coaches', '没有匹配的名录教练'],
+    ['待审核', 'submissions', 'coaches', '没有待审核的教练'],
+    ['举报', 'reports', 'reports', '没有待处理的举报'],
+    ['拦截词表', 'words', 'words', '暂无拦截词'],
+  ])('shows loading, errors with retry and empty states for %s', async (page, endpoint, key, empty) => {
+    mockReviews()
+    const original = vi.mocked(fetch).getMockImplementation()!
+    let resolve!: (response: Response) => void
+    let fail = true
+    vi.mocked(fetch).mockImplementation((url, init) => {
+      if (String(url).includes(`/coach-reviews/${endpoint}`)) {
+        if (fail) return new Promise<Response>(done => { resolve = done })
+        return Promise.resolve(new Response(JSON.stringify({ [key]: [] })))
+      }
+      return original(url, init)
+    })
+    await openReviews(page)
+    await act(async () => { await new Promise(done => setTimeout(done, 250)) })
+    expect(host.querySelector('[data-testid="skeleton-rows"]')).not.toBeNull()
+    await act(async () => { resolve(new Response('{"error":"FAILED"}', { status: 500 })); await settle() })
+    await act(async () => { await new Promise(done => setTimeout(done, 350)) })
+    expect(host.querySelector('[role="alert"]')?.textContent).toContain('内容没能加载出来')
+    expect(host.textContent).not.toContain(empty)
+    fail = false
+    await act(async () => { button(host, '重试').click(); await settle() })
+    expect(host.textContent).toContain(empty)
+  })
+
+  it('surfaces failed writes through the toast and leaves the report available to retry', async () => {
+    mockReviews()
+    const original = vi.mocked(fetch).getMockImplementation()!
+    vi.mocked(fetch).mockImplementation((url, init) => init?.method === 'POST'
+      ? Promise.resolve(new Response('{"error":"COACH_REVIEW_NO_OPEN_REPORTS"}', { status: 409 }))
+      : original(url, init))
+    await openReviews('举报')
+    await act(async () => { button(host, '保留').click(); await settle() })
+    expect(host.querySelector('[role="status"]')?.textContent).toBe('该点评的举报已处理，请刷新列表。')
+    expect(host.textContent).toContain('这是一段需要核对的点评原文')
+    expect(button(host, '保留').disabled).toBe(false)
+  })
+
+  it('does not mark a report overdue when the server says false and explains already deleted reviews', async () => {
+    mockReviews()
+    const original = vi.mocked(fetch).getMockImplementation()!
+    vi.mocked(fetch).mockImplementation(async (url, init) => {
+      const response = await original(url, init)
+      if (!String(url).endsWith('/reports')) return response
+      const data = await response.json()
+      data.reports[0].overdue = false
+      data.reports[0].age_seconds = 259200
+      data.reports[0].deleted_at = '2026-11-09'
+      return new Response(JSON.stringify(data))
+    })
+    await openReviews('举报')
+    expect(host.textContent).not.toContain('已超期')
+    expect(host.textContent).toContain('点评已删除；保留不会恢复点评')
+  })
+
+  it('localizes review navigation and fixed equipment options in English', async () => {
+    setLocale('en')
+    mockReviews()
+    await act(async () => { root.render(<AdminWorkspace onLogout={vi.fn()}/>); await settle() })
+    await act(async () => { button(host.querySelector('nav')!, 'Coach reviews').click(); await settle() })
+    expect(host.textContent).toContain('Import roster (CSV)')
+    await act(async () => { button(host, 'Pending review').click(); await settle() })
+    expect(host.textContent).toContain('Raw')
+    expect(host.textContent).not.toContain('无装备')
+    expect(host.textContent).toContain('Online')
+  })
+
   function customFixture() {
     const attributes = { name_en: 'Coach Press', exercise_type: 'accessory', main_lift_family: null, is_competition_lift: false, muscle_groups: ['chest'], equipment: ['barbell'], movement_pattern: ['horizontal_push'] }
     return {
@@ -416,7 +594,7 @@ describe('AdminWorkspace', () => {
   it('opens overview with four navigation items, shared pending counts and four key figures', async () => {
     await act(async () => { root.render(<AdminWorkspace onLogout={vi.fn()}/>); await settle() })
     const nav = host.querySelector('nav')!
-    expect([...nav.querySelectorAll('button')].filter(b => !b.getAttribute('aria-label')).map(b => b.textContent)).toEqual(['总览', '教练申请2', '用户', '动作库'])
+    expect([...nav.querySelectorAll('button')].filter(b => !b.getAttribute('aria-label')).map(b => b.textContent)).toEqual(['总览', '教练申请2', '用户', '动作库', '教练点评'])
     expect(host.textContent).not.toContain('计划总览')
     expect(nav.textContent).not.toContain('绑定关系')
     const overview = host.querySelector<HTMLElement>('[data-testid="admin-overview"]')!
