@@ -114,7 +114,7 @@ describe('set_ref v1 shared golden fixtures', () => {
     const line = host.querySelector('.set-ref-line')!
     const reps = `${setRef.reps ?? '-'}${setRef.reps_max === null ? '' : `-${setRef.reps_max}`}`
     expect(line.textContent).toBe(
-      `${setRef.weight_kg ?? '-'}kg×${reps}${setRef.rpe === null ? '' : `@RPE ${setRef.rpe}`}`,
+      `${setRef.weight_kg ?? '—'}kg×${reps}${setRef.rpe === null ? '' : `@RPE ${setRef.rpe}`}`,
     )
     expect(host.querySelector('.set-ref-card>header time')?.textContent).toBe('21:38')
   })

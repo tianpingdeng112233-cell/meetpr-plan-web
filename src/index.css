@@ -3777,3 +3777,11 @@ textarea {
 .overview-tag-popover:has(.service-term-tag) .overview-tag { height:24px; line-height:24px; border-radius:12px; }
 
 .student-rail-row.has-service-term .student-rail-status { font-size:12px; }
+
+/* 025: use the editor's existing light card and selection palette. */
+.exercise-ref-card { display: block; width: 320px; max-width: 100%; padding: 11px 13px; border: 1px solid var(--bd); border-radius: var(--r-lg); background: var(--card-bg); color: var(--txt); text-align: left; cursor: pointer; }
+.exercise-ref-heading { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px 12px; }
+.exercise-ref-heading small { color: var(--sec); font-size: 11px; }
+.exercise-ref-card p { margin: 6px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.exercise-ref-card:hover, .exercise-ref-card:focus-visible { border-color: var(--ink); }
+.exercise-ref-card:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }

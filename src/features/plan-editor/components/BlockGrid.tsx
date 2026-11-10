@@ -26,6 +26,8 @@ interface Props {
   addedVideoMarker?: (dayId: string | null | undefined, exerciseId: string) => ReactNode
   videoMarker?: (row: ExerciseRow) => ReactNode
   addedDayMarkers?: (day: DayCol) => ReactNode
+  highlightedExerciseId?: string | null
+  flashingExerciseId?: string | null
   highlightedVideo?: FeedbackEntry | null
   weeks: Week[]
   startDate: string | null
@@ -321,7 +323,7 @@ export function BlockGrid(props: Props) {
                 const actual = props.showActuals && !!actuals?.length
                 const summary = actual ? actualShorthand(row, actuals!) : shorthand(row)
                 const hint = [dragLocked ? S.editor.dayLockedForDrag : '', actual ? S.block.prescription(shorthand(row)) : ''].filter(Boolean).join(' · ')
-                return <div key={row.id} className={`block-brick${brickDrag?.row.id === row.id ? ' brick-dragging' : ''}${brickDrag?.drop?.rowId === row.id ? ` brick-drop-${brickDrag.drop.position}` : ''}${actual ? ' actual-display' : ''}${props.showActuals && !actual ? ' prescribed-muted' : ''}${props.highlightedVideo?.rowId === row.id ? ' video-highlight' : ''}${props.selectedRows.has(row.id) ? ' row-sel' : ''}${props.rowTier(row) === 'aux' ? ' aux' : ''}${i > 0 && props.rowTier(rows[i - 1]) !== props.rowTier(row) ? ' section-start' : ''}`}
+                return <div key={row.id} className={`block-brick${row.serverRowId && row.serverRowId === props.highlightedExerciseId ? ' exercise-note-highlight' : ''}${row.serverRowId && row.serverRowId === props.flashingExerciseId ? ' exercise-note-flash' : ''}${brickDrag?.row.id === row.id ? ' brick-dragging' : ''}${brickDrag?.drop?.rowId === row.id ? ` brick-drop-${brickDrag.drop.position}` : ''}${actual ? ' actual-display' : ''}${props.showActuals && !actual ? ' prescribed-muted' : ''}${props.highlightedVideo?.rowId === row.id ? ' video-highlight' : ''}${props.selectedRows.has(row.id) ? ' row-sel' : ''}${props.rowTier(row) === 'aux' ? ' aux' : ''}${i > 0 && props.rowTier(rows[i - 1]) !== props.rowTier(row) ? ' section-start' : ''}`}
                 data-drag-disabled={props.readOnly || dragLocked} onMouseDown={event => { if (day) startBrickDrag(event, week, day, row) }}
                 data-rowid={row.id} data-import-doubt={activeImportDoubts(row.importDoubts).length ? "true" : undefined} data-locked={row.hasLogs} role="button" tabIndex={0} title={hint || `${name} ${summary}${row.hasLogs ? ' ✓' : ''}`} data-hint={hint || undefined}
                 onDragStart={event => event.preventDefault()}

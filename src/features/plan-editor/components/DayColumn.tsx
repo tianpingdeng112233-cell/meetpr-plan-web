@@ -1,3 +1,4 @@
+import { actualMatchesPlan } from '../actuals'
 import { WeightModeSelect } from './WeightModeSelect'
 import { activeImportDoubts } from '../import/doubts'
 import { useLayoutEffect, useRef, useState } from 'react'
@@ -54,6 +55,8 @@ interface Props {
   feedbackMarker?: React.ReactNode
   videoMarker?: (row: ExerciseRow) => React.ReactNode
   addedVideoMarker?: (exerciseId: string) => React.ReactNode
+  highlightedExerciseId?: string | null
+  flashingExerciseId?: string | null
   highlightedVideo?: FeedbackEntry | null
   blockView?: { dx: number; date: string; minDate?: string; maxDate?: string; onDate: (date: string) => void; onClose: () => void }
   weekNumber?: number
@@ -459,11 +462,12 @@ function ActualLine({ row, actuals, kind, e1rm = null, highlightedSetIndex }: {
       ? { text: formatActualWeight(set), tone: row && !added ? actualWeightTone(row, position, set) : 'added' }
       : row && !added ? actualIntensityChip(row, position, set, e1rm)
         : { text: rpe == null ? '–' : `@${rpe}`, tone: 'added' }
+    const asPlanned = row && !added && actualMatchesPlan(row, set)
     const tone = set.failed ? 'off' : !set.completed ? 'missed' : chip.tone
     return (
-      <span key={set.set_index} className={`actual-chip tone-${tone}${set.set_index === highlightedSetIndex ? ' overview-set-highlight' : ''}`}
+      <span key={set.set_index} className={`actual-chip${asPlanned ? ' as-planned' : ''} tone-${tone}${set.set_index === highlightedSetIndex ? ' overview-set-highlight' : ''}`}
         title={kind === 'weight' ? set.failed ? S.common.failure : set.completed ? undefined : S.common.notCompleted : undefined}>
-        {chip.text}{kind === 'weight' && set.failed ? ` ${S.common.failure}` : ''}
+        {asPlanned ? S.editor.asPlanned : chip.text}{kind === 'weight' && set.failed ? ` ${S.common.failure}` : ''}
       </span>
     )
   }
@@ -813,7 +817,7 @@ function EditableWeight({ row, width, edit, selectedCell, selectCell, cellKey, r
 }
 
 export function DayColumn({
-  feedbackMarker, videoMarker, addedVideoMarker, highlightedVideo,
+  feedbackMarker, videoMarker, addedVideoMarker, highlightedVideo, highlightedExerciseId, flashingExerciseId,
   blockView,
   weekNumber = 0,
   columnLetter,
@@ -1078,7 +1082,7 @@ export function DayColumn({
               data-alert-set-index={highlightedSetIndex}
               data-locked={row.hasLogs ? 'true' : 'false'}
               data-drag-disabled={dragDisabled ? 'true' : 'false'}
-              className={`exrow${highlightedVideo?.rowId === row.id ? ' video-highlight' : ''}${resolveTier(row) === 'aux' ? ' aux' : ''}${row.hasLogs ? ' locked' : ''}${(actualsForRow?.(row)?.length ?? 0) > 0 ? ' has-actuals' : ''}${isSelectedRow ? ' row-sel' : ''}${dragRowId === row.id ? ' row-dragging' : ''}${dropPosition ? ` row-drop-${dropPosition}` : ''}`}
+              className={`exrow${row.serverRowId && row.serverRowId === highlightedExerciseId ? ' exercise-note-highlight' : ''}${row.serverRowId && row.serverRowId === flashingExerciseId ? ' exercise-note-flash' : ''}${highlightedVideo?.rowId === row.id ? ' video-highlight' : ''}${resolveTier(row) === 'aux' ? ' aux' : ''}${row.hasLogs ? ' locked' : ''}${(actualsForRow?.(row)?.length ?? 0) > 0 ? ' has-actuals' : ''}${isSelectedRow ? ' row-sel' : ''}${dragRowId === row.id ? ' row-dragging' : ''}${dropPosition ? ` row-drop-${dropPosition}` : ''}`}
               onMouseDown={e => startRowDrag(e, row.id)}
               onClickCapture={e => { if (suppressRowClick.current) { e.stopPropagation(); e.preventDefault() } }}
               onMouseDownCapture={(e) => {

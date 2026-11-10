@@ -7,6 +7,7 @@ import type { AuthUser, ChatConversation, ChatMessage, CoachBindRequest, Exercis
 import { ApiException } from '../../api/client'
 import type { Week } from '../plan-editor/types'
 import { setRefFirstLine } from '../chat/setRef'
+import exerciseFixture from '../chat/fixtures/exercise-note.json'
 
 const api = vi.hoisted(() => ({
   realEditor: false,
@@ -1792,6 +1793,61 @@ describe('PlanWorkspace editor remount', () => {
     expect(host.querySelector('.chat-thread')?.textContent).toContain('乙消息')
     expect(api.getMessages).toHaveBeenCalledWith('conversation-b', { mode: 'latest', limit: 50 })
   }, 15_000)
+
+  it('025 the latest current-plan click cancels an older pending cross-plan lookup', async () => {
+    api.realEditor = true
+    const current = plan('当前计划')
+    const other = { ...plan('旧目标'), id: 'other', name: '旧目标', days: [{ ...plan('').days[0], id: 'other-day', exercises: [] }] }
+    api.getStudentPlans.mockResolvedValue([current, other])
+    api.getPlan.mockResolvedValue(current)
+    api.listConversations.mockResolvedValue([chatConversation(0)])
+    api.getMessages.mockResolvedValue({ messages: [
+      { ...chatMessage, ...exerciseFixture, exercise_ref: { ...exerciseFixture.exercise_ref, plan_day_id: 'other-day', plan_exercise_id: null } },
+      { ...chatMessage, ...exerciseFixture, id: 'second', seq: 2 },
+    ], meta: { other_last_read: null, has_more: false } })
+    await act(async () => { root.render(<PlanWorkspace onLogout={vi.fn()} me={me} />); await settle() })
+    await act(async () => { host.querySelector<HTMLButtonElement>('.editor-chat-toggle')!.click(); await settle() })
+    let resolve!: (value: PlanWithChildren) => void
+    api.getPlan.mockImplementation(() => new Promise<PlanWithChildren>(done => { resolve = done }))
+    const cards = host.querySelectorAll<HTMLButtonElement>('.exercise-ref-card')
+    await act(async () => { cards[0].click(); await settle() })
+    await act(async () => { cards[1].click(); await settle() })
+    api.getPlan.mockResolvedValue(other)
+    await act(async () => { resolve(other); await settle() })
+    expect(host.querySelector('[data-block-day-id="day"]')).not.toBeNull()
+    expect(host.querySelector('.exrow.row-sel')).not.toBeNull()
+    expect(host.querySelector('[data-block-day-id="other-day"]')).toBeNull()
+  })
+
+  it.each(['present', 'deleted', 'missing'] as const)('025 exercise note hover and navigation: %s', async state => {
+    api.realEditor = true
+    api.getPlan.mockResolvedValue(plan('动作留言'))
+    api.listConversations.mockResolvedValue([chatConversation(0)])
+    api.getMessages.mockResolvedValue({ messages: [{ ...chatMessage, ...exerciseFixture,
+      exercise_ref: { ...exerciseFixture.exercise_ref,
+        plan_exercise_id: state === 'present' ? 'plan-exercise' : null,
+        plan_day_id: state === 'missing' ? null : 'day' } }], meta: { other_last_read: null, has_more: false } })
+    await act(async () => { root.render(<PlanWorkspace onLogout={vi.fn()} me={me} />); await settle() })
+    await act(async () => { host.querySelector<HTMLButtonElement>('.editor-chat-toggle')!.click(); await settle() })
+    const card = host.querySelector<HTMLButtonElement>('.exercise-ref-card')!
+    act(() => card.dispatchEvent(new MouseEvent('mouseover', { bubbles: true })))
+    expect(!!host.querySelector('.exercise-note-highlight')).toBe(state === 'present')
+    act(() => card.dispatchEvent(new MouseEvent('mouseout', { bubbles: true })))
+    expect(host.querySelector('.exercise-note-highlight')).toBeNull()
+    if (state === 'present') {
+      act(() => host.querySelector<HTMLElement>('[data-block-day-id="day"]')!.click())
+      act(() => host.querySelector<HTMLInputElement>('[data-plan-cell="weight"]')!.focus())
+      expect(host.querySelector('.plan-cell-selected')).not.toBeNull()
+    }
+    await act(async () => { card.click(); await settle() })
+    if (state === 'present') {
+      expect(host.querySelector('.exrow.row-sel')).not.toBeNull()
+      expect(host.querySelector('.plan-cell-selected')).toBeNull()
+      expect(host.querySelectorAll('.block-cell.is-selected')).toHaveLength(1)
+    }
+    else if (state === 'deleted') expect(host.querySelector('.block-cell.is-editing')).not.toBeNull()
+    else expect(card.textContent).toContain('原动作已不在计划中')
+  })
 
   it.each([true, false])('013 chat capsule plays its video only when owned by the current athlete: %s', async (owned) => {
     api.realEditor = true

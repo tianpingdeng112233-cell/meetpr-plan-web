@@ -58,7 +58,7 @@ interface ReqOpts {
 }
 
 async function raw(path: string, opts: ReqOpts): Promise<Response> {
-  const headers: Record<string, string> = { 'X-MeetPR-Locale': localeTag() }
+  const headers: Record<string, string> = { 'X-MeetPR-Locale': localeTag(), 'X-MeetPR-Caps': 'set-weight-nullable' }
   if (opts.body !== undefined) headers['Content-Type'] = 'application/json'
   if (opts.auth !== false) {
     const tok = getAccessToken()

@@ -1,3 +1,5 @@
+import { ExerciseRefCard, parseExerciseRefMessage } from './exerciseRef'
+import type { ChatExerciseRefV1 } from '../../api/types'
 import {
   useEffect,
   useLayoutEffect,
@@ -52,7 +54,9 @@ export interface MessagesPageProps {
   pendingVideoCounts?: Readonly<Record<string, number>>
   onActiveIdChange: (id: string | null) => void
   onStudentChange: (studentId: string) => void
-  onOpenPlan: (studentId: string) => void
+  onOpenPlan: (studentId: string, target?: ChatExerciseRefV1) => void | boolean | Promise<void | boolean>
+  onHoverExercise?: (target: ChatExerciseRefV1 | null) => void
+  isExerciseUnavailable?: (target: ChatExerciseRefV1) => boolean
   onDraftChange: (conversationId: string, text: string) => void
   onConversationsChanged: (update: (prev: ChatConversation[]) => ChatConversation[]) => void
   onReadStateApplied: (conversationId: string, state: ChatReadState) => void
@@ -82,6 +86,8 @@ export default function MessagesPage({
   onActiveIdChange,
   onStudentChange,
   onOpenPlan,
+  onHoverExercise,
+  isExerciseUnavailable,
   onDraftChange,
   onConversationsChanged,
   onReadStateApplied,
@@ -263,6 +269,12 @@ export default function MessagesPage({
           : active
             ? <ConversationThread
                 key={active.id}
+                renderExerciseCard={message => {
+                  const parsed = parseExerciseRefMessage(message)
+                  return parsed && <ExerciseRefCard parsed={parsed} onHover={onHoverExercise}
+                    unavailable={isExerciseUnavailable?.(parsed.exerciseRef)}
+                    onOpen={target => onOpenPlan(active.other_party.id, target)} />
+                }}
                 renderVideoCapsule={renderVideoCapsule}
                 compact={floating}
                 me={me}
@@ -375,6 +387,7 @@ function ConversationList({
 }
 
 function ConversationThread({
+  renderExerciseCard,
   renderVideoCapsule,
   compact,
   me,
@@ -392,6 +405,7 @@ function ConversationThread({
   onSessionExpired,
   onPlayVideo,
 }: {
+  renderExerciseCard: (message: ChatMessage) => React.ReactNode
   compact?: boolean
   renderVideoCapsule?: (message: ChatMessage) => React.ReactNode
   me: AuthUser
@@ -745,6 +759,7 @@ function ConversationThread({
         <div className="chat-day-label">{group.label}</div>
         {group.messages.map((message) => <ChatBubble
           key={message.id}
+          exerciseCard={renderExerciseCard(message)}
           videoCapsule={renderVideoCapsule?.(message)}
           message={message}
           mine={message.sender_id === me.id}
@@ -890,7 +905,8 @@ function ChatComposer({ conversationId, initialDraft, disabled, onDraftChange, c
   </form>
 }
 
-function ChatBubble({ videoCapsule, message, mine, senderLabel, receipt, imageUnavailable, onImageError, onPlayVideo }: {
+function ChatBubble({ exerciseCard, videoCapsule, message, mine, senderLabel, receipt, imageUnavailable, onImageError, onPlayVideo }: {
+  exerciseCard?: React.ReactNode
   videoCapsule?: React.ReactNode
   message: ChatMessage
   mine: boolean
@@ -906,8 +922,8 @@ function ChatBubble({ videoCapsule, message, mine, senderLabel, receipt, imageUn
       <span>{mine ? S.chat.me : senderLabel}</span>
       <time>{chatClockTime(message.created_at)}</time>
     </div>
-    <div className={`chat-bubble${mine ? ' mine' : ''}${hasSetRef ? ' set-ref-bubble' : ''}`}>
-      {videoCapsule ?? renderMessageBody(message, onImageError, imageUnavailable, onPlayVideo)}
+    <div className={`chat-bubble${mine ? ' mine' : ''}${hasSetRef || exerciseCard ? ' set-ref-bubble' : ''}`}>
+      {exerciseCard || videoCapsule || renderMessageBody(message, onImageError, imageUnavailable, onPlayVideo)}
     </div>
     {/* No set-ref guard needed: a receipt only ever attaches to a message this
         coach sent, and §3 lets only the student send a set card (a coach who

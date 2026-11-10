@@ -1,3 +1,5 @@
+import type { ChatExerciseRefV1 } from '../../api/types'
+import type { ExerciseNoteHandle } from '../plan-editor/PlanEditor'
 import type { ImportedPlan } from '../plan-editor/import/ImportPlanDialog'
 import type { PlanAction } from '../plan-editor/components/TopBar'
 import { getOverviewAlerts, markPlanViewed } from '../../api/overviewAlerts'
@@ -106,6 +108,8 @@ export function PlanWorkspace({ onLogout, me }: Props) {
     try { localStorage.setItem(chatPreference, String(open)) } catch { /* Session state still works. */ }
   }
   const [chatVideoIntent, setChatVideoIntent] = useState<{ studentId: string; target: ChatVideoTarget } | null>(null)
+  const exerciseNoteRef = useRef<ExerciseNoteHandle>(null)
+  const [exerciseNoteIntent, setExerciseNoteIntent] = useState<{ studentId: string; target: ChatExerciseRefV1 } | null>(null)
   const intentSequence = useRef(0)
   const [editorIntent, setEditorIntent] = useState<{ studentId: string; kind: 'videos' | 'chat'; ready: boolean } | null>(null)
   const [chatActiveId, setChatActiveId] = useState<string | null>(null)
@@ -433,7 +437,7 @@ export function PlanWorkspace({ onLogout, me }: Props) {
     }
   }, [])
 
-  const loadStudent = useCallback(async (id: string, cat: Catalog, exercises: ExerciseResponse[] = exerciseList, targetDayId?: string) => {
+  const loadStudent = useCallback(async (id: string, cat: Catalog, exercises: ExerciseResponse[] = exerciseList, targetDayId?: string, exerciseNoteTarget?: { plan: PlanWithChildren; token: number }) => {
     const generation = ++loadGeneration.current
     // Invalidate any background fetch for this student before exposing the new
     // selection, and remove both the current list and its cached mount in the
@@ -457,11 +461,18 @@ export function PlanWorkspace({ onLogout, me }: Props) {
           ? Promise.resolve()
           : fetchRosterOverview(id),
       ])
-      if (generation !== loadGeneration.current) return false
+      if (generation !== loadGeneration.current || exerciseNoteTarget && exerciseNoteTarget.token !== intentSequence.current) return false
       setOnboarding(onboarding)
       setIndex(new ExerciseIndex(exercises, { deadliftStyle: onboarding?.deadlift_style }, exerciseUsage.current))
       if (!list) return false
       setPlans(list)
+      if (exerciseNoteTarget) {
+        const full = exerciseNoteTarget.plan
+        setLoaded({ plan: full, weeks: mapPlanToWeeks(full, cat), weeksCount: full.plan_weeks })
+        setPlanId(full.id)
+        localStorage.setItem(`${LAST_PLAN_PREFIX}${id}`, full.id)
+        return true
+      }
       if (targetDayId) {
         // Resolve the target before mounting an editor. While searching another
         // plan, never expose an editable remembered plan that could be replaced.
@@ -661,7 +672,7 @@ export function PlanWorkspace({ onLogout, me }: Props) {
     return () => { alive = false; window.removeEventListener('focus', refresh) }
   }, [])
 
-  const cancelEditorIntent = () => { intentSequence.current += 1; setEditorIntent(null); setChatVideoIntent(null); setDayIntent(null) }
+  const cancelEditorIntent = () => { intentSequence.current += 1; setEditorIntent(null); setChatVideoIntent(null); setDayIntent(null); setExerciseNoteIntent(null) }
 
   const switchStudent = async (id: string) => {
     cancelEditorIntent()
@@ -974,6 +985,13 @@ export function PlanWorkspace({ onLogout, me }: Props) {
     setChatVideoIntent(null)
   }, [chatVideoIntent, view, studentId, videosByStudent, studentSwitching, loaded])
 
+  useEffect(() => {
+    if (!exerciseNoteIntent || studentSwitching || view !== 'editor' || studentId !== exerciseNoteIntent.studentId || !exerciseNoteRef.current) return
+    exerciseNoteRef.current.open(exerciseNoteIntent.target)
+    changeChatOpen(true)
+    setExerciseNoteIntent(null)
+  }, [exerciseNoteIntent, studentSwitching, studentId, view, loaded])
+
   if (error) {
     return (
       <Centered>
@@ -1020,6 +1038,39 @@ export function PlanWorkspace({ onLogout, me }: Props) {
       setError({ message: errText(e, fallback), retry: { kind: 'student', id, fallback, openEditor: true } })
       return false
     }
+  }
+  const openExerciseNote = async (id: string, target: ChatExerciseRefV1): Promise<boolean | void> => {
+    const sequence = ++intentSequence.current
+    setExerciseNoteIntent(null)
+    if (id === studentId && view === 'editor' && exerciseNoteRef.current?.open(target)) return true
+    if (!catalog || (!target.plan_day_id && !target.plan_exercise_id)) return false
+    // Search read-only first. A missing reference must leave the current plan and edits intact.
+    try {
+      const list = id === studentId ? plans : await getStudentPlans(id)
+      for (const candidate of list) {
+        if (id === studentId && candidate.id === planId) continue // The live editor is authoritative for this plan.
+        const full = await getPlan(candidate.id)
+        if (sequence !== intentSequence.current) return
+        const found = full.days.some(day => target.plan_exercise_id != null && day.exercises.some(row => row.id === target.plan_exercise_id))
+          || full.days.some(day => target.plan_day_id != null && day.id === target.plan_day_id)
+        if (!found) continue
+        if (view === 'editor' && leaveGuardRef.current && !(await leaveGuardRef.current())) return
+        if (sequence !== intentSequence.current) return
+        if (id !== studentId) {
+          if (!(await loadStudent(id, catalog, exerciseList, undefined, { plan: full, token: sequence }))) return
+          if (sequence !== intentSequence.current) return
+        } else {
+          ++loadGeneration.current
+          setLoaded({ plan: full, weeks: mapPlanToWeeks(full, catalog), weeksCount: full.plan_weeks })
+          setPlanId(full.id)
+          localStorage.setItem(`${LAST_PLAN_PREFIX}${id}`, full.id)
+        }
+        setView('editor')
+        setExerciseNoteIntent({ studentId: id, target })
+        return true
+      }
+      return false
+    } catch { return } // A transport failure is not evidence that the action was deleted.
   }
   const openFromOverview = async (id: string, kind: 'videos' | 'chat') => {
     const sequence = ++intentSequence.current
@@ -1118,6 +1169,7 @@ export function PlanWorkspace({ onLogout, me }: Props) {
       <PlanEditor
         key={planId || `empty-${studentId}`}
         dayIntent={dayIntent}
+        exerciseNoteRef={exerciseNoteRef}
         coachId={me.id} videos={videosByStudent[studentId]} onRefreshVideos={refreshStudentVideos} onVideoViewed={markEditorVideoViewed}
         feedbackRef={editorFeedbackRef} feedbackSession={editorFeedback?.studentId === studentId ? editorFeedback.session : null}
         onFeedbackSessionChange={session => setEditorFeedback({ studentId, session })}
@@ -1264,7 +1316,8 @@ export function PlanWorkspace({ onLogout, me }: Props) {
         bindLostIds={bindLostIds} sessionDead={sessionDead} activeId={chatActiveId} drafts={chatDrafts}
         onPlayVideo={(id, target) => { if (id === studentId) setChatVideoIntent({ studentId: id, target }) }}
         onActiveIdChange={setChatActiveId} onStudentChange={id => { void switchStudent(id) }}
-        onOpenPlan={id => { void openStudentEditor(id) }} onDraftChange={updateChatDraft}
+        onHoverExercise={target => exerciseNoteRef.current?.hover(target)}
+        onOpenPlan={(id, target) => target ? openExerciseNote(id, target) : openStudentEditor(id)} onDraftChange={updateChatDraft}
         onConversationsChanged={applyConversations} onReadStateApplied={applyReadState}
         onBindLost={id => setBindLostIds(prev => new Set(prev).add(id))} onSessionExpired={() => setSessionDead(true)}
       />

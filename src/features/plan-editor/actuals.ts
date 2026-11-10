@@ -9,7 +9,7 @@ export const PCT_TOLERANCE_PP = 5
 
 export interface ActualSet {
   set_index: number
-  weight_kg: string
+  weight_kg: string | null
   reps: number
   rpe: string | null
   actual_rir?: number | null
@@ -162,4 +162,46 @@ export function groupStudentAddedByDay(logs: StudentSetLog[]): Map<string, Stude
     exerciseId,
     sets: [...sets.values()].sort((a, b) => a.set_index - b.set_index),
   }))]))
+}
+
+/** Exact comparison is separate from the existing, deliberately tolerant difference colors.
+ * A missing weight or an unknown prescription must stay visible, never imply success.
+ * Opaque sets preserve the actual per-set prescription, including reps the grid cannot express.
+ */
+export function actualMatchesPlan(row: ExerciseRow, set: ActualSet): boolean {
+  if (!set.completed || set.failed || num(set.weight_kg) == null) return false
+  const position = set.set_index
+  const source = row.opaqueSets?.[position]
+  if (row.opaqueSets && !source || position < 0 || !row.opaqueSets && position >= row.boxes.length) return false
+  let reps: number | null, repsMax: number | null
+  let weight: number | null, weightHigh: number | null = null
+  let rpe: number | null, rpeHigh: number | null = null
+  if (source) {
+    if (source.set_type === 'amrap' || source.set_type === 'failed' || source.load_mode === 'rir') return false
+    reps = source.target_reps; repsMax = source.target_reps_max
+    weight = num(source.weight_low) ?? num(source.target_weight)
+      ?? (source.load_mode === 'bodyweight' ? 0 : source.intensity_mode === 'weight' ? num(source.target_value) : null)
+    weightHigh = num(source.weight_high)
+    rpe = num(source.rpe_low) ?? num(source.target_rpe)
+      ?? (source.intensity_mode === 'rpe' ? num(source.target_value) : null)
+    rpeHigh = num(source.rpe_high)
+  } else {
+    const range = /^(\d+)(?:[-–~～](\d+))?$/.exec(row.reps.trim())
+    if (!range) return false
+    reps = Number(range[1]); repsMax = range[2] ? Number(range[2]) : null
+    const intensity = rowIntensity(row)
+    if (intensity?.mode === 'rir') return false
+    const weightBox = rowWeightBoxes(row)[position]
+    weight = row.mode === 'bodyweight' ? 0 : intensity?.mode === 'weight_range' ? num(intensity.value)
+      : weightBox && !weightBox.empty ? num(weightBox.val) : null
+    weightHigh = intensity?.mode === 'weight_range' ? num(intensity.high) : null
+    const rpeBox = rowIntensityBoxes(row)[position]
+    rpe = intensity?.mode === 'rpe_range' ? num(intensity.value)
+      : intensity?.mode === 'rpe' && rpeBox && !rpeBox.empty ? num(rpeBox.val) : null
+    rpeHigh = intensity?.mode === 'rpe_range' ? num(intensity.high) : null
+  }
+  const matches = (actual: number | null, low: number | null, high: number | null) =>
+    low == null ? actual == null : actual != null && actual >= low && actual <= (high ?? low)
+  return weight != null && matches(num(set.weight_kg), weight, weightHigh)
+    && matches(set.reps, reps, repsMax) && matches(num(set.rpe), rpe, rpeHigh)
 }

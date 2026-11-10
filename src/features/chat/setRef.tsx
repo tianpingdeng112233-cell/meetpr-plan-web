@@ -146,7 +146,7 @@ export function SetRefCard({
       </span>
     </div>
     <div className="set-ref-line">
-      <strong>{setRef.weight_kg ?? '-'}<small>kg</small></strong>
+      <strong>{setRef.weight_kg ?? '—'}<small>kg</small></strong>
       <i>×</i>
       <strong>{reps}</strong>
       {setRef.rpe !== null && <em>@RPE {setRef.rpe}</em>}

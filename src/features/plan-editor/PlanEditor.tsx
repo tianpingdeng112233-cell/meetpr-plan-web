@@ -1,3 +1,4 @@
+import type { ChatExerciseRefV1 } from '../../api/types'
 import { clearEditedDoubts, activeImportDoubts, countImportDoubts, withoutImportDoubts } from './import/doubts'
 import { useCallback, useEffect, useMemo, useRef, useState, useImperativeHandle, type Ref } from 'react'
 import type { ColKey, ColWidths, Week, DayCol, ExerciseRow } from './types'
@@ -123,7 +124,12 @@ export interface PlanDayIntent {
   setIndex?: number
   openShift?: boolean
 }
+export interface ExerciseNoteHandle {
+  hover: (target: ChatExerciseRefV1 | null) => void
+  open: (target: ChatExerciseRefV1) => boolean
+}
 export interface PlanEditorProps {
+  exerciseNoteRef?: Ref<ExerciseNoteHandle>
   dayIntent?: PlanDayIntent | null
   coachId?: string
   videos?: StudentVideo[] | null
@@ -683,6 +689,40 @@ export function PlanEditor(props: PlanEditorProps) {
   const daySelectionRef = useRef(daySelection)
   daySelectionRef.current = daySelection
   const [rowSelection, setRowSelection] = useState<RowSelection>(() => singleRowSelection(null))
+  const [noteHighlight, setNoteHighlight] = useState<string | null>(null)
+  const [noteFlash, setNoteFlash] = useState<string | null>(null)
+  const noteTimer = useRef<ReturnType<typeof setTimeout>>()
+  const noteScrollTimer = useRef<ReturnType<typeof setTimeout>>()
+  useEffect(() => () => { clearTimeout(noteTimer.current); clearTimeout(noteScrollTimer.current) }, [])
+  useImperativeHandle(props.exerciseNoteRef, () => ({
+    hover(target) { setNoteHighlight(target?.plan_exercise_id ?? null) },
+    open(target) {
+      const locations = weeks.flatMap(week => week.days.map(day => ({ week, day })))
+      const location = locations.find(({ day }) => target.plan_exercise_id != null && day.rows.some(row => row.serverRowId === target.plan_exercise_id))
+        ?? locations.find(({ day }) => target.plan_day_id != null && day.serverDayId === target.plan_day_id)
+      if (!location) return false
+      const { week, day } = location
+      const row = day.rows.find(row => target.plan_exercise_id != null && row.serverRowId === target.plan_exercise_id)
+      setSel({ wnum: week.num, dow: day.dow })
+      setVisibleWeek(week.num)
+      setEditingDay({ wnum: week.num, dow: day.dow })
+      setDaySelection(singleDaySelection({ wnum: week.num, dow: day.dow }))
+      setCellSelection(null)
+      setBlockMenu(null)
+      setPop(current => ({ ...current, visible: false }))
+      setRowSelection(singleRowSelection(row ? { wnum: week.num, dow: day.dow, rowId: row.id } : null))
+      setNoteFlash(row?.serverRowId ?? null)
+      clearTimeout(noteTimer.current)
+      noteTimer.current = setTimeout(() => setNoteFlash(null), 900)
+      clearTimeout(noteScrollTimer.current)
+      noteScrollTimer.current = setTimeout(() => {
+        const elements = rootRef.current?.querySelectorAll<HTMLElement>(row ? '[data-rowid]' : '[data-block-day-id]')
+        const element = [...(elements ?? [])].find(el => row ? el.dataset.rowid === row.id : el.dataset.blockDayId === day.serverDayId)
+        element?.scrollIntoView?.({ block: 'center', inline: 'nearest' })
+      }, 0)
+      return true
+    },
+  }), [weeks])
   const selectedRow = rowSelection.anchor
   const selectedRowIds = rowSelection.rowIds
   const [cellSelection, setCellSelection] = useState<PlanCellSelection | null>(null)
@@ -3033,7 +3073,7 @@ export function PlanEditor(props: PlanEditorProps) {
               feedbackDayMarker={feedbackDayMarker} highlightedDayId={feedback ? hoveredFeedbackDay ?? feedback.dayId : null}
               onHoverDay={id => { if (feedback) setHoveredFeedbackDay(id) }}
               addedVideoMarker={addedVideoMarker}
-              videoMarker={rowVideoMarker} highlightedVideo={highlightedVideo}
+              videoMarker={rowVideoMarker} highlightedVideo={highlightedVideo} highlightedExerciseId={noteHighlight} flashingExerciseId={noteFlash}
               addedDayMarkers={day => day.serverDayId && [...(videoFeedback.studentAdded.get(day.serverDayId) ?? [])].map(([id, group]) => <span className="added-video-marker" key={id}>{S.block.added} <VideoMarker group={group} onOpen={openFeedbackVideo} /></span>)}
               renderCapacity={(_week, index) => <WeekCapacitySummary weekNumber={_week.num} {...weeklySummaries[index]} />}
               onOpen={(week, day, event) => {
@@ -3142,7 +3182,7 @@ export function PlanEditor(props: PlanEditorProps) {
                           trainingDayOrdinal: trainingDayOrdinal(wk, day.dow),
                           weekdayLabel: day.dowLabel,
                         }}
-                        videoMarker={rowVideoMarker} addedVideoMarker={id => addedVideoMarker(day.serverDayId, id)} highlightedVideo={highlightedVideo}
+                        videoMarker={rowVideoMarker} addedVideoMarker={id => addedVideoMarker(day.serverDayId, id)} highlightedVideo={highlightedVideo} highlightedExerciseId={noteHighlight} flashingExerciseId={noteFlash}
                         studentAdded={day.serverDayId ? studentAddedByDay.get(day.serverDayId) : undefined}
                         exerciseName={(id) => {
                           const names = props.exerciseIndex?.namesById(id)
