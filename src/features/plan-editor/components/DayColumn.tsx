@@ -1,4 +1,3 @@
-import { actualMatchesPlan } from '../actuals'
 import { WeightModeSelect } from './WeightModeSelect'
 import { activeImportDoubts } from '../import/doubts'
 import { useLayoutEffect, useRef, useState } from 'react'
@@ -462,12 +461,11 @@ function ActualLine({ row, actuals, kind, e1rm = null, highlightedSetIndex }: {
       ? { text: formatActualWeight(set), tone: row && !added ? actualWeightTone(row, position, set) : 'added' }
       : row && !added ? actualIntensityChip(row, position, set, e1rm)
         : { text: rpe == null ? '–' : `@${rpe}`, tone: 'added' }
-    const asPlanned = row && !added && actualMatchesPlan(row, set)
     const tone = set.failed ? 'off' : !set.completed ? 'missed' : chip.tone
     return (
-      <span key={set.set_index} className={`actual-chip${asPlanned ? ' as-planned' : ''} tone-${tone}${set.set_index === highlightedSetIndex ? ' overview-set-highlight' : ''}`}
+      <span key={set.set_index} className={`actual-chip tone-${tone}${set.set_index === highlightedSetIndex ? ' overview-set-highlight' : ''}`}
         title={kind === 'weight' ? set.failed ? S.common.failure : set.completed ? undefined : S.common.notCompleted : undefined}>
-        {asPlanned ? S.editor.asPlanned : chip.text}{kind === 'weight' && set.failed ? ` ${S.common.failure}` : ''}
+        {chip.text}{kind === 'weight' && set.failed ? ` ${S.common.failure}` : ''}
       </span>
     )
   }

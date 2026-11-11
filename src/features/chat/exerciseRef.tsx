@@ -35,7 +35,7 @@ export function ExerciseRefCard({ parsed, onHover, onOpen, unavailable = false }
     onMouseEnter={() => onHover?.(parsed.exerciseRef)} onMouseLeave={() => onHover?.(null)}
     onFocus={() => onHover?.(parsed.exerciseRef)} onBlur={() => onHover?.(null)}
     onClick={async () => { setMissing((await onOpen?.(parsed.exerciseRef)) === false) }}>
-    <span className="exercise-ref-heading"><small>{parsed.date} · {parsed.exerciseRef.exercise_name}</small>
+    <span className="exercise-ref-heading"><small>{parsed.date} · {parsed.exerciseRef.exercise_name} · {S.chat.studentNote}</small>
       {(unavailable || missing) && <small role="status">{S.chat.exerciseMissing}</small>}</span>
     <p>{parsed.note}</p>
   </button>

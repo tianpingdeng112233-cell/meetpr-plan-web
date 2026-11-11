@@ -1,4 +1,3 @@
-import { actualMatchesPlan } from './actuals'
 import { actualShorthand } from './actualShorthand'
 import { kg } from '../workspace/WorkspaceCommon'
 import { historyTopSet, recentSessionSummary } from './components/ContextRail'
@@ -177,7 +176,7 @@ it('keeps actual RIR in history grouping and labels it without RPE conversion', 
   expect(actualIntensityChip(row(), 0, grouped, null)).toEqual({ text: 'RIR 2', tone: 'na' })
 })
 
-describe('025 nullable actual weight and exact prescription matching', () => {
+describe('025 nullable actual weight', () => {
   it('shows an em dash for a null load and excludes it from top-set statistics', () => {
     const actual = nullableFixture.set
     expect(formatActualWeight(actual)).toBe('—×5')
@@ -188,29 +187,5 @@ describe('025 nullable actual weight and exact prescription matching', () => {
     expect(historyTopSet([history, { ...history, set_index: 1, weight_kg: '90' }])?.set_index).toBe(1)
     expect(recentSessionSummary({ rep_prs: [], by_set_count: {}, e1rm: null, one_rm_reference: null,
       recent_sessions: [{ date: '2026-11-10', sets: [history] }] })).toContain('—')
-  })
-  it('compares numeric values exactly, independently of the existing deviation tolerance', () => {
-    const prescribed = row({ intensity: { mode: 'rpe', value: '8', high: '' } })
-    expect(actualMatchesPlan(prescribed, set())).toBe(true)
-    expect(actualMatchesPlan(prescribed, set({ weight_kg: '91' }))).toBe(false)
-    expect(actualMatchesPlan(prescribed, set({ rpe: '8.5' }))).toBe(false)
-    expect(actualMatchesPlan(prescribed, set({ reps: 4 }))).toBe(false)
-    expect(actualMatchesPlan(prescribed, set({ weight_kg: null }))).toBe(false)
-    expect(actualMatchesPlan(prescribed, set({ rpe: null, coach_rpe: '8' }))).toBe(false)
-    expect(actualMatchesPlan(prescribed, set({ failed: true }))).toBe(false)
-    expect(actualMatchesPlan(prescribed, set({ completed: false }))).toBe(false)
-    expect(actualMatchesPlan(prescribed, set({ set_index: 3 }))).toBe(false)
-    expect(actualShorthand(prescribed, [set(), set({ set_index: 1, weight_kg: '95' }), set({ set_index: 2, weight_kg: '100' })])).toBe('按计划')
-  })
-  it('uses the original per-set prescription and inclusive ranges, never another historical day', () => {
-    const prescribed = row({ opaqueSets: [{ set_number: 1, target_reps: 3, target_reps_max: 5,
-      target_weight: '90', rpe_low: '7', rpe_high: '8', load_mode: 'rpe_range',
-      set_type: 'working', rest_seconds: null, coach_note: null }] })
-    expect(actualMatchesPlan(prescribed, set({ reps: 4, rpe: '7.5' }))).toBe(true)
-    expect(actualMatchesPlan(prescribed, set({ reps: 6 }))).toBe(false)
-    expect(actualMatchesPlan(prescribed, set({ rpe: '8.5' }))).toBe(false)
-    const weightRange = row({ intensity: { mode: 'weight_range', value: '90', high: '95' } })
-    expect(actualMatchesPlan(weightRange, set({ rpe: null, weight_kg: '92.5' }))).toBe(true)
-    expect(actualMatchesPlan(weightRange, set({ rpe: null, weight_kg: '96' }))).toBe(false)
   })
 })

@@ -144,7 +144,7 @@ describe('MessagesPage', () => {
     const onOpenPlan = vi.fn()
     await act(async () => { root.render(<Harness onOpenPlan={onOpenPlan} />); await settle() })
     const card = host.querySelector<HTMLButtonElement>('.exercise-ref-card')
-    expect(card?.textContent).toContain('11/10 · 暂停卧推')
+    expect(card?.textContent).toContain('11/10 · 暂停卧推 · 学员留言')
     expect(card?.textContent).not.toContain('[动作留言]')
     act(() => card!.click())
     expect(onOpenPlan).toHaveBeenCalledWith('student', exerciseFixture.exercise_ref)

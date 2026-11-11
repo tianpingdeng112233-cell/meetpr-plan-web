@@ -13,7 +13,7 @@ it('renders the dated exercise and untouched note, with hover/leave and click ca
   const root = createRoot(host), hover = vi.fn(), open = vi.fn()
   try {
     act(() => root.render(<ExerciseRefCard parsed={parsed} onHover={hover} onOpen={open} />))
-    expect(host.querySelector('small')?.textContent).toBe('11/10 · 暂停卧推')
+    expect(host.querySelector('small')?.textContent).toBe('11/10 · 暂停卧推 · 学员留言')
     expect(host.querySelector('p')?.textContent).toBe(parsed.note)
     const card = host.querySelector('button')!
     act(() => card.dispatchEvent(new MouseEvent('mouseover', { bubbles: true })))

@@ -2,6 +2,16 @@ import { expect, it } from 'vitest'
 import type { ActualSet } from './actuals'
 import { actualShorthand } from './actualShorthand'
 const set = (index: number, reps: number, weight: string, rpe: string | null): ActualSet => ({ set_index: index, reps, weight_kg: weight, rpe, coach_rpe: '9', completed: true, failed: false })
+it('025 keeps recorded values visible when all sets match the prescription', () => {
+  const prescribed = {
+    mode: 'kg' as const, reps: '5',
+    intensity: { mode: 'rpe' as const, value: '8', high: '' },
+    boxes: [{ val: '90', empty: false }, { val: '95', empty: false }],
+  }
+  expect(actualShorthand(prescribed, [set(0, 5, '90', '8'), set(1, 5, '95', '8')]))
+    .toBe('2×5 @8 · 90/95')
+})
+
 it('uses recorded sets including extra and failed sets, slash values and missing athlete RPE without coach substitution', () => {
   const sets = [set(2, 2, '125.00', null), set(0, 3, '120.00', '8'), { ...set(1, 1, '122.50', '8.5'), completed: false, failed: true }]
   expect(actualShorthand({ mode: 'kg' }, sets)).toBe('3×3/1/2 @8/8.5/— · 120/122.5/125')
