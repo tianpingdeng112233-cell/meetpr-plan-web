@@ -22,6 +22,7 @@ vi.mock('../../api/chat', () => ({
 import MessagesPage, { type MessagesPageProps } from './MessagesPage'
 import { chatOutbox } from './chatOutbox'
 import { setRefFirstLine } from './setRef'
+import exerciseFixture from './fixtures/exercise-note.json'
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
@@ -80,7 +81,7 @@ function Harness({
   initialStudentId?: string
   initialActiveId?: string | null
   initialBindLostIds?: string[]
-  onOpenPlan?: (studentId: string) => void
+  onOpenPlan?: MessagesPageProps['onOpenPlan']
   onPlayVideo?: NonNullable<MessagesPageProps['onPlayVideo']>
   pendingVideoCounts?: Record<string, number>
 }) {
@@ -137,6 +138,17 @@ const originalLayoutDescriptors = LAYOUT_PROPS.map((name) => [
 describe('MessagesPage', () => {
   let host: HTMLDivElement
   let root: Root
+
+  it('opens an exercise note in that student’s plan with its stable target', async () => {
+    chatApi.getMessages.mockResolvedValue({ messages: [message(exerciseFixture)], meta: { other_last_read: null, has_more: false } })
+    const onOpenPlan = vi.fn()
+    await act(async () => { root.render(<Harness onOpenPlan={onOpenPlan} />); await settle() })
+    const card = host.querySelector<HTMLButtonElement>('.exercise-ref-card')
+    expect(card?.textContent).toContain('11/10 · 暂停卧推 · 学员留言')
+    expect(card?.textContent).not.toContain('[动作留言]')
+    act(() => card!.click())
+    expect(onOpenPlan).toHaveBeenCalledWith('student', exerciseFixture.exercise_ref)
+  })
 
   beforeEach(() => {
     installLocalStorageMock()

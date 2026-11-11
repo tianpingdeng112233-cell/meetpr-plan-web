@@ -1,0 +1,5 @@
+{
+  "exercise_ref": { "v": 1, "exercise_name": "暂停卧推", "day_date": "2026-11-10", "plan_day_id": "day", "plan_exercise_id": "plan-exercise", "exercise_id": "bench" },
+  "body": "[动作留言] 暂停卧推 · 11/10\n最后一组有点晃\n需要减重量吗？",
+  "set": { "set_index": 0, "weight_kg": null, "reps": 5, "rpe": "8", "coach_rpe": null, "completed": true, "failed": false }
+}

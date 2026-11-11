@@ -278,7 +278,7 @@ const hantChat = {
     daysAgo: (n: number) => `${n} \u5929\u524D`, monthsAgo: (n: number) => `${n} \u500B\u6708\u524D`, yearsAgo: (n: number) => `${n} \u5E74\u524D`,
     unknownDate: "\u65E5\u671F\u672A\u77E5", dayLabel: (month: string, day: string, weekday: string) => `${month}-${day} \u9031${weekday}`,
     chatImage: "\u804A\u5929\u5716\u7247", imageUnavailable: "\u5716\u7247\u66AB\u4E0D\u53EF\u7528", unsupportedMessage: "\u7576\u524D\u7248\u672C\u66AB\u4E0D\u652F\u63F4\u7684\u8A0A\u606F\u578B\u5225",
-    setRefLogged: "\u5B78\u54E1\u8A18\u9304\u7684\u4E00\u7D44", setRefPlanned: "\u5B78\u54E1\u4ECA\u5929\u7684\u8AB2\u8868", trainingShare: "\u8A13\u7DF4\u5206\u4EAB", trainingPlan: "\u8AB2\u8868",
+    studentNote: "\u5B78\u54E1\u7559\u8A00", exerciseMissing: "\u539F\u52D5\u4F5C\u5DF2\u4E0D\u5728\u8AB2\u8868\u4E2D", setRefLogged: "\u5B78\u54E1\u8A18\u9304\u7684\u4E00\u7D44", setRefPlanned: "\u5B78\u54E1\u4ECA\u5929\u7684\u8AB2\u8868", trainingShare: "\u8A13\u7DF4\u5206\u4EAB", trainingPlan: "\u8AB2\u8868",
     setNumber: (n: number) => `\u7B2C ${n} \u7D44`, playVideo: "\u64AD\u653E\u5F71\u7247",
 } as const satisfies Translations<typeof zhChat>
 

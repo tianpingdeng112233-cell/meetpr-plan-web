@@ -9,7 +9,7 @@ export const PCT_TOLERANCE_PP = 5
 
 export interface ActualSet {
   set_index: number
-  weight_kg: string
+  weight_kg: string | null
   reps: number
   rpe: string | null
   actual_rir?: number | null

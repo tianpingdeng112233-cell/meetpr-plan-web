@@ -1,3 +1,7 @@
+import { actualShorthand } from './actualShorthand'
+import { kg } from '../workspace/WorkspaceCommon'
+import { historyTopSet, recentSessionSummary } from './components/ContextRail'
+import nullableFixture from '../chat/fixtures/exercise-note.json'
 import { describe, expect, it } from 'vitest'
 import type { StudentSetLog } from '../../api/types'
 import type { ExerciseRow, RowIntensity } from './types'
@@ -170,4 +174,18 @@ it('keeps actual RIR in history grouping and labels it without RPE conversion', 
   const actual = { ...log({ rpe: null }), actual_rir: 2 }
   const grouped = groupActualsByExercise([actual]).get('pe-1')![0]
   expect(actualIntensityChip(row(), 0, grouped, null)).toEqual({ text: 'RIR 2', tone: 'na' })
+})
+
+describe('025 nullable actual weight', () => {
+  it('shows an em dash for a null load and excludes it from top-set statistics', () => {
+    const actual = nullableFixture.set
+    expect(formatActualWeight(actual)).toBe('—×5')
+    expect(kg(actual.weight_kg)).toBe('—')
+    expect(actualShorthand(null, [actual])).toBe('1×5 @8 · —')
+    const history = { ...actual, assumed: false, has_video: false }
+    expect(historyTopSet([history])).toBeNull()
+    expect(historyTopSet([history, { ...history, set_index: 1, weight_kg: '90' }])?.set_index).toBe(1)
+    expect(recentSessionSummary({ rep_prs: [], by_set_count: {}, e1rm: null, one_rm_reference: null,
+      recent_sessions: [{ date: '2026-11-10', sets: [history] }] })).toContain('—')
+  })
 })

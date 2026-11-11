@@ -38,7 +38,7 @@
 .block-brick.aux > span { font-weight: 400; color: #4b5563; }
 .block-brick.section-start { margin-top: 9px; position: relative; }
 .block-brick.section-start::before { content: ''; position: absolute; height: 1px; background: #e9ebee; top: -6px; left: 0; right: 0; }
-.block-brick.row-sel, .block-cell .exrow.row-sel { background: #fef3c7; border-color: #111827; }
+.block-brick.row-sel, .block-cell .exrow.row-sel, .block-brick.exercise-note-highlight, .block-cell .exrow.exercise-note-highlight { background: #fef3c7; border-color: #111827; }
 .block-empty { display: flex; align-items: center; justify-content: center; line-height: 0; height: 90px; font-size: 23px; color: #9ca3af; opacity: 1; }
 .block-cell:hover .block-empty, .block-cell:focus .block-empty { color: #111827; }
 .block-fill-handle { position: absolute; right: -5px; bottom: -5px; width: 10px; height: 10px; padding: 0; background: #111827; border: 2px solid white; cursor: crosshair; z-index: 8; }
@@ -205,3 +205,7 @@
 }
 .block-brick.brick-drop-before::after { top: -5px; }
 .block-brick.brick-drop-after::after { bottom: -5px; }
+
+.exercise-note-flash { animation: exercise-note-flash 450ms ease-out 2; }
+@keyframes exercise-note-flash { from { outline: 2px solid #111827; outline-offset: -2px; } to { outline-color: transparent; } }
+@media (prefers-reduced-motion: reduce) { .exercise-note-flash { animation: none; } }

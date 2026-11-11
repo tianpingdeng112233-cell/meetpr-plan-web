@@ -174,7 +174,7 @@ export function recentSessionSummary(detail: ExerciseStatsDetail | null): string
   const repLabel = reps.length > 0 && reps.every((value) => value === reps[0])
     ? String(reps[0])
     : reps.length > 0 ? `${Math.min(...reps)}–${Math.max(...reps)}` : '—'
-  const loadLabel = weights.length > 0 ? ` @ ${kg(String(Math.max(...weights)))}kg` : ''
+  const loadLabel = weights.length > 0 ? ` @ ${kg(String(Math.max(...weights)))}kg` : session.sets.some(set => set.weight_kg === null) ? ' · —' : ''
   const rpeLabel = rpes.length > 0 ? ` / RPE ${Math.max(...rpes)}` : ''
   return `${shortDate(session.date)} · ${session.sets.length}×${repLabel}${loadLabel}${rpeLabel}`
 }
@@ -341,7 +341,7 @@ export function metricCells(args: {
     const best = repPr ?? detail.rep_prs[0]
     cells.push({ value: best ? kg(best.weight_kg) : '—', label: best ? S.stats.context.repsBestShort(String(best.reps)) : S.stats.context.noData })
     const last = detail.recent_sessions[0]
-    const top = last ? Math.max(...last.sets.map((s) => Number(s.weight_kg))) : null
+    const top = last ? historyTopSet(last.sets)?.weight_kg : null
     if (top) cells.push({ value: kg(String(top)), label: S.stats.context.latestTopSet })
   }
   const e1rm = detail.e1rm ? Number(detail.e1rm.value) : null
@@ -566,6 +566,6 @@ export function historySessions(detail: ExerciseStatsDetail, filter: ExerciseHis
 }
 
 export function historyTopSet(sets: ExerciseHistorySet[]): ExerciseHistorySet | null {
-  return sets.reduce<ExerciseHistorySet | null>((top, set) => !top || Number(set.weight_kg) > Number(top.weight_kg)
+  return sets.filter(set => set.weight_kg != null && Number.isFinite(Number(set.weight_kg))).reduce<ExerciseHistorySet | null>((top, set) => !top || Number(set.weight_kg) > Number(top.weight_kg)
     || (Number(set.weight_kg) === Number(top.weight_kg) && set.set_index < top.set_index) ? set : top, null)
 }

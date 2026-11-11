@@ -104,6 +104,24 @@ describe('plan editor actual-set chips (SPEC-038)', () => {
     ])
   })
 
+  it('025 shows actual weight, reps and RPE even when they match the prescription', async () => {
+    api.getStudentSetLogs.mockResolvedValue([
+      log({ set_index: 0, weight_kg: '90' }),
+      log({ set_index: 1, weight_kg: '95' }),
+      log({ set_index: 2, weight_kg: '100' }),
+    ])
+    await act(async () => root.render(
+      <PlanEditor initialWeeks={[week()]} weeksCount={1} studentId="student-1" studentName="吕子豪"
+        planName="Monster" planStartDate="2026-07-27" />,
+    ))
+    openBlockDay(host)
+    expect([...host.querySelectorAll('[data-actuals="weight"] .actual-chip')].map(chip => chip.textContent))
+      .toEqual(['90×5', '95×5', '100×5'])
+    expect([...host.querySelectorAll('[data-actuals="intensity"] .actual-chip')].map(chip => chip.textContent))
+      .toEqual(['@8', '@8', '@8'])
+    expect(host.textContent).not.toContain('按计划')
+  })
+
   it('renders no actual lines for a draft plan without logs', async () => {
     api.getStudentSetLogs.mockResolvedValue([])
     const draftWeek = week()

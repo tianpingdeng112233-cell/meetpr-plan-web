@@ -54,6 +54,8 @@ interface Props {
   feedbackMarker?: React.ReactNode
   videoMarker?: (row: ExerciseRow) => React.ReactNode
   addedVideoMarker?: (exerciseId: string) => React.ReactNode
+  highlightedExerciseId?: string | null
+  flashingExerciseId?: string | null
   highlightedVideo?: FeedbackEntry | null
   blockView?: { dx: number; date: string; minDate?: string; maxDate?: string; onDate: (date: string) => void; onClose: () => void }
   weekNumber?: number
@@ -813,7 +815,7 @@ function EditableWeight({ row, width, edit, selectedCell, selectCell, cellKey, r
 }
 
 export function DayColumn({
-  feedbackMarker, videoMarker, addedVideoMarker, highlightedVideo,
+  feedbackMarker, videoMarker, addedVideoMarker, highlightedVideo, highlightedExerciseId, flashingExerciseId,
   blockView,
   weekNumber = 0,
   columnLetter,
@@ -1078,7 +1080,7 @@ export function DayColumn({
               data-alert-set-index={highlightedSetIndex}
               data-locked={row.hasLogs ? 'true' : 'false'}
               data-drag-disabled={dragDisabled ? 'true' : 'false'}
-              className={`exrow${highlightedVideo?.rowId === row.id ? ' video-highlight' : ''}${resolveTier(row) === 'aux' ? ' aux' : ''}${row.hasLogs ? ' locked' : ''}${(actualsForRow?.(row)?.length ?? 0) > 0 ? ' has-actuals' : ''}${isSelectedRow ? ' row-sel' : ''}${dragRowId === row.id ? ' row-dragging' : ''}${dropPosition ? ` row-drop-${dropPosition}` : ''}`}
+              className={`exrow${row.serverRowId && row.serverRowId === highlightedExerciseId ? ' exercise-note-highlight' : ''}${row.serverRowId && row.serverRowId === flashingExerciseId ? ' exercise-note-flash' : ''}${highlightedVideo?.rowId === row.id ? ' video-highlight' : ''}${resolveTier(row) === 'aux' ? ' aux' : ''}${row.hasLogs ? ' locked' : ''}${(actualsForRow?.(row)?.length ?? 0) > 0 ? ' has-actuals' : ''}${isSelectedRow ? ' row-sel' : ''}${dragRowId === row.id ? ' row-dragging' : ''}${dropPosition ? ` row-drop-${dropPosition}` : ''}`}
               onMouseDown={e => startRowDrag(e, row.id)}
               onClickCapture={e => { if (suppressRowClick.current) { e.stopPropagation(); e.preventDefault() } }}
               onMouseDownCapture={(e) => {

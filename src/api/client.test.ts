@@ -21,6 +21,15 @@ describe('request 429 retry', () => {
   })
   afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks() })
 
+  it('opts into nullable set weights and preserves null from the 065 fixture', async () => {
+    const fixture = await import('../features/chat/fixtures/exercise-note.json')
+    const fetchMock = vi.fn().mockResolvedValue(res(200, { logs: [fixture.default.set] }))
+    vi.stubGlobal('fetch', fetchMock)
+    const result = await api.get<{ logs: { weight_kg: string | null }[] }>('/students/student/sets')
+    expect(result.logs[0].weight_kg).toBeNull()
+    expect(fetchMock.mock.calls[0][1].headers['X-MeetPR-Caps']).toBe('set-weight-nullable')
+  })
+
   it('backs off on 429 then succeeds (write is not lost)', async () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(res(429, { error: 'rate_limited' }, { 'Retry-After': '1' }))

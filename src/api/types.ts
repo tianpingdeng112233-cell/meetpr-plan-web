@@ -121,7 +121,7 @@ export interface StudentSetLog {
   plan_day_id?: string | null
   exercise_id: string
   set_index: number
-  weight_kg: string
+  weight_kg: string | null
   reps: number
   rpe: string | null
   actual_rir?: number | null
@@ -136,7 +136,7 @@ export interface StudentSetLog {
 
 export interface ExerciseHistorySet {
   set_index: number
-  weight_kg: string
+  weight_kg: string | null
   reps: number
   rpe: string | null
   actual_rir?: number | null
@@ -290,6 +290,15 @@ export type ChatSetRefV1 =
   | (ChatSetRefV1Base & { source: 'logged'; set_log_id: string; plan_set_id: null })
   | (ChatSetRefV1Base & { source: 'planned'; set_log_id: null; plan_set_id: string })
 
+export interface ChatExerciseRefV1 {
+  v: 1
+  exercise_name: string
+  day_date: string
+  plan_day_id: string | null
+  plan_exercise_id: string | null
+  exercise_id: string
+}
+
 export interface ChatMessage {
   id: string
   conversation_id: string
@@ -300,6 +309,7 @@ export interface ChatMessage {
   attachment_id: string | null
   image_url: string | null
   image_expires_in: number | null
+  exercise_ref?: unknown | null
   set_ref: unknown | null
   video_url: string | null
   video_expires_in: number | null

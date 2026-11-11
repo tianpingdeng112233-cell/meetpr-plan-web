@@ -18,7 +18,7 @@ export const zhChat = {
   daysAgo: (n: number) => `${n} 天前`, monthsAgo: (n: number) => `${n} 个月前`, yearsAgo: (n: number) => `${n} 年前`,
   unknownDate: '日期未知', dayLabel: (month: string, day: string, weekday: string) => `${month}-${day} 周${weekday}`,
   chatImage: '聊天图片', imageUnavailable: '图片暂不可用', unsupportedMessage: '当前版本暂不支持的消息类型',
-  setRefLogged: '学员记录的一组', setRefPlanned: '学员今天的计划', trainingShare: '训练分享', trainingPlan: '训练计划',
+  studentNote: '学员留言', exerciseMissing: '原动作已不在计划中', setRefLogged: '学员记录的一组', setRefPlanned: '学员今天的计划', trainingShare: '训练分享', trainingPlan: '训练计划',
   setNumber: (n: number) => `第 ${n} 组`, playVideo: '播放视频',
 } as const
 
@@ -37,6 +37,6 @@ export const enChat = {
   justNow: 'Just now', minutesAgo: (n) => `${countUnit(n, 'min', 'min')} ago`, hoursAgo: (n) => `${countUnit(n, 'hr', 'hr')} ago`, daysAgo: (n) => `${countUnit(n, 'day', 'days')} ago`,
   monthsAgo: (n) => `${countUnit(n, 'month', 'months')} ago`, yearsAgo: (n) => `${countUnit(n, 'year', 'years')} ago`, unknownDate: 'Unknown date',
   dayLabel: (month, day, weekday) => `${weekday}, ${month} ${day}`, chatImage: 'Chat image', imageUnavailable: 'Image unavailable',
-  unsupportedMessage: 'This message type is not supported in the current version', setRefLogged: 'A set logged by the athlete',
+  unsupportedMessage: 'This message type is not supported in the current version', studentNote: 'Athlete note', exerciseMissing: 'The original exercise is no longer in the plan', setRefLogged: 'A set logged by the athlete',
   setRefPlanned: "The athlete's plan for today", trainingShare: 'Training share', trainingPlan: 'Training plan', setNumber: (n) => `Set ${n}`, playVideo: 'Play video',
 } satisfies Translations<typeof zhChat>
