@@ -11,7 +11,8 @@ export function StudentRail({ students, currentStudentId, onSelect }: {
   onSelect: (id: string) => void | Promise<void>
 }) {
   const [query, setQuery] = useState('')
-  const [collapsed, toggle] = usePersistentCollapse('meetpr:student-rail:collapsed')
+  const [collapsed, setCollapsed] = useState(true)
+  const toggle = () => setCollapsed(value => !value)
   const [endedCollapsed, toggleEnded, setEndedCollapsed] = usePersistentCollapse('meetpr:student-rail:ended-collapsed', true)
   const locale = resolveLocale()
   const today = localDate()
@@ -31,11 +32,14 @@ export function StudentRail({ students, currentStudentId, onSelect }: {
       {item.pendingVideoCount > 0 && <span className="student-rail-video-count">{item.pendingVideoCount}</span>}
     </> : <small>{labels.unboundAt(previouslyEnded({ previously_ended_at: item.endedAt }) ?? '—')}</small>}
   </button>
-  return <aside className={`student-rail${collapsed ? ' collapsed' : ''}`} aria-label={S.common.student}>
+  return <aside className={`student-rail${collapsed ? ' collapsed' : ''}`} aria-label={S.common.student}
+    onMouseEnter={() => setCollapsed(false)} onMouseLeave={() => setCollapsed(true)}
+    onFocus={event => { if (event.target !== event.currentTarget.querySelector('header button')) setCollapsed(false) }}
+    onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget)) setCollapsed(true) }}>
     <header><b>{!collapsed && labels.title(students.filter(student => student.bond_status !== 'ended').length)}</b>
       <button type="button" aria-label={collapsed ? labels.expand : labels.collapse} aria-expanded={!collapsed} onClick={toggle}>{collapsed ? '→' : '←'}</button>
     </header>
-    {!collapsed && <>
+    <div className="student-rail-content" hidden={collapsed}>
       <input type="search" aria-label={labels.search} placeholder={labels.search} value={query} onChange={event => setQuery(event.target.value)} />
       <div className="student-rail-list">
         {searching ? active.length > 0 && <><h3>{labels.activeCount(active.length)}</h3>{active.map(row)}</>
@@ -50,6 +54,6 @@ export function StudentRail({ students, currentStudentId, onSelect }: {
         <button type="button" className="student-rail-ended-toggle" aria-expanded={!endedCollapsed} onClick={toggleEnded}>{endedCollapsed ? '▸' : '▾'} {labels.endedCount(ended.length)}</button>
         {!endedCollapsed && <div>{ended.map(row)}</div>}
       </div>}
-    </>}
+    </div>
   </aside>
 }

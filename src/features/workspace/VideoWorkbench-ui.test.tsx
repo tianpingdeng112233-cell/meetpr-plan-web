@@ -1159,4 +1159,41 @@ describe('Feedback history rail and shared portrait workbench', () => {
     await act(settle)
     expect(api.deleteVideoMarker).toHaveBeenCalledWith('video-1', 'marker-1')
   })
+  it('uses overlay arrows to switch clips and leaves typing/IME alone', async () => {
+    const next = vi.fn()
+    mounted = true
+    await act(async () => {
+      root.render(<VideoWorkbench studentId="s" videos={videos} onRefreshVideos={vi.fn()}
+        embedded={{ video: videos[0], title: 'clip', anchor: { current: host }, onClose: vi.fn(), unified: true, onNext: next }} />)
+      await settle()
+    })
+    expect(host.querySelector('[aria-label="上一条视频"]')?.hasAttribute('disabled')).toBe(true)
+    click(host.querySelector('[aria-label="下一条视频"]'))
+    expect(next).toHaveBeenCalledTimes(1)
+    await act(async () => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', isComposing: true })))
+    expect(next).toHaveBeenCalledTimes(1)
+    const input = document.createElement('textarea'); host.append(input)
+    await act(async () => input.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true })))
+    expect(next).toHaveBeenCalledTimes(1)
+    await act(async () => document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true })))
+    expect(next).toHaveBeenCalledTimes(2)
+  })
+
+  it('026 retains playback intent across fast switches while intermediate video loads', async () => {
+    let finish!: (value: { url: string; expires_in: number }) => void
+    api.getUploadUrl.mockImplementation((id: string) => id === videos[0].id ? Promise.resolve({ url: 'https://example.test/first', expires_in: 60 }) : new Promise(resolve => { finish = resolve }))
+    function FastSwitch() {
+      const [index, setIndex] = useState(0)
+      return <VideoWorkbench studentId="s" videos={videos} onRefreshVideos={vi.fn()} embedded={{ video: videos[index], title: 'clip', anchor: { current: host }, onClose: vi.fn(), unified: true, onNext: index < 2 ? () => setIndex(index + 1) : undefined }} />
+    }
+    mounted = true
+    await act(async () => { root.render(<FastSwitch />); await settle() })
+    await act(async () => host.querySelector('video')!.dispatchEvent(new Event('play')))
+    click(host.querySelector('[aria-label="下一条视频"]'))
+    await act(async () => { await settle() })
+    click(host.querySelector('[aria-label="下一条视频"]'))
+    await act(async () => { await settle(); finish({ url: 'https://example.test/last', expires_in: 60 }); await settle() })
+    expect(host.querySelector('video')?.autoplay).toBe(true)
+  })
+
 })

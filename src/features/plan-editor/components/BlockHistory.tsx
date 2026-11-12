@@ -1,3 +1,7 @@
+import '../../chat/communication.css'
+import type { CommunicationContext } from '../../chat/EditorChat'
+import type { PreparedAnnotation } from '../../chat/CommunicationComposer'
+import { VideoQueue, videoDate } from '../../chat/VideoQueue'
 import { StudentProfile } from './StudentProfile'
 import type { StudentProfileProps } from './StudentProfile'
 import { useEffect, useRef, useState } from 'react'
@@ -16,7 +20,12 @@ const noRefresh = async () => {}
 
 const setLabel = (set: ExerciseHistorySet) => `${kg(set.weight_kg)}×${set.reps}${set.actual_rir != null ? ` RIR ${set.actual_rir}` : set.rpe ? ` @${Number(set.rpe)}` : ''}`
 
-export function BlockHistory({ student, onStudentChanged, onBeforeUnbind, readOnly = false, datesFailed, onRetryDates, days = [], feedbackFailed, feedbackLoaded, onRetryFeedback, onFeedbackSent, onRefreshFeedback, onOpenDay, hoveredDayId, onHoverDay, studentId, studentName, row, profile, overview, onVideos, onVideoVisibilityChange, videos, entries = [], feedback = null, onFeedbackChange, onHighlight, onVideoViewed, onRefreshVideos }: {
+export function BlockHistory({ renderCommunication, communicationOpen = true, onCommunicationOpenChange, onAnnotationPrepared, feedbackItems = [], student, onStudentChanged, onBeforeUnbind, readOnly = false, datesFailed, onRetryDates, days = [], feedbackFailed, feedbackLoaded, onRetryFeedback, onFeedbackSent, onRefreshFeedback, onOpenDay, hoveredDayId, onHoverDay, studentId, studentName, row, profile, overview, onVideos, onVideoVisibilityChange, videos, entries = [], feedback = null, onFeedbackChange, onHighlight, onVideoViewed, onRefreshVideos }: {
+  renderCommunication?: (context: CommunicationContext) => React.ReactNode
+  communicationOpen?: boolean
+  onCommunicationOpenChange?: (open: boolean) => void
+  onAnnotationPrepared?: (videoId: string, image: PreparedAnnotation) => void
+  feedbackItems?: readonly CoachFeedbackResponse[]
   student?: StudentProfileProps['student']
   onStudentChanged?: StudentProfileProps['onChanged']
   onBeforeUnbind?: StudentProfileProps['onBeforeUnbind']
@@ -44,7 +53,11 @@ export function BlockHistory({ student, onStudentChanged, onBeforeUnbind, readOn
   onVideos?: () => void
   onVideoVisibilityChange?: (open: boolean) => void
 }) {
+  const annotationEditing = useRef(false)
   const rail = useRef<HTMLElement>(null)
+  const [tab, setTab] = useState<'communication' | 'history'>('communication')
+  useEffect(() => { if (feedback?.playerOpen || feedback?.dayId) { setTab('communication'); onCommunicationOpenChange?.(true) } }, [feedback])
+
   const dayList = useRef<HTMLDivElement>(null)
   const [earlier, setEarlier] = useState(false)
   const selectedDay = days.find(day => day.dayId === feedback?.dayId)
@@ -93,6 +106,7 @@ export function BlockHistory({ student, onStudentChanged, onBeforeUnbind, readOn
   const scope = query?.sets ? `${query.sets}${query.reps ? `×${query.reps}` : ''}` : ''
   const isPlaying = (set: ExerciseHistorySet) => !!feedback?.videoId && set.video_id === feedback.videoId
   const closePlayer = () => {
+    if (annotationEditing.current) { window.dispatchEvent(new CustomEvent('meetpr:toast', { detail: S.block.finishAnnotation })); return }
     const active = document.activeElement
     const focus = active instanceof HTMLElement && active.closest('.block-cell') ? active : editorFocus.current
     if (feedback) onFeedbackChange?.({ ...feedback, playerOpen: false })
@@ -115,10 +129,12 @@ export function BlockHistory({ student, onStudentChanged, onBeforeUnbind, readOn
   const visibleIndex = visibleEntries.findIndex(entry => entry.video.id === feedback?.videoId)
   const pending = entries.filter(entry => entry.video.viewed_at == null).length
   const openEntry = (entry?: FeedbackEntry) => {
+    if (annotationEditing.current) { window.dispatchEvent(new CustomEvent('meetpr:toast', { detail: S.block.finishAnnotation })); return }
     if (document.activeElement && rail.current?.contains(document.activeElement)) rail.current.focus({ preventScroll: true })
     onFeedbackChange?.({ videoId: entry?.video.id ?? null, pinnedVideoId: entry?.video.viewed_at != null ? entry.video.id : null, historicalVideo: entry && !entries.some(item => item.video.id === entry.video.id) ? entry.video : undefined, playerOpen: !!entry, includeViewed: feedback?.includeViewed ?? false })
   }
   const exitFeedback = () => {
+    if (annotationEditing.current) { window.dispatchEvent(new CustomEvent('meetpr:toast', { detail: S.block.finishAnnotation })); return }
     onFeedbackChange?.(null); onHighlight?.(null)
     if (document.activeElement instanceof HTMLElement && rail.current?.contains(document.activeElement)) document.activeElement.blur()
     if (editorFocus.current?.isConnected) editorFocus.current.focus({ preventScroll: true })
@@ -128,14 +144,14 @@ export function BlockHistory({ student, onStudentChanged, onBeforeUnbind, readOn
   useEffect(() => { onVideoVisibilityChange?.(!!(feedback?.playerOpen && activeVideo)) }, [feedback?.playerOpen, activeVideo?.id])
   useGlobalKeyboardHandler(({ event, editable }) => {
     if (event.key === 'Escape') {
-      if (feedback && editable && event.target instanceof HTMLElement && event.target.matches('.feedback-workbench textarea,.feedback-workbench input:not([type="range"]),.history-player textarea,.history-player input:not([type="range"])')) {
+      if (feedback && editable && event.target instanceof HTMLElement && event.target.matches('.communication-composer textarea,.feedback-workbench textarea,.feedback-workbench input:not([type="range"]),.history-player textarea,.history-player input:not([type="range"])')) {
         event.preventDefault(); event.target.blur(); rail.current?.focus({ preventScroll: true }); return true
       }
       if ((feedback?.playerOpen && activeVideo)) { event.preventDefault(); closePlayer(); return true }
       if (feedback) { event.preventDefault(); exitFeedback(); return true }
       return false
     }
-    if (!feedback || editable || event.metaKey || event.ctrlKey || event.altKey || !(event.target instanceof Node && rail.current?.contains(event.target))) return false
+    if (renderCommunication || !feedback || editable || event.metaKey || event.ctrlKey || event.altKey || !(event.target instanceof Node && rail.current?.contains(event.target))) return false
     if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return false
     event.preventDefault()
     const index = entries.findIndex(entry => entry.video.id === feedback.videoId)
@@ -151,14 +167,49 @@ export function BlockHistory({ student, onStudentChanged, onBeforeUnbind, readOn
   const profileContent = <><Profile profile={profile} compact />
     <div className="history-metrics">{metricCells({ level: 1, profile, detail: null, overview, reps: 0, weight: null }).map(cell => <div key={cell.label}><b>{cell.value}</b><small>{cell.label}</small></div>)}</div>
     <p>{S.block.historyHint}</p></>
-  return <><aside ref={rail} data-block-history="" data-feedback-mode={feedback ? "" : undefined} tabIndex={-1} className={`block-history${collapsed && !feedback ? ' collapsed' : ''}`} onMouseDown={event => {
+  const historyContent = <div className="block-history-body">
+      {!query ? (student && onStudentChanged ? <StudentProfile key={student.id} student={student} onChanged={onStudentChanged} onBeforeUnbind={onBeforeUnbind}>{profileContent}</StudentProfile> : <><h3>{studentName}</h3>{profileContent}</>) : <>
+        <nav aria-label={S.block.history} className="history-breadcrumbs">
+          <button className={level === 2 ? 'current' : ''} onClick={() => setCeiling(2)}>{fmt.exerciseName({ name: row!.name, name_en: row!.nameEn, custom: row!.custom })}</button>
+          {contextRailLevel(row) >= 3 && <><span>›</span><button className={level === 3 ? 'current' : ''} onClick={() => setCeiling(3)}>{S.common.countSets(row!.boxes.length)}</button></>}
+          {contextRailLevel(row) >= 4 && <><span>›</span><button className={level === 4 ? 'current' : ''} onClick={() => setCeiling(4)}>{S.block.reps(Number(row!.reps))}</button></>}
+        </nav>
+        <h3>{degraded ? S.block.recent : `${scope ? `${scope} · ` : ''}${S.block.recent}`} {detail?.e1rm && <small>e1RM {kg(detail.e1rm.value)}</small>}</h3>
+        {degraded && <p>{S.block.degraded}</p>}
+        {!detail && <p>{result.key === key && result.failed ? <>{S.stats.context.recordsFailed} <button onClick={() => setRetry(value => value + 1)}>{S.common.retry}</button></> : S.stats.context.recordsLoading}</p>}
+        {detail && sessions.length === 0 && <p>{S.block.noRecords(degraded ? '' : scope)}{level > 2 && <button onClick={() => setCeiling(level - 1)}>{S.block.back}</button>}</p>}
+        {sessions.map((session, index) => {
+          const top = historyTopSet(session.sets)
+          const withVideo = session.sets.find(set => set.video_id || set.has_video)
+          return <details className={`history-session${session.sets.some(isPlaying) ? ' is-playing' : ''}`} key={`${key}:${session.date}:${index}`}>
+            <summary><span>{shortDate(session.date)} · {session.prescribed ? `${session.prescribed.sets}×${session.prescribed.reps}` : `${session.sets.length}×${session.sets[0]?.reps ?? '—'}`} · {S.block.top} <b>{top ? setLabel(top) : '—'}</b></span>{withVideo && videoButton(withVideo, session)}</summary>
+            {session.sets.map((set, i) => <div className={`history-set${isPlaying(set) ? ' is-playing' : ''}${set.failed ? ' failed' : !set.completed ? ' incomplete' : ''}`} key={`${set.set_index}:${i}`}><span>{set.set_index + 1}</span><b>{setLabel(set)}</b><span>{set.failed ? S.common.failure : set.completed ? '✓' : '—'}</span>{videoButton(set, session)}</div>)}
+          </details>
+        })}
+      </>}
+    </div>
+  const dayEntries = activeEntry ? queueEntries.filter(entry => videoDate(entry) === videoDate(activeEntry)) : []
+  const dayIndex = dayEntries.findIndex(entry => entry.video.id === activeVideo?.id)
+  return <><aside ref={rail} data-block-history="" data-feedback-mode={feedback ? "" : undefined} tabIndex={-1} className={`block-history${renderCommunication ? ' unified-rail' : ''}${(renderCommunication ? !communicationOpen : collapsed && !feedback) ? ' collapsed' : ''}`} onMouseDown={event => {
     const active = document.activeElement
     if (active instanceof HTMLElement && active.closest('.block-cell')) editorFocus.current = active
     // History controls never move the edit caret or invoke block-selection gestures.
-    if (!feedback && !(event.target instanceof HTMLVideoElement) && !(event.target instanceof Element && event.target.closest('.student-profile'))) event.preventDefault()
+    if (!renderCommunication && !feedback && !(event.target instanceof HTMLVideoElement) && !(event.target instanceof Element && event.target.closest('.student-profile'))) event.preventDefault()
     event.stopPropagation()
   }}>
-    {feedback ? <>
+    {renderCommunication ? <>
+      <header className="communication-head">
+        {communicationOpen && <><button type="button" aria-pressed={tab === 'communication'} onClick={() => setTab('communication')}>{S.block.communication}</button><button type="button" aria-pressed={tab === 'history'} onClick={() => setTab('history')}>{S.block.history}</button><small>{studentName}</small></>}
+        <button type="button" aria-label={communicationOpen ? S.block.collapseCommunication : S.block.expandCommunication} aria-expanded={communicationOpen} onClick={() => onCommunicationOpenChange?.(!communicationOpen)}>{communicationOpen ? '›' : '‹'}</button>
+      </header>
+      <div className="communication-pane" hidden={!communicationOpen || tab !== 'communication'}>
+        {videos === null ? <p role="alert">{S.block.videosFailed} <button onClick={() => studentId && void onRefreshVideos?.(studentId)}>{S.common.retry}</button></p> : videos === undefined ? <p>{S.common.loadingEllipsis}</p> : <VideoQueue key={studentId} entries={queueEntries} activeId={activeVideo?.id} onOpen={openEntry} onHighlight={onHighlight} />}
+        {feedbackFailed && <p role="alert">{S.block.feedbackFailed} <button onClick={() => void onRetryFeedback?.()}>{S.common.retry}</button></p>}
+        {activeEntry && <details className="communication-video-tools"><summary>{S.block.coachRpe} · {S.video.markers(0).split(' · ')[0]}</summary><div ref={setSidebar} className="feedback-sidebar" /></details>}
+        {renderCommunication({ communicationVisible: communicationOpen && tab === 'communication', entries: queueEntries, active: activeEntry, feedbackItems, onCancelVideo: exitFeedback, onFeedbackSent: item => onFeedbackSent?.(item), onOpenEntry: openEntry, readOnly })}
+      </div>
+      <div className="communication-history" hidden={!communicationOpen || tab !== 'history'}>{historyContent}</div>
+    </> : feedback ? <>
       <header className="feedback-head"><button onClick={exitFeedback}>{S.block.backHistory}</button><b>{S.block.feedback}</b><label><input type="checkbox" checked={feedback.includeViewed} onChange={event => onFeedbackChange?.({ ...feedback, includeViewed: event.target.checked })} />{S.block.includeViewed}</label></header>
       <section className="feedback-days">
         <h4>{S.block.feedbackDays}<small>{S.block.feedbackDaysHint}</small></h4>
@@ -189,33 +240,17 @@ export function BlockHistory({ student, onStudentChanged, onBeforeUnbind, readOn
       </div>
     </> : <>
     <header><span>{S.block.history}</span>{!collapsed && onFeedbackChange && (videos === null ? <button className="pending-entry" onClick={() => { if (studentId) void onRefreshVideos?.(studentId) }}>{S.block.videosFailed} · {S.common.retry}</button> : <button className="pending-entry" onClick={() => openEntry(entries.find(entry => entry.video.viewed_at == null))}><i className="feedback-play-icon" aria-hidden="true">▶</i> {S.block.feedbackEntry(pending)}</button>)}<button aria-label={collapsed ? S.block.expand : S.block.collapse} onClick={toggle}>{collapsed ? '‹' : '›'}</button></header>
-    {!collapsed && <div className="block-history-body">
-      {!query ? (student && onStudentChanged ? <StudentProfile key={student.id} student={student} onChanged={onStudentChanged} onBeforeUnbind={onBeforeUnbind}>{profileContent}</StudentProfile> : <><h3>{studentName}</h3>{profileContent}</>) : <>
-        <nav aria-label={S.block.history} className="history-breadcrumbs">
-          <button className={level === 2 ? 'current' : ''} onClick={() => setCeiling(2)}>{fmt.exerciseName({ name: row!.name, name_en: row!.nameEn, custom: row!.custom })}</button>
-          {contextRailLevel(row) >= 3 && <><span>›</span><button className={level === 3 ? 'current' : ''} onClick={() => setCeiling(3)}>{S.common.countSets(row!.boxes.length)}</button></>}
-          {contextRailLevel(row) >= 4 && <><span>›</span><button className={level === 4 ? 'current' : ''} onClick={() => setCeiling(4)}>{S.block.reps(Number(row!.reps))}</button></>}
-        </nav>
-        <h3>{degraded ? S.block.recent : `${scope ? `${scope} · ` : ''}${S.block.recent}`} {detail?.e1rm && <small>e1RM {kg(detail.e1rm.value)}</small>}</h3>
-        {degraded && <p>{S.block.degraded}</p>}
-        {!detail && <p>{result.key === key && result.failed ? <>{S.stats.context.recordsFailed} <button onClick={() => setRetry(value => value + 1)}>{S.common.retry}</button></> : S.stats.context.recordsLoading}</p>}
-        {detail && sessions.length === 0 && <p>{S.block.noRecords(degraded ? '' : scope)}{level > 2 && <button onClick={() => setCeiling(level - 1)}>{S.block.back}</button>}</p>}
-        {sessions.map((session, index) => {
-          const top = historyTopSet(session.sets)
-          const withVideo = session.sets.find(set => set.video_id || set.has_video)
-          return <details className={`history-session${session.sets.some(isPlaying) ? ' is-playing' : ''}`} key={`${key}:${session.date}:${index}`}>
-            <summary><span>{shortDate(session.date)} · {session.prescribed ? `${session.prescribed.sets}×${session.prescribed.reps}` : `${session.sets.length}×${session.sets[0]?.reps ?? '—'}`} · {S.block.top} <b>{top ? setLabel(top) : '—'}</b></span>{withVideo && videoButton(withVideo, session)}</summary>
-            {session.sets.map((set, i) => <div className={`history-set${isPlaying(set) ? ' is-playing' : ''}${set.failed ? ' failed' : !set.completed ? ' incomplete' : ''}`} key={`${set.set_index}:${i}`}><span>{set.set_index + 1}</span><b>{setLabel(set)}</b><span>{set.failed ? S.common.failure : set.completed ? '✓' : '—'}</span>{videoButton(set, session)}</div>)}
-          </details>
-        })}
-      </>}
-    </div>}
+    {!collapsed && historyContent}
     </>}
   </aside>
-    {currentPlayer && (!collapsed || feedback) && <VideoWorkbench readOnly={readOnly} studentId={studentId ?? ''} videos={videos} onRefreshVideos={onRefreshVideos ?? noRefresh}
-      embedded={{ ...currentPlayer, playerOpen: feedback ? feedback.playerOpen : true, anchor: rail, onClose: closePlayer, onVideoViewed, sidebar: feedback ? sidebar : null, studentName,
+    {currentPlayer && (!collapsed || feedback || renderCommunication) && <VideoWorkbench readOnly={readOnly} studentId={studentId ?? ''} videos={videos} onRefreshVideos={onRefreshVideos ?? noRefresh}
+      embedded={{ ...currentPlayer, onAnnotationEditingChange: editing => { annotationEditing.current = !!renderCommunication && editing }, unified: !!renderCommunication,
+        onAnnotationPrepared: onAnnotationPrepared ? image => onAnnotationPrepared(currentPlayer.video.id, image) : undefined,
+        onPrevious: renderCommunication && dayIndex > 0 ? () => openEntry(dayEntries[dayIndex - 1]) : undefined,
+        onNext: renderCommunication && dayIndex >= 0 && dayIndex < dayEntries.length - 1 ? () => openEntry(dayEntries[dayIndex + 1]) : undefined,
+ playerOpen: feedback ? feedback.playerOpen : true, anchor: rail, onClose: closePlayer, onVideoViewed, sidebar: renderCommunication || feedback ? sidebar : null, studentName,
         replyTitle: activeEntry ? `${S.block.replyVideo} · ${entryPlace(activeEntry)} ${entryName(activeEntry)} ${S.video.setNumber((activeVideo?.set_index ?? 0) + 1)}` : undefined,
         onFeedbackSent: item => { onFeedbackSent?.(item); void onRefreshFeedback?.() },
-        positionLabel: feedback && visibleIndex >= 0 ? `${visibleIndex + 1} / ${visibleEntries.length}` : undefined }} /> }
+        positionLabel: renderCommunication ? `${dayIndex + 1} / ${dayEntries.length}` : feedback && visibleIndex >= 0 ? `${visibleIndex + 1} / ${visibleEntries.length}` : undefined }} /> }
   </>
 }

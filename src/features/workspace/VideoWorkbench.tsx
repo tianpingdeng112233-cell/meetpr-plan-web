@@ -1,3 +1,4 @@
+import type { PreparedAnnotation } from '../chat/CommunicationComposer'
 import { createPortal } from 'react-dom'
 import { PortraitVideoWindow } from '../plan-editor/components/PortraitVideoWindow'
 import type { RefObject } from 'react'
@@ -88,6 +89,11 @@ export function VideoWorkbench({
 }: {
   readOnly?: boolean
   embedded: {
+    unified?: boolean
+    onAnnotationEditingChange?: (editing: boolean) => void
+    onAnnotationPrepared?: (image: PreparedAnnotation) => void
+    onPrevious?: () => void
+    onNext?: () => void
     video: StudentVideo
     playerOpen?: boolean
     title: string
@@ -108,6 +114,7 @@ export function VideoWorkbench({
   onConversationOpened?: (conversation: ChatConversation) => void
 }) {
   const [videoSource, setVideoSource] = useState<{ videoId: string; url: string } | null>(null)
+  const resumeAfterSwitch = useRef(true)
   const [rate, setRate] = useState(1)
   const [playbackError, setPlaybackError] = useState('')
   const [playing, setPlaying] = useState(false)
@@ -121,6 +128,9 @@ export function VideoWorkbench({
   const [activeStroke, setActiveStroke] = useState<AnnotationStroke | null>(null)
   const [annotationSending, setAnnotationSending] = useState(false)
   const [annotationNote, setAnnotationNote] = useState('')
+  const annotationEditingCallback = useRef(embedded.onAnnotationEditingChange)
+  annotationEditingCallback.current = embedded.onAnnotationEditingChange
+  useEffect(() => { annotationEditingCallback.current?.(annotationOpen || annotationSending); return () => annotationEditingCallback.current?.(false) }, [annotationOpen, annotationSending])
   const [feedback, setFeedback] = useState('')
   const [feedbackState, setFeedbackState] = useState<'idle' | 'sending' | 'sent'>('idle')
   const [feedbackError, setFeedbackError] = useState('')
@@ -360,6 +370,18 @@ export function VideoWorkbench({
       })
   }
 
+  const switchClip = (direction: -1 | 1) => {
+    if (annotationOpen || annotationSending) return
+    const next = direction < 0 ? embedded.onPrevious : embedded.onNext
+    if (!next) return
+    next()
+  }
+  useGlobalKeyboardHandler(({ event, editable }) => {
+    if (!embedded.unified || embedded.playerOpen === false || annotationOpen || annotationSending || editable || event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return false
+    if (event.target instanceof Element && event.target.closest('.video-date-pager,.video-controls,.history-transport,.block-cell,[role="grid"]')) return false
+    if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return false
+    event.preventDefault(); switchClip(event.key === 'ArrowLeft' ? -1 : 1); return true
+  }, 120)
   const togglePlayback = () => {
     // The passive annotation viewer yields to playback; the live-layer
     // editor does not restrict the transport at all.
@@ -719,6 +741,17 @@ export function VideoWorkbench({
         toast(S.video.annotationTooLarge)
         return
       }
+      if (embedded.onAnnotationPrepared) {
+        if (generation !== annotationGeneration.current) return
+        const note = annotationNote
+        embedded.onAnnotationPrepared({ blob: image, session, onSent: attachmentId => dropAnnotationMarker(videoId, frozenTimeMs, note, attachmentId) })
+        annotationSession.current = null
+        annotationExport.current = null
+        setAnnotationOpen(false)
+        setActiveStroke(null)
+        annotationPointer.current = null
+        return
+      }
       let targetConversation = conversation
       if (!targetConversation) {
         targetConversation = await openConversation(studentId)
@@ -893,6 +926,10 @@ export function VideoWorkbench({
                 ))
   const player = active && (<div className="video-player" ref={playerBoxRef}>
               <div className="video-player-stage">
+                {embedded.unified && !annotationOpen && <>
+                  <button type="button" className="video-switch-arrow previous" aria-label={S.block.previousVideo} disabled={!embedded.onPrevious || annotationSending} onClick={() => switchClip(-1)}>‹</button>
+                  <button type="button" className="video-switch-arrow next" aria-label={S.block.nextVideo} disabled={!embedded.onNext || annotationSending} onClick={() => switchClip(1)}>›</button>
+                </>}
                 {!embedded && stageActions}
                 <div className="video-portrait">
                   {url ? (
@@ -901,16 +938,16 @@ export function VideoWorkbench({
                       ref={videoRef}
                       crossOrigin={crossOriginEnabled ? 'anonymous' : undefined}
                       src={url}
-                      autoPlay
+                      autoPlay={resumeAfterSwitch.current}
                       playsInline
                       onClick={togglePlayback}
                       onDoubleClick={toggleFullscreen}
-                      onPlay={() => setPlaying(true)}
-                      onPause={() => setPlaying(false)}
+                      onPlay={() => { resumeAfterSwitch.current = true; setPlaying(true) }}
+                      onPause={() => { if (activeVideoIdRef.current === active.id) { resumeAfterSwitch.current = false; setPlaying(false) } }}
                       onTimeUpdate={(event) => handleTimeUpdate(event.currentTarget)}
                       onLoadedMetadata={(event) => { setDuration(event.currentTarget.duration); event.currentTarget.playbackRate = rate }}
                       onDurationChange={(event) => setDuration(event.currentTarget.duration)}
-                      onEnded={() => setPlaying(false)}
+                      onEnded={() => { resumeAfterSwitch.current = false; setPlaying(false) }}
                       onError={playbackFailed}
                     />
                   ) : (
@@ -1011,7 +1048,7 @@ export function VideoWorkbench({
                             className="video-annotation-send"
                             disabled={annotationSending}
                             onClick={() => void sendAnnotation()}
-                          >{annotationSending ? S.video.sending : S.video.sendToChat}</button>
+                          >{annotationSending ? S.video.sending : embedded.onAnnotationPrepared ? S.block.stageAnnotation : S.video.sendToChat}</button>
                         </div>
                       </div>
                     </div>
@@ -1221,7 +1258,7 @@ export function VideoWorkbench({
       {player}
       {!embedded.sidebar && markerPanel}
     </PortraitVideoWindow>}
-    {embedded.sidebar && createPortal(<div className="feedback-workbench">{rpeCalibration}{markerPanel}{feedbackPanel}</div>, embedded.sidebar)}
+    {embedded.sidebar && createPortal(<div className="feedback-workbench">{rpeCalibration}{markerPanel}{!embedded.unified && feedbackPanel}</div>, embedded.sidebar)}
   </>
 
 }

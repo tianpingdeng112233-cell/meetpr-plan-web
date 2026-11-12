@@ -1,6 +1,14 @@
 import type { Translations } from './types'
 import { countUnit } from './plural'
 export const zhBlock = {
+  finishAnnotation: '请先将标注放入输入区，或取消标注',
+  enterHint: 'Enter 发送 · Shift Enter 换行',
+  communication: '沟通', collapseCommunication: '收起侧栏', expandCommunication: '展开侧栏',
+  previousVideoDay: '前一天', nextVideoDay: '后一天', previousVideo: '上一条视频', nextVideo: '下一条视频',
+  viewed: '已看', toWatch: '待看', replying: '回复中', collapseVideos: '收起', expandVideos: (n: number) => `展开全部 ${n} 条`,
+  stageAnnotation: '放入输入区', removeImage: '移除图片', cancelVideoReply: '取消视频引用',
+  legacyDayFeedback: '整日反馈 · 历史记录', sendPartsFailed: '部分内容发送失败，未发送的内容已保留，可重试',
+
   athleteRpe: '学员 RPE', coachRpe: '教练 RPE', calibrateRpe: '校准', clearCalibration: '清除',
   drawLine: '画线', drawLineCompact: '画线', addMarker: '打点',
   showActuals: '显示实际', prescription: (value: string) => `处方 ${value}`,
@@ -38,6 +46,14 @@ export const zhBlock = {
   patternLocal: '星期规律保存在本机', patternFailed: '无法在本机保存星期规律，请检查浏览器存储权限后重试',
 } as const
 export const enBlock: Translations<typeof zhBlock> = {
+  finishAnnotation: 'Add the annotation to the composer or cancel it first.',
+  enterHint: 'Enter to send · Shift Enter for new line',
+  communication: 'Communication', collapseCommunication: 'Collapse sidebar', expandCommunication: 'Expand sidebar',
+  previousVideoDay: 'Previous day', nextVideoDay: 'Next day', previousVideo: 'Previous video', nextVideo: 'Next video',
+  viewed: 'Viewed', toWatch: 'To watch', replying: 'Replying', collapseVideos: 'Collapse', expandVideos: n => `Show all ${n} videos`,
+  stageAnnotation: 'Add to composer', removeImage: 'Remove image', cancelVideoReply: 'Cancel video reply',
+  legacyDayFeedback: 'Day feedback · History', sendPartsFailed: 'Some content failed to send. Unsent content is preserved for retry.',
+
   athleteRpe: 'Athlete RPE', coachRpe: 'Coach RPE', calibrateRpe: 'Calibrate', clearCalibration: 'Clear',
   drawLine: 'Draw', drawLineCompact: '✎', addMarker: 'Mark',
   showActuals: 'Show actuals', prescription: value => `Prescribed ${value}`,

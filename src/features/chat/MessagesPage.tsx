@@ -40,7 +40,12 @@ import { registerReloadBlocker } from '../../reloadSafety'
 
 const INTERACTION_WINDOW_MS = 120_000
 const MAX_MESSAGE_CHARS = 4000
+export interface TimelineSupplement { id: string; created_at: string; content: React.ReactNode }
 export interface MessagesPageProps {
+  visible?: boolean
+  timeline?: TimelineSupplement[]
+  renderComposer?: (conversation: ChatConversation | null, disabled: boolean) => React.ReactNode
+
   floating?: boolean
   renderVideoCapsule?: (message: ChatMessage) => React.ReactNode
   me: AuthUser
@@ -73,6 +78,9 @@ const newerCursor = (left: ChatReadCursor | null, right: ChatReadCursor | null) 
 
 export default function MessagesPage({
   floating = false,
+  visible = true,
+  timeline,
+  renderComposer,
   renderVideoCapsule,
   me,
   students,
@@ -198,6 +206,11 @@ export default function MessagesPage({
     else window.dispatchEvent(new CustomEvent('meetpr:toast', { detail: S.chat.noUnread }))
   }
 
+  const standaloneComposer = renderComposer && <>
+    <div className="chat-thread">{conversations === null && <div className="empty-state">{S.common.loadingEllipsis}</div>}{timeline?.map(item => <div key={item.id}>{item.content}</div>)}</div>
+    {renderComposer(null, sessionDead || !selectedStudent || selectedStudent.bond_status === 'ended' || unavailableStudentIds.has(selectedStudentId))}
+  </>
+
   return <main className={`chat-page${threadCollapsed ? ' thread-collapsed' : ''}`}>
     {floating && openError && <div className="chat-open-error">{openError}</div>}
     {!floating && <aside className="chat-sidebar" aria-label={S.chat.studentList}>
@@ -252,9 +265,9 @@ export default function MessagesPage({
         </button>
       </header>}
       {conversations === null
-        ? <div className="empty-state">{S.common.loadingEllipsis}</div>
+        ? standaloneComposer ?? <div className="empty-state">{S.common.loadingEllipsis}</div>
         : synchronizedActiveId == null
-          ? selectedStudentWithoutConversation
+          ? renderComposer ? standaloneComposer : selectedStudentWithoutConversation
             ? <div className="empty-state chat-start-state">
                 <p>{S.chat.noMessagesWith(selectedStudentName)}</p>
                 <button
@@ -276,7 +289,10 @@ export default function MessagesPage({
                     onOpen={target => onOpenPlan(active.other_party.id, target)} />
                 }}
                 renderVideoCapsule={renderVideoCapsule}
+                timeline={timeline}
+                renderComposer={renderComposer}
                 compact={floating}
+                visible={visible}
                 me={me}
                 conversation={active}
                 studentName={active.other_party.display_name || S.chat.unnamedStudent}
@@ -387,6 +403,9 @@ function ConversationList({
 }
 
 function ConversationThread({
+  visible,
+  timeline,
+  renderComposer,
   renderExerciseCard,
   renderVideoCapsule,
   compact,
@@ -405,6 +424,9 @@ function ConversationThread({
   onSessionExpired,
   onPlayVideo,
 }: {
+  visible: boolean
+  timeline?: TimelineSupplement[]
+  renderComposer?: MessagesPageProps['renderComposer']
   renderExerciseCard: (message: ChatMessage) => React.ReactNode
   compact?: boolean
   renderVideoCapsule?: (message: ChatMessage) => React.ReactNode
@@ -423,6 +445,8 @@ function ConversationThread({
   onSessionExpired: () => void
   onPlayVideo: (target: ChatVideoTarget) => void
 }) {
+  const visibleRef = useRef(visible)
+  visibleRef.current = visible
   const [snapshot, setSnapshot] = useState(conversation)
   const snapshotRef = useRef(conversation)
   const [messages, setMessages] = useState<ChatMessage[] | null>(null)
@@ -578,7 +602,8 @@ function ConversationThread({
 
   const markReadIfNeeded = async (currentMessages: ChatMessage[]) => {
     if (
-      document.visibilityState !== 'visible'
+      !visibleRef.current
+      || document.visibilityState !== 'visible'
       || !document.hasFocus()
       || Date.now() - lastInteractionAt.current > INTERACTION_WINDOW_MS
     ) return
@@ -691,7 +716,7 @@ function ConversationThread({
       handleError(caught)
       return 5_000
     }
-  }, 5_000, { enabled: !sessionDead, immediate: true })
+  }, 5_000, { enabled: !sessionDead && visible, immediate: true })
 
   const loadHistory = async () => {
     const beforeSeq = minSeq(messagesRef.current)
@@ -743,7 +768,7 @@ function ConversationThread({
 
   const receipt = messages ? readReceiptFor(messages, me.id, snapshot.other_last_read) : null
   const pendingItems = chatOutbox.itemsFor(conversation.id)
-  const messageGroups = messages ? groupMessagesByDay(messages, now) : []
+  const messageGroups = groupMessagesByDay([...(error ? [] : messages ?? []), ...(timeline ?? [])].sort((a, b) => a.created_at.localeCompare(b.created_at) || ('seq' in a && 'seq' in b ? a.seq - b.seq : 0)), now)
   const todayKey = localDayKey(now)
   const lastMessageGroupIsToday = messageGroups.at(-1)?.key === todayKey
   const pendingSharesLastMessageGroup = !error && lastMessageGroupIsToday
@@ -754,10 +779,10 @@ function ConversationThread({
       </button>}
       {error && <div className="empty-state">{error}</div>}
       {!error && messages === null && <div className="empty-state">{S.common.loadingEllipsis}</div>}
-      {!error && messages?.length === 0 && pendingItems.length === 0 && <div className="empty-state">{S.chat.noMessages}</div>}
-      {!error && messageGroups.map((group, index) => <section className="chat-day-group" key={group.key}>
+      {!error && messages?.length === 0 && !timeline?.length && pendingItems.length === 0 && <div className="empty-state">{S.chat.noMessages}</div>}
+      {messageGroups.map((group, index) => <section className="chat-day-group" key={group.key}>
         <div className="chat-day-label">{group.label}</div>
-        {group.messages.map((message) => <ChatBubble
+        {group.messages.map((message) => 'content' in message ? <div key={message.id}>{message.content}</div> : <ChatBubble
           key={message.id}
           exerciseCard={renderExerciseCard(message)}
           videoCapsule={renderVideoCapsule?.(message)}
@@ -787,13 +812,14 @@ function ConversationThread({
           {pendingItems.map((item) => <PendingBubble key={item.clientId} item={item} />)}
         </section>}
     </div>
-    <ChatComposer
+    {renderComposer ? renderComposer(conversation, sessionDead || bindLost) : <ChatComposer
       compact={compact}
       conversationId={conversation.id}
       initialDraft={initialDraft}
       disabled={sessionDead || bindLost}
       onDraftChange={onDraftChange}
     />
+    }
     {bindLost && <em className="chat-blocked">{S.chat.cannotSendBindLost}</em>}
   </>
 }
@@ -963,12 +989,12 @@ function chatClockTime(iso: string): string {
   }).format(date)
 }
 
-function groupMessagesByDay(messages: ChatMessage[], now: number): {
+function groupMessagesByDay(messages: (ChatMessage | TimelineSupplement)[], now: number): {
   key: string
   label: string
-  messages: ChatMessage[]
+  messages: (ChatMessage | TimelineSupplement)[]
 }[] {
-  const groups: { key: string; label: string; messages: ChatMessage[] }[] = []
+  const groups: { key: string; label: string; messages: (ChatMessage | TimelineSupplement)[] }[] = []
   for (const message of messages) {
     const key = localDayKey(message.created_at)
     const current = groups[groups.length - 1]

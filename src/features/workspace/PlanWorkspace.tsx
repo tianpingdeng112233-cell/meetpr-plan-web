@@ -1,3 +1,5 @@
+import { communicationDraftKey, type CommunicationDrafts } from '../chat/CommunicationComposer'
+import { registerReloadBlocker } from '../../reloadSafety'
 import type { ChatExerciseRefV1 } from '../../api/types'
 import type { ExerciseNoteHandle } from '../plan-editor/PlanEditor'
 import type { ImportedPlan } from '../plan-editor/import/ImportPlanDialog'
@@ -7,7 +9,6 @@ import { deriveOverviewBoard, type AlertsState, type OverviewTag } from './overv
 import { loadCoachInvitation } from '../onboarding/invitation'
 import { OverviewInvite } from './OverviewInvite'
 import { findChatVideo, type ChatVideoTarget } from '../chat/setRef'
-import { deriveVideoFeedback } from '../plan-editor/feedbackModel'
 import { EditorChat } from '../chat/EditorChat'
 import { markVideoViewed } from '../../api/markers'
 import type { FeedbackSession, EditorFeedbackHandle } from '../plan-editor/feedbackSession'
@@ -101,12 +102,16 @@ export function PlanWorkspace({ onLogout, me }: Props) {
   const [conversations, setConversations] = useState<ChatConversation[] | null>(null)
   const [sessionDead, setSessionDead] = useState(false)
   const [bindLostIds, setBindLostIds] = useState<Set<string>>(() => new Set())
-  const chatPreference = `meetpr:editor-chat:${me.id}`
-  const [chatOpen, setChatOpen] = useState(() => { try { return localStorage.getItem(chatPreference) === 'true' } catch { return false } })
+  const chatPreference = `meetpr:editor-communication:${me.id}`
+  const [chatOpen, setChatOpen] = useState(() => { try { return localStorage.getItem(chatPreference) !== 'false' } catch { return true } })
   const changeChatOpen = (open: boolean) => {
     setChatOpen(open)
     try { localStorage.setItem(chatPreference, String(open)) } catch { /* Session state still works. */ }
   }
+  const [communicationDrafts, setCommunicationDrafts] = useState<CommunicationDrafts>({})
+  const communicationDraftRef = useRef(communicationDrafts)
+  communicationDraftRef.current = communicationDrafts
+  useEffect(() => registerReloadBlocker(() => Object.values(communicationDraftRef.current).some(draft => !!draft.text.trim() || draft.images.length > 0 || !!draft.busy)), [])
   const [chatVideoIntent, setChatVideoIntent] = useState<{ studentId: string; target: ChatVideoTarget } | null>(null)
   const exerciseNoteRef = useRef<ExerciseNoteHandle>(null)
   const [exerciseNoteIntent, setExerciseNoteIntent] = useState<{ studentId: string; target: ChatExerciseRefV1 } | null>(null)
@@ -974,7 +979,6 @@ export function PlanWorkspace({ onLogout, me }: Props) {
     setEditorIntent(null)
   }, [editorIntent, view, studentId, studentSwitching, booting, error, videosByStudent, loaded])
 
-  const chatEntries = useMemo(() => deriveVideoFeedback(loaded?.weeks ?? [], videosByStudent[studentId] ?? [], [], loaded?.plan.start_date).entries, [loaded, videosByStudent, studentId])
   useEffect(() => {
     if (!chatVideoIntent) return
     if (view !== 'editor' || chatVideoIntent.studentId !== studentId) { setChatVideoIntent(null); return }
@@ -1309,9 +1313,13 @@ export function PlanWorkspace({ onLogout, me }: Props) {
             ? { ...prev, plan: { ...prev.plan, pending_revision_saved_at: savedAt } }
             : prev)
         } : undefined}
-        suspended={viewSwitching}
-      />
-      <EditorChat entries={chatEntries} editor={editorShellRef} open={chatOpen} onOpenChange={changeChatOpen}
+        communicationOpen={chatOpen} onCommunicationOpenChange={changeChatOpen}
+        onAnnotationPrepared={(videoId, image) => {
+          const key = communicationDraftKey(studentId, videoId)
+          setCommunicationDrafts(all => ({ ...all, [key]: { ...(all[key] ?? { text: '', images: [] }), images: [...(all[key]?.images ?? []), image] } }))
+          changeChatOpen(true)
+        }}
+        renderCommunication={context => (<EditorChat {...context} communicationDrafts={communicationDrafts} setCommunicationDrafts={setCommunicationDrafts}
         me={me} students={students} selectedStudentId={studentId} conversations={conversations}
         bindLostIds={bindLostIds} sessionDead={sessionDead} activeId={chatActiveId} drafts={chatDrafts}
         onPlayVideo={(id, target) => { if (id === studentId) setChatVideoIntent({ studentId: id, target }) }}
@@ -1320,7 +1328,10 @@ export function PlanWorkspace({ onLogout, me }: Props) {
         onOpenPlan={(id, target) => target ? openExerciseNote(id, target) : openStudentEditor(id)} onDraftChange={updateChatDraft}
         onConversationsChanged={applyConversations} onReadStateApplied={applyReadState}
         onBindLost={id => setBindLostIds(prev => new Set(prev).add(id))} onSessionExpired={() => setSessionDead(true)}
+      />)}
+        suspended={viewSwitching}
       />
+
       {viewSwitching && (
         <div
           data-testid="view-switch-shield"

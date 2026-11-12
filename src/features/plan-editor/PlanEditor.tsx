@@ -1,3 +1,5 @@
+import type { CommunicationContext } from '../chat/EditorChat'
+import type { PreparedAnnotation } from '../chat/CommunicationComposer'
 import type { ChatExerciseRefV1 } from '../../api/types'
 import { clearEditedDoubts, activeImportDoubts, countImportDoubts, withoutImportDoubts } from './import/doubts'
 import { useCallback, useEffect, useMemo, useRef, useState, useImperativeHandle, type Ref } from 'react'
@@ -129,6 +131,11 @@ export interface ExerciseNoteHandle {
   open: (target: ChatExerciseRefV1) => boolean
 }
 export interface PlanEditorProps {
+  renderCommunication?: (context: CommunicationContext) => React.ReactNode
+  communicationOpen?: boolean
+  onCommunicationOpenChange?: (open: boolean) => void
+  onAnnotationPrepared?: (videoId: string, image: PreparedAnnotation) => void
+
   exerciseNoteRef?: Ref<ExerciseNoteHandle>
   dayIntent?: PlanDayIntent | null
   coachId?: string
@@ -3196,7 +3203,7 @@ export function PlanEditor(props: PlanEditorProps) {
             />
           </div>
         </div>
-        <BlockHistory student={props.student} onStudentChanged={props.onStudentChanged} onBeforeUnbind={confirmLeave} readOnly={studentEnded} datesFailed={setLogsFailed} onRetryDates={() => setSetLogsRetry(value => value + 1)} days={dayFeedback.days} feedbackFailed={studentFeedback.failed} feedbackLoaded={!!studentFeedback.items && !studentFeedback.failed}
+        <BlockHistory renderCommunication={props.renderCommunication} communicationOpen={props.communicationOpen} onCommunicationOpenChange={props.onCommunicationOpenChange} onAnnotationPrepared={props.onAnnotationPrepared} feedbackItems={studentFeedback.items} student={props.student} onStudentChanged={props.onStudentChanged} onBeforeUnbind={confirmLeave} readOnly={studentEnded} datesFailed={setLogsFailed} onRetryDates={() => setSetLogsRetry(value => value + 1)} days={dayFeedback.days} feedbackFailed={studentFeedback.failed} feedbackLoaded={!!studentFeedback.items && !studentFeedback.failed}
           onRetryFeedback={studentFeedback.refresh} onFeedbackSent={item => { studentFeedback.append(item); if (studentFeedback.failed) void studentFeedback.refresh() }} onRefreshFeedback={studentFeedback.refresh}
           onOpenDay={openFeedbackDay} hoveredDayId={hoveredFeedbackDay} onHoverDay={setHoveredFeedbackDay}
           videos={props.videos} entries={videoFeedback.entries} feedback={feedback} onFeedbackChange={changeFeedback}
