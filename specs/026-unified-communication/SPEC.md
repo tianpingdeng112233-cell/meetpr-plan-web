@@ -1,6 +1,6 @@
 # 026 — Coach editor communication
 
-Status: InProgress. Owner: Codex, directly authorized by David on 2026-11-12 to implement and release the approved HTML. David explicitly waived the Opus handoff for this task. Reference: [approved HTML](design/final.html).
+Status: Released (CN web, 2026-11-12). Owner: Codex, directly authorized by David on 2026-11-12 to implement and release the approved HTML. David explicitly waived the Opus handoff for this task. Reference: [approved HTML](design/final.html).
 
 ## Scope and acceptance
 
