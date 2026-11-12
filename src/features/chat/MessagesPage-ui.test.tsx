@@ -67,6 +67,7 @@ const setCardMessage = (overrides: Partial<ChatMessage> = {}) => message({
 })
 
 function Harness({
+  visible = true, timeline,
   initial = [conversation()],
   students = [{ id: 'student', display_name: '王晨曦', status: 'active' as const, evaluation: null }],
   initialStudentId = 'student',
@@ -76,6 +77,8 @@ function Harness({
   onPlayVideo = vi.fn(),
   pendingVideoCounts = {},
 }: {
+  visible?: boolean
+  timeline?: MessagesPageProps['timeline']
   initial?: ChatConversation[] | null
   students?: { id: string; display_name: string; status: 'active'; evaluation: null }[]
   initialStudentId?: string
@@ -95,7 +98,7 @@ function Harness({
       : item) ?? []
   ))
   return <div data-selected-student={selectedStudentId}>
-    <MessagesPage
+    <MessagesPage visible={visible} timeline={timeline}
       me={me}
       students={students}
       selectedStudentId={selectedStudentId}
@@ -810,4 +813,27 @@ describe('MessagesPage', () => {
       setIndex: 0,
     })
   })
+  it('026 interleaves feedback with chat and never marks an in-flight load read after hiding', async () => {
+    let finish!: (value: unknown) => void
+    chatApi.getMessages.mockImplementationOnce(() => new Promise(resolve => { finish = resolve }))
+    const timeline = [
+      { id: 'fb-after', created_at: '2026-07-22T11:00:00.000Z', content: <p data-feedback-test="after">later feedback</p> },
+      { id: 'fb-before', created_at: '2026-07-22T09:00:00.000Z', content: <p data-feedback-test="before">earlier feedback</p> },
+    ]
+    await act(async () => { root.render(<Harness timeline={timeline} />); await settle() })
+    await act(async () => { root.render(<Harness timeline={timeline} visible={false} />); await settle() })
+    await act(async () => { finish({ messages: [message()], meta: { other_last_read: null, has_more: false } }); await settle() })
+    expect(chatApi.markConversationRead).not.toHaveBeenCalled()
+    const content = host.querySelector('.chat-thread')!.textContent!
+    expect(content.indexOf('earlier feedback')).toBeLessThan(content.indexOf('请看一下动作'))
+    expect(content.indexOf('请看一下动作')).toBeLessThan(content.indexOf('later feedback'))
+  })
+
+  it('026 preserves server sequence for chat messages sharing a timestamp', async () => {
+    chatApi.getMessages.mockResolvedValue({ messages: [message({ id: 'z', seq: 1, body: 'first sequence' }), message({ id: 'a', seq: 2, body: 'second sequence' })], meta: { other_last_read: null, has_more: false } })
+    await act(async () => { root.render(<Harness timeline={[{ id: 'fb', created_at: '2026-07-22T10:00:00.000Z', content: <p>feedback</p> }]} />); await settle() })
+    const content = host.querySelector('.chat-thread')!.textContent!
+    expect(content.indexOf('first sequence')).toBeLessThan(content.indexOf('second sequence'))
+  })
+
 })

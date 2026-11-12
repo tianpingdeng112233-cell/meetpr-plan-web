@@ -148,6 +148,13 @@ const hantAuth = {
 } as const satisfies Translations<typeof zhAuth>
 
 const hantBlock = {
+    finishAnnotation: "\u8ACB\u5148\u5C07\u6A19\u8A3B\u653E\u5165\u8F38\u5165\u5340\uFF0C\u6216\u53D6\u6D88\u6A19\u8A3B",
+    enterHint: "Enter \u50B3\u9001 \u00B7 Shift Enter \u63DB\u884C",
+    communication: "\u6E9D\u901A", collapseCommunication: "\u6536\u8D77\u5074\u6B04", expandCommunication: "\u5C55\u958B\u5074\u6B04",
+    previousVideoDay: "\u524D\u4E00\u5929", nextVideoDay: "\u5F8C\u4E00\u5929", previousVideo: "\u4E0A\u4E00\u689D\u5F71\u7247", nextVideo: "\u4E0B\u4E00\u689D\u5F71\u7247",
+    viewed: "\u5DF2\u770B", toWatch: "\u5F85\u770B", replying: "\u56DE\u8986\u4E2D", collapseVideos: "\u6536\u8D77", expandVideos: (n: number) => `\u5C55\u958B\u5168\u90E8 ${n} \u689D`,
+    stageAnnotation: "\u653E\u5165\u8F38\u5165\u5340", removeImage: "\u79FB\u9664\u5716\u7247", cancelVideoReply: "\u53D6\u6D88\u5F71\u7247\u5F15\u7528",
+    legacyDayFeedback: "\u6574\u65E5\u53CD\u994B \u00B7 \u6B77\u53F2\u8A18\u9304", sendPartsFailed: "\u90E8\u5206\u5167\u5BB9\u50B3\u9001\u5931\u6557\uFF0C\u672A\u50B3\u9001\u7684\u5167\u5BB9\u5DF2\u4FDD\u7559\uFF0C\u53EF\u91CD\u8A66",
     athleteRpe: "\u5B78\u54E1 RPE", coachRpe: "\u6559\u7DF4 RPE", calibrateRpe: "\u6821\u6E96", clearCalibration: "\u6E05\u9664",
     drawLine: "\u756B\u7DDA", drawLineCompact: "\u756B\u7DDA", addMarker: "\u6253\u9EDE",
     showActuals: "\u986F\u793A\u5BE6\u969B", prescription: (value: string) => `\u8655\u65B9 ${value}`,

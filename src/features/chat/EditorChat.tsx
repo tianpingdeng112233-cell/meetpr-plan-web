@@ -1,45 +1,47 @@
-import { useEffect, useState, type RefObject } from 'react'
 import MessagesPage, { type MessagesPageProps } from './MessagesPage'
 import { findChatVideo, parseSetRefMessage } from './setRef'
 import type { FeedbackEntry } from '../plan-editor/feedbackModel'
-import { fmt, S } from '../../i18n/strings'
+import { fmt, S, resolveLocale } from '../../i18n/strings'
+import type { CoachFeedbackResponse } from '../../api/types'
+import { CommunicationComposer, type CommunicationDrafts } from './CommunicationComposer'
+import type { Dispatch, SetStateAction } from 'react'
+import { videoReference } from './VideoQueue'
 
-interface Props extends MessagesPageProps {
+export interface CommunicationContext {
+  communicationVisible?: boolean
   entries: readonly FeedbackEntry[]
-  open: boolean
-  onOpenChange: (open: boolean) => void
-  editor: RefObject<HTMLElement>
+  active?: FeedbackEntry
+  feedbackItems: readonly CoachFeedbackResponse[]
+  onCancelVideo: () => void
+  onFeedbackSent: (item: CoachFeedbackResponse) => void
+  onOpenEntry: (entry: FeedbackEntry) => void
+  readOnly: boolean
+}
+interface Props extends MessagesPageProps, CommunicationContext {
+  communicationDrafts: CommunicationDrafts
+  setCommunicationDrafts: Dispatch<SetStateAction<CommunicationDrafts>>
 }
 
-/** The editor owns selection and persistence; the existing thread owns chat delivery. */
-export function EditorChat({ open, onOpenChange, editor, entries, ...messages }: Props) {
-  const [right, setRight] = useState(300)
-  // A passive effect: the editor ref sits on our parent and is attached only after child layout effects run.
-  useEffect(() => {
-    const element = editor.current
-    if (!element) return
-    const place = () => {
-      const anchor = element.querySelector('.history-player') ?? element.querySelector('[data-block-history]')
-      const left = anchor?.getBoundingClientRect().left
-      const next = left == null ? 20 : Math.max(20, window.innerWidth - left + 20)
-      setRight(current => current === next ? current : next)
-    }
-    place()
-    // Covers rail collapse, player mount/close, and its viewport-relative position.
-    const observer = new MutationObserver(place)
-    observer.observe(element, { subtree: true, childList: true, attributes: true, attributeFilter: ['class', 'style'] })
-    window.addEventListener('resize', place)
-    window.addEventListener('scroll', place, true)
-    return () => { observer.disconnect(); window.removeEventListener('resize', place); window.removeEventListener('scroll', place, true) }
-  }, [editor])
-  const student = messages.students.find(student => student.id === messages.selectedStudentId)
-  const unread = messages.conversations?.find(item => item.other_party.id === messages.selectedStudentId)?.unread_count ?? 0
-  return <aside className="editor-chat" style={{ right, bottom: open ? 44 : 48 }} aria-label={S.chat.messages}>
-    {open ? <section className="editor-chat-window" aria-label={student?.display_name}>
-      <header className="editor-chat-head"><b>{student?.display_name}</b><span>{S.common.student}</span>
-        <button type="button" aria-label={S.chat.collapse} onClick={() => onOpenChange(false)}>⌄</button>
-      </header>
-      <MessagesPage key={messages.selectedStudentId} {...messages} students={messages.students.filter(student => student.bond_status !== 'ended')} floating renderVideoCapsule={message => {
+export function EditorChat({ communicationVisible = true, entries, active, feedbackItems, onCancelVideo, onFeedbackSent, onOpenEntry, readOnly, communicationDrafts, setCommunicationDrafts, ...messages }: Props) {
+  const timeline = [...feedbackItems].sort((a, b) => a.posted_at.localeCompare(b.posted_at)).map(item => {
+    const entry = entries.find(entry => entry.video.id === item.video_id)
+    const label = entry ? videoReference(entry) : `${item.day_date ?? ''} · ${item.video_id || item.plan_exercise_id ? S.block.feedback : S.block.legacyDayFeedback}`
+    return { id: `feedback:${item.id}`, created_at: item.posted_at, content: <article className="chat-message mine communication-feedback" data-feedback-id={item.id}>
+      <div className="chat-message-meta">{S.chat.me} · {new Date(item.posted_at).toLocaleString(resolveLocale(), { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</div>
+      <div className="chat-bubble mine"><button type="button" disabled={!entry} onClick={() => entry && onOpenEntry(entry)}>{label}</button><p>{item.text}</p></div>
+      <small className="chat-send-state">{item.read_at ? S.block.feedbackRead : S.block.feedbackUnread}</small>
+    </article> }
+  })
+  return <div className="editor-communication">
+    <MessagesPage key={messages.selectedStudentId} {...messages} floating visible={communicationVisible} timeline={timeline}
+      renderComposer={(conversation, disabled) => <CommunicationComposer studentId={messages.selectedStudentId} active={active}
+        drafts={communicationDrafts} setDrafts={setCommunicationDrafts} disabled={disabled || readOnly} conversationId={conversation?.id ?? null}
+        onCancelVideo={onCancelVideo} onFeedbackSent={onFeedbackSent}
+        onConversationOpened={conversation => {
+          messages.onConversationsChanged(previous => [conversation, ...previous.filter(item => item.id !== conversation.id)])
+          messages.onActiveIdChange(conversation.id)
+        }} />}
+      renderVideoCapsule={message => {
         const parsed = parseSetRefMessage(message)
         if (!parsed || !message.video_url) return undefined
         const ref = parsed.setRef
@@ -53,10 +55,6 @@ export function EditorChat({ open, onOpenChange, editor, entries, ...messages }:
           <span className="chat-video-caption"><b>{position}{name}</b><small>{S.video.setNumber(ref.set_number)} · {ref.weight_kg ?? '—'}×{ref.reps ?? '—'}{ref.rpe ? ` @${ref.rpe}` : ''}</small></span>
           {video?.viewed_at === null && <em>{S.chat.unwatchedVideo}</em>}
         </button>
-      }} />
-    </section> : <button type="button" className="editor-chat-toggle" aria-label={`${S.chat.expand}${unread ? ` · ${S.chat.unreadCount(unread)}` : ''}`} onClick={() => onOpenChange(true)}>
-      <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true"><path d="M20 11.5a8 8 0 0 1-8 8 9 9 0 0 1-3.6-.8L4 20l1.3-4.4A8 8 0 1 1 20 11.5Z" /></svg>
-      {unread > 0 && <span>{unread}</span>}
-    </button>}
-  </aside>
+}} />
+  </div>
 }

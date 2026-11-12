@@ -3785,3 +3785,7 @@ textarea {
 .exercise-ref-card p { margin: 6px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; }
 .exercise-ref-card:hover, .exercise-ref-card:focus-visible { border-color: var(--ink); }
 .exercise-ref-card:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+
+.student-rail-content { display:contents; }
+.student-rail-content[hidden] { display:none; }
+.student-rail-content > input { min-width:0; margin:0 10px 10px; padding:9px 8px; font:12px var(--font-sans); border:1px solid var(--bd); border-radius:7px; color:var(--txt); background:var(--card-bg); }

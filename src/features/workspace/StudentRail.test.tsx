@@ -18,6 +18,7 @@ it('groups training states, marks the current student, and shows collapsed ended
   const select = vi.fn()
   try {
     await act(async () => root.render(<StudentRail students={students} currentStudentId="done" onSelect={select} />))
+    await act(async () => host.querySelector('aside')!.dispatchEvent(new MouseEvent('mouseover', { bubbles: true })))
     expect([...host.querySelectorAll('h3')].map(el => el.textContent)).toEqual(['今天已完成', '今天有安排', '今天休息'])
     expect(host.querySelector('[aria-current=true]')?.textContent).toContain('小王')
     const endedToggle = [...host.querySelectorAll('button')].find(el => el.textContent?.includes('已解绑 · 1'))!
@@ -43,10 +44,24 @@ it('reveals the selected ended student and still permits manually collapsing tha
   const student: CoachStudent = { id: 'ended', display_name: '老学员', status: 'active', evaluation: null, bond_status: 'ended', ended_at: '2026-11-01T12:00:00Z' }
   try {
     await act(async () => root.render(<StudentRail students={[student]} currentStudentId="ended" onSelect={vi.fn()} />))
+    await act(async () => host.querySelector('aside')!.dispatchEvent(new MouseEvent('mouseover', { bubbles: true })))
     expect(host.querySelector('[aria-current=true]')?.textContent).toContain('老学员')
     const toggle = host.querySelector<HTMLButtonElement>('.student-rail-ended-toggle')!
     expect(toggle.getAttribute('aria-expanded')).toBe('true')
     await act(async () => toggle.click())
     expect(toggle.getAttribute('aria-expanded')).toBe('false')
   } finally { act(() => root.unmount()); vi.unstubAllGlobals() }
+})
+
+it('starts compact, opens on hover and collapses when the pointer leaves', async () => {
+  const host = document.createElement('div'); document.body.append(host); const root = createRoot(host)
+  try {
+    await act(async () => root.render(<StudentRail students={[]} currentStudentId="" onSelect={vi.fn()} />))
+    const rail = host.querySelector('aside')!
+    expect(rail.classList.contains('collapsed')).toBe(true)
+    await act(async () => rail.dispatchEvent(new MouseEvent('mouseover', { bubbles: true })))
+    expect(rail.classList.contains('collapsed')).toBe(false)
+    await act(async () => rail.dispatchEvent(new MouseEvent('mouseout', { bubbles: true, relatedTarget: document.body })))
+    expect(rail.classList.contains('collapsed')).toBe(true)
+  } finally { act(() => root.unmount()); host.remove() }
 })
