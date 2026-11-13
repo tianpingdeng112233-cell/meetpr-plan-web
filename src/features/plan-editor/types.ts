@@ -180,6 +180,8 @@ export interface DayCol {
   } | null
   /** Legacy compatibility marker. Never use as the source of truth; derive rest from rows. */
   rest: boolean
+  /** Explicit type; absent only on legacy snapshots and unplanned slots. */
+  dayType?: 'training' | 'rest'
   rows: ExerciseRow[]
   /** Unsaved mixed-day deletions whose sort slots may be reused immediately by new rows. */
   releasedSortOrders?: number[]
@@ -197,8 +199,8 @@ export interface Week {
 }
 
 /** The only authoritative rest-day rule across rendering and data paths. */
-export function isRestDay(day: Pick<DayCol, 'rows'>): boolean {
-  return day.rows.length === 0
+export function isRestDay(day: Pick<DayCol, 'rows' | 'dayType'>): boolean {
+  return day.dayType ? day.dayType === 'rest' : day.rows.length === 0
 }
 
 export type ColKey = 'name' | 'sets' | 'reps' | 'int' | 'weight' | 'note'

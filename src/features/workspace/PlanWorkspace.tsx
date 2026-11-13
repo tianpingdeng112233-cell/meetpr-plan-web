@@ -1188,6 +1188,7 @@ export function PlanWorkspace({ onLogout, me }: Props) {
         planStartDate={loaded?.plan.start_date}
         planUpdatedAt={loaded?.plan.updated_at}
         planStatus={loaded?.plan.status}
+        restDaysEnabled={loaded?.plan.rest_days_enabled === true}
         totalShiftDays={loaded?.plan.total_shift_days}
         latestShift={loaded?.plan.latest_shift}
         onPlanRefreshed={catalog ? (plan) => {

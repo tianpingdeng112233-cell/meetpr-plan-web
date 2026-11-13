@@ -1,8 +1,8 @@
-import type { ExerciseRow } from './types'
+import type { DayCol, ExerciseRow } from './types'
 
 export type EditorClipboard = { text: string } & (
-  | { kind: 'row' | 'day'; rows: ExerciseRow[] }
-  | { kind: 'days'; days: { offset: number; rows: ExerciseRow[] }[] }
+  | { kind: 'row' | 'day'; rows: ExerciseRow[]; dayType?: DayCol['dayType'] }
+  | { kind: 'days'; days: { offset: number; rows: ExerciseRow[]; dayType?: DayCol['dayType'] }[] }
 )
 
 const STORAGE_KEY = 'meetpr.planEditor.clipboard'
@@ -50,7 +50,7 @@ function parseClipboard(raw: string | null): EditorClipboard | null {
     const content = value.content
     if (typeof content.text !== 'string') return null
     if ((content.kind === 'row' || content.kind === 'day') && isRows(content.rows)) {
-      return { kind: content.kind, text: content.text, rows: content.rows }
+      return { kind: content.kind, text: content.text, rows: content.rows, ...(content.dayType === 'rest' || content.dayType === 'training' ? { dayType: content.dayType } : {}) }
     }
     if (content.kind === 'days' && Array.isArray(content.days)
       && content.days.every(day => isRecord(day) && Number.isInteger(day.offset)

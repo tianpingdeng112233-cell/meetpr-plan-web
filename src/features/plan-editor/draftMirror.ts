@@ -54,6 +54,7 @@ function isWeek(value: unknown): value is Week {
   return value.days.every((day) => {
     if (!isRecord(day) || typeof day.dow !== 'number' || typeof day.dowLabel !== 'string'
       || typeof day.dateLabel !== 'string' || typeof day.rest !== 'boolean'
+      || (day.dayType !== undefined && day.dayType !== 'training' && day.dayType !== 'rest')
       || !Array.isArray(day.rows)) return false
     if (day.releasedSortOrders !== undefined
       && (!Array.isArray(day.releasedSortOrders) || !day.releasedSortOrders.every((item) => typeof item === 'number'))) return false
@@ -113,6 +114,7 @@ function canonicalContent(content: DraftMirrorContent, preserveEmptyDays = true)
       ...(week.importDoubts?.length ? { importDoubts: week.importDoubts } : {}),
       days: week.days.map((day) => ({
         dow: day.dow,
+        ...(day.dayType ? { dayType: day.dayType } : {}),
         rest: preserveEmptyDays && !day.rest ? false : isRestDay(day),
         rows: day.rows.map((row) => {
           const explicitPctAnchor = row.mode !== 'bodyweight'

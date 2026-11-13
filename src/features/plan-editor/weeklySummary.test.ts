@@ -125,3 +125,9 @@ describe('weekly summary', () => {
     expect(compareWeekMetric(0, 0)).toEqual({ direction: 'flat', percent: 0 })
   })
 })
+
+it('excludes retained rest prescriptions from weekly workload', () => {
+  const resting = week([row('sq')])
+  resting.days[0].dayType = 'rest'
+  expect(summarizeWeek(resting, () => ({ exerciseType: 'main_lift', mainLiftFamily: 'squat' })).totalSets).toBe(0)
+})

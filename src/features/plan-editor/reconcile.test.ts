@@ -1672,3 +1672,33 @@ describe('力竭 reps round trip', () => {
     expect(reread[0].days[0].rows[0].reps).toBe('力竭')
   })
 })
+
+it('saves a pure rest switch without replacing retained IDs or opaque sets', async () => {
+  const original = { ...serverDay([richerPerSetExercise()]), is_rest: false }
+  const server = { ...serverPlan([original]), rest_days_enabled: true }
+  vi.mocked(plans.getPlan).mockResolvedValue(server)
+  vi.mocked(plans.batchDays).mockResolvedValue({ ...server, days: [{ ...original, is_rest: true }] })
+  const weeks = mapPlanToWeeks(server, new Map())
+  weeks[0].days[0].dayType = 'rest'
+  const result = await reconcilePlan('p', weeks)
+  expect(plans.batchDays).toHaveBeenCalledWith('p', { delete_day_ids: [], upsert_days: [], day_types: [{ day_id: 'day1', is_rest: true }] })
+  expect(result.weeks[0].days[0].rows[0].opaqueSets).toEqual(weeks[0].days[0].rows[0].opaqueSets)
+  expect(result.weeks[0].days[0].serverDayId).toBe('day1')
+})
+
+it('bounds pure type changes to at most 100 per request for a long plan', async () => {
+  vi.clearAllMocks()
+  const days = Array.from({ length: 120 }, (_, index) => ({ ...serverDay([], `day-${index}`), is_rest: true, week_number: Math.floor(index / 7) + 1, day_of_week: index % 7 + 1 }))
+  let live = { ...serverPlan(days, 'draft'), plan_weeks: 18, rest_days_enabled: true }
+  vi.mocked(plans.getPlan).mockImplementation(async () => structuredClone(live))
+  vi.mocked(plans.batchDays).mockImplementation(async (_id, body) => {
+    expect(body.day_types!.length).toBeLessThanOrEqual(100)
+    live = { ...live, days: live.days.map(day => ({ ...day, is_rest: body.day_types?.find(change => change.day_id === day.id)?.is_rest ?? day.is_rest })) }
+    return structuredClone(live)
+  })
+  const weeks = mapPlanToWeeks(live, new Map())
+  for (const week of weeks) for (const day of week.days) if (day.serverDayId) { day.dayType = 'training'; day.rest = false }
+  await reconcilePlan('p', weeks)
+  expect(plans.batchDays).toHaveBeenCalledTimes(2)
+  expect(live.days.every(day => !day.is_rest)).toBe(true)
+})

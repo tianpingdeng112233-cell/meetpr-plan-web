@@ -16,7 +16,7 @@ import { ApiException } from '../../api/client'
 import { clearDayDeletionIntent, loadDayDeletionIntent, saveDayDeletionIntent, type ExplicitDayDeletion } from './dayDeletionIntent'
 import { useBlockLayout } from './blockLayout'
 import { BlockGrid } from './components/BlockGrid'
-import { blockFillTargets, insertBlockDay, deleteBlockDay, blockDayDeletionLocked, isBlockTrainingDay, buildBlockGrid, changeBlockPattern, blockTargetDay, fillBlockDays, changeBlockDate, changeBlockWeekday, type BlockAddress } from './blockGridModel'
+import { switchBlockDayType, isBlockOccupiedDay, blockFillTargets, insertBlockDay, deleteBlockDay, blockDayDeletionLocked, isBlockTrainingDay, buildBlockGrid, changeBlockPattern, blockTargetDay, fillBlockDays, changeBlockDate, changeBlockWeekday, type BlockAddress } from './blockGridModel'
 import { NewPlanDialog } from '../workspace/PlanDialogs'
 import { loadBlockExtraWeekdays, saveBlockExtraWeekdays, loadBlockWeekdays, saveBlockWeekdays } from '../workspace/blockPlanSettings'
 import { deriveDayFeedback, deriveVideoFeedback, type FeedbackDay, type FeedbackEntry } from './feedbackModel'
@@ -131,6 +131,7 @@ export interface ExerciseNoteHandle {
   open: (target: ChatExerciseRefV1) => boolean
 }
 export interface PlanEditorProps {
+  restDaysEnabled?: boolean
   renderCommunication?: (context: CommunicationContext) => React.ReactNode
   communicationOpen?: boolean
   onCommunicationOpenChange?: (open: boolean) => void
@@ -224,7 +225,7 @@ function emptyTrainingDays(weeks: Week[], start: string | null) {
 
 function mirrorContent(weeks: Week[], planStartDate: string | null, weeksCount = weeks.length): DraftMirrorContent {
   return { weeks: weeks.map(week => ({ ...week, days: week.days.map(day => (
-    day.rest && !day.rows.length ? { ...day, serverDayId: null } : day
+    !day.dayType && day.rest && !day.rows.length ? { ...day, serverDayId: null } : day
   )) })), planStartDate, weeksCount }
 }
 
@@ -284,7 +285,7 @@ export function findIssueRows(wks: Week[]): IssueRow[] {
 }
 
 type WeeksUpdate = Week[] | ((prev: Week[]) => Week[])
-interface DayClipboard { rows: ExerciseRow[] }
+interface DayClipboard { rows: ExerciseRow[]; dayType?: DayCol['dayType'] }
 
 function cloneRow(row: ExerciseRow, prefix: string, index: number): ExerciseRow {
   const source = materializeIntensityRow(row)
@@ -307,7 +308,7 @@ function cloneRows(rows: ExerciseRow[], prefix: string): ExerciseRow[] {
 }
 
 function cloneDayClipboard(day: DayCol): DayClipboard {
-  return { rows: cloneRows(day.rows, 'clip') }
+  return { rows: cloneRows(day.rows, 'clip'), dayType: day.dayType }
 }
 
 function dayDisplay(week: Week, day: DayCol): string {
@@ -582,6 +583,7 @@ export function PlanEditor(props: PlanEditorProps) {
   const pendingPlanStart = useRef<string | null>(null)
   const [planStartDate, setPlanStartDate] = useState<string | null>(props.planStartDate ?? null)
   // Presentation-only fallback keeps cleared Dx targets available during this edit session.
+  const showRestDays = props.restDaysEnabled === true || weeks.some(week => week.days.some(day => day.dayType === 'rest'))
   const lastBlockWeekdays = useRef(buildBlockGrid(initialWeeks, props.planStartDate).columns.filter(column => column.patternIndex !== null).map(column => column.weekday))
   const [columnWeekdays, setColumnWeekdays] = useState<Record<number, number>>(() => Object.fromEntries((loadBlockWeekdays(props.currentPlanId) ?? []).map((day, dx) => [dx, day])))
   const [settingsOpen, setSettingsOpen] = useState(false)
@@ -795,7 +797,7 @@ export function PlanEditor(props: PlanEditorProps) {
   const redoDeletedDaysRef = useRef<TrackedDayDeletion[][]>([])
   const requestedDeletedDayIds = (snapshot: Week[]) => deletedDaysRef.current.filter(deleted => {
     const day = snapshot.find(week => week.num === deleted.weekNumber)?.days.find(day => day.dow === deleted.dow)
-    return !day || (day.rest && !day.rows.length)
+    return !day || (!day.dayType && day.rest && !day.rows.length)
   }).flatMap(deleted => deleted.id ? [deleted.id] : [])
   const nameComposingRef = useRef(false)
   const suppressDayClickRef = useRef(false)
@@ -926,7 +928,7 @@ export function PlanEditor(props: PlanEditorProps) {
       historyDeletedDaysRef.current = [...historyDeletedDaysRef.current.slice(-49), deletedDaysRef.current]
       deletedDaysRef.current = [...deletedDaysRef.current, ...deleted].filter(removal => {
         const day = next.find(week => week.num === removal.weekNumber)?.days.find(day => day.dow === removal.dow)
-        return !day || (day.rest && !day.rows.length)
+        return !day || (!day.dayType && day.rest && !day.rows.length)
       })
       redoDeletedDaysRef.current = []
       redoRef.current = []
@@ -1057,17 +1059,20 @@ export function PlanEditor(props: PlanEditorProps) {
             // Old v3 snapshots normalized existing empty days to rest:true but
             // retained their identity. New explicit deletions have no identity.
             const keepLegacyEmpty = !day.rows.length && !!day.serverDayId && !!mirroredDay.serverDayId
-            const removing = mirroredDay.rest && !mirroredDay.rows.length
-            if (removing && locked) return day
+            const removing = !mirroredDay.dayType && mirroredDay.rest && !mirroredDay.rows.length
+            const explicitlyDeleted = removing && restoredDeletions.some(deleted => deleted.id === day.serverDayId)
+            const restoredType = explicitlyDeleted ? undefined : mirroredDay.dayType ?? day.dayType
+            if (locked && (removing || restoredType !== day.dayType)) return day
             // A mirror alone is not proof of an explicit Delete action. Without
             // this device's matching intent, keep a server empty day for review.
             if (removing && !day.rows.length && day.serverDayId
               && !restoredDeletions.some(deleted => deleted.id === day.serverDayId)) return day
             return {
               ...day,
+              dayType: restoredType,
               rows: mirroredDay.rows,
               releasedSortOrders: mirroredDay.releasedSortOrders,
-              rest: keepLegacyEmpty && removing ? false : mirroredDay.rest,
+              rest: restoredType ? restoredType === 'rest' : keepLegacyEmpty && removing ? false : mirroredDay.rest,
               // An empty/rest snapshot explicitly removes this day. Live history
               // remains authoritative and cannot be deleted by restoring a mirror.
               serverDayId: removing && !keepLegacyEmpty ? null : day.serverDayId,
@@ -1539,6 +1544,7 @@ export function PlanEditor(props: PlanEditorProps) {
         if (removed.serverSortOrder != null) released.add(removed.serverSortOrder)
         return {
           ...d,
+          ...(props.restDaysEnabled ? { dayType: d.dayType ?? 'training' as const, rest: d.dayType === 'rest' } : {}),
           releasedSortOrders: [...released].sort((a, b) => a - b),
           rows: d.rows.filter((r) => r.id !== rowId),
         }
@@ -1775,7 +1781,7 @@ export function PlanEditor(props: PlanEditorProps) {
       ...wk,
       days: wk.days.map((day) => {
         if (day.dow !== sel.dow) return day
-        return { ...day, rest: false, rows: (['main', 'aux'] as const).flatMap(tier => [...day.rows.filter(row => rowTier(row) === tier), ...inserted.filter(row => rowTier(row) === tier)]) }
+        return { ...day, rest: false, dayType: 'training' as const, rows: (['main', 'aux'] as const).flatMap(tier => [...day.rows.filter(row => rowTier(row) === tier), ...inserted.filter(row => rowTier(row) === tier)]) }
       }),
     }))
     setDaySelection(singleDaySelection(sel))
@@ -1825,6 +1831,12 @@ export function PlanEditor(props: PlanEditorProps) {
       return
     }
 
+    const sources = clipboard?.kind === 'days' ? clipboard.days : clipboard?.kind === 'day' ? [clipboard] : []
+    if (!props.restDaysEnabled && sources.some(source => source.dayType === 'rest')) { setStatusText(S.editor.restUnavailable); return }
+    const pasteDay = (day: DayCol, source: DayClipboard) => {
+      if (blockDayDeletionLocked(day) && source.dayType === 'rest') return day
+      return { ...replaceUnlockedRows(day, source.rows), dayType: source.dayType ?? (props.restDaysEnabled ? 'training' as const : undefined), rest: source.dayType === 'rest' }
+    }
     if (clipboard?.kind === 'days') {
       const { requiredWeeks, inRange, skipped } = placePlanDayOffsets(clipboard.days, sel, weeks)
       if (inRange.length === 0) {
@@ -1834,7 +1846,7 @@ export function PlanEditor(props: PlanEditorProps) {
       }
       const occupied = inRange.filter(({ target }) => {
         const day = weeks.find((week) => week.num === target.wnum)?.days.find((item) => item.dow === target.dow)
-        return !!day && !isRestDay(day)
+        return !!day && (day.rows.length > 0 || isBlockTrainingDay(day))
       }).length
       if (
         occupied > 0
@@ -1845,7 +1857,7 @@ export function PlanEditor(props: PlanEditorProps) {
           ? resizeWeeksForCount(prev, requiredWeeks, currentPlanStart.current ?? isoDate(new Date()))
           : prev,
         inRange,
-        (day, source) => replaceUnlockedRows(day, source.rows),
+        (day, source) => pasteDay(day, source),
       ))
       setRowSelection(singleRowSelection(null))
       setCellSelection(null)
@@ -1864,10 +1876,7 @@ export function PlanEditor(props: PlanEditorProps) {
     if (selectedDay()?.rows.length && !window.confirm(S.editor.overwriteDaysConfirm(1))) return
     setWeeksWithHistory((prev) => prev.map((wk) => wk.num !== sel.wnum ? wk : {
       ...wk,
-      days: wk.days.map((day) => day.dow !== sel.dow ? day : replaceUnlockedRows(
-        day,
-        clip.rows,
-      )),
+      days: wk.days.map((day) => day.dow !== sel.dow ? day : pasteDay(day, clip)),
     }))
     setRowSelection(singleRowSelection(null))
     const target = weeks.find((week) => week.num === sel.wnum)?.days.find((day) => day.dow === sel.dow)
@@ -2171,7 +2180,7 @@ export function PlanEditor(props: PlanEditorProps) {
         const released = [...(d.releasedSortOrders ?? [])].sort((a, b) => a - b)
         const reusable = released.shift() ?? null
         row.serverSortOrder = reusable
-        if (reusable == null) return { ...d, rest: false, rows: [...d.rows, row], releasedSortOrders: released }
+        if (reusable == null) return { ...d, rest: false, dayType: 'training' as const, rows: [...d.rows, row], releasedSortOrders: released }
         const insertAt = d.rows.findIndex((item) => (item.serverSortOrder ?? Number.MAX_SAFE_INTEGER) > reusable)
         const rows = [...d.rows]
         rows.splice(insertAt < 0 ? rows.length : insertAt, 0, row)
@@ -2186,7 +2195,7 @@ export function PlanEditor(props: PlanEditorProps) {
 
   const handleDeleteDay = () => {
     if (readOnly || !sel) return
-    const grid = buildBlockGrid(weeks, planStartDate, blockWeekdays, extraWeekdays)
+    const grid = buildBlockGrid(weeks, planStartDate, blockWeekdays, extraWeekdays, showRestDays)
     const targets = daySelection.days.size > 1 ? daySelection.days : new Set([planDayKey(sel)])
     const cells = grid.rows.flatMap(row => row.cells).filter(cell => cell.day && targets.has(planDayKey({ wnum: cell.weekNumber, dow: cell.day.dow })))
     if (!cells.length) return
@@ -2510,6 +2519,8 @@ export function PlanEditor(props: PlanEditorProps) {
         // Client-side refusals are permanent for this plan state — a generic
         // "重试" both misleads and hides the way out.
         const explain: Record<ReconciliationError['code'], [string, string]> = {
+          REST_DAYS_DISABLED: [S.editor.restUnavailable, S.editor.restUnavailable],
+          DAY_HISTORY_IMMUTABLE: [S.editor.blockDeleteLocked, S.editor.blockDeleteLocked],
           PLAN_SET_SPEC_INCOMPLETE: [S.editor.incompleteSaveTitle, S.editor.incompleteSaveDetail],
         }
         const [status, detail] = explain[error.code]
@@ -2741,15 +2752,26 @@ export function PlanEditor(props: PlanEditorProps) {
             // Edits typed during the round-trip aren't in what was pushed — keep the guards armed.
             // Extension can persist a new duration; use the acknowledged metadata
             // rather than the parent's pre-update week count for the covered hash.
-            // A published update reconciles with degrade disabled (spec 039 §1.2), so
-            // degradedRows is structurally 0 here — the pre-039 covered-mark rule stands.
-            if (res.skippedRows === 0) {
+            // Rest prescriptions may contain unfinished input. The durable tree
+            // does not cover it until both skipped and degraded counts are zero.
+            if (res.skippedRows === 0 && res.degradedRows === 0) {
               markMirrorCovered(mirrorContent(res.weeks, res.planStartDate ?? persistedPlanStart.current,
                 res.planWeeks ?? props.weeksCount))
               setRecoveryMirror(null)
             }
             applySuccessfulSave(res, savedWeeks)
-            if (res.skippedRows > 0) {
+            if (res.skippedRows > 0 || res.degradedRows > 0) {
+              // Advance the recovery timestamp past the lossy tree update, using
+              // current editor content so concurrent typing is retained too.
+              const content = mirrorContent(latestWeeks.current, currentPlanStart.current, latestWeeks.current.length || props.weeksCount)
+              remoteHasDirtyContent.current = true
+              mirrorWriter.current?.schedule(content); mirrorWriter.current?.flush()
+              remoteWriter.current?.schedule(content); remoteWriter.current?.flush()
+            }
+            if (res.degradedRows > 0) {
+              setStatusText(S.editor.restIncompleteStashed)
+              window.alert(S.editor.restIncompleteStashed)
+            } else if (res.skippedRows > 0) {
               setStatusText(S.editor.updatedStudentPlanSkipped(studentName, res.skippedRows))
               window.alert(S.editor.updatePartialAlert(studentName, res.skippedRows))
             } else {
@@ -2771,6 +2793,8 @@ export function PlanEditor(props: PlanEditorProps) {
             }
             if (error instanceof ReconciliationError) {
               const explain: Record<ReconciliationError['code'], [string, string]> = {
+          REST_DAYS_DISABLED: [S.editor.restUnavailable, S.editor.restUnavailable],
+          DAY_HISTORY_IMMUTABLE: [S.editor.blockDeleteLocked, S.editor.blockDeleteLocked],
                 PLAN_SET_SPEC_INCOMPLETE: [S.editor.incompleteSaveTitle, S.editor.incompleteUpdateDetail],
               }
               const [status, detail] = explain[error.code]
@@ -2990,11 +3014,11 @@ export function PlanEditor(props: PlanEditorProps) {
   }
   const fillBlock = (source: BlockAddress, endWeek: number) => {
     if (readOnly) return
-    const grid = buildBlockGrid(weeks, planStartDate, blockWeekdays, extraWeekdays)
+    const grid = buildBlockGrid(weeks, planStartDate, blockWeekdays, extraWeekdays, showRestDays)
     const occupied = blockFillTargets(grid, source, endWeek)
       .filter(target => blockTargetDay(grid, target, planStartDate)?.rows.length).length
     if (occupied && !window.confirm(S.editor.overwriteDaysConfirm(occupied))) return
-    setWeeksWithHistory(prev => fillBlockDays(prev, source, endWeek, planStartDate, blockWeekdays, extraWeekdays))
+    setWeeksWithHistory(prev => fillBlockDays(prev, source, endWeek, planStartDate, blockWeekdays, extraWeekdays, showRestDays))
   }
 
   return (
@@ -3072,7 +3096,7 @@ export function PlanEditor(props: PlanEditorProps) {
         <div className="scroller" ref={scrollerRef} aria-readonly={readOnly || undefined}>
           {readOnly && <div role="status" className="block-readonly">{studentEnded ? <><button disabled>{S.editor.newPlan}</button><button disabled>{S.workspace.studentRail.import}</button><span>{S.workspace.studentRail.readOnlyHint}</span></> : S.editor.historyReadOnlyBanner}</div>}
           <div ref={weeksRef}>
-            <BlockGrid layout={blockLayout} onLayout={setBlockLayout} onConfirmWeekImport={num => setWeeksWithHistory(prev => prev.map(week => week.num === num ? { ...week, importDoubts: undefined } : week))} weeks={weeks} startDate={planStartDate} weekdays={blockWeekdays} extraWeekdays={extraWeekdays} editing={editingDay}
+            <BlockGrid showRestDays={showRestDays} layout={blockLayout} onLayout={setBlockLayout} onConfirmWeekImport={num => setWeeksWithHistory(prev => prev.map(week => week.num === num ? { ...week, importDoubts: undefined } : week))} weeks={weeks} startDate={planStartDate} weekdays={blockWeekdays} extraWeekdays={extraWeekdays} editing={editingDay}
               selectedDays={daySelection.days} selectedRows={selectedRowIds} readOnly={readOnly}
               rowTier={rowTier} onClose={closeBlockEditor} onReorderRow={reorderRow} onRowDragState={setRowDragState}
               showActuals={showActuals} actualsForRow={actualsForRow} studentAddedByDay={studentAddedByDay}
@@ -3086,6 +3110,7 @@ export function PlanEditor(props: PlanEditorProps) {
               onOpen={(week, day, event) => {
                 setBlockMenu(null)
                 handleDayClick(week.num, day.dow, event)
+                if (showRestDays && isRestDay(day)) return
                 if (!event.shiftKey && !event.metaKey && !event.ctrlKey) setEditingDay({ wnum: week.num, dow: day.dow })
               }}
               onSelectRow={(week, day, rowId, modifiers) => handleSelectRow(week.num, day.dow, rowId, modifiers)}
@@ -3116,13 +3141,13 @@ export function PlanEditor(props: PlanEditorProps) {
               onFill={fillBlock}
               onWeekday={(dx, weekday) => {
                 if (!planStartDate || readOnly) return
-                const column = buildBlockGrid(weeks, planStartDate, blockWeekdays, extraWeekdays).columns[dx]
+                const column = buildBlockGrid(weeks, planStartDate, blockWeekdays, extraWeekdays, showRestDays).columns[dx]
                 const nextPattern = blockWeekdays.map((value, index) => index === column.patternIndex ? weekday : value)
                 const extras = column.patternIndex === null ? [...new Set([...extraWeekdays, weekday])].filter(day => !nextPattern.includes(day)) : extraWeekdays
                 if (!saveBlockWeekdays(props.currentPlanId, nextPattern) || !saveBlockExtraWeekdays(props.currentPlanId, extras)) { window.alert(S.block.patternFailed); return }
                 setColumnWeekdays(Object.fromEntries(nextPattern.map((value, index) => [index, value])))
                 setExtraWeekdays(extras)
-                setWeeksWithHistory(prev => changeBlockWeekday(prev, dx, weekday, planStartDate, blockWeekdays, extraWeekdays))
+                setWeeksWithHistory(prev => changeBlockWeekday(prev, dx, weekday, planStartDate, blockWeekdays, extraWeekdays, showRestDays))
                 closeBlockEditor()
               }}
               onContext={(event, week, day) => {
@@ -3140,10 +3165,10 @@ export function PlanEditor(props: PlanEditorProps) {
                           onClose: closeBlockEditor,
                           onDate: date => {
                             if (!planStartDate) return
-                            const next = changeBlockDate(weeks, { weekNumber: wk.num, dx }, date, planStartDate, blockWeekdays, extraWeekdays)
+                            const next = changeBlockDate(weeks, { weekNumber: wk.num, dx }, date, planStartDate, blockWeekdays, extraWeekdays, showRestDays)
                             if (next === weeks) { setStatusText(S.editor.blockDateUnavailable); return }
                             const moved = next.find(week => week.num === wk.num)?.days.find(candidate => candidate.rows === day.rows)
-                            const column = buildBlockGrid(weeks, planStartDate, blockWeekdays, extraWeekdays).columns[dx]
+                            const column = buildBlockGrid(weeks, planStartDate, blockWeekdays, extraWeekdays, showRestDays).columns[dx]
                             if (column.patternIndex === null) {
                               const weekday = (addDays(date, 0).getDay() + 6) % 7
                               const extras = [...new Set([...extraWeekdays, weekday])].filter(value => !blockWeekdays.includes(value))
@@ -3218,11 +3243,18 @@ export function PlanEditor(props: PlanEditorProps) {
             setPop(current => ({ ...current, visible: false }))
           }} />
       </div>
-      {blockMenu && <div className="block-context-menu" role="menu" style={{ left: blockMenu.x, top: blockMenu.y }}>
+      {blockMenu && <div className="block-context-menu" role="menu" style={{ left: Math.min(blockMenu.x, window.innerWidth - 190), top: Math.min(blockMenu.y, window.innerHeight - 235) }}>
+        <button type="button" role="menuitem" disabled={readOnly || !props.restDaysEnabled || !selectedBlockDay || deleteBlockLocked}
+          title={deleteBlockLocked ? S.editor.blockDeleteLocked : !props.restDaysEnabled ? S.editor.restUnavailable : undefined}
+          onClick={() => {
+            if (!sel || !selectedBlockDay || !props.restDaysEnabled || deleteBlockLocked) return
+            setWeeksWithHistory(prev => switchBlockDayType(prev, sel.wnum, sel.dow, isBlockTrainingDay(selectedBlockDay) ? 'rest' : 'training'))
+            closeBlockEditor(); setBlockMenu(null)
+          }}>{selectedBlockDay && isBlockTrainingDay(selectedBlockDay) ? S.editor.setRestDay : S.editor.setTrainingDay}</button>
         <button type="button" role="menuitem" onClick={() => { void copySelectedDay(); setBlockMenu(null) }}>{S.editor.blockCopy}</button>
         <button type="button" role="menuitem" disabled={readOnly} onClick={() => { if (clipboardStore.read()?.kind === 'row') void pasteSelectedRows(); else void pasteSelectedDay(); setBlockMenu(null) }}>{S.editor.blockPaste}</button>
         <button type="button" role="menuitem" disabled={readOnly} onClick={() => { handleClearDay(); setBlockMenu(null) }}>{S.editor.blockClear}</button>
-        <button type="button" role="menuitem" disabled={readOnly || !selectedBlockDay || !isBlockTrainingDay(selectedBlockDay) || deleteBlockLocked}
+        <button type="button" role="menuitem" disabled={readOnly || !selectedBlockDay || !isBlockOccupiedDay(selectedBlockDay) || deleteBlockLocked}
           title={deleteBlockLocked ? S.editor.blockDeleteLocked : undefined}
           onClick={() => { handleDeleteDay(); setBlockMenu(null) }}>{S.editor.blockDeleteDay}</button>
       </div>}

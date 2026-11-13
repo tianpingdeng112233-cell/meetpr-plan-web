@@ -1020,3 +1020,18 @@ it('keeps the expanded day open while a mouse selects bodyweight from the weight
   expect(cell(1, 0).querySelector<HTMLSelectElement>('[aria-label="重量模式"]')?.value).toBe('bodyweight')
   expect(document.querySelector('[role="listbox"]')).toBeNull()
 })
+
+it('switches rest cells in the seven-day grid and restores their bricks with continuous D numbers', () => {
+  act(() => root.render(<PlanEditor initialWeeks={fixture(1)} weeksCount={1} studentName="学员" planName="休息日" planStartDate="2026-10-19" restDaysEnabled />))
+  expect(host.querySelectorAll('[data-block-week]')).toHaveLength(7)
+  act(() => cell(1, 2).dispatchEvent(new MouseEvent('contextmenu', { bubbles: true })))
+  const rest = [...host.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')].find(button => button.textContent === '设为休息日')!
+  click(rest)
+  expect(cell(1, 2).textContent).toContain('已保留 4 个动作')
+  expect(cell(1, 2).querySelector('.block-brick')).toBeNull()
+  expect(cell(1, 4).getAttribute('aria-label')).toBe('W1 D2')
+  click(cell(1, 2).querySelector('button[data-day-menu]')!)
+  click([...host.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')].find(button => button.textContent === '设为训练日')!)
+  expect(cell(1, 2).querySelectorAll('.block-brick')).toHaveLength(4)
+  expect(cell(1, 4).getAttribute('aria-label')).toBe('W1 D3')
+})

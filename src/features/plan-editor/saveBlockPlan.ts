@@ -53,7 +53,7 @@ export async function saveBlockPlan(planId: string, weeks: Week[], onProgress?: 
 // A server empty day retained by the explicit-delete policy is still a real
 // card and must participate in review/publish checks after saving.
 function syncEmptyCards(weeks: Week[], server: PlanWithChildren): Week[] {
-  const emptyIds = new Set(server.days.filter(day => day.exercises.length === 0).map(day => day.id))
+  const emptyIds = new Set(server.days.filter(day => day.exercises.length === 0 && !day.is_rest).map(day => day.id))
   return syncPlanScheduleToWeeks(weeks, server).map(week => ({ ...week,
     days: week.days.map(day => day.serverDayId && emptyIds.has(day.serverDayId) ? { ...day, rest: false } : day),
   }))

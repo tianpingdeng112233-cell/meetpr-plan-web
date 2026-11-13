@@ -17,7 +17,7 @@ export const getStudentPlans = (studentId: string, status?: PlanStatus[]) => {
   return api.get<{ plans: PlanResponse[] }>(`/students/${studentId}/plans${q}`).then((r) => r.plans)
 }
 
-export const getPlan = (planId: string) => api.get<PlanWithChildren>(`/plans/${planId}`)
+export const getPlan = (planId: string) => api.get<PlanWithChildren>(`/plans/${planId}?include_rest_days=true`)
 
 export const createPlan = (body: CreatePlanBody) => api.post<PlanResponse>('/plans', body)
 export const patchPlan = (
@@ -53,7 +53,7 @@ export const markImportedHistory = (planId: string) =>
 // nested tree mutations
 export const deleteDay = (dayId: string) => api.del<void>(`/plans/days/${dayId}`)
 export const batchDays = (planId: string, body: BatchPlanDaysBody) =>
-  api.post<PlanWithChildren>(`/plans/${planId}/days/batch`, body)
+  api.post<PlanWithChildren>(`/plans/${planId}/days/batch?include_rest_days=true`, body)
 
 export const createExercise = (dayId: string, body: CreatePlanExerciseBody) =>
   api.post<PlanExerciseResponse>(`/plans/days/${dayId}/exercises`, body)
