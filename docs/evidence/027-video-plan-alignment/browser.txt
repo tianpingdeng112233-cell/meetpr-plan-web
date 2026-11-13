@@ -1,0 +1,18 @@
+1440 first {"gap":12,"selected":"W1 D1","scroll":0,"max":580,"lastRight":1247.5,"videoLeft":679.5,"edit":false}
+manual end {"gap":592,"selected":"W1 D1","scroll":580,"max":580,"lastRight":667.5,"videoLeft":679.5,"edit":false}
+rerender end {"gap":592,"selected":"W1 D1","scroll":580,"max":580,"lastRight":667.5,"videoLeft":679.5,"edit":false}
+last video {"gap":12,"selected":"W1 D3","scroll":580,"max":580,"lastRight":667.5,"videoLeft":679.5,"edit":false}
+1280 first {"gap":12,"selected":"W1 D1","scroll":0,"max":580,"lastRight":1173.75,"videoLeft":605.75,"edit":false}
+1280 last {"gap":12,"selected":"W1 D3","scroll":580,"max":580,"lastRight":593.75,"videoLeft":605.75,"edit":false}
+1920 first {"gap":12,"selected":"W1 D1","scroll":0,"max":860,"lastRight":1985,"videoLeft":1137,"edit":false}
+1920 last {"gap":12,"selected":"W1 D3","scroll":860,"max":860,"lastRight":1125,"videoLeft":1137,"edit":false}
+by day {"gap":12,"selected":"W1 D1","scroll":0,"max":645,"lastRight":667.5,"videoLeft":679.5,"edit":false}
+manual then left rail {"gap":262,"selected":"W1 D1","scroll":250,"max":645,"lastRight":417.5,"videoLeft":679.5,"edit":false}
+by-day manual then resize {"gap":67,"selected":"W1 D1","scroll":55,"max":645,"lastRight":612.5,"videoLeft":679.5,"edit":false}
+closed {"gap":null,"scroll":1,"max":267,"lastRight":612,"edit":false}
+single-day { visibleLeft: 180, dayLeft: 258, dayRight: 667.5, videoLeft: 679.5 }
+mouse drag + queue hover + refresh 100
+editing then last video {"gap":12,"selected":"W1 D3","scroll":580,"max":580,"lastRight":667.5,"videoLeft":679.5,"edit":false}
+by-day final week fully visible { left: 462.5, right: 667.5, visibleLeft: 180, videoLeft: 679.5 }
+collapsed right rail first {"gap":12,"selected":"W1 D1","scroll":0,"max":849,"lastRight":993.5,"videoLeft":1005.5,"edit":false}
+errors []

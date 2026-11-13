@@ -15,8 +15,10 @@ export function PortraitVideoWindow({ title, positionLabel, anchor, onClose, chi
       setPosition({ top, left: right - width, width })
     }
     place()
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(place)
+    if (anchor.current) observer?.observe(anchor.current)
     window.addEventListener('resize', place); window.addEventListener('scroll', place, true)
-    return () => { window.removeEventListener('resize', place); window.removeEventListener('scroll', place, true) }
+    return () => { observer?.disconnect(); window.removeEventListener('resize', place); window.removeEventListener('scroll', place, true) }
   }, [anchor])
   return <div className="history-player" role="dialog" aria-label={S.video.trainingVideo} style={{ ...position, maxHeight: `calc(100vh - ${position.top + 8}px)`, overflowY: 'auto' }}
     onMouseDown={event => {

@@ -7,10 +7,19 @@ const number = (value: string | null) => value == null || value.trim() === '' ||
 
 /** Render-only: all recorded attempts count, including failures and extra sets. */
 export function actualShorthand(row: (Pick<ExerciseRow, 'mode'> & Partial<ExerciseRow>) | null, actuals: readonly ActualSet[]): string {
-  if (!actuals.length) return '—'
+  const { setsAndEffort, weight } = actualShorthandParts(row, actuals)
+  return setsAndEffort + (weight == null ? '' : ` · ${weight}`)
+}
+
+/** Keep the weight separately renderable without changing the compact summary text. */
+export function actualShorthandParts(row: (Pick<ExerciseRow, 'mode'> & Partial<ExerciseRow>) | null, actuals: readonly ActualSet[]) {
+  if (!actuals.length) return { setsAndEffort: '—', weight: null }
   const sets = [...actuals].sort((a, b) => a.set_index - b.set_index)
   const reps = compact(sets.map(set => String(set.reps)))
   const rpe = compact(sets.map(set => number(set.rpe)))
   const weight = row?.mode === 'bodyweight' && sets.every(set => number(set.weight_kg) === '0') ? S.common.bodyweight : compact(sets.map(set => number(set.weight_kg)))
-  return `${sets.length}×${reps}${rpe === '—' ? '' : ` @${rpe}`}${weight === '—' && !sets.some(set => set.weight_kg === null) ? '' : ` · ${weight}`}`
+  return {
+    setsAndEffort: `${sets.length}×${reps}${rpe === '—' ? '' : ` @${rpe}`}`,
+    weight: weight === '—' && !sets.some(set => set.weight_kg === null) ? null : weight,
+  }
 }

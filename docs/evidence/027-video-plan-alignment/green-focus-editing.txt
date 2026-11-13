@@ -1,0 +1,17 @@
+> meetpr-plan-web@0.1.0 test
+> vitest run src/features/workspace/PlanWorkspace.test.tsx src/features/plan-editor/video-plan-alignment-ui.test.tsx
+
+
+ RUN  v2.1.9 /Users/david/.codex/worktrees/video-plan-alignment/meetpr-plan-web
+
+ ✓ src/features/plan-editor/video-plan-alignment-ui.test.tsx (6 tests) 1246ms
+   ✓ marks the playing day without selecting or opening it for editing, then clears on close 546ms
+   ✓ reveals a playing day covered by an expanded editor without losing the edited prescription 335ms
+ ✓ src/features/workspace/PlanWorkspace.test.tsx (76 tests) 5482ms
+   ✓ PlanWorkspace editor remount > 026 reopens communication for the same video after hiding or switching to history 532ms
+   ✓ PlanWorkspace editor remount > 019 opens the alert day from behind and marks the student viewed 332ms
+
+ Test Files  2 passed (2)
+      Tests  82 passed (82)
+   Start at  03:58:13
+   Duration  10.69s (transform 4.15s, setup 277ms, collect 6.65s, tests 6.73s, environment 1.18s, prepare 158ms)

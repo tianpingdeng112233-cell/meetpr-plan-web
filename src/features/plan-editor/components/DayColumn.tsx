@@ -444,7 +444,7 @@ function intensityPlaceholder(intensity: RowIntensity): string {
 }
 
 /** SPEC-038 §3.2: 学员实际完成 chips,渲染在目标格正下方。
- * tone-off = 超阈红,tone-ok = 阈内黄,力竭强制红,未完成灰。 */
+ * tone-off = 偏差红,tone-ok = 达标黄,力竭强制红,未完成灰。 */
 function ActualLine({ row, actuals, kind, e1rm = null, highlightedSetIndex }: {
   row?: ExerciseRow
   actuals: ActualSet[]
@@ -458,7 +458,7 @@ function ActualLine({ row, actuals, kind, e1rm = null, highlightedSetIndex }: {
   const renderChip = (set: ActualSet, added: boolean, position: number) => {
     const rpe = actualRpe(set)
     const chip = kind === 'weight'
-      ? { text: formatActualWeight(set), tone: row && !added ? actualWeightTone(row, position, set) : 'added' }
+      ? { text: formatActualWeight(set), tone: row && !added ? actualWeightTone(row, set.set_index, set) : 'added' }
       : row && !added ? actualIntensityChip(row, position, set, e1rm)
         : { text: rpe == null ? '–' : `@${rpe}`, tone: 'added' }
     const tone = set.failed ? 'off' : !set.completed ? 'missed' : chip.tone
