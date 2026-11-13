@@ -411,6 +411,7 @@ export interface PlanExerciseResponse {
   sets: PlanSetResponse[]
 }
 export interface PlanDayResponse {
+  is_rest?: boolean
   id: string
   plan_id: string
   day_of_week: number // 1..7
@@ -424,6 +425,7 @@ export interface PlanDayResponse {
   exercises: PlanExerciseResponse[]
 }
 export interface PlanWithChildren extends PlanResponse {
+  rest_days_enabled?: boolean
   days: PlanDayResponse[]
 }
 
@@ -566,12 +568,14 @@ export interface BatchPlanExerciseBody {
   sets: BatchPlanSetBody[]
 }
 export interface BatchPlanDayBody {
+  is_rest?: boolean
   week_number: number
   day_of_week: number
   sort_order: number
   exercises: BatchPlanExerciseBody[]
 }
 export interface BatchPlanDaysBody {
+  day_types?: { day_id: string; is_rest: boolean }[]
   plan_patch?: {
     name?: string
     start_date?: string

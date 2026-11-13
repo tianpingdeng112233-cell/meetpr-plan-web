@@ -89,7 +89,7 @@ export function summarizeWeek(week: Week, classifyCatalog: CatalogClassifier): W
     tonnage: 0,
   }
 
-  for (const day of week.days) for (const row of day.rows) {
+  for (const day of week.days.filter(day => day.dayType !== 'rest')) for (const row of day.rows) {
     const sets = rowSetCount(row)
     const catalog = row.exerciseId ? classifyCatalog(row.exerciseId) : null
     const isMain = catalog ? catalog.exerciseType !== 'accessory' : row.isMain

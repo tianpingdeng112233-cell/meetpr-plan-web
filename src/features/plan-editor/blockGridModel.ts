@@ -20,8 +20,8 @@ export function projectBlockGrid(grid: BlockGrid, layout: BlockLayout) {
     : { rowHeaders: weeks, columnHeaders: grid.columns, rows: grid.rows.map(row => row.cells) }
 }
 /** Calendar offsets remain storage coordinates; Dx is only a projection. */
-export function buildBlockGrid(weeks: readonly Week[], startDate?: string | null, weekdays: readonly number[] = [], extraWeekdays: readonly number[] = []): BlockGrid {
-  const days = weeks.map(week => week.days.filter(day => isBlockTrainingDay(day)).slice().sort((a, b) => {
+export function buildBlockGrid(weeks: readonly Week[], startDate?: string | null, weekdays: readonly number[] = [], extraWeekdays: readonly number[] = [], showRestDays = false): BlockGrid {
+  const days = weeks.map(week => week.days.filter(day => isBlockOccupiedDay(day)).slice().sort((a, b) => {
     if (!startDate) return a.dow - b.dow
     return recommendedDateForDay(startDate, week.num, a).localeCompare(recommendedDateForDay(startDate, week.num, b)) || a.dow - b.dow
   }))
@@ -70,6 +70,16 @@ export function buildBlockGrid(weeks: readonly Week[], startDate?: string | null
     const position = columns.findIndex(column => (column.weekday - firstWeekday + 7) % 7 > (weekday - firstWeekday + 7) % 7)
     columns.splice(position < 0 ? columns.length : position, 0, { dx: 0, weekday, patternIndex: null })
   }
+  if (showRestDays) {
+    // Calendar columns do not inherit ordinal-vote duplicates. Extra copies only
+    // exist for genuine coincident shifted days, whose identities must stay visible.
+    const calendar = Array.from({ length: 7 }, (_, weekday) => {
+      const count = Math.max(1, ...days.map((week, index) => week.filter(day => weekdayOf(day, index) === weekday).length))
+      return Array.from({ length: count }, (_, copy) => ({ dx: 0, weekday,
+        patternIndex: copy === 0 ? columns.find(column => column.weekday === weekday)?.patternIndex ?? null : null }))
+    }).flat()
+    columns.splice(0, columns.length, ...calendar)
+  }
   // Saved patterns and ordinal votes can be out of calendar order. Normalize
   // display positions only; patternIndex still addresses the original edit slot.
   columns.sort((a, b) => ((a.weekday - firstWeekday + 7) % 7) - ((b.weekday - firstWeekday + 7) % 7))
@@ -86,7 +96,8 @@ export function buildBlockGrid(weeks: readonly Week[], startDate?: string | null
     }
     // Reserve matching weekdays first; irregular legacy dates fill the remaining slots in order.
     for (const day of unmatched) cells.find(cell => !cell.day && columns[cell.dx].patternIndex !== null)!.day = day
-    for (const cell of cells) cell.dayNumber = cell.day ? days[index].indexOf(cell.day) + 1 : null
+    const training = days[index].filter(isBlockTrainingDay)
+    for (const cell of cells) cell.dayNumber = cell.day && isBlockTrainingDay(cell.day) ? training.indexOf(cell.day) + 1 : null
     return { week, cells }
   }) }
 }
@@ -102,7 +113,7 @@ export function blockTargetDay(grid: BlockGrid, address: BlockAddress, start?: s
   const startWeekday = start ? (addDays(start, 0).getDay() + 6) % 7 : 0
   const dow = (column.weekday - startWeekday + 7) % 7
   const slot = row.week.days.find(day => day.dow === dow)
-  if (slot && isBlockTrainingDay(slot)) return null
+  if (slot && isBlockOccupiedDay(slot)) return null
   if (slot) return slot
   const date = start ? addDays(start, (row.week.num - 1) * 7 + dow) : null
   return { dow, dowLabel: date ? dowLabel(date) : '', dateLabel: date ? mdLabel(date) : '', rest: true, rows: [] }
@@ -145,14 +156,14 @@ export function blockFillTargets(grid: BlockGrid, source: BlockAddress, endWeek:
     .map(row => ({ weekNumber: row.week.num, dx: source.dx }))
 }
 
-export function fillBlockDays(weeks: Week[], source: BlockAddress, endWeek: number, start?: string | null, weekdays: readonly number[] = [], extraWeekdays: readonly number[] = []): Week[] {
-  const grid = buildBlockGrid(weeks, start, weekdays, extraWeekdays)
+export function fillBlockDays(weeks: Week[], source: BlockAddress, endWeek: number, start?: string | null, weekdays: readonly number[] = [], extraWeekdays: readonly number[] = [], showRestDays = false): Week[] {
+  const grid = buildBlockGrid(weeks, start, weekdays, extraWeekdays, showRestDays)
   const sourceDay = grid.rows.find(row => row.week.num === source.weekNumber)?.cells[source.dx]?.day
   if (!sourceDay) return weeks
   return blockFillTargets(grid, source, endWeek)
     .reduce((result, target) => {
       const day = blockTargetDay(grid, target, start)
-      return day ? writeDay(result, target.weekNumber, replaceBlockDay(day, sourceDay.rows)) : result
+      return day && (sourceDay.dayType !== 'rest' || !blockDayDeletionLocked(day)) ? writeDay(result, target.weekNumber, { ...replaceBlockDay(day, sourceDay.rows), dayType: sourceDay.dayType, rest: sourceDay.dayType === 'rest' || !isBlockTrainingDay(sourceDay) }) : result
     }, weeks)
 }
 
@@ -164,23 +175,23 @@ export function pasteBlockRows(weeks: Week[], target: BlockAddress, rows: Exerci
   const ordered = (['main', 'aux'] as const).flatMap(section => [
     ...day.rows.filter(row => tier(row) === section), ...inserted.filter(row => tier(row) === section),
   ])
-  return writeDay(weeks, target.weekNumber, { ...day, rows: ordered, rest: false })
+  return writeDay(weeks, target.weekNumber, { ...day, rows: ordered, rest: false, dayType: 'training' })
 }
 
 function moveToOffset(week: Week, source: DayCol, dow: number, start: string): Week {
   if (source.dow === dow || source.completedAt || source.rows.some(row => row.hasLogs)) return week
   const target = week.days.find(day => day.dow === dow)
   // An exception changes only one cell: never swap or overwrite an occupied date.
-  if (target && isBlockTrainingDay(target)) return week
+  if (target && isBlockOccupiedDay(target)) return week
   const date = addDays(start, (week.num - 1) * 7 + dow)
-  const moved: DayCol = { ...target, dow, rows: source.rows, rest: false, releasedSortOrders: [], dowLabel: dowLabel(date), dateLabel: mdLabel(date), shiftedToDate: null, shiftBadge: null }
+  const moved: DayCol = { ...target, dow, rows: source.rows, rest: false, dayType: source.dayType, releasedSortOrders: [], dowLabel: dowLabel(date), dateLabel: mdLabel(date), shiftedToDate: null, shiftBadge: null }
   const originalDate = addDays(start, (week.num - 1) * 7 + source.dow)
-  const empty: DayCol = { ...source, serverDayId: source.rows.length ? source.serverDayId : null, dowLabel: dowLabel(originalDate), dateLabel: mdLabel(originalDate), rest: true, rows: [], releasedSortOrders: [], shiftedToDate: null, shiftBadge: null }
+  const empty: DayCol = { ...source, serverDayId: source.rows.length ? source.serverDayId : null, dowLabel: dowLabel(originalDate), dateLabel: mdLabel(originalDate), rest: true, dayType: undefined, rows: [], releasedSortOrders: [], shiftedToDate: null, shiftBadge: null }
   return { ...week, days: [...week.days.filter(day => day.dow !== source.dow && day.dow !== dow), empty, moved].sort((a, b) => a.dow - b.dow) }
 }
 
-export function changeBlockWeekday(weeks: Week[], dx: number, weekday: number, start: string, weekdays: readonly number[] = [], extraWeekdays: readonly number[] = []): Week[] {
-  const grid = buildBlockGrid(weeks, start, weekdays, extraWeekdays)
+export function changeBlockWeekday(weeks: Week[], dx: number, weekday: number, start: string, weekdays: readonly number[] = [], extraWeekdays: readonly number[] = [], showRestDays = false): Week[] {
+  const grid = buildBlockGrid(weeks, start, weekdays, extraWeekdays, showRestDays)
   const dow = (weekday - (addDays(start, 0).getDay() + 6) % 7 + 7) % 7
   return weeks.map(week => {
     const day = grid.rows.find(row => row.week.num === week.num)?.cells[dx]?.day
@@ -188,8 +199,8 @@ export function changeBlockWeekday(weeks: Week[], dx: number, weekday: number, s
   })
 }
 
-export function changeBlockDate(weeks: Week[], target: BlockAddress, date: string, start: string, weekdays: readonly number[] = [], extraWeekdays: readonly number[] = []): Week[] {
-  const grid = buildBlockGrid(weeks, start, weekdays, extraWeekdays)
+export function changeBlockDate(weeks: Week[], target: BlockAddress, date: string, start: string, weekdays: readonly number[] = [], extraWeekdays: readonly number[] = [], showRestDays = false): Week[] {
+  const grid = buildBlockGrid(weeks, start, weekdays, extraWeekdays, showRestDays)
   const row = grid.rows.find(row => row.week.num === target.weekNumber)
   const day = row?.cells[target.dx]?.day
   if (!row || !day) return weeks
@@ -226,7 +237,7 @@ export function changeBlockPattern(weeks: Week[], pattern: readonly number[], st
     const targets = new Set(moves.map(move => move.dow))
     if (targets.size !== moves.length) return null
     if (moves.some(move => week.days.some(day => day.dow === move.dow
-      && !sources.has(day.dow) && isBlockTrainingDay(day)))) return null
+      && !sources.has(day.dow) && isBlockOccupiedDay(day)))) return null
     if (!moves.length) { result.push(week); continue }
     changed = true
     const days = Array.from({ length: 7 }, (_, dow) => {
@@ -235,7 +246,7 @@ export function changeBlockPattern(weeks: Week[], pattern: readonly number[], st
       if (!incoming && !sources.has(dow)) return existing
       const date = addDays(start, (week.num - 1) * 7 + dow)
       return { ...existing, serverDayId: !incoming && !existing?.rows.length ? null : existing?.serverDayId, dow, dowLabel: dowLabel(date), dateLabel: mdLabel(date),
-        rows: incoming?.day.rows ?? [], rest: !incoming, releasedSortOrders: [], shiftedToDate: null, shiftBadge: null }
+        rows: incoming?.day.rows ?? [], dayType: incoming?.day.dayType, rest: !incoming || incoming.day.dayType === 'rest', releasedSortOrders: [], shiftedToDate: null, shiftBadge: null }
     }).filter((day): day is DayCol => !!day)
     result.push({ ...week, days })
   }
@@ -243,15 +254,26 @@ export function changeBlockPattern(weeks: Week[], pattern: readonly number[], st
 }
 
 
-/** An empty inserted card uses the existing rest flag; no wire field is added. */
+export function isBlockOccupiedDay(day: DayCol): boolean {
+  return day.dayType !== undefined || isBlockTrainingDay(day)
+}
+
+/** Pure type changes retain prescription and server/calendar identity. */
+export function switchBlockDayType(weeks: Week[], weekNumber: number, dow: number, dayType: 'training' | 'rest'): Week[] {
+  const day = weeks.find(week => week.num === weekNumber)?.days.find(day => day.dow === dow)
+  if (!day || blockDayDeletionLocked(day)) return weeks
+  return writeDay(weeks, weekNumber, { ...day, dayType, rest: dayType === 'rest' })
+}
+
+/** Explicit empty training days consume a D ordinal. */
 export function isBlockTrainingDay(day: DayCol): boolean {
-  return !day.rest || day.rows.length > 0 || !!day.serverDayId || !!day.completedAt
+  return day.dayType ? day.dayType === 'training' : !day.rest || day.rows.length > 0 || !!day.serverDayId || !!day.completedAt
 }
 
 /** Boundaries are calendar offsets of the adjacent cards, not column indices. */
 export function blockInsertDates(week: Week, start: string, before: number | null, after: number | null): string[] {
   const dateAt = (dow: number) => isoDate(addDays(start, (week.num - 1) * 7 + dow))
-  const occupied = new Set(week.days.filter(isBlockTrainingDay).map(day => recommendedDateForDay(start, week.num, day)))
+  const occupied = new Set(week.days.filter(isBlockOccupiedDay).map(day => recommendedDateForDay(start, week.num, day)))
   const boundary = (dow: number) => {
     const day = week.days.find(day => day.dow === dow)
     return day ? recommendedDateForDay(start, week.num, day) : dateAt(dow)
@@ -259,14 +281,14 @@ export function blockInsertDates(week: Week, start: string, before: number | nul
   return Array.from({ length: 7 }, (_, dow) => dateAt(dow)).filter(date => !occupied.has(date)
     && (before === null || date > boundary(before)) && (after === null || date < boundary(after))
     // A shifted day still owns its storage coordinate; never overwrite it.
-    && !week.days.some(day => isBlockTrainingDay(day) && dateAt(day.dow) === date))
+    && !week.days.some(day => isBlockOccupiedDay(day) && dateAt(day.dow) === date))
 }
 
 export function insertBlockDay(weeks: Week[], weekNumber: number, date: string, start: string): Week[] {
   const week = weeks.find(week => week.num === weekNumber)
   if (!week || !blockInsertDates(week, start, null, null).includes(date)) return weeks
   const dow = Array.from({ length: 7 }, (_, offset) => isoDate(addDays(start, (weekNumber - 1) * 7 + offset))).indexOf(date)
-  return writeDay(weeks, weekNumber, { dow, dowLabel: dowLabel(addDays(date, 0)), dateLabel: mdLabel(addDays(date, 0)), rest: false, rows: [] })
+  return writeDay(weeks, weekNumber, { dow, dowLabel: dowLabel(addDays(date, 0)), dateLabel: mdLabel(addDays(date, 0)), rest: false, dayType: 'training', rows: [] })
 }
 
 export function blockDayDeletionLocked(day: DayCol): boolean {
@@ -275,6 +297,6 @@ export function blockDayDeletionLocked(day: DayCol): boolean {
 
 export function deleteBlockDay(weeks: Week[], weekNumber: number, dow: number): Week[] {
   const day = weeks.find(week => week.num === weekNumber)?.days.find(day => day.dow === dow)
-  if (!day || !isBlockTrainingDay(day) || blockDayDeletionLocked(day)) return weeks
+  if (!day || !isBlockOccupiedDay(day) || blockDayDeletionLocked(day)) return weeks
   return writeDay(weeks, weekNumber, { dow, dowLabel: day.dowLabel, dateLabel: day.dateLabel, rest: true, rows: [] })
 }

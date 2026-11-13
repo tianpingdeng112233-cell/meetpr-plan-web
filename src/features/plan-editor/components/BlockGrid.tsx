@@ -4,7 +4,7 @@ import { actualShorthand, actualShorthandParts } from '../actualShorthand'
 import { actualWeightTone, splitActualSets, type ActualSet, type StudentAddedExercise } from '../actuals'
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { blockFillTargets, projectBlockGrid, blockEditColumns, buildBlockGrid, blockTargetDay, blockInsertDates, type BlockLayout, type BlockAddress } from '../blockGridModel'
-import type { DayCol, ExerciseRow, Week } from '../types'
+import { isRestDay, type DayCol, type ExerciseRow, type Week } from '../types'
 import { displayedRowIntensity, rowIntensityBoxes, rowWeightBoxes } from '../intensityModel'
 import { addDays, DOW_LABELS, mdLabel } from '../mapping'
 import { fmt, S } from '../../../i18n/strings'
@@ -15,6 +15,7 @@ import type { FeedbackEntry } from '../feedbackModel'
 import { useVideoPlanScroll, type PlanPlayback } from '../useVideoPlanScroll'
 
 interface Props {
+  showRestDays?: boolean
   playback?: PlanPlayback | null
   feedbackDayMarker?: (day: DayCol) => ReactNode
   highlightedDayId?: string | null
@@ -72,12 +73,12 @@ function shorthand(row: ExerciseRow): string {
 }
 
 export function BlockGrid(props: Props) {
-  const grid = buildBlockGrid(props.weeks, props.startDate, props.weekdays, props.extraWeekdays)
+  const grid = buildBlockGrid(props.weeks, props.startDate, props.weekdays, props.extraWeekdays, props.showRestDays)
   const byDay = props.layout === 'by-day'
   const view = projectBlockGrid(grid, props.layout)
   const positions = new Map(view.rows.flatMap((cells, row) => cells.map((cell, column) => [`${cell.weekNumber}:${cell.dx}`, { row, column }] as const)))
   const editingCell = grid.rows.flatMap(row => row.cells).find(cell => cell.weekNumber === props.editing?.wnum
-    && (cell.day ?? (grid.columns[cell.dx].patternIndex !== null ? blockTargetDay(grid, cell, props.startDate) : null))?.dow === props.editing?.dow)
+    && (cell.day ?? ((props.showRestDays || grid.columns[cell.dx].patternIndex !== null) ? blockTargetDay(grid, cell, props.startDate) : null))?.dow === props.editing?.dow)
   const editingPosition = editingCell ? positions.get(`${editingCell.weekNumber}:${editingCell.dx}`) : undefined
   const editColumns = editingPosition ? blockEditColumns(props.layout, editingPosition.column, view.columnHeaders.length) : null
   const totalColumns = view.columnHeaders.length + (editColumns?.extra ?? 0)
@@ -286,7 +287,7 @@ export function BlockGrid(props: Props) {
       </div>
     })}</div>
     {grid.rows.map(({ week, cells }, index) => {
-      const editingDx = cells.findIndex(cell => (cell.day ?? (grid.columns[cell.dx].patternIndex !== null ? blockTargetDay(grid, cell, props.startDate) : null))?.dow === props.editing?.dow && week.num === props.editing?.wnum)
+      const editingDx = cells.findIndex(cell => (cell.day ?? ((props.showRestDays || grid.columns[cell.dx].patternIndex !== null) ? blockTargetDay(grid, cell, props.startDate) : null))?.dow === props.editing?.dow && week.num === props.editing?.wnum)
       const ordered = cells.filter(cell => cell.day).sort((a, b) => a.dayNumber! - b.dayNumber!)
       const insertGaps = editingDx !== -1 || props.readOnly || !props.startDate ? [] : Array.from({ length: ordered.length + 1 }, (_, i) => {
         const before = ordered[i - 1], after = ordered[i]
@@ -304,19 +305,20 @@ export function BlockGrid(props: Props) {
             ? `${mdLabel(addDays(props.startDate, (week.num - 1) * 7))}–${mdLabel(addDays(props.startDate, week.num * 7 - 1))}` : week.range} · </span>}{props.renderCapacity(week, index)}</div>
         </div>
         {cells.map(cell => {
-          const day = cell.day ?? (grid.columns[cell.dx].patternIndex !== null ? blockTargetDay(grid, cell, props.startDate) : null)
+          const day = cell.day ?? ((props.showRestDays || grid.columns[cell.dx].patternIndex !== null) ? blockTargetDay(grid, cell, props.startDate) : null)
           const editing = editingDx === cell.dx || (!cell.day && props.editing?.wnum === week.num && props.editing?.dow === day?.dow)
           const position = positions.get(`${week.num}:${cell.dx}`)!
           const covered = !!editingPosition && !!editColumns && position.row === editingPosition.row
             && position.column >= editColumns.start && position.column < editColumns.end && !editing
           const selected = !!day && props.selectedDays.has(planDayKey({ wnum: week.num, dow: day.dow }))
           const preview = fill && fillTargets.some(target => target.weekNumber === week.num && target.dx === cell.dx)
-          const rows = day ? orderRowsForDisplay(day.rows, props.rowTier) : []
+          const resting = !!props.showRestDays && !!day && isRestDay(day)
+          const rows = day && !resting ? orderRowsForDisplay(day.rows, props.rowTier) : []
           const dragLocked = rows.some(row => row.hasLogs)
           const selectedCount = rows.filter(row => props.selectedRows.has(row.id)).length
           const fillRows = preview ? grid.rows.find(row => row.week.num === fill.source.weekNumber)?.cells[cell.dx]?.day?.rows ?? [] : []
           const playing = props.playback?.entry.inPlan && !!day && ((!!props.playback.entry.dayId && props.playback.entry.dayId === day.serverDayId) || day.rows.some(row => row.id === props.playback?.entry.rowId))
-          return <div key={cell.dx} className={`block-cell${playing ? ' video-day-selected' : ''}${day?.serverDayId && props.highlightedDayId === day.serverDayId ? ' day-feedback-highlight' : ''}${!day ? ' is-blank' : ''}${selected ? ' is-selected' : ''}${editing ? ' is-editing' : ''}${preview ? ' fill-preview' : ''}`}
+          return <div key={cell.dx} className={`block-cell${playing ? ' video-day-selected' : ''}${day?.serverDayId && props.highlightedDayId === day.serverDayId ? ' day-feedback-highlight' : ''}${!day ? ' is-blank' : ''}${resting ? ' is-rest' : ''}${selected ? ' is-selected' : ''}${editing ? ' is-editing' : ''}${preview ? ' fill-preview' : ''}`}
             onMouseEnter={() => props.onHoverDay?.(day?.serverDayId ?? null)} onMouseLeave={() => props.onHoverDay?.(null)}
             data-block-day-id={day?.serverDayId ?? undefined} data-block-week={week.num} data-dx={cell.dx} data-dow={day?.dow} tabIndex={day ? 0 : -1}
             aria-label={cell.dayNumber ? `W${week.num} D${cell.dayNumber}` : `W${week.num} ${DOW_LABELS[grid.columns[cell.dx].weekday]}`}
@@ -324,10 +326,12 @@ export function BlockGrid(props: Props) {
               gridRow: byDay ? position.row + 2 : 1, visibility: covered ? 'hidden' : undefined }}
             onClick={event => { if (day) props.onOpen(week, day, event) }}
             onContextMenu={event => { if (day) props.onContext(event, week, day) }}
-            onKeyDown={event => { if (event.target === event.currentTarget && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); event.stopPropagation(); event.currentTarget.click() } }}>
+            onKeyDown={event => { if (day && (event.key === 'ContextMenu' || (event.shiftKey && event.key === 'F10'))) { event.preventDefault(); const bounds = event.currentTarget.getBoundingClientRect(); props.onContext({ preventDefault() {}, clientX: bounds.left + 16, clientY: bounds.top + 24 } as React.MouseEvent, week, day); return }; if (event.target === event.currentTarget && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); event.stopPropagation(); event.currentTarget.click() } }}>
             {editing && day ? props.renderDay(week, day, cell.dx, cell.dayNumber ?? cells.filter(c => c.day && c.day.dow < day.dow).length + 1) : <>
               <div className="block-date"><span>{cell.dayNumber ? `D${cell.dayNumber} · ${day?.dateLabel}` : day?.dateLabel}</span>{day?.shiftBadge && <span data-shift-badge="">{S.editor.shifted}</span>}{(day?.completedAt || (rows.length > 0 && rows.every(row => row.hasLogs))) && <span>✓ {S.editor.blockDone}</span>}{day && props.feedbackDayMarker?.(day)}{day && !props.showActuals && props.addedDayMarkers?.(day)}</div>
-              {day && rows.length === 0 && !props.readOnly && <span className="block-empty">
+              {props.showRestDays && day && <button type="button" data-day-menu className="block-day-menu" aria-label={S.editor.dayMenu} onClick={event => { event.stopPropagation(); props.onContext(event, week, day) }}>···</button>}
+              {resting && <div className="block-rest"><span aria-hidden="true">—</span><strong>{S.editor.restDay}</strong>{!!day?.rows.length && <small>{S.editor.retainedActions(day.rows.length)}</small>}</div>}
+              {day && !resting && rows.length === 0 && !props.readOnly && <span className="block-empty">
                 <svg width="23" height="23" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
                   <path d="M5 1v8M1 5h8" />
                 </svg>

@@ -5,7 +5,7 @@
 // and their set/history links are never touched.
 
 import type { Week, DayCol, ExerciseRow, OpaqueSetSpec } from './types'
-import { isBoundNoSets, isContentfulUnbound, isRestDay, rowSetGridSignature, snapshotOpaqueSets } from './types'
+import { isBoundNoSets, isContentfulUnbound, rowSetGridSignature, snapshotOpaqueSets } from './types'
 import type {
   PlanWithChildren, PlanDayResponse, PlanExerciseResponse, CreatePlanSetBody,
   BatchPlanDayBody, BatchPlanDaysBody, SetType,
@@ -79,7 +79,7 @@ export class ReconcileConflict extends Error {
 }
 
 export class ReconciliationError extends Error {
-  constructor(public readonly code: 'PLAN_SET_SPEC_INCOMPLETE') {
+  constructor(public readonly code: 'PLAN_SET_SPEC_INCOMPLETE' | 'REST_DAYS_DISABLED' | 'DAY_HISTORY_IMMUTABLE') {
     super(code)
   }
 }
@@ -334,7 +334,7 @@ function desiredEntries(
   day: DayCol | undefined, countSkipped: () => void, countDegraded: () => void,
   degradeIncomplete: boolean,
 ): DesiredEntry[] {
-  if (!day || isRestDay(day)) return []
+  if (!day) return []
   const entries: DesiredEntry[] = []
   for (const row of day.rows) {
     const desired = rowToDesired(row)
@@ -717,6 +717,7 @@ async function reconcileFromBaseline(
 
   let skippedRows = 0
   let degradedRows = 0
+  const dayTypes: NonNullable<BatchPlanDaysBody['day_types']> = []
   const unlockedWorks: DayWork[] = []
   const mixedWorks: DayWork[] = []
   const lockedMutationRows: string[] = []
@@ -729,15 +730,21 @@ async function reconcileFromBaseline(
       // fresh server status is the authority — never degrade into a live tree.
       const entries = desiredEntries(
         day, () => { skippedRows++ }, () => { degradedRows++ },
-        !options.published && server.status === 'draft',
+        day?.dayType === 'rest' || (!options.published && server.status === 'draft'),
       )
       const original = origByKey.get(`${week.num}:${dow + 1}`)
+      const desiredRest = day?.dayType === 'rest'
+      const typeChanged = !!original && !!day?.dayType && (original.is_rest ?? false) !== desiredRest
+      if ((typeChanged || (!original && desiredRest)) && !server.rest_days_enabled) throw new ReconciliationError('REST_DAYS_DISABLED')
+      if (typeChanged && (original?.completed_at || original?.exercises.some(exercise => exercise.has_logs))) throw new ReconciliationError('DAY_HISTORY_IMMUTABLE')
       const mixed = !!original?.exercises.some((exercise) => exercise.has_logs ?? false)
 
       if (!mixed) {
         const originalCanon = original ? canonServer(original.exercises) : EMPTY
         const desiredCanon = entries.length ? canonDesired(entries.map((entry) => entry.desired)) : EMPTY
-        if (originalCanon === desiredCanon) {
+        const explicitEmpty = server.rest_days_enabled && !!day?.dayType && !entries.length
+        if (originalCanon === desiredCanon && !(explicitEmpty && !original)) {
+          if (typeChanged) dayTypes.push({ day_id: original!.id, is_rest: desiredRest })
           if (original) {
             const claims = claimBaseline(entries, original.exercises)
             for (const entry of entries) {
@@ -767,7 +774,11 @@ async function reconcileFromBaseline(
   // Decide mixed-day CRUD and slots before writing so progress is stable.
   let mixedPlans = mixedWorks.map(planMixedWork)
 
-  const upsertDays = unlockedWorks.filter((work) => work.entries.length > 0).map(workToBatchDay)
+  const upsertDays = unlockedWorks.filter(work => work.entries.length > 0 || !!work.day?.dayType).map(work => ({
+    ...workToBatchDay(work),
+    ...(server.rest_days_enabled ? { is_rest: work.day?.dayType === 'rest' } : {}),
+  }))
+  if (!server.rest_days_enabled && unlockedWorks.some(work => work.original?.is_rest)) throw new ReconciliationError('REST_DAYS_DISABLED')
   // Every changed unlocked day with a server original is delete+recreate —
   // batch upsert_days is pure INSERT, so leaving the old day would duplicate
   // it. Cleared days delete without a matching upsert. (spec 009 §3)
@@ -775,11 +786,12 @@ async function reconcileFromBaseline(
     ...(prelude.delete_day_ids ?? []),
     ...unlockedWorks.filter((work) => work.original).map((work) => work.original!.id),
   ])]
-  const hasBatchPrelude = prelude.plan_patch !== undefined || deleteDayIds.length > 0
+  const hasBatchPrelude = prelude.plan_patch !== undefined || deleteDayIds.length > 0 || dayTypes.length > 0
   const batchChunks: BatchPlanDaysBody[] = []
-  for (let offset = 0; offset < upsertDays.length; offset += CHUNK_DAYS) {
+  for (let offset = 0; offset < Math.max(upsertDays.length, dayTypes.length); offset += CHUNK_DAYS) {
     batchChunks.push({
       ...(offset === 0 && prelude.plan_patch ? { plan_patch: prelude.plan_patch } : {}),
+      ...(offset < dayTypes.length ? { day_types: dayTypes.slice(offset, offset + CHUNK_DAYS) } : {}),
       delete_day_ids: offset === 0 ? deleteDayIds : [],
       upsert_days: upsertDays.slice(offset, offset + CHUNK_DAYS),
     })
@@ -787,6 +799,7 @@ async function reconcileFromBaseline(
   if (batchChunks.length === 0 && hasBatchPrelude) {
     batchChunks.push({
       ...(prelude.plan_patch ? { plan_patch: prelude.plan_patch } : {}),
+      ...(dayTypes.length ? { day_types: dayTypes } : {}),
       delete_day_ids: deleteDayIds,
       upsert_days: [],
     })
@@ -886,7 +899,7 @@ async function reconcileFromBaseline(
   for (const week of resultWeeks) for (const day of week.days) day.releasedSortOrders = []
 
   return {
-    changedDays: unlockedWorks.length + mixedWriteCount, skippedRows, degradedRows,
+    changedDays: dayTypes.length + unlockedWorks.length + mixedWriteCount, skippedRows, degradedRows,
     weeks: syncPlanScheduleToWeeks(resultWeeks, liveBaseline),
   }
 }

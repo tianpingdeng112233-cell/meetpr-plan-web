@@ -210,6 +210,13 @@
 @keyframes exercise-note-flash { from { outline: 2px solid #111827; outline-offset: -2px; } to { outline-color: transparent; } }
 @media (prefers-reduced-motion: reduce) { .exercise-note-flash { animation: none; } }
 
+.block-cell.is-rest { background: #f9fafb; border-style: dashed; }
+.block-rest { display: flex; min-height: 94px; flex-direction: column; align-items: center; justify-content: center; gap: 6px; color: #9ca3af; }
+.block-rest strong { font-size: 12px; font-weight: 500; color: #6b7280; }
+.block-rest small { font-size: 10px; }
+.block-day-menu { position: absolute; top: 4px; right: 6px; border: 0; background: transparent; color: #6b7280; cursor: pointer; font-size: 17px; padding: 2px 5px; }
+.block-date { padding-right: 18px; }
+.block-context-menu button:disabled { color: #9ca3af; cursor: not-allowed; }
 /* Playback context is independent from editable day/row selection. */
 .block-cell.video-day-selected { border-color: #17395c; box-shadow: inset 0 0 0 1px #17395c; background: #fffdf6; }
 

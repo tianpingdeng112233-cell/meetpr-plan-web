@@ -443,6 +443,42 @@ describe('PlanEditor local draft recovery', () => {
     expect(loadDraftMirror('plan')).toBeNull()
   })
 
+  it('keeps published rest recovery when delivery degrades retained rows', async () => {
+    vi.useFakeTimers()
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    vi.spyOn(window, 'alert').mockImplementation(() => {})
+    const initial = weeks('retained partial value')
+    initial[0].days[0].dayType = 'rest'
+    initial[0].days[0].rest = true
+    saveDraftMirror('plan', { weeks: initial, planStartDate: '2026-01-01', weeksCount: 1 })
+    const onSave = vi.fn(async (saved: Week[]) => ({ changedDays: 1, degradedRows: 1, skippedRows: 0, weeks: saved }))
+    await act(async () => root.render(<PlanEditor initialWeeks={weeks('server')} weeksCount={1} planStartDate="2026-01-01"
+      studentName="学员" planName="计划" currentPlanId="plan" initialPublished restDaysEnabled onSave={onSave} />))
+    act(() => click(host, '恢复'))
+    pendingApi.deletePendingRevision.mockClear()
+    await act(async () => { click(host, '更新计划'); await Promise.resolve() })
+    await act(async () => { await vi.advanceTimersByTimeAsync(1000) })
+    expect(onSave).toHaveBeenCalledOnce()
+    expect(loadDraftMirror('plan')?.content.weeks[0].days[0].rows[0].note).toBe('retained partial value')
+    expect(pendingApi.deletePendingRevision).not.toHaveBeenCalled()
+  })
+
+  it('restores legacy mixed-day content without erasing the server day type', async () => {
+    const initial = weeks('locked')
+    initial[0].days[0].dayType = 'training'
+    initial[0].days[0].rows[0].hasLogs = true
+    initial[0].days[0].rows.push({ ...row('editable'), id: 'editable', serverRowId: 'editable' })
+    const legacy = structuredClone(initial)
+    delete legacy[0].days[0].dayType
+    legacy[0].days[0].rows[1].note = 'legacy edit'
+    saveDraftMirror('plan', { weeks: legacy, planStartDate: '2026-01-01', weeksCount: 1 })
+    await act(async () => root.render(<PlanEditor initialWeeks={initial} weeksCount={1} planStartDate="2026-01-01"
+      studentName="学员" planName="计划" currentPlanId="plan" initialPublished restDaysEnabled />))
+    act(() => click(host, '恢复'))
+    openBlockDay(host)
+    expect([...host.querySelectorAll<HTMLInputElement>('[data-c="note"] input')].map(input => input.value)).toContain('legacy edit')
+  })
+
   it('retains a newer mirror when the coach edits during an in-flight save', async () => {
     vi.useFakeTimers()
     vi.spyOn(window, 'confirm').mockReturnValue(true)
@@ -1000,11 +1036,11 @@ describe('PlanEditor local draft recovery', () => {
     expect(confirm).toHaveBeenCalledWith(expect.stringContaining(expected))
   })
 
-  it.each(['insert', 'delete'] as const)('restores an unpublished empty-day %s from the real remote mirror', async action => {
+  it.each(['insert', 'delete', 'delete-training', 'delete-rest'] as const)('restores an unpublished empty-day %s from the real remote mirror', async action => {
     vi.useFakeTimers()
     vi.spyOn(window, 'confirm').mockReturnValue(true)
     const initial = relabelWeeksForStartDate(weeks(''), '2026-10-19')
-    if (action === 'delete') Object.assign(initial[0].days[3], { serverDayId: 'empty-day', rest: false })
+    if (action !== 'insert') Object.assign(initial[0].days[3], { serverDayId: 'empty-day', rest: action === 'delete-rest', ...(action === 'delete-training' ? { dayType: 'training' } : action === 'delete-rest' ? { dayType: 'rest' } : {}) })
     const onSave = vi.fn(async (weeks: Week[], _start?: string | null, _past?: boolean, _progress?: unknown, _deleted?: readonly string[]) => ({ changedDays: 1, skippedRows: 0, degradedRows: 0, weeks: structuredClone(weeks) }))
     const render = async (key: string) => act(async () => root.render(<PlanEditor key={key}
       initialWeeks={initial} weeksCount={1} planStartDate="2026-10-19" studentName="学员" planName="计划"
@@ -1020,8 +1056,8 @@ describe('PlanEditor local draft recovery', () => {
     await act(async () => { await vi.advanceTimersByTimeAsync(4000) })
     expect(pendingApi.putPendingRevision).toHaveBeenCalled()
     const mirror = pendingApi.putPendingRevision.mock.calls.at(-1)![1]
-    expect(mirror.content.weeks[0].days[3].rest).toBe(action === 'delete')
-    expect(loadDraftMirror('empty-mirror')?.content.weeks[0].days[3].rest).toBe(action === 'delete')
+    expect(mirror.content.weeks[0].days[3].rest).toBe(action !== 'insert')
+    expect(loadDraftMirror('empty-mirror')?.content.weeks[0].days[3].rest).toBe(action !== 'insert')
     pendingApi.getPendingRevision.mockResolvedValue({ plan_id: mirror.planId, version: mirror.version, content_hash: mirror.contentHash, content: mirror.content, saved_at: '2026-10-19T10:00:00Z' })
     await render('reopened')
     expect(host.querySelector('[data-testid="draft-mirror-banner"]')).not.toBeNull()
@@ -1030,7 +1066,7 @@ describe('PlanEditor local draft recovery', () => {
     if (action === 'insert') expect(day?.querySelector('.block-date')?.textContent).toBe('D2 · 10/22')
     else expect(day?.querySelector('.block-date')?.textContent ?? '').not.toContain('D2')
     expect(host.querySelector('.block-topbar')?.textContent).toContain('有未推送修改')
-    if (action === 'delete') {
+    if (action !== 'insert') {
       await act(async () => click(host, '更新计划'))
       expect(onSave.mock.calls[0][4]).toEqual(['empty-day'])
     }

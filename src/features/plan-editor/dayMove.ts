@@ -9,7 +9,7 @@ export const DAY_MOVE_LOGGED_HINT = S.editor.loggedDayMoveLocked
 /** Shared source/target guard for whole-day moves. */
 export function dayMoveDisabledReason(day: DayCol, statusCalendarLocked: boolean): string | null {
   if (statusCalendarLocked) return DAY_MOVE_STATUS_LOCKED_HINT
-  if (day.rows.some((row) => row.hasLogs)) return DAY_MOVE_LOGGED_HINT
+  if (day.completedAt || day.rows.some((row) => row.hasLogs)) return DAY_MOVE_LOGGED_HINT
   return null
 }
 
@@ -39,12 +39,13 @@ export function moveDayInWeek(week: Week, fromDow: number, toDow: number): Week 
   }
   if (source.rows.length === 0 && target.rows.length === 0) return week
 
-  const targetHasTraining = !isRestDay(target)
+  const targetHasTraining = !isRestDay(target) || target.rows.length > 0
   const nextSource: DayCol = clearShiftSnapshot(targetHasTraining
-    ? { ...source, rest: false, rows: target.rows, releasedSortOrders: [] }
-    : { ...source, rest: true, rows: [], releasedSortOrders: [] })
+    ? { ...source, rest: isRestDay(target), dayType: target.dayType, rows: target.rows, releasedSortOrders: [] }
+    : { ...source, rest: true, dayType: undefined, rows: [], releasedSortOrders: [] })
   const nextTarget: DayCol = clearShiftSnapshot({
     ...target,
+    dayType: source.dayType,
     rest: isRestDay(source),
     rows: source.rows,
     releasedSortOrders: [],

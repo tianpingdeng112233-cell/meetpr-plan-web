@@ -80,7 +80,7 @@ export function closestWeekToViewportCenter(
  */
 export function trainingDayOrdinal(week: Pick<Week, 'days'>, dow: number): number | null {
   return trainingDayOrdinalFromDows(
-    week.days.filter((day) => day.rows.length > 0).map((day) => day.dow),
+    week.days.filter(day => day.dayType === 'training' || (!day.dayType && day.rows.length > 0)).map((day) => day.dow),
     dow,
   )
 }

@@ -248,3 +248,14 @@ it('reads the shipped v3 hash for legacy empty flags without creating training d
   expect(loaded.content.weeks[0].days[1].rest).toBe(true)
   expect(loaded.content.weeks[0].days[0].rows[0].note).toBe('keep edit')
 })
+
+it('hashes and restores explicit rest type without losing retained rows', () => {
+  const value = content('retained')
+  const before = draftContentHash(value)
+  value.weeks[0].days[0].dayType = 'rest'
+  const mirror = createDraftMirror('rest-plan', value)
+  expect(mirror.contentHash).not.toBe(before)
+  const storage = new MemoryStorage()
+  saveDraftMirror('rest-plan', value, storage)
+  expect(loadDraftMirror('rest-plan', storage)?.content.weeks[0].days[0]).toMatchObject({ dayType: 'rest', rows: [{ note: 'retained' }] })
+})
