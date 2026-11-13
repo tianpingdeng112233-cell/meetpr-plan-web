@@ -142,7 +142,7 @@
 .block-layout-switch button[aria-pressed="true"] { background: #111827; color: #fff; border-color: #111827; }
 
 /* Transpose the same day cards; week wrappers retain their storage identity. */
-.block-grid[data-layout="by-day"] { display: grid; min-width: 100%; grid-template-columns: 52px repeat(var(--block-columns), var(--block-column-width)); gap: 10px; align-items: stretch; }
+.block-grid[data-layout="by-day"] { display: grid; min-width: 100%; grid-template-columns: 52px repeat(var(--block-columns), var(--video-plan-column-width, var(--block-column-width))); gap: 10px; align-items: stretch; }
 .block-grid[data-layout="by-day"] .block-column-row,
 .block-grid[data-layout="by-day"] .block-week { display: contents; }
 .block-grid[data-layout="by-day"] .block-layout-switch { grid-column: 1; grid-row: 1; min-height: 40px; }
@@ -209,3 +209,16 @@
 .exercise-note-flash { animation: exercise-note-flash 450ms ease-out 2; }
 @keyframes exercise-note-flash { from { outline: 2px solid #111827; outline-offset: -2px; } to { outline-color: transparent; } }
 @media (prefers-reduced-motion: reduce) { .exercise-note-flash { animation: none; } }
+
+/* Playback context is independent from editable day/row selection. */
+.block-cell.video-day-selected { border-color: #17395c; box-shadow: inset 0 0 0 1px #17395c; background: #fffdf6; }
+
+.block-grid[data-video-plan-scroll] {
+  min-width: 0;
+  width: calc(var(--video-plan-width) + var(--video-plan-leading) + var(--video-plan-trailing)) !important;
+  padding-left: calc(16px + var(--video-plan-leading));
+  padding-right: calc(16px + var(--video-plan-trailing));
+}
+
+.block-grid[data-video-plan-scroll] .block-cell:not(.is-editing) { cursor: grab; }
+.scroller.panning .block-grid, .scroller.panning .block-cell { cursor: grabbing; }

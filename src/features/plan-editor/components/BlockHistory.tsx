@@ -46,7 +46,7 @@ export function BlockHistory({ renderCommunication, communicationOpen = true, on
   videos?: StudentVideo[] | null
   entries?: FeedbackEntry[]
   feedback?: FeedbackSession | null
-  onFeedbackChange?: (session: FeedbackSession | null) => void
+  onFeedbackChange?: (session: FeedbackSession | null, reposition?: boolean) => void
   onHighlight?: (entry: FeedbackEntry | null) => void
   onVideoViewed?: (id: string) => Promise<void>
   onRefreshVideos?: (studentId: string) => Promise<void>
@@ -210,7 +210,7 @@ export function BlockHistory({ renderCommunication, communicationOpen = true, on
       </div>
       <div className="communication-history" hidden={!communicationOpen || tab !== 'history'}>{historyContent}</div>
     </> : feedback ? <>
-      <header className="feedback-head"><button onClick={exitFeedback}>{S.block.backHistory}</button><b>{S.block.feedback}</b><label><input type="checkbox" checked={feedback.includeViewed} onChange={event => onFeedbackChange?.({ ...feedback, includeViewed: event.target.checked })} />{S.block.includeViewed}</label></header>
+      <header className="feedback-head"><button onClick={exitFeedback}>{S.block.backHistory}</button><b>{S.block.feedback}</b><label><input type="checkbox" checked={feedback.includeViewed} onChange={event => onFeedbackChange?.({ ...feedback, includeViewed: event.target.checked }, false)} />{S.block.includeViewed}</label></header>
       <section className="feedback-days">
         <h4>{S.block.feedbackDays}<small>{S.block.feedbackDaysHint}</small></h4>
         {feedbackFailed && <p role="alert">{S.block.feedbackFailed} <button onClick={() => void onRetryFeedback?.()}>{S.common.retry}</button></p>}

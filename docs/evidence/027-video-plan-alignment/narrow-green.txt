@@ -1,0 +1,1 @@
+{ left: 408, headerRight: 398, right: 593.75, videoLeft: 605.75 }

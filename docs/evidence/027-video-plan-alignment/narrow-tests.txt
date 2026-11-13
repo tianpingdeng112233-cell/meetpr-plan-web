@@ -1,0 +1,15 @@
+> meetpr-plan-web@0.1.0 test
+> vitest run src/features/plan-editor/video-plan-alignment-ui.test.tsx src/features/plan-editor/by-day-layout-ui.test.tsx
+
+
+ RUN  v2.1.9 /Users/david/.codex/worktrees/video-plan-alignment/meetpr-plan-web
+
+ ✓ src/features/plan-editor/video-plan-alignment-ui.test.tsx (6 tests) 1219ms
+   ✓ marks the playing day without selecting or opening it for editing, then clears on close 509ms
+ ✓ src/features/plan-editor/by-day-layout-ui.test.tsx (19 tests) 2626ms
+   ✓ defaults to by-week and remembers by-day across refresh, plans and students without saving 561ms
+
+ Test Files  2 passed (2)
+      Tests  25 passed (25)
+   Start at  04:07:42
+   Duration  11.97s (transform 6.47s, setup 81ms, collect 16.41s, tests 3.85s, environment 1.05s, prepare 185ms)

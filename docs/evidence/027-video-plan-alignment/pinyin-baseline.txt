@@ -1,0 +1,28 @@
+> meetpr-plan-web@0.1.0 test
+> vitest run src/features/plan-editor/pinyin.test.ts
+
+
+ RUN  v2.1.9 /Users/david/.codex/worktrees/unified-coach-communication/meetpr-plan-web
+
+ ❯ src/features/plan-editor/pinyin.test.ts (7 tests | 1 failed) 3676ms
+   × matchesPinyin > stays bounded on adversarial state-accumulating input 3668ms
+     → expected 3658.968999999999 to be less than 1000
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/features/plan-editor/pinyin.test.ts > matchesPinyin > stays bounded on adversarial state-accumulating input
+AssertionError: expected 3658.968999999999 to be less than 1000
+ ❯ src/features/plan-editor/pinyin.test.ts:53:41
+     51|     const started = performance.now()
+     52|     for (let i = 0; i < 1251; i++) matchesPinyin(name, query)
+     53|     expect(performance.now() - started).toBeLessThan(1000)
+       |                                         ^
+     54|   })
+     55| })
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 6 passed (7)
+   Start at  03:53:46
+   Duration  10.13s (transform 812ms, setup 86ms, collect 1.00s, tests 3.68s, environment 1.83s, prepare 372ms)

@@ -1,0 +1,16 @@
+> meetpr-plan-web@0.1.0 test
+> vitest run src/features/plan-editor/video-plan-alignment-ui.test.tsx src/features/plan-editor/by-day-layout-ui.test.tsx src/features/plan-editor/history-ui.test.tsx src/features/plan-editor/block-drag-ui.test.tsx
+
+
+ RUN  v2.1.9 /Users/david/.codex/worktrees/video-plan-alignment/meetpr-plan-web
+
+(node:31178) Warning: `--localstorage-file` was provided without a valid path
+(Use `node --trace-warnings ...` to show where the warning was created)
+ ✓ src/features/plan-editor/video-plan-alignment-ui.test.tsx (6 tests) 424ms
+ ✓ src/features/plan-editor/block-drag-ui.test.tsx (17 tests) 430ms
+ ✓ src/features/plan-editor/by-day-layout-ui.test.tsx (19 tests) 1102ms
+
+ Test Files  3 passed (3)
+      Tests  42 passed (42)
+   Start at  03:54:42
+   Duration  3.45s (transform 1.12s, setup 127ms, collect 3.95s, tests 1.96s, environment 1.36s, prepare 282ms)
