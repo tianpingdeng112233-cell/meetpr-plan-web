@@ -1,0 +1,28 @@
+> meetpr-plan-web@0.1.0 test
+> vitest run src/features/plan-editor/video-plan-alignment-ui.test.tsx
+
+
+ RUN  v2.1.9 /Users/david/.codex/worktrees/video-plan-alignment/meetpr-plan-web
+
+ ❯ src/features/plan-editor/video-plan-alignment-ui.test.tsx (5 tests | 1 failed) 648ms
+   × retains manual by-day browsing when a resize changes the column width 114ms
+     → expected 0 to be greater than 300
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/features/plan-editor/video-plan-alignment-ui.test.tsx > retains manual by-day browsing when a resize changes the column width
+AssertionError: expected 0 to be greater than 300
+ ❯ src/features/plan-editor/video-plan-alignment-ui.test.tsx:141:31
+    139|   await act(async () => { for (const callback of observers) callback()…
+    140|   await act(async () => { vi.advanceTimersByTime(50) })
+    141|   expect(scroller.scrollLeft).toBeGreaterThan(300)
+       |                               ^
+    142| })
+    143|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 4 passed (5)
+   Start at  03:43:36
+   Duration  4.68s (transform 1.56s, setup 36ms, collect 2.10s, tests 648ms, environment 1.04s, prepare 182ms)

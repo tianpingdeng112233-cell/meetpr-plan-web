@@ -1,0 +1,16 @@
+{ left: 389, headerRight: 398, right: 594, videoLeft: 605.75 }
+node:internal/process/promises:332
+    triggerUncaughtException(err, true /* fromPromise */);
+    ^
+
+AssertionError [ERR_ASSERTION]: card must not overlap sticky weekday header
+    at /Users/david/Documents/Codex/2026-11-13/jiao-l/work/027-narrow.cjs:6:590 {
+  generatedMessage: false,
+  code: 'ERR_ASSERTION',
+  actual: false,
+  expected: true,
+  operator: '==',
+  diff: 'simple'
+}
+
+Node.js v25.9.0

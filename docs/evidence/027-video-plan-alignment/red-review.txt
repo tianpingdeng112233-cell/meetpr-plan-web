@@ -1,0 +1,52 @@
+> meetpr-plan-web@0.1.0 test
+> vitest run src/features/plan-editor/video-plan-alignment-ui.test.tsx
+
+
+ RUN  v2.1.9 /Users/david/.codex/worktrees/video-plan-alignment/meetpr-plan-web
+
+ ❯ src/features/plan-editor/video-plan-alignment-ui.test.tsx (6 tests | 2 failed) 4814ms
+   ✓ marks the playing day without selecting or opening it for editing, then clears on close 2153ms
+   × aligns the first and last day to the player, preserves manual browsing across hover and rerender, and realigns on reopen 835ms
+     → expected 657.3334 to be 210 // Object.is equality
+   × reveals a playing day covered by an expanded editor without losing the edited prescription 831ms
+     → expected 'hidden' not to be 'hidden' // Object.is equality
+   ✓ uses the matched row when a day has no persisted id and never highlights unrelated days 431ms
+   ✓ retains manual by-day browsing when a resize changes the column width 335ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/features/plan-editor/video-plan-alignment-ui.test.tsx > aligns the first and last day to the player, preserves manual browsing across hover and rerender, and realigns on reopen
+AssertionError: expected 657.3334 to be 210 // Object.is equality
+
+- Expected
++ Received
+
+- 210
++ 657.3334
+
+ ❯ src/features/plan-editor/video-plan-alignment-ui.test.tsx:79:31
+     77|   await click(host.querySelector('.feedback-head input[type="checkbox"…
+     78|   await act(async () => { vi.advanceTimersByTime(50) })
+     79|   expect(scroller.scrollLeft).toBe(210)
+       |                               ^
+     80|   await open('v-4')
+     81|   await act(async () => { vi.advanceTimersByTime(50) })
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  src/features/plan-editor/video-plan-alignment-ui.test.tsx > reveals a playing day covered by an expanded editor without losing the edited prescription
+AssertionError: expected 'hidden' not to be 'hidden' // Object.is equality
+ ❯ src/features/plan-editor/video-plan-alignment-ui.test.tsx:101:54
+     99|   })
+    100|   await open('v-2')
+    101|   expect(blockCell(host, 1, 1).style.visibility).not.toBe('hidden')
+       |                                                      ^
+    102|   expect(blockCell(host, 1, 1).classList.contains('video-day-selected'…
+    103|   await click(blockCell(host, 1, 0))
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+
+ Test Files  1 failed (1)
+      Tests  2 failed | 4 passed (6)
+   Start at  03:53:22
+   Duration  16.34s (transform 5.90s, setup 54ms, collect 7.61s, tests 4.81s, environment 1.68s, prepare 356ms)

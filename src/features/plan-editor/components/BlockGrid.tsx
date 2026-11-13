@@ -12,8 +12,10 @@ import { orderRowsForDisplay, planDayKey, type PlanDayTarget } from '../selectio
 import './block-grid.css'
 import { createPortal } from 'react-dom'
 import type { FeedbackEntry } from '../feedbackModel'
+import { useVideoPlanScroll, type PlanPlayback } from '../useVideoPlanScroll'
 
 interface Props {
+  playback?: PlanPlayback | null
   feedbackDayMarker?: (day: DayCol) => ReactNode
   highlightedDayId?: string | null
   onHoverDay?: (id: string | null) => void
@@ -82,6 +84,7 @@ export function BlockGrid(props: Props) {
   const [columnWidth, setColumnWidth] = useState(205)
   const [hiddenWeeks, setHiddenWeeks] = useState(0)
   const ref = useRef<HTMLDivElement>(null)
+  useVideoPlanScroll(ref, props.playback, totalColumns, byDay ? 84 + totalColumns * (columnWidth + 10) : undefined)
   const cleanup = useRef<(() => void) | null>(null)
   const suppressClick = useRef(false)
   const [brickDrag, setBrickDrag] = useState<{
@@ -123,6 +126,7 @@ export function BlockGrid(props: Props) {
   }, [props.editing?.wnum, props.editing?.dow, props.layout, columnWidth])
 
   useEffect(() => {
+    if (props.playback) return
     const entry = props.highlightedVideo
     if (!entry?.inPlan) return
     const target = entry.rowId ? [...(ref.current?.querySelectorAll<HTMLElement>('[data-rowid]') ?? [])].find(el => el.dataset.rowid === entry.rowId)
@@ -131,7 +135,7 @@ export function BlockGrid(props: Props) {
   }, [props.highlightedVideo])
 
   useEffect(() => {
-    if (!props.highlightedDayId) return
+    if (props.playback || !props.highlightedDayId) return
     const target = [...(ref.current?.querySelectorAll<HTMLElement>('[data-block-day-id]') ?? [])].find(el => el.dataset.blockDayId === props.highlightedDayId)
     target?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' })
   }, [props.highlightedDayId])
@@ -227,12 +231,22 @@ export function BlockGrid(props: Props) {
     const target = event.target as HTMLElement
     if (event.button !== 0 || target.closest('input,select,button,.rowdrag,[data-student-added]')) return
     const origin = target.closest<HTMLElement>('[data-block-week]')
-    if (!origin) return
-    const x = event.clientX, y = event.clientY
-    let moved = false
+    const scroller = ref.current?.closest<HTMLElement>('.scroller')
+    const canPan = !!props.playback && !!scroller && !event.shiftKey && !event.metaKey && !event.ctrlKey && !event.altKey
+      && !target.closest('.is-editing')
+    if (!origin && !canPan) return
+    const x = event.clientX, y = event.clientY, scrollLeft = scroller?.scrollLeft ?? 0
+    let moved = false, panning = false
     const move = (e: MouseEvent) => {
       if (Math.hypot(e.clientX - x, e.clientY - y) < 5 && !moved) return
+      if (!moved) panning = canPan && Math.abs(e.clientX - x) > Math.abs(e.clientY - y)
       e.preventDefault(); moved = true; suppressClick.current = true
+      if (panning && scroller) {
+        scroller.classList.add('panning')
+        scroller.scrollLeft = scrollLeft - (e.clientX - x)
+        return
+      }
+      if (!origin) return
       const bounds = { left: Math.min(x, e.clientX), top: Math.min(y, e.clientY), right: Math.max(x, e.clientX), bottom: Math.max(y, e.clientY) }
       setRectangle({ left: bounds.left, top: bounds.top, width: bounds.right - bounds.left, height: bounds.bottom - bounds.top })
       const intersects = (el: Element) => { const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0 && r.left < bounds.right && r.right > bounds.left && r.top < bounds.bottom && r.bottom > bounds.top }
@@ -242,7 +256,7 @@ export function BlockGrid(props: Props) {
       props.onSelectRectangle(days, rows)
     }
     const finish = () => { cleanup.current?.(); if (moved) window.setTimeout(() => { suppressClick.current = false }, 0) }
-    const cancel = () => { setRectangle(null); window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', finish); window.removeEventListener('blur', finish); cleanup.current = null }
+    const cancel = () => { scroller?.classList.remove('panning'); setRectangle(null); window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', finish); window.removeEventListener('blur', finish); cleanup.current = null }
     cleanup.current?.(); cleanup.current = cancel
     window.addEventListener('mousemove', move); window.addEventListener('mouseup', finish); window.addEventListener('blur', finish)
   }
@@ -301,7 +315,8 @@ export function BlockGrid(props: Props) {
           const dragLocked = rows.some(row => row.hasLogs)
           const selectedCount = rows.filter(row => props.selectedRows.has(row.id)).length
           const fillRows = preview ? grid.rows.find(row => row.week.num === fill.source.weekNumber)?.cells[cell.dx]?.day?.rows ?? [] : []
-          return <div key={cell.dx} className={`block-cell${day?.serverDayId && props.highlightedDayId === day.serverDayId ? ' day-feedback-highlight' : ''}${!day ? ' is-blank' : ''}${selected ? ' is-selected' : ''}${editing ? ' is-editing' : ''}${preview ? ' fill-preview' : ''}`}
+          const playing = props.playback?.entry.inPlan && !!day && ((!!props.playback.entry.dayId && props.playback.entry.dayId === day.serverDayId) || day.rows.some(row => row.id === props.playback?.entry.rowId))
+          return <div key={cell.dx} className={`block-cell${playing ? ' video-day-selected' : ''}${day?.serverDayId && props.highlightedDayId === day.serverDayId ? ' day-feedback-highlight' : ''}${!day ? ' is-blank' : ''}${selected ? ' is-selected' : ''}${editing ? ' is-editing' : ''}${preview ? ' fill-preview' : ''}`}
             onMouseEnter={() => props.onHoverDay?.(day?.serverDayId ?? null)} onMouseLeave={() => props.onHoverDay?.(null)}
             data-block-day-id={day?.serverDayId ?? undefined} data-block-week={week.num} data-dx={cell.dx} data-dow={day?.dow} tabIndex={day ? 0 : -1}
             aria-label={cell.dayNumber ? `W${week.num} D${cell.dayNumber}` : `W${week.num} ${DOW_LABELS[grid.columns[cell.dx].weekday]}`}

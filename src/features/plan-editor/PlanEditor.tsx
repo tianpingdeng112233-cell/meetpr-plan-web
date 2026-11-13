@@ -667,9 +667,27 @@ export function PlanEditor(props: PlanEditorProps) {
   const videoFeedback = useMemo(() => deriveVideoFeedback(displayWeeks, props.videos ?? [], setLogs, planStartDate), [displayWeeks, props.videos, setLogs, planStartDate])
   const [localFeedback, setLocalFeedback] = useState<FeedbackSession | null>(null)
   const feedback = props.feedbackSession === undefined ? localFeedback : props.feedbackSession
-  const changeFeedback = (next: FeedbackSession | null) => { setHoveredFeedbackDay(null); setLocalFeedback(next); props.onFeedbackSessionChange?.(next) }
+  const [videoAlignmentRequest, setVideoAlignmentRequest] = useState(0)
+  const changeFeedback = (next: FeedbackSession | null, reposition = true) => {
+    if (next?.playerOpen && reposition) {
+      setVideoAlignmentRequest(request => request + 1)
+      const target = videoFeedback.entries.find(entry => entry.video.id === next.videoId && entry.inPlan)
+      if (target && editingDay) {
+        const editing = displayWeeks.find(week => week.num === editingDay.wnum)?.days.find(day => day.dow === editingDay.dow)
+        const sameDay = (target.dayId && target.dayId === editing?.serverDayId) || editing?.rows.some(row => row.id === target.rowId)
+        if (!sameDay) {
+          // Commit the covered editor's input; keep queue focus and same-day editing intact.
+          if (document.activeElement instanceof HTMLElement && document.activeElement.closest('.block-cell.is-editing')) document.activeElement.blur()
+          setEditingDay(null)
+          setPop(current => ({ ...current, visible: false }))
+        }
+      }
+    }
+    setHoveredFeedbackDay(null); setLocalFeedback(next); props.onFeedbackSessionChange?.(next)
+  }
   const [hoveredFeedbackDay, setHoveredFeedbackDay] = useState<string | null>(null)
   const [highlightedVideo, setHighlightedVideo] = useState<FeedbackEntry | null>(null)
+  const playingEntry = feedback?.playerOpen ? videoFeedback.entries.find(entry => entry.video.id === feedback.videoId) : undefined
   const openFeedbackVideo = (videoId?: string) => {
     const id = videoId ?? videoFeedback.entries.find(entry => entry.video.viewed_at == null)?.video.id ?? null
     changeFeedback({ videoId: id, pinnedVideoId: videoFeedback.entries.find(entry => entry.video.id === id)?.video.viewed_at != null ? id : null, playerOpen: !!id, includeViewed: feedback?.includeViewed ?? false })
@@ -3081,6 +3099,7 @@ export function PlanEditor(props: PlanEditorProps) {
               onHoverDay={id => { if (feedback) setHoveredFeedbackDay(id) }}
               addedVideoMarker={addedVideoMarker}
               videoMarker={rowVideoMarker} highlightedVideo={highlightedVideo} highlightedExerciseId={noteHighlight} flashingExerciseId={noteFlash}
+              playback={playingEntry ? { entry: playingEntry, request: videoAlignmentRequest } : null}
               addedDayMarkers={day => day.serverDayId && [...(videoFeedback.studentAdded.get(day.serverDayId) ?? [])].map(([id, group]) => <span className="added-video-marker" key={id}>{S.block.added} <VideoMarker group={group} onOpen={openFeedbackVideo} /></span>)}
               renderCapacity={(_week, index) => <WeekCapacitySummary weekNumber={_week.num} {...weeklySummaries[index]} />}
               onOpen={(week, day, event) => {
