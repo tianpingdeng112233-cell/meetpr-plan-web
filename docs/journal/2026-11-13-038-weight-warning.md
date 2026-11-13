@@ -16,4 +16,5 @@
 
 ## 交付
 
-源代码提交、PR 与线上状态在完成后追加。当前不将本地验证等同上线。
+- 实现提交 `2ac40fc0986df00a5dc51a5b51ae5ba7c0313b68` 已推送，交付 [PR #165](https://github.com/tianpingdeng112233-cell/meetpr-plan-web/pull/165)。PR OPEN、可合并；本仓未配置 GitHub Actions CI，check 列表为空，以上仅为本地验证。
+- 尚未合并、尚未替换后端同源网页产物或部署；线上页面不会因本 PR 自动变化。部署应按 README 的同源产物流程，保留既有国内安装链接并核对线上入口哈希。
