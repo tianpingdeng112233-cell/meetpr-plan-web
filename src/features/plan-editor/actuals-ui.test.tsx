@@ -91,9 +91,9 @@ describe('plan editor actual-set chips (SPEC-038)', () => {
 
     const weightChips = [...host.querySelectorAll('[data-actuals="weight"] .actual-chip')]
     expect(weightChips.map((chip) => chip.textContent)).toEqual(['92.5×5', '101×5', '100×5 力竭'])
-    // ±5kg:92.5 对 90 阈内黄;101 对 95 超阈红;力竭强制红。
+    // 任意重量偏差均红：92.5 对 90、101 对 95；力竭强制红。
     expect(weightChips.map((chip) => chip.className)).toEqual([
-      'actual-chip tone-ok', 'actual-chip tone-off', 'actual-chip tone-off',
+      'actual-chip tone-off', 'actual-chip tone-off', 'actual-chip tone-off',
     ])
 
     const rpeChips = [...host.querySelectorAll('[data-actuals="intensity"] .actual-chip')]
@@ -103,6 +103,61 @@ describe('plan editor actual-set chips (SPEC-038)', () => {
       'actual-chip tone-ok', 'actual-chip tone-off', 'actual-chip tone-off',
     ])
   })
+
+  it('compares sparse logs with their own set target, not their recorded-list position', async () => {
+    api.getStudentSetLogs.mockResolvedValue([
+      log({ set_index: 1, weight_kg: '95.00' }),
+      log({ set_index: 2, weight_kg: '97.50' }),
+    ])
+    await act(async () => root.render(
+      <PlanEditor initialWeeks={[week()]} weeksCount={1} studentId="student-1" studentName="吕子豪"
+        planName="Monster" planStartDate="2026-07-27" />,
+    ))
+    openBlockDay(host)
+    const chips = [...host.querySelectorAll('[data-actuals="weight"] .actual-chip')]
+    expect(chips.map(chip => chip.textContent)).toEqual(['95×5', '97.5×5'])
+    expect(chips.map(chip => chip.className)).toEqual(['actual-chip tone-ok', 'actual-chip tone-off'])
+  })
+
+  it('highlights only the weight portion of the actual overview when a prescribed set deviates', async () => {
+    api.getStudentSetLogs.mockResolvedValue([
+      log({ set_index: 0, weight_kg: '92.50' }),
+      log({ set_index: 1, weight_kg: '95.00' }),
+    ])
+    await act(async () => root.render(
+      <PlanEditor initialWeeks={[week()]} weeksCount={1} studentId="student-1" studentName="吕子豪"
+        planName="Monster" planStartDate="2026-07-27" />,
+    ))
+    act(() => host.querySelector<HTMLButtonElement>('.show-actuals')!.click())
+    const summary = host.querySelector('[data-rowid="squat-row"] .block-brick-summary code')!
+    expect(summary.textContent).toBe('2×5 @8 · 92.5/95')
+    expect(summary.querySelector('.actual-weight-off')?.textContent).toBe('92.5/95')
+    expect(host.querySelector('[data-rowid="squat-row"]')?.getAttribute('data-hint')).toContain('90/95/100')
+    act(() => host.querySelector<HTMLButtonElement>('.show-actuals')!.click())
+    expect(host.querySelector('.actual-weight-off')).toBeNull()
+  })
+
+  it.each(['matching', 'extra', 'missing', 'free', 'incomplete'] as const)(
+    'does not warn about %s weights in the actual overview', async (scenario) => {
+      const source = week()
+      if (scenario === 'free') source.days[0].rows[0].weightMode = 'free_weight'
+      api.getStudentSetLogs.mockResolvedValue([
+        log({
+          set_index: scenario === 'extra' ? 3 : 1,
+          weight_kg: scenario === 'missing' ? null : scenario === 'matching' ? '95.00' : '120',
+          completed: scenario !== 'incomplete',
+        }),
+      ])
+      await act(async () => root.render(
+        <PlanEditor initialWeeks={[source]} weeksCount={1} studentId="student-1" studentName="吕子豪"
+          planName="Monster" planStartDate="2026-07-27" />,
+      ))
+      act(() => host.querySelector<HTMLButtonElement>('.show-actuals')!.click())
+      expect(host.querySelector('[data-rowid="squat-row"].actual-display')).not.toBeNull()
+      expect(host.querySelector('.actual-weight-off')).toBeNull()
+      act(() => host.querySelector<HTMLButtonElement>('.show-actuals')!.click())
+    },
+  )
 
   it('025 shows actual weight, reps and RPE even when they match the prescription', async () => {
     api.getStudentSetLogs.mockResolvedValue([

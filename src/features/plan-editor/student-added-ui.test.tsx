@@ -14,7 +14,7 @@ const prescription: ExerciseRow = {
   reps: '3', mode: 'kg', weightMode: 'uniform', intensity: { mode: 'rpe', value: '8', high: '' },
   intensityMode: 'uniform', intensityBoxes: Array.from({ length: 4 }, () => ({ val: '8', empty: false })),
   boxes: Array.from({ length: 4 }, () => ({ val: '200', empty: false })), note: '',
-  opaqueSets: Array.from({ length: 4 }, (_, i) => ({ set_number: i + 1, target_reps: 3, target_reps_max: null, set_type: 'working', rest_seconds: null, coach_note: null })),
+  opaqueSets: Array.from({ length: 4 }, (_, i) => ({ set_number: i + 1, target_reps: 3, target_reps_max: null, load_mode: 'rpe', target_rpe: '8', target_weight: '200', set_type: 'working', rest_seconds: null, coach_note: null })),
 }
 const actual = (set_index: number, overrides: Partial<ActualSet> = {}): ActualSet => ({
   set_index, weight_kg: '200', reps: 3, rpe: '8', coach_rpe: null, completed: true, failed: false, ...overrides,
