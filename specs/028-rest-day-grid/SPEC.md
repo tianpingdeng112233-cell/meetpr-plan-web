@@ -1,6 +1,6 @@
 # 028 — Seven-day rest placeholders
 
-Status: InProgress. David approved the [final HTML](design/final.html) on 2026-11-13 and authorized development through CN production release. This supersedes the first prototype based on an obsolete worktree. Base: plan-web 90678bd; backend 2ea533e. Backend contract: spec 066.
+Status: Implemented and independently reviewed; production rollout pending. David approved the [final HTML](design/final.html) on 2026-11-13 and authorized development through CN production release. This supersedes the first prototype based on an obsolete worktree. Base: plan-web 90678bd; backend 2ea533e. Backend contract: spec 066.
 
 ## Approved behavior
 
@@ -18,14 +18,14 @@ One frontend card A. Existing public seams: React PlanEditor/BlockGrid interacti
 
 ## Acceptance checklist (before implementation)
 
-- [ ] Existing four-training-day plan opens as seven aligned positions without a write; no day/row disappears, including shifted or coincident dates.
+- [x] Existing four-training-day plan opens as seven aligned positions without a write; no day/row disappears, including shifted or coincident dates.
 - [ ] W2 populated training -> rest -> save -> reload/new browser -> training restores all values, notes, order and dates.
-- [ ] Rest remains in position and consumes no D number in either layout.
-- [ ] Delete last row leaves explicit empty training; draft save/reload preserves it; published update/publish refuses with precise day context.
-- [ ] Rest copy/paste/fill and undo/redo preserve type/content; clearing a rest prescription is explicit, not an accidental side effect.
-- [ ] Logged/completed/read-only switch is disabled; concurrent logged-day mutation is rejected without partial writes.
-- [ ] Old snapshot versions and old clients remain compatible; hidden rest never appears in student plan/cursor/logging/scheduling paths.
-- [ ] Full tests, TypeScript, build, independent Standards and Spec reviews, real application browser evidence.
+- [x] Rest remains in position and consumes no D number in either layout.
+- [x] Delete last row leaves explicit empty training; draft save/reload preserves it; published update/publish refuses with precise day context.
+- [x] Rest copy/paste/fill and undo/redo preserve type/content; clearing a rest prescription is explicit, not an accidental side effect.
+- [x] Logged/completed/read-only switch is disabled; concurrent logged-day mutation is rejected without partial writes.
+- [x] Old snapshot versions and old clients remain compatible; hidden rest never appears in student plan/cursor/logging/scheduling paths.
+- [x] Full tests, TypeScript, build, independent Standards and Spec reviews, real application browser evidence.
 - [ ] Migration/deployment gates satisfied; exact served JS/CSS hashes, backend SHA and health verified; persistent authenticated smoke if authorized credential channel is available.
 
 ## Out of scope
