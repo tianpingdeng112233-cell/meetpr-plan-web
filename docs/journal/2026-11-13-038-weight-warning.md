@@ -16,5 +16,8 @@
 
 ## 交付
 
-- 实现提交 `2ac40fc0986df00a5dc51a5b51ae5ba7c0313b68` 已推送，交付 [PR #165](https://github.com/tianpingdeng112233-cell/meetpr-plan-web/pull/165)。PR OPEN、可合并；本仓未配置 GitHub Actions CI，check 列表为空，以上仅为本地验证。
-- 尚未合并、尚未替换后端同源网页产物或部署；线上页面不会因本 PR 自动变化。部署应按 README 的同源产物流程，保留既有国内安装链接并核对线上入口哈希。
+- [PR #165](https://github.com/tianpingdeng112233-cell/meetpr-plan-web/pull/165) 已合并，web main SHA `1d2e980c2b9a8163543e9c01c5791dbb59758a23`。本仓无 GitHub Actions CI；上述源码本地门禁与独立审查通过。
+- David 随后明确要求「合并部署」。从上述 SHA 构建生产同源产物，保留现有 TestFlight / Android 安装链接，经 [backend PR #402](https://github.com/tianpingdeng112233-cell/MeetPR-backend/pull/402) 合并至 staging；实际部署镜像 `4d54e038773571a0ff50751e6ec85e3e7bde9976`，仅国内 SAE。
+- 后端 PR CI、合并后 CI 与镜像构建均绿；[部署 run 43363239954](https://github.com/tianpingdeng112233-cell/MeetPR-backend/actions/runs/43363239954) 于 2026-11-13 成功，health/login/同源入口门禁通过。线上 HTML/JS/CSS 与验收构建逐字节匹配，build ID `1794541359771`。
+- Chrome 使用线上真实资源和隔离 API fixture 复验固定重量、区间边界、缺组和总览/展开全通过，零 pageerror；未登录真实账号、未写真实记录或发送消息。
+- 产物 SHA256、部署/回滚信息与线上截图集中记于 [后端本卡 JOURNAL](https://github.com/tianpingdeng112233-cell/MeetPR-backend/blob/docs/record-web-weight-warning-deployment/docs/journal/2026-11-13-web038-weight-warning-deployment.md)。后端运行代码、数据库、env 与海外部署未变。
