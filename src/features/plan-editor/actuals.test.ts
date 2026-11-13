@@ -3,7 +3,8 @@ import { kg } from '../workspace/WorkspaceCommon'
 import { historyTopSet, recentSessionSummary } from './components/ContextRail'
 import nullableFixture from '../chat/fixtures/exercise-note.json'
 import { describe, expect, it } from 'vitest'
-import type { StudentSetLog } from '../../api/types'
+import type { PlanExerciseResponse, StudentSetLog } from '../../api/types'
+import { mapExercise } from './mapping'
 import type { ExerciseRow, RowIntensity } from './types'
 import {
   actualIntensityChip,
@@ -67,25 +68,49 @@ describe('groupActualsByExercise', () => {
   })
 })
 
-describe('actualWeightTone (±5kg)', () => {
-  it('per-set target: within tolerance is ok, beyond is off', () => {
-    expect(actualWeightTone(row(), 0, set({ weight_kg: '94.00' }))).toBe('ok')
-    expect(actualWeightTone(row(), 0, set({ weight_kg: '95.50' }))).toBe('off')
-    expect(actualWeightTone(row(), 2, set({ weight_kg: '96.00' }))).toBe('ok')
+describe('actualWeightTone (exact prescribed weight)', () => {
+  it('per-set target: any higher or lower weight is off, numerical equality is ok', () => {
+    expect(actualWeightTone(row(), 0, set({ weight_kg: '92.50' }))).toBe('off')
+    expect(actualWeightTone(row(), 0, set({ weight_kg: '87.50' }))).toBe('off')
+    expect(actualWeightTone(row(), 2, set({ weight_kg: '100.00' }))).toBe('ok')
+    expect(actualWeightTone(row(), 2, set({ weight_kg: '99.99' }))).toBe('off')
   })
 
-  it('weight_range target flags only outside boundary ± 5kg', () => {
+  it('weight_range includes its endpoints and flags any weight outside them', () => {
     const intensity: RowIntensity = { mode: 'weight_range', value: '100', high: '110' }
     const r = row({ intensity })
-    expect(actualWeightTone(r, 0, set({ weight_kg: '96.00' }))).toBe('ok')
-    expect(actualWeightTone(r, 0, set({ weight_kg: '94.00' }))).toBe('off')
-    expect(actualWeightTone(r, 0, set({ weight_kg: '115.00' }))).toBe('ok')
-    expect(actualWeightTone(r, 0, set({ weight_kg: '116.00' }))).toBe('off')
+    for (const weight_kg of ['100.00', '105', '110']) {
+      expect(actualWeightTone(r, 0, set({ weight_kg }))).toBe('ok')
+    }
+    for (const weight_kg of ['99.99', '110.01']) {
+      expect(actualWeightTone(r, 0, set({ weight_kg }))).toBe('off')
+    }
+  })
+
+  it('compares each published range from the server rather than the first group projection', () => {
+    const exercise: PlanExerciseResponse = {
+      id: 'pe-1', plan_day_id: 'day-1', target: null,
+      exercise_id: 'squat', sort_order: 0, is_main_lift: true, notes: null,
+      sets: ['100', '110'].map((low, index) => ({
+        id: `set-${index}`, plan_exercise_id: 'pe-1', created_at: '2026-11-13T00:00:00Z',
+        intensity_mode: 'weight', target_value: '0',
+        set_number: index + 1, target_reps: 5, target_reps_max: null,
+        load_mode: 'weight_range', weight_low: low, weight_high: String(Number(low) + 10),
+        set_type: 'working', rest_seconds: null, coach_note: null,
+      })),
+    }
+    const mapped = mapExercise(exercise, new Map())
+    expect(actualWeightTone(mapped, 1, set({ set_index: 1, weight_kg: '115' }))).toBe('ok')
+    expect(actualWeightTone(mapped, 1, set({ set_index: 1, weight_kg: '105' }))).toBe('off')
   })
 
   it('is na without a comparable target', () => {
     expect(actualWeightTone(row({ boxes: [{ val: '', empty: true }] }), 0, set())).toBe('na')
     expect(actualWeightTone(row({ mode: 'bodyweight', intensity: null }), 0, set())).toBe('na')
+    expect(actualWeightTone(row({ weightMode: 'free_weight' }), 0, set())).toBe('na')
+    expect(actualWeightTone(row(), 0, set({ weight_kg: null }))).toBe('na')
+    expect(actualWeightTone(row(), 0, set({ weight_kg: '' }))).toBe('na')
+    expect(actualWeightTone(row(), 0, set({ weight_kg: 'invalid' }))).toBe('na')
   })
 })
 

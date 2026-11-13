@@ -877,6 +877,7 @@ textarea {
 .actual-chip.tone-added { color: var(--mut); background: var(--line-2); }
 .actual-chip.tone-ok { color: var(--warn); background: var(--warn-soft); }
 .actual-chip.tone-off { color: var(--bad); background: var(--bad-soft); }
+.block-brick-summary .actual-weight-off { color: var(--bad); }
 .actual-chip.tone-missed { color: var(--faint); background: var(--panel-bg); text-decoration: line-through; }
 .tracking-grid-line { stroke: var(--line); stroke-width: 1; vector-effect: non-scaling-stroke; }
 /* PowerSheets 式明暗/虚线/光幕:光幕渐变在 SVG defs 里,这里管发光与虚线段。 */

@@ -1,7 +1,7 @@
 import { STABLE_ZH } from '../../../i18n/stable-zh'
 import { activeImportDoubts } from '../import/doubts'
-import { actualShorthand } from '../actualShorthand'
-import type { ActualSet, StudentAddedExercise } from '../actuals'
+import { actualShorthand, actualShorthandParts } from '../actualShorthand'
+import { actualWeightTone, splitActualSets, type ActualSet, type StudentAddedExercise } from '../actuals'
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { blockFillTargets, projectBlockGrid, blockEditColumns, buildBlockGrid, blockTargetDay, blockInsertDates, type BlockLayout, type BlockAddress } from '../blockGridModel'
 import type { DayCol, ExerciseRow, Week } from '../types'
@@ -322,6 +322,9 @@ export function BlockGrid(props: Props) {
                 const actuals = props.actualsForRow?.(row)
                 const actual = props.showActuals && !!actuals?.length
                 const summary = actual ? actualShorthand(row, actuals!) : shorthand(row)
+                const actualParts = actual ? actualShorthandParts(row, actuals!) : null
+                const weightOff = actual && splitActualSets(actuals!, row.opaqueSets?.length ?? row.boxes.length)
+                  .prescribed.some(set => set.completed && actualWeightTone(row, set.set_index, set) === 'off')
                 const hint = [dragLocked ? S.editor.dayLockedForDrag : '', actual ? S.block.prescription(shorthand(row)) : ''].filter(Boolean).join(' · ')
                 return <div key={row.id} className={`block-brick${row.serverRowId && row.serverRowId === props.highlightedExerciseId ? ' exercise-note-highlight' : ''}${row.serverRowId && row.serverRowId === props.flashingExerciseId ? ' exercise-note-flash' : ''}${brickDrag?.row.id === row.id ? ' brick-dragging' : ''}${brickDrag?.drop?.rowId === row.id ? ` brick-drop-${brickDrag.drop.position}` : ''}${actual ? ' actual-display' : ''}${props.showActuals && !actual ? ' prescribed-muted' : ''}${props.highlightedVideo?.rowId === row.id ? ' video-highlight' : ''}${props.selectedRows.has(row.id) ? ' row-sel' : ''}${props.rowTier(row) === 'aux' ? ' aux' : ''}${i > 0 && props.rowTier(rows[i - 1]) !== props.rowTier(row) ? ' section-start' : ''}`}
                 data-drag-disabled={props.readOnly || dragLocked} onMouseDown={event => { if (day) startBrickDrag(event, week, day, row) }}
@@ -329,7 +332,7 @@ export function BlockGrid(props: Props) {
                 onDragStart={event => event.preventDefault()}
                 onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); event.stopPropagation(); event.currentTarget.click() } }}
                 onClick={event => { event.stopPropagation(); if (day) props.onSelectRow(week, day, row.id, { toggle: event.metaKey || event.ctrlKey, range: event.shiftKey }) }}>
-                <span>{name}</span><div className="block-brick-summary"><code>{summary}</code><span className="block-brick-status">{row.hasLogs && <span>✓</span>}{props.videoMarker?.(row)}</span></div>
+                <span>{name}</span><div className="block-brick-summary"><code>{actualParts ? <>{actualParts.setsAndEffort}{actualParts.weight != null && <> · <span className={weightOff ? 'actual-weight-off' : undefined}>{actualParts.weight}</span></>}</> : summary}</code><span className="block-brick-status">{row.hasLogs && <span>✓</span>}{props.videoMarker?.(row)}</span></div>
               </div>})}
               {props.showActuals && day?.serverDayId && props.studentAddedByDay?.get(day.serverDayId)?.map(added => <div key={added.exerciseId}
                 className={`block-brick student-added-brick${props.highlightedVideo?.dayId === day.serverDayId && props.highlightedVideo?.addedExerciseId === added.exerciseId ? ' video-highlight' : ''}`}

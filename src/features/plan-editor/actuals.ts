@@ -1,9 +1,9 @@
 import type { StudentSetLog } from '../../api/types'
 import type { ExerciseRow } from './types'
 import { displayedWeightMode, rowIntensity, rowIntensityBoxes, rowWeightBoxes } from './intensityModel'
+import { isLegacyBodyweightSet } from './legacyBodyweight'
 
-/** SPEC-038 §1: deviation thresholds picked by David (2026-08-11). */
-export const WEIGHT_TOLERANCE_KG = 5
+/** SPEC-038 §1: intensity tolerances; weight uses the 2026-11-13 exact comparison. */
 export const RPE_TOLERANCE = 1
 export const PCT_TOLERANCE_PP = 5
 
@@ -56,28 +56,41 @@ export function formatActualWeight(set: ActualSet): string {
   return `${weight == null ? '—' : String(weight)}×${set.reps}`
 }
 
-/** 配色三态:off=超阈红,ok=阈内黄(达标确认),na=无从比较中性。 */
+/** 配色三态:off=偏差红,ok=达标黄,na=无从比较中性。 */
 export type ActualTone = 'ok' | 'off' | 'na'
 
 const toTone = (withinTolerance: boolean): ActualTone => withinTolerance ? 'ok' : 'off'
 
-/** 重量:|实际−目标| > 5kg 红,以内黄;区间以边界外 5kg 起算;自重/无目标不判。 */
+/** 重量:数值不同/区间外红,相等/区间内黄;自重/无目标不判。 */
 export function actualWeightTone(row: ExerciseRow, position: number, set: ActualSet): ActualTone {
   const actual = num(set.weight_kg)
   if (actual == null) return 'na'
+  // Preserve each published set's target even when the grid projects only the first range/mode.
+  if (row.opaqueSets) {
+    const target = row.opaqueSets.find(prescribed => prescribed.set_number === position + 1)
+    if (!target || target.load_mode === 'bodyweight' || target.load_mode === 'free_weight'
+      || isLegacyBodyweightSet(target)) return 'na'
+    if (target.load_mode === 'weight_range') {
+      const low = num(target.weight_low)
+      const high = num(target.weight_high)
+      return low == null || high == null ? 'na' : toTone(actual >= low && actual <= high)
+    }
+    const weight = num(target.target_weight ?? (target.load_mode == null && target.intensity_mode === 'weight' ? target.target_value : null))
+    return weight == null ? 'na' : toTone(actual === weight)
+  }
   if (displayedWeightMode(row) === 'bodyweight') return 'na'
   const intensity = rowIntensity(row)
   if (intensity?.mode === 'weight_range') {
     const low = num(intensity.value)
     const high = num(intensity.high)
     if (low == null || high == null) return 'na'
-    return toTone(actual >= low - WEIGHT_TOLERANCE_KG && actual <= high + WEIGHT_TOLERANCE_KG)
+    return toTone(actual >= low && actual <= high)
   }
   const boxes = rowWeightBoxes(row)
   const box = boxes[position] ?? boxes[0]
   const target = box && !box.empty ? num(box.val) : null
   if (target == null) return 'na'
-  return toTone(Math.abs(actual - target) <= WEIGHT_TOLERANCE_KG)
+  return toTone(actual === target)
 }
 
 export interface IntensityChip {
