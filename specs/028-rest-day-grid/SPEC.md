@@ -1,6 +1,6 @@
 # 028 — Seven-day rest placeholders
 
-Status: Implemented and independently reviewed; production rollout pending. David approved the [final HTML](design/final.html) on 2026-11-13 and authorized development through CN production release. This supersedes the first prototype based on an obsolete worktree. Base: plan-web 90678bd; backend 2ea533e. Backend contract: spec 066.
+Status: Implemented and independently reviewed; CN assets deployed; feature activation and authenticated persistence verification pending. David approved the [final HTML](design/final.html) on 2026-11-13 and authorized development through CN production release. This supersedes the first prototype based on an obsolete worktree. Base: plan-web 90678bd; backend 2ea533e. Backend contract: spec 066.
 
 ## Approved behavior
 
