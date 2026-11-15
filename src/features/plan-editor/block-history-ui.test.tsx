@@ -332,3 +332,21 @@ it('applies a first-date change and weekday change together without retaining ol
   expect(host.querySelector('[data-dx="0"] .block-date')?.textContent).toBe('D1 · 10/26')
   expect(host.querySelector('[data-dx="1"] .block-date')?.textContent).toBe('D2 · 10/29')
 })
+
+it('applies the selected training weekdays to every week of an empty seven-day draft', async () => {
+  const { blockWeeks } = await import('./blockGridTestUtils')
+  localStorage.setItem('meetpr.plan-editor.weekdays.schedule', '[0,1,3,4]')
+  const onSave = vi.fn(async (snapshot: Week[]) => ({ weeks: snapshot, changedDays: 8, skippedRows: 0, degradedRows: 0 }))
+  await act(async () => root.render(<PlanEditor currentPlanId="schedule" initialWeeks={blockWeeks([[], []])} weeksCount={2}
+    studentName="学员" planName="Block" planStartDate="2026-10-19" restDaysEnabled openSettingsRequest onSave={onSave} />))
+  const form = host.querySelector('form')!
+  expect([...form.querySelectorAll('[data-training-weekday][aria-pressed=true]')].map(el => el.getAttribute('data-training-weekday'))).toEqual(['0','1','3','4'])
+  await click(form.querySelector('[type=submit]')!)
+  for (const week of [1, 2]) {
+    const cells = [...host.querySelectorAll(`[data-block-week="${week}"]`)]
+    expect(cells.map(el => el.classList.contains('is-rest'))).toEqual([false,false,true,false,false,true,true])
+    expect(cells[4].getAttribute('aria-label')).toBe(`W${week} D4`)
+  }
+  await act(async () => window.dispatchEvent(new KeyboardEvent('keydown', {key:'s', metaKey:true, bubbles:true, cancelable:true})))
+  expect(onSave.mock.calls.at(-1)?.[0][1].days.filter(day => day.dayType === 'training').map(day => day.dow)).toEqual([0,1,3,4])
+})

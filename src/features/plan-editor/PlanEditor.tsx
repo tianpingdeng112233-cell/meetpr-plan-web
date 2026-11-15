@@ -16,7 +16,7 @@ import { ApiException } from '../../api/client'
 import { clearDayDeletionIntent, loadDayDeletionIntent, saveDayDeletionIntent, type ExplicitDayDeletion } from './dayDeletionIntent'
 import { useBlockLayout } from './blockLayout'
 import { BlockGrid } from './components/BlockGrid'
-import { switchBlockDayType, isBlockOccupiedDay, blockFillTargets, insertBlockDay, deleteBlockDay, blockDayDeletionLocked, isBlockTrainingDay, buildBlockGrid, changeBlockPattern, blockTargetDay, fillBlockDays, changeBlockDate, changeBlockWeekday, type BlockAddress } from './blockGridModel'
+import { switchBlockDayType, isBlockOccupiedDay, blockFillTargets, insertBlockDay, deleteBlockDay, blockDayDeletionLocked, isBlockTrainingDay, buildBlockGrid, inferTrainingColumns, changeBlockPattern, blockTargetDay, fillBlockDays, changeBlockDate, changeBlockWeekday, type BlockAddress } from './blockGridModel'
 import { NewPlanDialog } from '../workspace/PlanDialogs'
 import { loadBlockExtraWeekdays, saveBlockExtraWeekdays, loadBlockWeekdays, saveBlockWeekdays } from '../workspace/blockPlanSettings'
 import { deriveDayFeedback, deriveVideoFeedback, type FeedbackDay, type FeedbackEntry } from './feedbackModel'
@@ -584,15 +584,15 @@ export function PlanEditor(props: PlanEditorProps) {
   const [planStartDate, setPlanStartDate] = useState<string | null>(props.planStartDate ?? null)
   // Presentation-only fallback keeps cleared Dx targets available during this edit session.
   const showRestDays = props.restDaysEnabled === true || weeks.some(week => week.days.some(day => day.dayType === 'rest'))
-  const lastBlockWeekdays = useRef(buildBlockGrid(initialWeeks, props.planStartDate).columns.filter(column => column.patternIndex !== null).map(column => column.weekday))
+  const lastBlockWeekdays = useRef(inferTrainingColumns(initialWeeks, props.planStartDate).filter(column => column.patternIndex !== null).map(column => column.weekday))
   const [columnWeekdays, setColumnWeekdays] = useState<Record<number, number>>(() => Object.fromEntries((loadBlockWeekdays(props.currentPlanId) ?? []).map((day, dx) => [dx, day])))
   const [settingsOpen, setSettingsOpen] = useState(false)
   useEffect(() => { if (props.openSettingsRequest) { setSettingsOpen(true); props.onSettingsRequestHandled?.() } }, [props.openSettingsRequest])
   const [setsDraft, setSetsDraft] = useState<{ rowId: string; value: string | null } | null>(null)
   const [extraWeekdays, setExtraWeekdays] = useState<number[]>(() => [...new Set([...loadBlockExtraWeekdays(props.currentPlanId),
-    ...buildBlockGrid(initialWeeks, props.planStartDate).columns.filter(column => column.patternIndex === null).map(column => column.weekday)])])
-  const observedColumns = buildBlockGrid(weeks, planStartDate, [], extraWeekdays).columns.filter(column => column.patternIndex !== null)
-  const blockWeekdays = Array.from({ length: Math.max(Object.keys(columnWeekdays).length, lastBlockWeekdays.current.length, observedColumns.length) }, (_, dx) => (
+    ...inferTrainingColumns(initialWeeks, props.planStartDate).filter(column => column.patternIndex === null).map(column => column.weekday)])])
+  const observedColumns = inferTrainingColumns(weeks, planStartDate, extraWeekdays).filter(column => column.patternIndex !== null)
+  const blockWeekdays = showRestDays && Object.keys(columnWeekdays).length ? Object.values(columnWeekdays) : Array.from({ length: Math.max(Object.keys(columnWeekdays).length, lastBlockWeekdays.current.length, observedColumns.length) }, (_, dx) => (
     columnWeekdays[dx] ?? observedColumns[dx]?.weekday ?? lastBlockWeekdays.current[dx] ?? 0
   ))
   lastBlockWeekdays.current = blockWeekdays
@@ -2348,7 +2348,12 @@ export function PlanEditor(props: PlanEditorProps) {
     const startDelta = currentPlanStart.current ? ((addDays(start, 0).getDay() - addDays(currentPlanStart.current, 0).getDay()) + 7) % 7 : 0
     const previousPattern = blockWeekdays.map(day => (day + startDelta) % 7)
     const preview = resizeWeeksForCount(relabelWeeksForStartDate(latestWeeks.current, start), count, start)
-    if (JSON.stringify(pattern) !== JSON.stringify(previousPattern) && !changeBlockPattern(preview, pattern, start, previousPattern, extraWeekdays)) throw new Error('PATTERN_CONFLICT')
+    const schedule = props.restDaysEnabled ? {
+      originalWeekCount: latestWeeks.current.length,
+      hasStudentRecords: (day: DayCol) => !!(day.serverDayId && studentAddedByDay.get(day.serverDayId)?.length),
+    } : undefined
+    const applyPattern = (source: Week[]) => changeBlockPattern(source, pattern, start, previousPattern, extraWeekdays, schedule)
+    if (!applyPattern(preview)) throw new Error('PATTERN_CONFLICT')
     if (start !== currentPlanStart.current) await handleChangeStartDate(start)
     if (count !== latestWeeks.current.length) {
       if (calendarLocked || !props.onChangePlanWeeks) throw new Error('CALENDAR_LOCKED')
@@ -2366,12 +2371,10 @@ export function PlanEditor(props: PlanEditorProps) {
         setStatusText(S.editor.cycleUpdated(count))
       } finally { setSaving(false) }
     }
+    const next = applyPattern(latestWeeks.current)
+    if (!next) throw new Error('PATTERN_CONFLICT')
     if (!saveBlockWeekdays(props.currentPlanId, pattern)) throw new Error('PATTERN_STORAGE_FAILED')
-    if (JSON.stringify(pattern) !== JSON.stringify(previousPattern)) {
-      const next = changeBlockPattern(latestWeeks.current, pattern, start, previousPattern, extraWeekdays)
-      if (!next) throw new Error('PATTERN_CONFLICT')
-      if (next !== latestWeeks.current) { skipNextAutosave.current = false; setWeeksWithHistory(next) }
-    }
+    if (next !== latestWeeks.current) { skipNextAutosave.current = false; setWeeksWithHistory(next) }
     lastBlockWeekdays.current = pattern
     setColumnWeekdays(Object.fromEntries(pattern.map((weekday, dx) => [dx, weekday])))
     setSettingsOpen(false)

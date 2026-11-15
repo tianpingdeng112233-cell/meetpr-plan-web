@@ -16,7 +16,7 @@ import { saveBlockWeekdays } from './blockPlanSettings'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { AuthUser, ChatConversation, ChatReadState, CoachBindRequest, CoachStudent, ExerciseResponse, ExerciseStatsOverview, PlanResponse, PlanWithChildren, StudentOnboardingProfile, StudentVideo } from '../../api/types'
 import {
-  getStudentPlans, getPlan, publishPlan, createPlan, patchPlan, getStudentOnboarding,
+  getStudentPlans, getPlan, publishPlan, createPlan, batchDays, patchPlan, getStudentOnboarding,
   markImportedHistory, deletePlan,
 } from '../../api/plans'
 import { createCustomExercise, deleteCustomExercise, getExerciseUsageStats, listExercises, updateCustomExercise } from '../../api/exercises'
@@ -60,7 +60,7 @@ type Loaded = { plan: PlanWithChildren; weeks: Week[]; weeksCount: number; serve
 type WorkspaceRetry =
   | { kind: 'boot'; fallback: string }
   | { kind: 'student'; id: string; fallback: string; openEditor: boolean }
-  | { kind: 'plan'; id: string; fallback: string }
+  | { kind: 'plan'; id: string; fallback: string; newDraftWeekdays?: number[] }
 type WorkspaceError = { message: string; retry: WorkspaceRetry }
 const LAST_PLAN_PREFIX = 'mpw.lastPlan.'
 const BIND_REQUESTS_KEY = 'bind-requests'
@@ -424,9 +424,29 @@ export function PlanWorkspace({ onLogout, me }: Props) {
     refreshRosterWeekTonnage(id, studentPlans)
   }, [refreshRosterWeekTonnage])
 
-  const loadPlan = useCallback(async (id: string, cat: Catalog, generation = ++loadGeneration.current) => {
+  const loadPlan = useCallback(async (id: string, cat: Catalog, generation = ++loadGeneration.current, newDraftWeekdays?: number[]) => {
     try {
-      const full = await getPlan(id)
+      let full = await getPlan(id)
+      if (newDraftWeekdays && full.rest_days_enabled && full.status === 'draft' && !full.days.length) {
+        const first = weekdayIndex(full.start_date)
+        const body = {
+          expected_updated_at: full.updated_at,
+          delete_day_ids: [],
+          upsert_days: Array.from({ length: full.plan_weeks }, (_, week) => newDraftWeekdays.map(weekday => {
+            const offset = (weekday - first + 7) % 7
+            return { week_number: week + 1, day_of_week: offset + 1, sort_order: offset, is_rest: false, exercises: [] }
+          })).flat(),
+        }
+        try { full = await batchDays(id, body) }
+        catch {
+          // Creation already succeeded. Re-read in case the acknowledgement was lost.
+          full = await getPlan(id)
+          if (!full.days.length && generation === loadGeneration.current) {
+            setSettingsTarget(id)
+            window.alert(S.block.settingsFailed)
+          }
+        }
+      }
       if (generation !== loadGeneration.current) return false
       // Set loaded + planId together (after the fetch) so the keyed PlanEditor
       // remounts once with the real weeks — not an empty mount on an early key change.
@@ -749,8 +769,12 @@ export function PlanWorkspace({ onLogout, me }: Props) {
       if (generation !== loadGeneration.current) return
       if (!saveBlockWeekdays(created.id, weekdays)) window.alert(S.block.patternFailed)
       updateStudentPlans(targetStudentId, (prev) => [created, ...prev])
-      await loadPlan(created.id, catalog, generation)
       setNewPlanOpen(false)
+      try { await loadPlan(created.id, catalog, generation, weekdays) }
+      catch (error) {
+        const fallback = S.workspace.plan.openPlanFailed
+        setError({ message: errText(error, fallback), retry: { kind: 'plan', id: created.id, fallback, newDraftWeekdays: weekdays } })
+      }
     } catch (e) {
       if (generation === loadGeneration.current) throw e
     }
@@ -957,7 +981,7 @@ export function PlanWorkspace({ onLogout, me }: Props) {
         acknowledgePlanView(action.id)
         if (action.openEditor) setView('editor')
       } else {
-        await loadPlan(action.id, catalog)
+        await loadPlan(action.id, catalog, undefined, action.newDraftWeekdays)
       }
       setError(null)
     } catch (caught) {

@@ -214,41 +214,75 @@ export function changeBlockDate(weeks: Week[], target: BlockAddress, date: strin
   return moved === row.week ? weeks : weeks.map(week => week === row.week ? moved : week)
 }
 
+function withoutExplicitRest(weeks: Week[]): Week[] {
+  return weeks.map(week => ({ ...week, days: week.days.filter(day => day.dayType !== 'rest') }))
+}
+
+/** Infer the weekly pattern from training, never from a retained rest prescription. */
+export function inferTrainingColumns(weeks: Week[], start?: string | null, extras: readonly number[] = []) {
+  const training = withoutExplicitRest(weeks)
+  if (!training.some(week => week.days.some(isBlockOccupiedDay)) && weeks.some(week => week.days.some(day => day.dayType === 'rest'))) return []
+  return buildBlockGrid(training, start, [], extras).columns
+}
+
+interface TrainingSchedule {
+  originalWeekCount: number
+  hasStudentRecords?: (day: DayCol) => boolean
+}
+
 /** Apply a whole pattern from one snapshot, so occupied destinations cannot swap Dx identities.
  * Logged days stay put. A collision with a stationary day rejects the entire change.
  */
-export function changeBlockPattern(weeks: Week[], pattern: readonly number[], start: string, previous: readonly number[], extraWeekdays: readonly number[] = []): Week[] | null {
-  const grid = buildBlockGrid(weeks, start, previous, extraWeekdays)
+export function changeBlockPattern(weeks: Week[], pattern: readonly number[], start: string, previous: readonly number[], extraWeekdays: readonly number[] = [], schedule?: TrainingSchedule): Week[] | null {
+  const patternChanged = pattern.length !== previous.length || pattern.some((day, i) => day !== previous[i])
+  if (!patternChanged && !schedule) return weeks
+  // A single-day rest override is anchored to its date, never a movable Dx.
+  const trainingWeeks = schedule ? withoutExplicitRest(weeks) : weeks
+  const blank = !trainingWeeks.some(week => week.days.some(isBlockOccupiedDay))
+  const locked = (day: DayCol) => blockDayDeletionLocked(day) || schedule?.hasStudentRecords?.(day)
+  const grid = buildBlockGrid(trainingWeeks, start, previous, extraWeekdays)
   const startWeekday = (addDays(start, 0).getDay() + 6) % 7
   let changed = false
   const result: Week[] = []
-  for (const { week, cells } of grid.rows) {
-    // Removing populated Dx has no approved deletion semantics: keep all content.
-    if (cells.some(cell => cell.day && grid.columns[cell.dx].patternIndex !== null && grid.columns[cell.dx].patternIndex! >= pattern.length)) return null
+  for (const [index, { cells }] of grid.rows.entries()) {
+    const week = weeks[index]
+    const byDx = new Map(cells.map(cell => [grid.columns[cell.dx].patternIndex, cell.day]))
+    const removed = cells.flatMap(cell => {
+      const dx = grid.columns[cell.dx].patternIndex
+      return cell.day && dx !== null && dx >= pattern.length && (!schedule || dx < previous.length) ? [cell.day] : []
+    })
+    if (removed.some(day => !schedule || day.rows.length || day.shiftedToDate || locked(day))) return null
     const moves = cells.flatMap(cell => {
       const dx = grid.columns[cell.dx].patternIndex
       if (dx === null) return []
       const day = cell.day
-      if (!day || pattern[dx] == null || pattern[dx] === previous[dx] || day.completedAt || day.rows.some(row => row.hasLogs)) return []
+      if (!day || pattern[dx] == null || pattern[dx] === previous[dx] || locked(day)) return []
       const dow = (pattern[dx] - startWeekday + 7) % 7
       return day.dow === dow ? [] : [{ day, dow }]
     })
-    const sources = new Set(moves.map(move => move.day.dow))
+    const sources = new Set([...moves.map(move => move.day.dow), ...removed.map(day => day.dow)])
     const targets = new Set(moves.map(move => move.dow))
     if (targets.size !== moves.length) return null
-    if (moves.some(move => week.days.some(day => day.dow === move.dow
-      && !sources.has(day.dow) && isBlockOccupiedDay(day)))) return null
-    if (!moves.length) { result.push(week); continue }
-    changed = true
+    const reusableRest = (day: DayCol, weekday: number) => schedule && day.dayType === 'rest'
+      && !previous.includes(weekday) && !day.rows.length && !day.shiftedToDate && !locked(day)
+    if (moves.some(move => week.days.some(day => day.dow === move.dow && !sources.has(day.dow)
+      && isBlockOccupiedDay(day) && !reusableRest(day, (startWeekday + day.dow) % 7)))) return null
     const days = Array.from({ length: 7 }, (_, dow) => {
       const existing = week.days.find(day => day.dow === dow)
       const incoming = moves.find(move => move.dow === dow)
-      if (!incoming && !sources.has(dow)) return existing
+      const weekday = (startWeekday + dow) % 7
+      const dx = pattern.indexOf(weekday)
+      const add = schedule && dx >= 0 && !byDx.get(dx)
+        && (blank || week.num > schedule.originalWeekCount || !previous.includes(weekday) || dx >= previous.length)
+        && (sources.has(dow) || !existing || !isBlockOccupiedDay(existing) || reusableRest(existing, weekday))
+      if (!incoming && !sources.has(dow) && !add) return existing
       const date = addDays(start, (week.num - 1) * 7 + dow)
-      return { ...existing, serverDayId: !incoming && !existing?.rows.length ? null : existing?.serverDayId, dow, dowLabel: dowLabel(date), dateLabel: mdLabel(date),
-        rows: incoming?.day.rows ?? [], dayType: incoming?.day.dayType, rest: !incoming || incoming.day.dayType === 'rest', releasedSortOrders: [], shiftedToDate: null, shiftBadge: null }
+      const dayType = incoming?.day.dayType ?? (schedule ? (add || incoming ? 'training' : 'rest') : undefined)
+      return { ...existing, serverDayId: !schedule && !incoming && !existing?.rows.length ? null : existing?.serverDayId, dow, dowLabel: dowLabel(date), dateLabel: mdLabel(date),
+        rows: incoming?.day.rows ?? [], dayType, rest: dayType ? dayType === 'rest' : !incoming, releasedSortOrders: [], shiftedToDate: null, shiftBadge: null }
     }).filter((day): day is DayCol => !!day)
-    result.push({ ...week, days })
+    if (days.length === week.days.length && days.every((day, i) => day === week.days[i])) result.push(week)
+    else { changed = true; result.push({ ...week, days }) }
   }
   return changed ? result : weeks
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { blockFillTargets, blockEditColumns, projectBlockGrid, insertBlockDay, blockInsertDates, deleteBlockDay, changeBlockPattern, buildBlockGrid, fillBlockDays, pasteBlockRows, changeBlockWeekday, changeBlockDate } from './blockGridModel'
+import { blockFillTargets, blockEditColumns, projectBlockGrid, insertBlockDay, blockInsertDates, deleteBlockDay, inferTrainingColumns, changeBlockPattern, buildBlockGrid, fillBlockDays, pasteBlockRows, changeBlockWeekday, changeBlockDate } from './blockGridModel'
 import { relabelWeeksForStartDate } from './mapping'
 import type { ExerciseRow, Week } from './types'
 
@@ -251,4 +251,37 @@ it('merges extra weekdays into an out-of-order saved pattern without moving pres
   expect.soft(grid.columns.map(c => c.weekday)).toEqual([1, 2, 5, 6])
   expect.soft(grid.rows.map(w => w.cells.map(c => c.day?.dow ?? null))).toEqual([[1, 2, 5, 6], [1, null, 5, 6]])
   expect(JSON.stringify(weeks)).toBe(before)
+})
+
+it('keeps a missing session in a deload week when confirming its existing schedule', () => {
+  const weeks = fixture([[0,2,4], [0,4], [0,2,4]])
+  expect(changeBlockPattern(weeks, [0,2,4], '2026-10-19', [0,2,4], [], { originalWeekCount: 3 })).toBe(weeks)
+})
+
+it('reopens a reduced pattern from the tree and keeps the identity of an empty day when reselected', () => {
+  const initial = fixture([[]])
+  const schedule = { originalWeekCount: 1 }
+  const apply = (source: Week[], pattern: number[], previous: number[]) =>
+    changeBlockPattern(source, pattern, '2026-10-19', previous, [], schedule)!
+  const pair = apply(initial, [0,1], [0])
+  pair[0].days[1].serverDayId = 'tuesday'
+  const single = apply(pair, [0], [0,1])
+  expect(single[0].days[1]).toMatchObject({ dayType: 'rest', serverDayId: 'tuesday' })
+  expect(inferTrainingColumns(single, '2026-10-19').map(col => col.weekday)).toEqual([0])
+  const both = apply(single, [0,1], [0])
+  expect(both[0].days[1]).toMatchObject({ dayType: 'training', serverDayId: 'tuesday' })
+  expect(changeBlockPattern(pair, [0], '2026-10-19', [0,1], [], {
+    originalWeekCount: 1, hasStudentRecords: day => day.serverDayId === 'tuesday',
+  })).toBeNull()
+})
+
+it('schedules an otherwise blank draft around a retained per-day rest override', () => {
+  const weeks = fixture([[], [], [], []])
+  const rest = weeks[1].days[1]
+  Object.assign(rest, { dayType: 'rest', serverDayId: 'one-off-rest', rows: [row('retained')] })
+  const pattern = [0,1,3,4]
+  const applied = changeBlockPattern(weeks, pattern, '2026-10-19', pattern, [], { originalWeekCount: 4 })!
+  expect(applied.map(week => week.days.filter(day => day.dayType === 'training').map(day => day.dow)))
+    .toEqual([pattern,[0,3,4],pattern,pattern])
+  expect(applied[1].days[1]).toBe(rest)
 })
