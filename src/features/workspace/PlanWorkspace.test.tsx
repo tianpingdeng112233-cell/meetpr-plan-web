@@ -23,6 +23,7 @@ const api = vi.hoisted(() => ({
   getPlan: vi.fn(),
   publishPlan: vi.fn(),
   createPlan: vi.fn(),
+  batchDays: vi.fn(),
   patchPlan: vi.fn(),
   getStudentOnboarding: vi.fn(),
   getBindRequests: vi.fn(),
@@ -65,6 +66,7 @@ vi.mock('../../api/plans', () => ({
   getStudentOnboarding: api.getStudentOnboarding,
   publishPlan: api.publishPlan,
   createPlan: api.createPlan,
+  batchDays: api.batchDays,
   patchPlan: api.patchPlan,
   markImportedHistory: vi.fn(),
   deletePlan: api.deletePlan,
@@ -848,6 +850,24 @@ describe('PlanWorkspace editor remount', () => {
     expect(api.patchPlan).not.toHaveBeenCalled()
     expect(JSON.parse(window.localStorage.getItem('meetpr.plan-editor.weekdays.new-plan')!)).toEqual([0, 2, 4, 5])
   }, 15_000)
+
+  it.each([false, true])('creates the selected empty training days in the new draft tree (retry=%s)', async retry => {
+    const created = { ...studentPlan({ id: 'training-draft', studentId: 'student', name: '新计划', startDate: '2026-08-10' }), plan_weeks: 4 }
+    api.getStudentPlans.mockResolvedValue([])
+    api.createPlan.mockResolvedValue(created)
+    api.getPlan.mockResolvedValue({ ...created, rest_days_enabled: true })
+    api.batchDays.mockResolvedValue({ ...created, rest_days_enabled: true })
+    if (retry) api.getPlan.mockRejectedValueOnce(new Error('offline'))
+    await submitMondayPlan()
+    if (retry) await act(async () => { clickButton(host, '重试'); await settle() })
+    expect(api.createPlan).toHaveBeenCalledOnce()
+    expect(api.batchDays).toHaveBeenCalledOnce()
+    const [id, body] = api.batchDays.mock.calls[0]
+    expect(id).toBe(created.id)
+    expect(body.expected_updated_at).toBe(created.updated_at)
+    expect(body.upsert_days.map((day: { week_number: number; day_of_week: number }) => [day.week_number, day.day_of_week]))
+      .toEqual([1,2,3,4].flatMap(week => [1,3,5,6].map(day => [week,day])))
+  })
 
   it('falls back to legacy create then patches the weekday when create validation rejects anchor_weekday', async () => {
     const created = studentPlan({ id: 'legacy-plan', studentId: 'student', name: '新计划', startDate: '2026-08-10' })
