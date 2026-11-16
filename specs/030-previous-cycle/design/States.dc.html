@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>上一周期标题条的状态</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+<style>
+body{margin:0}
+button{font:inherit}
+</style>
+</helmet>
+<div style="width: 1100px; height: 700px; box-sizing: border-box; padding: 28px; background: #F5F6F8; color: #111827; font-family: Inter, 'PingFang SC', 'Microsoft YaHei', sans-serif; font-size: 13px; display: flex; flex-direction: column; gap: 18px">
+
+  <div style="display: flex; flex-direction: column; gap: 6px">
+    <span style="color: #5C6371; font-weight: 600">A · 没有改动</span>
+    <div style="display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 12px; background: #E6E9EF">
+      <span style="padding: 3px 9px; border-radius: 6px; background: #4B5563; color: #FFFFFF; font-weight: 600; font-size: 12px">上一周期</span>
+      <strong style="font-size: 14px">力量基础</strong>
+      <span style="color: #5C6371">10/19 起 · 5 周 · 已发布</span>
+      <span style="flex-grow: 1"></span>
+      <span style="color: #5C6371">显示 W4–W5（最后 2 周）</span>
+      <button style="height: 30px; padding: 0 10px; border: 1px solid #D1D5DB; border-radius: 7px; background: #FFFFFF; color: #111827">↑ 再往前 1 周</button>
+      <button style="height: 30px; padding: 0 10px; border: 1px solid #D1D5DB; border-radius: 7px; background: #FFFFFF; color: #111827">展开整份</button>
+      <button style="height: 30px; padding: 0 10px; border: 1px solid #D1D5DB; border-radius: 7px; background: #FFFFFF; color: #111827">折叠</button>
+    </div>
+  </div>
+
+  <div style="display: flex; flex-direction: column; gap: 6px">
+    <span style="color: #5C6371; font-weight: 600">B · 改过上一周期、还没更新给学员</span>
+    <div style="display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 12px; background: #E6E9EF">
+      <span style="padding: 3px 9px; border-radius: 6px; background: #4B5563; color: #FFFFFF; font-weight: 600; font-size: 12px">上一周期</span>
+      <strong style="font-size: 14px">力量基础</strong>
+      <span style="color: #5C6371">10/19 起 · 5 周 · 已发布</span>
+      <span style="padding: 2px 8px; border-radius: 6px; background: #FDF0C8; color: #6B4700; font-weight: 600">未更新 · 学员还看不到这些改动</span>
+      <span style="flex-grow: 1"></span>
+      <button style="height: 30px; padding: 0 12px; border: 1px solid #111827; border-radius: 7px; background: #111827; color: #FFFFFF; font-weight: 600">更新上一周期</button>
+      <button style="height: 30px; padding: 0 10px; border: 1px solid #D1D5DB; border-radius: 7px; background: #FFFFFF; color: #111827">折叠</button>
+    </div>
+  </div>
+
+  <div style="display: flex; flex-direction: column; gap: 6px">
+    <span style="color: #5C6371; font-weight: 600">C · 折叠</span>
+    <div style="display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 12px; background: #E6E9EF">
+      <span style="padding: 3px 9px; border-radius: 6px; background: #4B5563; color: #FFFFFF; font-weight: 600; font-size: 12px">上一周期</span>
+      <strong style="font-size: 14px">力量基础</strong>
+      <span style="color: #5C6371">10/19 起 · 5 周 · 已发布 · 已折叠</span>
+      <span style="flex-grow: 1"></span>
+      <button style="height: 30px; padding: 0 10px; border: 1px solid #D1D5DB; border-radius: 7px; background: #FFFFFF; color: #111827">展开</button>
+    </div>
+  </div>
+
+  <div style="display: flex; flex-direction: column; gap: 6px">
+    <span style="color: #5C6371; font-weight: 600">D · 上一周期已完成或暂停（整份只读）</span>
+    <div style="display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 12px; background: #E6E9EF">
+      <span style="padding: 3px 9px; border-radius: 6px; background: #4B5563; color: #FFFFFF; font-weight: 600; font-size: 12px">上一周期</span>
+      <strong style="font-size: 14px">力量基础</strong>
+      <span style="color: #5C6371">10/19 起 · 5 周 · 已完成</span>
+      <span style="padding: 2px 8px; border-radius: 6px; background: #FFFFFF; color: #4B5563">只读 · 可以查看和复制</span>
+      <span style="flex-grow: 1"></span>
+      <span style="color: #5C6371">显示 W4–W5（最后 2 周）</span>
+      <button style="height: 30px; padding: 0 10px; border: 1px solid #D1D5DB; border-radius: 7px; background: #FFFFFF; color: #111827">↑ 再往前 1 周</button>
+      <button style="height: 30px; padding: 0 10px; border: 1px solid #D1D5DB; border-radius: 7px; background: #FFFFFF; color: #111827">折叠</button>
+    </div>
+  </div>
+
+  <div style="display: flex; flex-direction: column; gap: 6px">
+    <span style="color: #5C6371; font-weight: 600">E · 上一周期有未更新改动时，点顶栏「发布 / 更新计划」</span>
+    <div style="align-self: flex-start; width: 460px; box-sizing: border-box; padding: 20px; border: 1px solid #D1D5DB; border-radius: 12px; background: #FFFFFF; display: flex; flex-direction: column; gap: 12px">
+      <strong style="font-size: 15px">只发布当前周期「备赛期」</strong>
+      <span style="color: #4B5563; line-height: 1.6">上一周期「力量基础」还有未更新的改动，这次不会一起提交。发布后可以在它的标题条上点「更新上一周期」。</span>
+      <div style="display: flex; justify-content: flex-end; gap: 8px">
+        <button style="height: 34px; padding: 0 14px; border: 1px solid #D1D5DB; border-radius: 8px; background: #FFFFFF; color: #111827">取消</button>
+        <button style="height: 34px; padding: 0 14px; border: 1px solid #111827; border-radius: 8px; background: #111827; color: #FFFFFF; font-weight: 600">发布当前周期</button>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1100,"height":700}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>
