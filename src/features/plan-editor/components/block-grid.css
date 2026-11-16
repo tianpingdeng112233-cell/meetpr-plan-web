@@ -230,7 +230,7 @@
 .block-grid[data-video-plan-scroll] .block-cell:not(.is-editing) { cursor: grab; }
 .scroller.panning .block-grid, .scroller.panning .block-cell { cursor: grabbing; }
 
-/* 030: The preceding block is a separate read-only source, never editor state. */
+/* 030: Each block owns its editor state; only presentation is shared. */
 .cycle-comparison { min-width: 950px; }
 .previous-cycle { background: var(--bd); border-radius: 10px; }
 .cycle-bar { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; padding: 12px 16px; }
@@ -258,3 +258,12 @@
 .cycle-comparison[data-cycle-layout="by-day"] .block-column { position: static; }
 .cycle-message { padding: 16px; color: var(--sec); }
 .cycle-message button { margin-left: 8px; color: var(--ink); text-decoration: underline; cursor: pointer; }
+
+.embedded-plan-layout, .embedded-plan-grid:not([hidden]), .embedded-plan-grid > div { display: contents; }
+.embedded-plan-grid[hidden] { display: none; }
+.cycle-history-slot { display: contents; }
+.cycle-dirty { background: var(--warn-soft); color: var(--warn); padding: 3px 8px; border-radius: 6px; font-size: 12px; }
+.cycle-actions button.primary { background: var(--ink); color: var(--card-bg); border-color: var(--ink); }
+.cycle-actions button:disabled { opacity: .5; cursor: wait; }
+
+.cycle-bar > .block-shift-notice { flex-basis: 100%; margin: 0; }

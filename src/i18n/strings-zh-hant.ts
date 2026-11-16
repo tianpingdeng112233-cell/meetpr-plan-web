@@ -148,6 +148,11 @@ const hantAuth = {
 } as const satisfies Translations<typeof zhAuth>
 
 const hantBlock = {
+    cycleDeliveryTitle: (name: string, update: boolean) => `\u53EA${update ? "\u66F4\u65B0" : "\u767C\u5E03"}\u7576\u524D\u9031\u671F\u300C${name}\u300D`,
+    cycleDeliveryBody: (name: string, update: boolean) => `\u4E0A\u4E00\u9031\u671F\u300C${name}\u300D\u9084\u6709\u672A\u66F4\u65B0\u7684\u6539\u52D5\uFF0C\u9019\u6B21\u4E0D\u6703\u4E00\u8D77\u63D0\u4EA4\u3002${update ? "\u66F4\u65B0" : "\u767C\u5E03"}\u5F8C\u53EF\u4EE5\u5728\u5B83\u7684\u6A19\u984C\u689D\u4E0A\u9EDE\u300C\u66F4\u65B0\u4E0A\u4E00\u9031\u671F\u300D\u3002`,
+    cycleDeliveryAction: (update: boolean) => update ? "\u66F4\u65B0\u7576\u524D\u9031\u671F" : "\u767C\u5E03\u7576\u524D\u9031\u671F",
+    cycleCheckRecovery: "\u6AA2\u8996\u672A\u63D0\u4EA4\u7684\u6539\u52D5",
+    cycleDirty: "\u672A\u66F4\u65B0 \u00B7 \u5B78\u54E1\u9084\u770B\u4E0D\u5230\u9019\u4E9B\u6539\u52D5", cycleUpdate: "\u66F4\u65B0\u4E0A\u4E00\u9031\u671F",
     cycleLoadFailed: "\u4E0A\u4E00\u9031\u671F\u8B80\u53D6\u5931\u6557",
     cycleEarlier: "\u518D\u5F80\u524D 1 \u9031", cycleExpandAll: "\u5C55\u958B\u6574\u4EFD", cycleExpand: "\u5C55\u958B", cycleCollapse: "\u647A\u758A",
     previousCycle: "\u4E0A\u4E00\u9031\u671F", currentCycle: "\u7576\u524D\u9031\u671F", cycle: "\u9031\u671F",

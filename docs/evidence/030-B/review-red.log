@@ -1,0 +1,83 @@
+
+ RUN  v2.1.9 /Users/david/Projects/apps/meetpr-plan-web-wt-030
+
+ ❯ src/features/workspace/PlanWorkspace.test.tsx (93 tests | 1 failed | 92 skipped) 144ms
+   × PlanWorkspace editor remount > 030-B makes the loaded previous cycle read-only immediately after marking it completed 143ms
+     → expected '上一周期力量基础10/19 起 · 1 周 · 已发布显示 整份 W1–W…' to contain '只读 · 可以查看和复制'
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/features/workspace/PlanWorkspace.test.tsx > PlanWorkspace editor remount > 030-B makes the loaded previous cycle read-only immediately after marking it completed
+AssertionError: expected '上一周期力量基础10/19 起 · 1 周 · 已发布显示 整份 W1–W…' to contain '只读 · 可以查看和复制'
+
+Expected: "只读 · 可以查看和复制"
+Received: "上一周期力量基础10/19 起 · 1 周 · 已发布显示 整份 W1–W1折叠周一W110/19D1 · 10/19深蹲1×5 · 100"
+
+ ❯ src/features/workspace/PlanWorkspace.test.tsx:963:34
+    961|     expect(api.patchPlan).toHaveBeenCalledWith('previous', { status: '…
+    962|     const previous = host.querySelector<HTMLElement>('[data-previous-c…
+    963|     expect(previous.textContent).toContain('只读 · 可以查看和复制')
+       |                                  ^
+    964|     await act(async () => { previous.querySelector<HTMLElement>('[data…
+    965|     expect(previous.querySelector('[data-c="weight"] input')).toBeNull…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 92 skipped (93)
+   Start at  05:49:35
+   Duration  3.33s (transform 1.28s, setup 26ms, collect 1.78s, tests 144ms, environment 404ms, prepare 60ms)
+
+
+
+ RUN  v2.1.9 /Users/david/Projects/apps/meetpr-plan-web-wt-030
+
+(node:71216) Warning: `--localstorage-file` was provided without a valid path
+(Use `node --trace-warnings ...` to show where the warning was created)
+ ❯ src/features/plan-editor/saveFailure-ui.test.tsx (17 tests | 1 failed | 16 skipped) 42ms
+   × PlanEditor save failure reasons > publishes after a successful retry without resurfacing the old failure 42ms
+     → expected "bound " to not be called at all, but actually been called 1 times
+
+Received: 
+
+  1st bound  call:
+
+    Array [
+      "发布失败，请稍后重试。",
+    ]
+
+
+Number of calls: 1
+
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/features/plan-editor/saveFailure-ui.test.tsx > PlanEditor save failure reasons > publishes after a successful retry without resurfacing the old failure
+AssertionError: expected "bound " to not be called at all, but actually been called 1 times
+
+Received: 
+
+  1st bound  call:
+
+    Array [
+      "发布失败，请稍后重试。",
+    ]
+
+
+Number of calls: 1
+
+ ❯ src/features/plan-editor/saveFailure-ui.test.tsx:175:30
+    173|     vi.mocked(window.alert).mockClear()
+    174|     await click('发布给学员')
+    175|     expect(window.alert).not.toHaveBeenCalled()
+       |                              ^
+    176|     expect(host.textContent).toContain('已发布给')
+    177|   })
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 16 skipped (17)
+   Start at  05:51:02
+   Duration  1.05s (transform 456ms, setup 13ms, collect 606ms, tests 42ms, environment 127ms, prepare 29ms)
+

@@ -1,6 +1,11 @@
 import type { Translations } from './types'
 import { countUnit } from './plural'
 export const zhBlock = {
+  cycleDeliveryTitle: (name: string, update: boolean) => `只${update ? '更新' : '发布'}当前周期「${name}」`,
+  cycleDeliveryBody: (name: string, update: boolean) => `上一周期「${name}」还有未更新的改动，这次不会一起提交。${update ? '更新' : '发布'}后可以在它的标题条上点「更新上一周期」。`,
+  cycleDeliveryAction: (update: boolean) => update ? '更新当前周期' : '发布当前周期',
+  cycleCheckRecovery: '查看未提交的改动',
+  cycleDirty: '未更新 · 学员还看不到这些改动', cycleUpdate: '更新上一周期',
   cycleLoadFailed: '上一周期读取失败',
   cycleEarlier: '再往前 1 周', cycleExpandAll: '展开整份', cycleExpand: '展开', cycleCollapse: '折叠',
   previousCycle: '上一周期', currentCycle: '当前周期', cycle: '周期',
@@ -52,6 +57,11 @@ export const zhBlock = {
   patternLocal: '星期规律保存在本机', patternFailed: '无法在本机保存星期规律，请检查浏览器存储权限后重试',
 } as const
 export const enBlock: Translations<typeof zhBlock> = {
+  cycleDeliveryTitle: (name: string, update: boolean) => `${update ? 'Update' : 'Publish'} only the current block “${name}”`,
+  cycleDeliveryBody: (name: string, update: boolean) => `The previous block “${name}” has changes that have not been updated. They will not be submitted together. After ${update ? 'updating' : 'publishing'}, use “Update previous block” in its heading.`,
+  cycleDeliveryAction: (update: boolean) => update ? 'Update current block' : 'Publish current block',
+  cycleCheckRecovery: 'View unsubmitted changes',
+  cycleDirty: 'Not updated · Changes are not visible to the student yet', cycleUpdate: 'Update previous block',
   cycleLoadFailed: 'Could not load previous block',
   cycleEarlier: 'One week earlier', cycleExpandAll: 'Expand entire block', cycleExpand: 'Expand', cycleCollapse: 'Collapse',
   previousCycle: 'Previous block', currentCycle: 'Current block', cycle: 'Block',

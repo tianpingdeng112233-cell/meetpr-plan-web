@@ -1,3 +1,4 @@
+import { createPortal } from 'react-dom'
 import { PreviousCycle } from './components/PreviousCycle'
 import { CycleHeading, CycleComparison } from './components/CycleHeading'
 import type { CommunicationContext } from '../chat/EditorChat'
@@ -28,7 +29,7 @@ import { DayFeedbackMarker } from './components/DayFeedback'
 import { VideoMarker } from './components/VideoMarker'
 import { BlockHistory } from './components/BlockHistory'
 import './components/block-history.css'
-import { TopBar, type PlanAction } from './components/TopBar'
+import { TopBar, PlanShiftNotice, type PlanAction } from './components/TopBar'
 import { DayColumn } from './components/DayColumn'
 import { ExercisePopover } from './components/ExercisePopover'
 import { CustomExerciseDialog } from './components/CustomExerciseDialog'
@@ -133,7 +134,23 @@ export interface ExerciseNoteHandle {
   open: (target: ChatExerciseRefV1) => boolean
 }
 export interface PlanEditorProps {
-  previousCycle?: { plan: import('../../api/types').PlanResponse; weeks?: Week[]; restDaysEnabled?: boolean; failed?: boolean; onRetry: () => void }
+  previousCycle?: { plan: import('../../api/types').PlanResponse; weeks?: Week[]; restDaysEnabled?: boolean; failed?: boolean; onRetry: () => void; onSave?: PlanEditorProps['onSave']; onPlanRefreshed?: PlanEditorProps['onPlanRefreshed']; onPendingRevisionSavedAtChange?: PlanEditorProps['onPendingRevisionSavedAtChange'] }
+  /** A separate plan session, embedded in the comparison's presentation only. */
+  embedded?: {
+    pendingRevisionSavedAt?: string | null
+    active: boolean; shown: number; collapsed: boolean
+    layout: ReturnType<typeof useBlockLayout>[0]; onLayout: ReturnType<typeof useBlockLayout>[1]
+    comparisonRows?: number[]
+    header: (state: { dirty: boolean; saving: boolean; readOnly: boolean; shiftNotice?: React.ReactNode; update: () => void }) => React.ReactNode
+    showActuals: boolean; setLogs: StudentSetLog[]; studentFeedback: ReturnType<typeof useStudentFeedback>
+    logsFailed: boolean; retryLogs: () => void
+    beforeUnbind: () => Promise<boolean>
+    historyTarget: HTMLElement | null
+    onDirtyChange: (dirty: boolean) => void
+    onSavingChange: (saving: boolean) => void
+    otherSaving: boolean
+    runWrite: <T>(write: () => Promise<T>) => Promise<T>
+  }
   restDaysEnabled?: boolean
   renderCommunication?: (context: CommunicationContext) => React.ReactNode
   communicationOpen?: boolean
@@ -430,15 +447,20 @@ export function PlanEditor(props: PlanEditorProps) {
   const lastSavedDraftContent = useRef(initialServerMirrorContent.current)
   const serverMirrorHash = useRef(draftContentHash(initialServerMirrorContent.current))
   const mountedMirror = useRef<DraftMirror | null>(readOnly ? null : loadDraftMirror(mirrorPlanId))
-  const waitsForRemoteRecovery = !!mirrorPlanId && !readOnly && (initialPublished || !!props.planUpdatedAt)
+  // Opening the embedded plan must keep card A's read budget. Known cloud
+  // recovery is opt-in; until checked, protect it from background mirror writes.
+  const embeddedRemotePending = useRef(!!props.embedded?.pendingRevisionSavedAt && !readOnly)
+  const [embeddedRecoveryRequested, setEmbeddedRecoveryRequested] = useState(false)
+  const waitsForRemoteRecovery = !!mirrorPlanId && !readOnly && (props.embedded
+    ? embeddedRecoveryRequested : initialPublished || !!props.planUpdatedAt)
   const mountedLocalCandidate = mountedMirror.current?.contentHash !== serverMirrorHash.current
     ? mountedMirror.current
     : null
   const [recoveryMirror, setRecoveryMirror] = useState<RecoveryMirror | null>(() => {
-    if (waitsForRemoteRecovery || !mountedLocalCandidate) return null
+    if (waitsForRemoteRecovery || embeddedRemotePending.current || !mountedLocalCandidate) return null
     return { mirror: mountedLocalCandidate, source: 'local' }
   })
-  const [recoveryReady, setRecoveryReady] = useState(!waitsForRemoteRecovery)
+  const [recoveryReady, setRecoveryReady] = useState(!waitsForRemoteRecovery && !embeddedRemotePending.current)
   const [remoteMirrorState, setRemoteMirrorState] = useState<RemoteMirrorState>({ status: 'idle' })
   const remoteMirrorStateRef = useRef(remoteMirrorState)
   remoteMirrorStateRef.current = remoteMirrorState
@@ -456,7 +478,25 @@ export function PlanEditor(props: PlanEditorProps) {
   useEffect(() => {
     if (readOnly) remoteWriter.current?.cancel()
   }, [readOnly])
+  const previousLeaveGuard = useRef<(() => Promise<boolean>) | null>(null)
+  const setPreviousLeaveGuard = useCallback((guard: (() => Promise<boolean>) | null) => { previousLeaveGuard.current = guard }, [])
+  // A transport mutex only: each editor keeps its own save controller and retries.
+  const writeTail = useRef<Promise<unknown> | null>(null)
+  const runOwnWrite = useCallback(<T,>(write: () => Promise<T>): Promise<T> => {
+    const result = writeTail.current ? writeTail.current.then(write, write) : Promise.resolve(write())
+    const tail = result.catch(() => {})
+    writeTail.current = tail
+    void tail.then(() => { if (writeTail.current === tail) writeTail.current = null })
+    return result
+  }, [])
+  const runWrite = props.embedded?.runWrite ?? runOwnWrite
+  const [previousSaving, setPreviousSaving] = useState(false)
+  const otherSaving = props.embedded?.otherSaving ?? previousSaving
+  const [previousDirty, setPreviousDirty] = useState(false)
+  const [currentDeliveryOpen, setCurrentDeliveryOpen] = useState(false)
   const [publishedDirty, setPublishedDirty] = useState(false)
+  const embeddedDirtyChange = props.embedded?.onDirtyChange
+  useEffect(() => { embeddedDirtyChange?.(publishedDirty) }, [embeddedDirtyChange, publishedDirty])
   const publishedDirtyRef = useRef(publishedDirty)
   publishedDirtyRef.current = publishedDirty
   const mirrorWriter = useRef(createDraftMirrorWriter({ planId: mirrorPlanId }))
@@ -602,18 +642,21 @@ export function PlanEditor(props: PlanEditorProps) {
 
 
   // Share presentation rows only; each grid retains its own storage coordinates.
-  const comparisonRows = props.previousCycle ? (() => {
+  const comparisonRows = props.embedded?.comparisonRows ?? (props.previousCycle ? (() => {
     const current = buildBlockGrid(weeks, planStartDate, blockWeekdays, extraWeekdays, showRestDays)
     const previous = buildBlockGrid(props.previousCycle.weeks ?? [], props.previousCycle.plan.start_date)
     return Array.from({ length: 7 }, (_, weekday) => Array.from({ length: Math.max(1,
       current.columns.filter(column => column.weekday === weekday).length,
       previous.columns.filter(column => column.weekday === weekday).length) }, () => weekday)).flat()
-  })() : undefined
+  })() : undefined)
 
   // Kept with the import token so an autosave retry reuses the coach's explicit
   // answer rather than prompting again or silently changing historical data.
   const [colW, setColW] = useState<ColWidths[]>(() => Array.from({ length: 7 }, () => ({ ...COL_DEFAULTS })))
-  const [blockLayout, setBlockLayout] = useBlockLayout()
+  const [ownBlockLayout, setOwnBlockLayout] = useBlockLayout()
+  const blockLayout = props.embedded?.layout ?? ownBlockLayout
+  const setBlockLayout = props.embedded?.onLayout ?? setOwnBlockLayout
+  const [historyTarget, setHistoryTarget] = useState<HTMLDivElement | null>(null)
   const [previousActive, setPreviousActive] = useState(false)
   const [editingDay, setEditingDay] = useState<Sel | null>(null)
   const handledDayIntent = useRef<number | null>(null)
@@ -627,7 +670,7 @@ export function PlanEditor(props: PlanEditorProps) {
     setEditingDay({ wnum: week.num, dow: day.dow })
     setSel({ wnum: week.num, dow: day.dow })
     const timer = window.setTimeout(() => {
-      rootRef.current?.querySelector(`[data-block-day-id="${intent.planDayId}"]`)?.scrollIntoView?.({ block: 'center', inline: 'nearest' })
+      weeksRef.current?.querySelector(`[data-block-day-id="${intent.planDayId}"]`)?.scrollIntoView?.({ block: 'center', inline: 'nearest' })
     }, 0)
     return () => window.clearTimeout(timer)
   }, [props.dayIntent, weeks])
@@ -636,11 +679,15 @@ export function PlanEditor(props: PlanEditorProps) {
   // SPEC-038:学员实际完成组,serverRowId → sets。失败静默(编排主流程不受影响)。
   const [setLogsRetry, setSetLogsRetry] = useState(0)
   const [setLogsFailed, setSetLogsFailed] = useState(false)
-  const [setLogs, setSetLogs] = useState<StudentSetLog[]>([])
-  const [actualsByExercise, setActualsByExercise] = useState<Map<string, ActualSet[]>>(() => new Map())
-  const [studentAddedByDay, setStudentAddedByDay] = useState<Map<string, StudentAddedExercise[]>>(() => new Map())
+  const [ownSetLogs, setSetLogs] = useState<StudentSetLog[]>([])
+  const setLogs = props.embedded?.setLogs ?? ownSetLogs
+  const [ownActualsByExercise, setActualsByExercise] = useState<Map<string, ActualSet[]>>(() => new Map())
+  const [ownStudentAddedByDay, setStudentAddedByDay] = useState<Map<string, StudentAddedExercise[]>>(() => new Map())
+  const actualsByExercise = useMemo(() => props.embedded ? groupActualsByExercise(setLogs) : ownActualsByExercise, [props.embedded, setLogs, ownActualsByExercise])
+  const studentAddedByDay = useMemo(() => props.embedded ? groupStudentAddedByDay(setLogs) : ownStudentAddedByDay, [props.embedded, setLogs, ownStudentAddedByDay])
   const actualsPreferenceKey = `meetpr:show-actuals:${props.coachId ?? 'local'}`
-  const [showActuals, setShowActuals] = useState(() => { try { return localStorage.getItem(actualsPreferenceKey) === 'true' } catch { return false } })
+  const [ownShowActuals, setShowActuals] = useState(() => { try { return localStorage.getItem(actualsPreferenceKey) === 'true' } catch { return false } })
+  const showActuals = props.embedded?.showActuals ?? ownShowActuals
   const toggleActuals = () => {
     const next = !showActuals
     setShowActuals(next)
@@ -664,7 +711,7 @@ export function PlanEditor(props: PlanEditorProps) {
   useEffect(() => {
     const studentId = props.studentId
     const from = logsFrom, today = logsToday
-    if (!studentId || !from || from > today) return
+    if (props.embedded || !studentId || !from || from > today) return
     let cancelled = false
     setSetLogsFailed(false)
     const applyLogs = (logs: StudentSetLog[]) => {
@@ -688,7 +735,8 @@ export function PlanEditor(props: PlanEditorProps) {
       .catch(() => { if (!cancelled) setSetLogsFailed(true) })
     return () => { cancelled = true }
   }, [props.studentId, planStartDate, anyRowHasLogs, hasServerDay, logsFrom, logsToday, setLogsRetry])
-  const studentFeedback = useStudentFeedback(props.studentId)
+  const ownStudentFeedback = useStudentFeedback(props.embedded ? undefined : props.studentId)
+  const studentFeedback = props.embedded?.studentFeedback ?? ownStudentFeedback
   const dayFeedback = useMemo(() => deriveDayFeedback(displayWeeks, setLogs, studentFeedback.items ?? [], props.videos ?? [], planStartDate), [displayWeeks, setLogs, studentFeedback.items, studentFeedback.failed, props.videos, planStartDate])
   const videoFeedback = useMemo(() => deriveVideoFeedback(displayWeeks, props.videos ?? [], setLogs, planStartDate), [displayWeeks, props.videos, setLogs, planStartDate])
   const [localFeedback, setLocalFeedback] = useState<FeedbackSession | null>(null)
@@ -767,7 +815,7 @@ export function PlanEditor(props: PlanEditorProps) {
       noteTimer.current = setTimeout(() => setNoteFlash(null), 900)
       clearTimeout(noteScrollTimer.current)
       noteScrollTimer.current = setTimeout(() => {
-        const elements = rootRef.current?.querySelectorAll<HTMLElement>(row ? '[data-rowid]' : '[data-block-day-id]')
+        const elements = weeksRef.current?.querySelectorAll<HTMLElement>(row ? '[data-rowid]' : '[data-block-day-id]')
         const element = [...(elements ?? [])].find(el => row ? el.dataset.rowid === row.id : el.dataset.blockDayId === day.serverDayId)
         element?.scrollIntoView?.({ block: 'center', inline: 'nearest' })
       }, 0)
@@ -1020,7 +1068,7 @@ export function PlanEditor(props: PlanEditorProps) {
     if (mirrorPlanId && hash !== serverMirrorHash.current) {
       saveDayDeletionIntent(mirrorPlanId, hash, deletedDaysRef.current)
     }
-    if (waitsForRemoteRecovery && !recoveryReady) {
+    if (!recoveryReady) {
       // Do not overwrite/delete an unread remote candidate. Fresh edits still
       // reach the fast local mirror while the GET is in flight.
       if (hash !== serverMirrorHash.current) {
@@ -1309,7 +1357,7 @@ export function PlanEditor(props: PlanEditorProps) {
       const weekEl = targetEl?.closest<HTMLElement>('.weekband[data-wnum]')
       const targetWnum = Number(weekEl?.dataset.wnum)
       const targetDow = Number(targetEl?.dataset.dow)
-      if (!targetEl || !Number.isInteger(targetWnum) || !Number.isInteger(targetDow)) return null
+      if (!targetEl || !weeksRef.current?.contains(targetEl) || !Number.isInteger(targetWnum) || !Number.isInteger(targetDow)) return null
       const targetDay = latestWeeks.current.find((week) => week.num === targetWnum)
         ?.days.find((candidate) => candidate.dow === targetDow)
       const sourceRows = latestWeeks.current.find((week) => week.num === wnum)
@@ -1473,7 +1521,7 @@ export function PlanEditor(props: PlanEditorProps) {
     setCellSelection(selection)
   }
   const positionPopAt = (el: HTMLElement, wnum: number, dow: number, rowId: string, query: string) => {
-    const root = rootRef.current
+    const root = props.embedded ? rootRef.current?.closest<HTMLElement>('.plan-editor') : rootRef.current
     if (!root) return
     const r = el.getBoundingClientRect(), rr = root.getBoundingClientRect()
     const left = Math.max(8, Math.min(r.left - rr.left, root.clientWidth - 256))
@@ -2014,7 +2062,7 @@ export function PlanEditor(props: PlanEditorProps) {
     setPop((current) => ({ ...current, visible: false }))
     window.setTimeout(() => {
       const key = planCellKey(next)
-      const cell = [...(rootRef.current?.querySelectorAll<HTMLElement>('[data-plan-cell-key]') ?? [])]
+      const cell = [...(weeksRef.current?.querySelectorAll<HTMLElement>('[data-plan-cell-key]') ?? [])]
         .find((candidate) => candidate.dataset.planCellKey === key)
       if (!cell) return
       cell.scrollIntoView?.({ block: 'nearest', inline: 'nearest' })
@@ -2076,7 +2124,9 @@ export function PlanEditor(props: PlanEditorProps) {
   }
 
   useGlobalKeyboardHandler(({ event: e, editable }) => {
-    if (suspendedRef.current || previousActive) return false
+    if (suspendedRef.current) return false
+    const saveShortcut = (e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's' && !e.altKey && !e.shiftKey
+    if (props.embedded ? !props.embedded.active || saveShortcut : previousActive && !saveShortcut) return false
     const target = e.target instanceof HTMLElement ? e.target : null
     if (target?.closest('.block-history,[role="dialog"],[role="menu"],.block-topbar')) return false
     const gridInput = !!target?.closest('[data-plan-cell-key]')
@@ -2102,6 +2152,7 @@ export function PlanEditor(props: PlanEditorProps) {
     const key = e.key.toLowerCase()
     if (mod && key === 's' && !e.altKey && !e.shiftKey) {
       e.preventDefault()
+      if (props.embedded) return false
       if (!readOnly && props.onSave) void handleSave()
       return true
     }
@@ -2168,6 +2219,13 @@ export function PlanEditor(props: PlanEditorProps) {
         setRowSelection(singleRowSelection(null))
       } else if (daySelection.days.size > 1) handleClearDay()
       else handleDeleteDay()
+      return true
+    }
+    if (props.embedded && readOnly && mod && key === 'c' && !editable) {
+      e.preventDefault()
+      if (selectedRow) void copySelectedRow()
+      else if (daySelection.days.size > 1) void copySelectedDays()
+      else void copySelectedDay()
       return true
     }
     if (readOnly || !mod) return false
@@ -2301,6 +2359,8 @@ export function PlanEditor(props: PlanEditorProps) {
   }
 
   const [saving, setSaving] = useState(false)
+  const embeddedSavingChange = props.embedded?.onSavingChange
+  useEffect(() => { embeddedSavingChange?.(saving) }, [embeddedSavingChange, saving])
   const [draftSaveFailed, setDraftSaveFailed] = useState(false)
 
   // --- 保存与草稿自动保存 --------------------------------------------------------------------
@@ -2312,6 +2372,7 @@ export function PlanEditor(props: PlanEditorProps) {
   // what the student sees, the exact thing the publish guard prevents. Only drafts autosave; a
   // published plan persists only via the explicit「更新计划」+ confirm path (handleSave).
   const saveMode = useRef<'auto' | 'manual'>('auto')
+  const [publishingVisible, setPublishingVisible] = useState(false)
   const publishing = useRef(false) // latched across a publish round-trip so nothing autosaves mid-publish
   const publishedRef = useRef(published) // fresh published for the unmount cleanup (which closes over [] deps)
   publishedRef.current = published
@@ -2515,7 +2576,7 @@ export function PlanEditor(props: PlanEditorProps) {
       const savedWeeks = latestWeeks.current
       const savedDeletedIds = requestedDeletedDayIds(savedWeeks)
       const savedPlanStart = importStart ?? currentPlanStart.current
-      const res = await props.onSave(orderWeeksForSave(savedWeeks), importStart, false, onProgress, savedDeletedIds)
+      const res = await runWrite(() => props.onSave!(orderWeeksForSave(savedWeeks), importStart, false, onProgress, savedDeletedIds))
       lastSaveFailureAlert.current = null
       // Clear only the token this save consumed: an import landing mid-flight writes a fresh
       // token, and the drain loop's next pass must still deliver it via reconcileImportedPlan —
@@ -2636,7 +2697,7 @@ export function PlanEditor(props: PlanEditorProps) {
       if (!canPersist.current) return
       mirrorWriter.current.flush()
       remoteWriter.current?.flush({ keepalive: true })
-      const atRisk = savingRef.current || unsavedRef.current || countUnbound(latestWeeks.current) > 0
+      const atRisk = savingRef.current || unsavedRef.current || publishedDirtyRef.current || countUnbound(latestWeeks.current) > 0
       if (!atRisk) return
       e.preventDefault()
       e.returnValue = '' // Chrome still needs returnValue for the native leave prompt
@@ -2659,6 +2720,7 @@ export function PlanEditor(props: PlanEditorProps) {
     return true
   }
   const confirmLeave = async () => {
+    if (previousLeaveGuard.current && !await previousLeaveGuard.current()) return false
     mirrorWriter.current.flush()
     remoteWriter.current?.flush()
     if (!confirmLeaveUnbound()) return false
@@ -2719,7 +2781,7 @@ export function PlanEditor(props: PlanEditorProps) {
       return
     }
     const focusRow = () => {
-      const rowEl = rootRef.current?.querySelector<HTMLElement>(`[data-rowid="${issue.rowId}"]`)
+      const rowEl = weeksRef.current?.querySelector<HTMLElement>(`[data-rowid="${issue.rowId}"]`)
       if (!rowEl) return
       rowEl.scrollIntoView?.({ block: 'center', inline: blockLayout === 'by-day' ? 'nearest' : 'center' })
       // For prescriptions, filled-but-invalid cells win over empty cells; the set-count
@@ -2762,11 +2824,13 @@ export function PlanEditor(props: PlanEditorProps) {
     return true
   }
 
-  const handleSave = async () => {
-    if (!props.onSave || readOnly || saving || publishing.current) return
+  const handleSave = async (currentConfirmed = false) => {
+    if (!props.onSave || readOnly || saving || otherSaving || publishing.current) return
     if (published) {
+      if (previousDirty && !currentConfirmed) { setCurrentDeliveryOpen(true); return }
       if (blockEmptyDayDelivery()) return
       if (!recoveryReady) {
+        if (props.embedded) setEmbeddedRecoveryRequested(true)
         window.alert(S.editor.checkingRemoteBeforeUpdate)
         return
       }
@@ -2793,7 +2857,7 @@ export function PlanEditor(props: PlanEditorProps) {
       try {
         for (let attempt = 1; ; attempt++) {
           try {
-            const res = await props.onSave(orderWeeksForSave(savedWeeks), null, false, onProgress, savedDeletedIds)
+            const res = await runWrite(() => props.onSave!(orderWeeksForSave(savedWeeks), null, false, onProgress, savedDeletedIds))
             // Edits typed during the round-trip aren't in what was pushed — keep the guards armed.
             // Extension can persist a new duration; use the acknowledged metadata
             // rather than the parent's pre-update week count for the covered hash.
@@ -2881,10 +2945,11 @@ export function PlanEditor(props: PlanEditorProps) {
     && !day.completedAt && day.rows.some(row => !row.hasLogs && row.exerciseId && row.boxes.length > 0),
   )) : []
   const pastDoubtCount = countImportDoubts(pastTrainingWeeks)
-  const handlePublish = async (confirmed = false) => {
+  const handlePublish = async (confirmed = false, currentConfirmed = false) => {
     // 发布后不可撤回，且当前编辑器不就地覆盖已发布树，避免破坏历史 set log。
     // saving 时也不发布:避免在后台 reconcile 半途翻页发布,发布按钮已 disabled,这里再兜底。
-    if (readOnly || published || publishing.current || saving) return
+    if (readOnly || published || publishing.current || saving || otherSaving) return
+    if (previousDirty && !currentConfirmed) { setCurrentDeliveryOpen(true); return }
     if (blockEmptyDayDelivery()) return
     // Pre-flight: rows the publish would lose or that the backend will refuse. Zero-set bound
     // rows make the server reject with PLAN_PUBLISH_INCOMPLETE — block up front with a pointer
@@ -2906,6 +2971,7 @@ export function PlanEditor(props: PlanEditorProps) {
     }
     setPublishConfirmOpen(false)
     publishing.current = true
+    setPublishingVisible(true)
     saver.current.cancelAutosave()
     const snapshot = latestWeeks.current // to re-arm autosave for edits if publication fails
     let becamePublished = false
@@ -2921,7 +2987,7 @@ export function PlanEditor(props: PlanEditorProps) {
         ? lastSavedDraftContent.current
         : mirrorContent(latestWeeks.current, currentPlanStart.current)
       setStatusText(S.editor.publishing)
-      if (onPublish) await onPublish()
+      if (onPublish) await runWrite(onPublish)
       // Draft calendar history stops at publication. Keep prescription undo/redo,
       // but anchor every snapshot to the exact calendar that was just published.
       applyScheduleUpdate((snapshot) => projectWeekSchedule(
@@ -2971,6 +3037,7 @@ export function PlanEditor(props: PlanEditorProps) {
       }
       setStatusText(S.editor.publishFailedRetry)
     } finally {
+      setPublishingVisible(false)
       publishing.current = false // always unlatch so 更新计划 / autosave work afterwards
       // Re-arm only if the coach actually edited during the round-trip — a blanket re-arm
       // triggers a no-op save whose「已自动保存」repaints over the failure status above.
@@ -3066,20 +3133,43 @@ export function PlanEditor(props: PlanEditorProps) {
     setWeeksWithHistory(prev => fillBlockDays(prev, source, endWeek, planStartDate, blockWeekdays, extraWeekdays, showRestDays))
   }
 
+  const activateCycle = (target: HTMLElement) => {
+    if (props.embedded) return
+    if (target.closest('[data-previous-cycle]')) setPreviousActive(true)
+    else if (weeksRef.current?.contains(target)) setPreviousActive(false)
+  }
+
+  const historyRail = (<BlockHistory renderCommunication={props.renderCommunication} communicationOpen={props.communicationOpen} onCommunicationOpenChange={props.onCommunicationOpenChange} onAnnotationPrepared={props.onAnnotationPrepared} feedbackItems={studentFeedback.items} student={props.student} onStudentChanged={props.onStudentChanged} onBeforeUnbind={props.embedded?.beforeUnbind ?? confirmLeave} readOnly={studentEnded} datesFailed={props.embedded?.logsFailed ?? setLogsFailed} onRetryDates={props.embedded?.retryLogs ?? (() => setSetLogsRetry(value => value + 1))} days={dayFeedback.days} feedbackFailed={studentFeedback.failed} feedbackLoaded={!!studentFeedback.items && !studentFeedback.failed}
+          onRetryFeedback={studentFeedback.refresh} onFeedbackSent={item => { studentFeedback.append(item); if (studentFeedback.failed) void studentFeedback.refresh() }} onRefreshFeedback={studentFeedback.refresh}
+          onOpenDay={openFeedbackDay} hoveredDayId={hoveredFeedbackDay} onHoverDay={setHoveredFeedbackDay}
+          videos={props.videos} entries={videoFeedback.entries} feedback={feedback} onFeedbackChange={changeFeedback}
+          onVideoViewed={props.onVideoViewed} onRefreshVideos={props.onRefreshVideos} onHighlight={setHighlightedVideo} studentId={props.studentId} studentName={studentName}
+          row={(() => {
+            const row = editingDay && cellSelection ? resolvePlanCell(displayWeeks, cellSelection)?.row ?? null : null
+            return row && setsDraft?.rowId === row.id && setsDraft.value === '' ? { ...row, boxes: [] } : row
+          })()}
+          profile={props.onboardingProfile} overview={props.exerciseStatsOverview} onVideos={props.onOpenVideos}
+          onVideoVisibilityChange={open => {
+            historyVideoOpen.current = open
+            setPop(current => ({ ...current, visible: false }))
+          }} />)
+
   return (
-    <div ref={rootRef} onClickCapture={event => setPreviousActive(!!(event.target as HTMLElement).closest('[data-previous-cycle]'))}
-      onFocusCapture={event => setPreviousActive(!!event.target.closest('[data-previous-cycle]'))} data-row-drag={rowDragState ?? undefined} onMouseDownCapture={event => {
+    <div ref={rootRef} onClickCapture={event => activateCycle(event.target as HTMLElement)}
+      onFocusCapture={event => activateCycle(event.target)} data-row-drag={rowDragState ?? undefined} onMouseDownCapture={event => {
       const target = event.target as HTMLElement
-      setPreviousActive(!!target.closest('[data-previous-cycle]'))
-      if (!target.closest('.block-layout-switch,.show-actuals,.feedback-toggle,.block-history,.block-cell,.block-context-menu,.ex-popover,[data-popover],[role="dialog"]')) {
+      activateCycle(target)
+      if (!target.closest('[data-previous-cycle]') && !target.closest('.block-layout-switch,.show-actuals,.feedback-toggle,.block-history,.block-cell,.block-context-menu,.ex-popover,[data-popover],[role="dialog"]')) {
         closeBlockEditor(); setBlockMenu(null)
       }
-    }} className="plan-editor" style={{
+    }} className={props.embedded ? "embedded-plan-editor" : "plan-editor"} style={props.embedded ? { display: 'contents' } : {
       position: 'relative', height: '100%', display: 'flex', flexDirection: 'column',
       overflow: 'hidden', background: 'var(--page-bg)', color: 'var(--txt)',
       fontFamily: 'var(--font-sans)', fontSize: 13, WebkitFontSmoothing: 'antialiased',
     }}>
-      <TopBar feedbackOpen={!!feedback} pendingVideoCount={studentEnded ? 0 : videoFeedback.entries.filter(entry => entry.video.viewed_at == null).length} onToggleFeedback={() => feedback ? changeFeedback(null) : openFeedbackVideo()} showActuals={showActuals} onToggleActuals={toggleActuals}
+      {props.embedded?.header({ dirty: publishedDirty, saving: saving || otherSaving, readOnly, shiftNotice: <PlanShiftNotice totalShiftDays={totalShiftDays} latestShift={latestShift} undoingShift={undoingShift}
+        undoNeedsRefresh={undoNeedsRefresh} onUndoShift={!readOnly && latestShift ? handleUndoPlanShift : undefined} />, update: () => { void handleSave() } })}
+      {!props.embedded && <TopBar feedbackOpen={!!feedback} pendingVideoCount={studentEnded ? 0 : videoFeedback.entries.filter(entry => entry.video.viewed_at == null).length} onToggleFeedback={() => feedback ? changeFeedback(null) : openFeedbackVideo()} showActuals={showActuals} onToggleActuals={toggleActuals}
         studentName={studentName} planName={planName} published={published} publishedDirty={publishedDirty}
         readOnly={readOnly} studentEnded={studentEnded} statusText={studentEnded ? S.workspace.studentRail.readOnly : visibleStatusText} onPublish={() => void handlePublish()}
         students={props.students} currentStudentId={props.currentStudentId} onSwitchStudent={guardLeaveId(props.onSwitchStudent)}
@@ -3099,7 +3189,7 @@ export function PlanEditor(props: PlanEditorProps) {
           const name = window.prompt(S.editor.planNamePrompt, planName)?.trim()
           if (name && name !== planName) void props.onRename!(name)
         } : undefined}
-          onSave={!readOnly && props.onSave ? handleSave : undefined} saving={saving} draftSaveFailed={draftSaveFailed}
+          onSave={!readOnly && props.onSave ? () => { void handleSave() } : undefined} saving={saving} submitDisabled={otherSaving || publishingVisible} draftSaveFailed={draftSaveFailed}
         planStartDate={planStartDate ?? undefined}
         calendarLocked={calendarLocked || !props.onChangeStartDate}
         calendarLockedHint={calendarLocked ? calendarLockedHint : S.editor.calendarUnavailable}
@@ -3114,7 +3204,16 @@ export function PlanEditor(props: PlanEditorProps) {
         studentPlanCursor={props.studentPlanCursor}
         weeksCount={weeks.length}
         onPlanSettings={!readOnly && planStartDate ? () => setSettingsOpen(true) : undefined}
-      />
+      />}
+      {currentDeliveryOpen && <div className="import-overlay"><section className="import-dialog" role="dialog" aria-modal="true" aria-label={S.block.cycleDeliveryTitle(planName, published)}>
+        <h3>{S.block.cycleDeliveryTitle(planName, published)}</h3>
+        <p>{S.block.cycleDeliveryBody(props.previousCycle?.plan.name ?? '', published)}</p>
+        <footer><button onClick={() => setCurrentDeliveryOpen(false)}>{S.common.cancel}</button><button className="primary" onClick={() => {
+          setCurrentDeliveryOpen(false)
+          if (published) void handleSave(true)
+          else void handlePublish(false, true)
+        }}>{S.block.cycleDeliveryAction(published)}</button></footer>
+      </section></div>}
       {!readOnly && publishConfirmOpen && <div className="import-overlay"><section className="import-dialog" data-publish-confirm="" role="dialog" aria-modal="true" aria-label={S.sheetImport.publishTitle}>
         <h3>{S.sheetImport.publishTitle}</h3>
         {countImportDoubts(weeks) > 0 && <p>{S.sheetImport.publishDoubts(countImportDoubts(weeks))}</p>}
@@ -3122,7 +3221,7 @@ export function PlanEditor(props: PlanEditorProps) {
           <label style={{ display: 'flex', alignItems: 'start' }}><input type="checkbox" checked={backfillOnPublish} onChange={e => setBackfillOnPublish(e.target.checked)} />{S.sheetImport.backfill(pastTrainingWeeks.length)}</label>
           {pastDoubtCount > 0 && <small>{S.sheetImport.pastDoubts(pastDoubtCount)}</small>}
         </>}
-        <footer><button onClick={() => setPublishConfirmOpen(false)}>{S.common.cancel}</button><button className="primary" onClick={() => void handlePublish(true)}>{S.editor.publishToStudent}</button></footer>
+        <footer><button onClick={() => setPublishConfirmOpen(false)}>{S.common.cancel}</button><button className="primary" onClick={() => void handlePublish(true, true)}>{S.editor.publishToStudent}</button></footer>
       </section></div>}
       {!readOnly && planStartDate && <NewPlanDialog open={settingsOpen} studentName={studentName}
         settings={{ name: planName, weeks: weeks.length, startDate: planStartDate, weekdays: blockWeekdays }}
@@ -3131,6 +3230,11 @@ export function PlanEditor(props: PlanEditorProps) {
         weeksLocked={calendarLocked || !props.onChangePlanWeeks}
         onClose={() => setSettingsOpen(false)} onCreate={applyPlanSettings} />}
 
+      {!readOnly && props.embedded && !recoveryReady && <div className="cycle-message" role="status">
+        {S.editor.remoteDraft} · <button disabled={embeddedRecoveryRequested} onClick={() => setEmbeddedRecoveryRequested(true)}>
+          {embeddedRecoveryRequested ? S.common.loadingEllipsis : S.block.cycleCheckRecovery}
+        </button>
+      </div>}
       {!readOnly && recoveryMirror && (
         <DraftMirrorBanner
           savedAt={recoveryMirror.mirror.savedAt}
@@ -3139,20 +3243,22 @@ export function PlanEditor(props: PlanEditorProps) {
           onDiscard={discardDraftMirror}
         />
       )}
-      <div className="plan-with-rail block-layout">
-        <div className="scroller" ref={scrollerRef} aria-readonly={readOnly || undefined}>
-          {readOnly && <div role="status" className="block-readonly">{studentEnded ? <><button disabled>{S.editor.newPlan}</button><button disabled>{S.workspace.studentRail.import}</button><span>{S.workspace.studentRail.readOnlyHint}</span></> : S.editor.historyReadOnlyBanner}</div>}
+      <div className={props.embedded ? "embedded-plan-layout" : "plan-with-rail block-layout"}>
+        {!props.embedded?.collapsed && <div className={props.embedded ? "embedded-plan-grid" : "scroller"} hidden={props.embedded?.collapsed} ref={scrollerRef} aria-readonly={readOnly || undefined}>
+          {readOnly && !props.embedded && <div role="status" className="block-readonly">{studentEnded ? <><button disabled>{S.editor.newPlan}</button><button disabled>{S.workspace.studentRail.import}</button><span>{S.workspace.studentRail.readOnlyHint}</span></> : S.editor.historyReadOnlyBanner}</div>}
           <CycleComparison enabled={!!props.previousCycle} layout={blockLayout} rows={comparisonRows?.length ?? 7}>
-          {props.previousCycle && <PreviousCycle key={props.previousCycle.plan.id} showActuals={showActuals} actualsForRow={actualsForRow} studentAddedByDay={studentAddedByDay}
-            exerciseName={id => { const names = props.exerciseIndex?.namesById(id); return names ? fmt.exerciseName(names) : id }}
-            active={previousActive} onCopy={(rows, day) => {
-              const text = day ? serializeDayForClipboard(day) : serializeRowsForClipboard(rows)
-              clipboardStore.write(day ? { kind: 'day', text, ...cloneDayClipboard(day) } : { kind: 'row', text, rows: cloneRows(rows, 'clip-row') })
-              void navigator.clipboard?.writeText(text).catch(() => { /* Internal clipboard still works. */ })
-            }} comparisonRows={comparisonRows} coachId={props.coachId} cycle={props.previousCycle} layout={blockLayout} onLayout={setBlockLayout} rowTier={rowTier} />}
+          {props.previousCycle && <PreviousCycle key={props.previousCycle.plan.id} cycle={props.previousCycle} coachId={props.coachId}
+            editorProps={{ studentName, studentId: props.studentId, student: props.student, exerciseIndex: props.exerciseIndex,
+              onCreateExercise: props.onCreateExercise, suspended: props.suspended, videos: props.videos, onLeaveGuardChange: setPreviousLeaveGuard,
+              exerciseStatsOverview: props.exerciseStatsOverview, onboardingProfile: props.onboardingProfile,
+              renderCommunication: props.renderCommunication, communicationOpen: props.communicationOpen, onCommunicationOpenChange: props.onCommunicationOpenChange,
+              onAnnotationPrepared: props.onAnnotationPrepared, onStudentChanged: props.onStudentChanged, onVideoViewed: props.onVideoViewed,
+              onRefreshVideos: props.onRefreshVideos, onOpenVideos: props.onOpenVideos }}
+            presentation={{ active: previousActive, layout: blockLayout, onLayout: setBlockLayout, comparisonRows,
+              showActuals, setLogs, studentFeedback, logsFailed: setLogsFailed, retryLogs: () => setSetLogsRetry(value => value + 1), beforeUnbind: confirmLeave, historyTarget, onDirtyChange: setPreviousDirty, onSavingChange: setPreviousSaving, otherSaving: saving || publishingVisible, runWrite }} />}
           <div ref={weeksRef} data-current-cycle={props.previousCycle ? '' : undefined}>
             {props.previousCycle && <header className="cycle-bar"><CycleHeading name={props.planName} start={planStartDate} count={weeks.length} status={props.planStatus} /></header>}
-            <BlockGrid comparisonRows={comparisonRows} showRestDays={showRestDays} layout={blockLayout} onLayout={setBlockLayout} onConfirmWeekImport={num => setWeeksWithHistory(prev => prev.map(week => week.num === num ? { ...week, importDoubts: undefined } : week))} weeks={weeks} startDate={planStartDate} weekdays={blockWeekdays} extraWeekdays={extraWeekdays} editing={editingDay}
+            <BlockGrid comparisonRows={comparisonRows} showRestDays={showRestDays} layout={blockLayout} onLayout={setBlockLayout} onConfirmWeekImport={num => setWeeksWithHistory(prev => prev.map(week => week.num === num ? { ...week, importDoubts: undefined } : week))} weeks={props.embedded ? weeks.slice(-props.embedded.shown) : weeks} startDate={planStartDate} weekdays={blockWeekdays} extraWeekdays={extraWeekdays} editing={editingDay}
               selectedDays={daySelection.days} selectedRows={selectedRowIds} readOnly={readOnly}
               rowTier={rowTier} onClose={closeBlockEditor} onReorderRow={reorderRow} onRowDragState={setRowDragState}
               showActuals={showActuals} actualsForRow={actualsForRow} studentAddedByDay={studentAddedByDay}
@@ -3163,12 +3269,12 @@ export function PlanEditor(props: PlanEditorProps) {
               videoMarker={rowVideoMarker} highlightedVideo={highlightedVideo} highlightedExerciseId={noteHighlight} flashingExerciseId={noteFlash}
               playback={playingEntry ? { entry: playingEntry, request: videoAlignmentRequest } : null}
               addedDayMarkers={day => day.serverDayId && [...(videoFeedback.studentAdded.get(day.serverDayId) ?? [])].map(([id, group]) => <span className="added-video-marker" key={id}>{S.block.added} <VideoMarker group={group} onOpen={openFeedbackVideo} /></span>)}
-              renderCapacity={(_week, index) => <WeekCapacitySummary weekNumber={_week.num} {...weeklySummaries[index]} />}
+              renderCapacity={(_week, index) => props.embedded ? null : <WeekCapacitySummary weekNumber={_week.num} {...weeklySummaries[index]} />}
               onOpen={(week, day, event) => {
                 setBlockMenu(null)
                 handleDayClick(week.num, day.dow, event)
                 if (showRestDays && isRestDay(day)) return
-                if (!event.shiftKey && !event.metaKey && !event.ctrlKey) setEditingDay({ wnum: week.num, dow: day.dow })
+                if (!(props.embedded && readOnly) && !event.shiftKey && !event.metaKey && !event.ctrlKey) setEditingDay({ wnum: week.num, dow: day.dow })
               }}
               onSelectRow={(week, day, rowId, modifiers) => handleSelectRow(week.num, day.dow, rowId, modifiers)}
               onSelectRectangle={(days, rows) => {
@@ -3208,7 +3314,8 @@ export function PlanEditor(props: PlanEditorProps) {
                 closeBlockEditor()
               }}
               onContext={(event, week, day) => {
-                event.preventDefault(); handleSelect(week.num, day.dow)
+                event.preventDefault(); if (props.embedded && readOnly) return
+                handleSelect(week.num, day.dow)
                 setBlockMenu({ x: event.clientX, y: event.clientY })
               }}
               renderDay={(wk, day, dx, dayNumber) => (
@@ -3285,21 +3392,9 @@ export function PlanEditor(props: PlanEditorProps) {
             />
           </div>
           </CycleComparison>
-        </div>
-        <BlockHistory renderCommunication={props.renderCommunication} communicationOpen={props.communicationOpen} onCommunicationOpenChange={props.onCommunicationOpenChange} onAnnotationPrepared={props.onAnnotationPrepared} feedbackItems={studentFeedback.items} student={props.student} onStudentChanged={props.onStudentChanged} onBeforeUnbind={confirmLeave} readOnly={studentEnded} datesFailed={setLogsFailed} onRetryDates={() => setSetLogsRetry(value => value + 1)} days={dayFeedback.days} feedbackFailed={studentFeedback.failed} feedbackLoaded={!!studentFeedback.items && !studentFeedback.failed}
-          onRetryFeedback={studentFeedback.refresh} onFeedbackSent={item => { studentFeedback.append(item); if (studentFeedback.failed) void studentFeedback.refresh() }} onRefreshFeedback={studentFeedback.refresh}
-          onOpenDay={openFeedbackDay} hoveredDayId={hoveredFeedbackDay} onHoverDay={setHoveredFeedbackDay}
-          videos={props.videos} entries={videoFeedback.entries} feedback={feedback} onFeedbackChange={changeFeedback}
-          onVideoViewed={props.onVideoViewed} onRefreshVideos={props.onRefreshVideos} onHighlight={setHighlightedVideo} studentId={props.studentId} studentName={studentName}
-          row={(() => {
-            const row = editingDay && cellSelection ? resolvePlanCell(displayWeeks, cellSelection)?.row ?? null : null
-            return row && setsDraft?.rowId === row.id && setsDraft.value === '' ? { ...row, boxes: [] } : row
-          })()}
-          profile={props.onboardingProfile} overview={props.exerciseStatsOverview} onVideos={props.onOpenVideos}
-          onVideoVisibilityChange={open => {
-            historyVideoOpen.current = open
-            setPop(current => ({ ...current, visible: false }))
-          }} />
+        </div>}
+        {!props.embedded && (previousActive ? <div ref={setHistoryTarget} className="cycle-history-slot" /> : historyRail)}
+        {props.embedded?.active && props.embedded.historyTarget && createPortal(historyRail, props.embedded.historyTarget)}
       </div>
       {blockMenu && <div className="block-context-menu" role="menu" style={{ left: Math.min(blockMenu.x, window.innerWidth - 190), top: Math.min(blockMenu.y, window.innerHeight - 235) }}>
         <button type="button" role="menuitem" disabled={readOnly || !props.restDaysEnabled || !selectedBlockDay || deleteBlockLocked}

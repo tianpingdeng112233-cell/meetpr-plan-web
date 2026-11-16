@@ -42,6 +42,7 @@ interface Props {
   onRenamePlan?: () => void
   onSave?: () => void
   saving?: boolean
+  submitDisabled?: boolean
   draftSaveFailed?: boolean
   onPlanAction?: (id: string, action: PlanAction) => void | Promise<void>
   planStartDate?: string
@@ -84,7 +85,6 @@ export function TopBar(p: Props) {
   }
   const actionStatus = actions?.option.status ?? (actions?.option.id === (p.currentPlanId ?? 'current') ? p.currentPlanStatus : undefined)
   const editableAction = actionStatus === 'draft' || actionStatus === 'published' || actionStatus === undefined
-  const shiftNotice = planShiftNoticeText(p.totalShiftDays ?? 0, p.latestShift ?? null)
   return <>
     <div className="plan-context-bar block-topbar" data-plan-context-bar="" aria-label={S.editor.planContext}
       style={{ height:56, flex:'0 0 56px', flexWrap:'nowrap', overflowX:'auto', overflowY:'hidden', whiteSpace:'nowrap' }}>
@@ -99,8 +99,8 @@ export function TopBar(p: Props) {
       </button>
       <button type="button" className="show-actuals" role="switch" aria-label={S.block.showActuals} aria-checked={p.showActuals ?? false} onClick={p.onToggleActuals}>{S.block.showActuals}<i aria-hidden="true" /></button>
       <span className={`plan-autosave-status${p.publishedDirty ? ' published-dirty' : ''}`} data-testid="plan-save-status" role="status"><span className={p.published ? 'published' : ''} aria-hidden="true" />{p.statusText}</span>
-      {!p.published && !p.readOnly && p.draftSaveFailed && p.onSave && <button type="button" disabled={p.saving} onClick={p.onSave}>{S.block.retrySave}</button>}
-      <button className="block-primary" disabled={p.studentEnded || p.readOnly || p.saving || (p.published && !p.onSave)} onClick={p.published ? p.onSave : p.onPublish} title={p.studentEnded ? S.workspace.studentRail.readOnlyHint : p.readOnly ? S.editor.historicalReadOnlyHint : undefined}>
+      {!p.published && !p.readOnly && p.draftSaveFailed && p.onSave && <button type="button" disabled={p.saving || p.submitDisabled} onClick={p.onSave}>{S.block.retrySave}</button>}
+      <button className="block-primary" disabled={p.studentEnded || p.readOnly || p.saving || p.submitDisabled || (p.published && !p.onSave)} onClick={p.published ? p.onSave : p.onPublish} title={p.studentEnded ? S.workspace.studentRail.readOnlyHint : p.readOnly ? S.editor.historicalReadOnlyHint : undefined}>
         {p.studentEnded ? S.workspace.studentRail.readOnly : p.readOnly ? S.editor.historicalReadOnly : p.saving ? S.editor.saving : p.published ? S.editor.updatePlan : S.editor.publishToStudent}
       </button>
 
@@ -129,8 +129,14 @@ export function TopBar(p: Props) {
         {actionStatus === 'draft' && <><hr />{action(S.editor.deleteCurrentDraft, callback(actions.option, 'delete'), true, p.saving)}</>}
       </div>}
     </>, document.body)}
-    {shiftNotice && <div className="block-shift-notice" data-plan-shift-notice="">{shiftNotice}
-      {p.latestShift && p.onUndoShift && <button type="button" data-plan-shift-undo="" disabled={p.undoingShift} onClick={() => { void p.onUndoShift?.() }}>{p.undoNeedsRefresh ? S.editor.retryShiftRefresh : S.editor.undoShift}</button>}
-    </div>}
+    <PlanShiftNotice {...p} />
   </>
+}
+
+
+export function PlanShiftNotice(p: Pick<Props, 'totalShiftDays' | 'latestShift' | 'onUndoShift' | 'undoingShift' | 'undoNeedsRefresh'>) {
+  const notice = planShiftNoticeText(p.totalShiftDays ?? 0, p.latestShift ?? null)
+  return notice ? <div className="block-shift-notice" data-plan-shift-notice="">{notice}
+    {p.latestShift && p.onUndoShift && <button type="button" data-plan-shift-undo="" disabled={p.undoingShift} onClick={() => { void p.onUndoShift?.() }}>{p.undoNeedsRefresh ? S.editor.retryShiftRefresh : S.editor.undoShift}</button>}
+  </div> : null
 }
