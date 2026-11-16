@@ -64,4 +64,3 @@ AssertionError: expected { dow: +0, dowLabel: '周一', …(5) } to match object
       Tests  1 failed | 1 passed | 39 skipped (41)
    Start at  10:23:35
    Duration  1.48s (transform 461ms, setup 13ms, collect 591ms, tests 244ms, environment 208ms, prepare 48ms)
-
