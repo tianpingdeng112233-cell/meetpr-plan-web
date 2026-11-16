@@ -18,8 +18,8 @@ import {
 import { ApiException } from '../../api/client'
 import { clearDayDeletionIntent, loadDayDeletionIntent, saveDayDeletionIntent, type ExplicitDayDeletion } from './dayDeletionIntent'
 import { useBlockLayout } from './blockLayout'
-import { BlockGrid } from './components/BlockGrid'
-import { switchBlockDayType, isBlockOccupiedDay, blockFillTargets, insertBlockDay, deleteBlockDay, blockDayDeletionLocked, isBlockTrainingDay, buildBlockGrid, inferTrainingColumns, changeBlockPattern, blockTargetDay, fillBlockDays, changeBlockDate, changeBlockWeekday, type BlockAddress } from './blockGridModel'
+import { BlockGrid, type CrossCycleFill, type IncomingFill } from './components/BlockGrid'
+import { switchBlockDayType, isBlockOccupiedDay, blockFillTargets, insertBlockDay, deleteBlockDay, blockDayDeletionLocked, isBlockTrainingDay, buildBlockGrid, inferTrainingColumns, changeBlockPattern, blockTargetDay, fillBlockDays, fillBlockDaysFromSource, changeBlockDate, changeBlockWeekday, type BlockAddress } from './blockGridModel'
 import { NewPlanDialog } from '../workspace/PlanDialogs'
 import { loadBlockExtraWeekdays, saveBlockExtraWeekdays, loadBlockWeekdays, saveBlockWeekdays } from '../workspace/blockPlanSettings'
 import { deriveDayFeedback, deriveVideoFeedback, type FeedbackDay, type FeedbackEntry } from './feedbackModel'
@@ -137,6 +137,7 @@ export interface PlanEditorProps {
   previousCycle?: { plan: import('../../api/types').PlanResponse; weeks?: Week[]; restDaysEnabled?: boolean; failed?: boolean; onRetry: () => void; onSave?: PlanEditorProps['onSave']; onPlanRefreshed?: PlanEditorProps['onPlanRefreshed']; onPendingRevisionSavedAtChange?: PlanEditorProps['onPendingRevisionSavedAtChange'] }
   /** A separate plan session, embedded in the comparison's presentation only. */
   embedded?: {
+    crossCycleFill?: CrossCycleFill
     pendingRevisionSavedAt?: string | null
     active: boolean; shown: number; collapsed: boolean
     layout: ReturnType<typeof useBlockLayout>[0]; onLayout: ReturnType<typeof useBlockLayout>[1]
@@ -658,6 +659,8 @@ export function PlanEditor(props: PlanEditorProps) {
   const setBlockLayout = props.embedded?.onLayout ?? setOwnBlockLayout
   const [historyTarget, setHistoryTarget] = useState<HTMLDivElement | null>(null)
   const [previousActive, setPreviousActive] = useState(false)
+  const [incomingFill, setIncomingFill] = useState<IncomingFill | null>(null)
+  useEffect(() => { setIncomingFill(null) }, [readOnly, props.previousCycle?.plan.id])
   const [editingDay, setEditingDay] = useState<Sel | null>(null)
   const handledDayIntent = useRef<number | null>(null)
   useEffect(() => {
@@ -3133,6 +3136,36 @@ export function PlanEditor(props: PlanEditorProps) {
     setWeeksWithHistory(prev => fillBlockDays(prev, source, endWeek, planStartDate, blockWeekdays, extraWeekdays, showRestDays))
   }
 
+  const crossFillTargets = (target: HTMLElement | null) => {
+    if (readOnly || !target || !weeksRef.current?.contains(target)) return []
+    const endWeek = Number(target.dataset.blockWeek), dx = Number(target.dataset.dx)
+    const grid = buildBlockGrid(weeks, planStartDate, blockWeekdays, extraWeekdays, showRestDays)
+    if (!grid.rows.some(row => row.week.num === endWeek) || !grid.columns[dx]) return []
+    return blockFillTargets(grid, { weekNumber: 0, dx }, endWeek).filter(address => {
+      const day = blockTargetDay(grid, address, planStartDate)
+      return day && !blockDayDeletionLocked(day)
+    })
+  }
+  const crossCycleFill: CrossCycleFill = {
+    preview: (day, target) => {
+      const targets = crossFillTargets(target)
+      setIncomingFill(targets.length ? { day, targets, endWeek: Number(target!.dataset.blockWeek) } : null)
+      return targets.length > 0
+    },
+    cancel: () => setIncomingFill(null),
+    commit: (day, target) => {
+      const targets = crossFillTargets(target)
+      if (!targets.length) return
+      const grid = buildBlockGrid(weeks, planStartDate, blockWeekdays, extraWeekdays, showRestDays)
+      const occupied = targets.filter(address => blockTargetDay(grid, address, planStartDate)?.rows.length).length
+      if (occupied && !window.confirm(S.editor.overwriteDaysConfirm(occupied))) return
+      setWeeksWithHistory(prev => fillBlockDaysFromSource(prev, day, targets, planStartDate, blockWeekdays, extraWeekdays, showRestDays))
+      setPreviousActive(false)
+      closeBlockEditor()
+      target.focus()
+    },
+  }
+
   const activateCycle = (target: HTMLElement) => {
     if (props.embedded) return
     if (target.closest('[data-previous-cycle]')) setPreviousActive(true)
@@ -3254,11 +3287,11 @@ export function PlanEditor(props: PlanEditorProps) {
               renderCommunication: props.renderCommunication, communicationOpen: props.communicationOpen, onCommunicationOpenChange: props.onCommunicationOpenChange,
               onAnnotationPrepared: props.onAnnotationPrepared, onStudentChanged: props.onStudentChanged, onVideoViewed: props.onVideoViewed,
               onRefreshVideos: props.onRefreshVideos, onOpenVideos: props.onOpenVideos }}
-            presentation={{ active: previousActive, layout: blockLayout, onLayout: setBlockLayout, comparisonRows,
+            presentation={{ crossCycleFill: readOnly ? undefined : crossCycleFill, active: previousActive, layout: blockLayout, onLayout: setBlockLayout, comparisonRows,
               showActuals, setLogs, studentFeedback, logsFailed: setLogsFailed, retryLogs: () => setSetLogsRetry(value => value + 1), beforeUnbind: confirmLeave, historyTarget, onDirtyChange: setPreviousDirty, onSavingChange: setPreviousSaving, otherSaving: saving || publishingVisible, runWrite }} />}
           <div ref={weeksRef} data-current-cycle={props.previousCycle ? '' : undefined}>
             {props.previousCycle && <header className="cycle-bar"><CycleHeading name={props.planName} start={planStartDate} count={weeks.length} status={props.planStatus} /></header>}
-            <BlockGrid comparisonRows={comparisonRows} showRestDays={showRestDays} layout={blockLayout} onLayout={setBlockLayout} onConfirmWeekImport={num => setWeeksWithHistory(prev => prev.map(week => week.num === num ? { ...week, importDoubts: undefined } : week))} weeks={props.embedded ? weeks.slice(-props.embedded.shown) : weeks} startDate={planStartDate} weekdays={blockWeekdays} extraWeekdays={extraWeekdays} editing={editingDay}
+            <BlockGrid crossCycleFill={props.embedded?.crossCycleFill} incomingFill={incomingFill} comparisonRows={comparisonRows} showRestDays={showRestDays} layout={blockLayout} onLayout={setBlockLayout} onConfirmWeekImport={num => setWeeksWithHistory(prev => prev.map(week => week.num === num ? { ...week, importDoubts: undefined } : week))} weeks={props.embedded ? weeks.slice(-props.embedded.shown) : weeks} startDate={planStartDate} weekdays={blockWeekdays} extraWeekdays={extraWeekdays} editing={editingDay}
               selectedDays={daySelection.days} selectedRows={selectedRowIds} readOnly={readOnly}
               rowTier={rowTier} onClose={closeBlockEditor} onReorderRow={reorderRow} onRowDragState={setRowDragState}
               showActuals={showActuals} actualsForRow={actualsForRow} studentAddedByDay={studentAddedByDay}

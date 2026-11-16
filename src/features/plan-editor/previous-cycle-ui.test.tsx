@@ -119,7 +119,7 @@ it('030 keeps previous read-only for keyboard and context menus and excludes it 
   for (const key of ['v', 'x', 'z', 'd']) await blockKey(key, { metaKey: true })
   await blockKey('Delete')
   act(() => zone().querySelector('[data-block-week="5"][data-dow="0"]')!.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true })))
-  expect(zone().querySelector('input, select, .block-fill-handle, .block-insert-gap')).toBeNull()
+  expect(zone().querySelector('input, select, .block-insert-gap')).toBeNull()
   expect(host.querySelector('[role="menu"]')).toBeNull()
   expect(zone().textContent).toContain('unbound-previous')
   expect(onSave).not.toHaveBeenCalled()
@@ -310,7 +310,7 @@ it.each(['completed', 'paused', 'ended'] as const)('030-B keeps %s previous cont
   expect(clipboardStore.read()?.text).toContain('w4-0-0')
   for (const key of ['v', 'x', 'z', 'd']) await blockKey(key, { metaKey: true })
   await blockKey('Delete')
-  expect(zone().querySelector('input, .block-fill-handle, .block-insert-gap')).toBeNull()
+  expect(zone().querySelector('input, .block-insert-gap')).toBeNull()
   expect(onSave).not.toHaveBeenCalled()
 })
 
@@ -362,7 +362,7 @@ it('030-B keyboard cell navigation stays in current despite duplicate local row 
   expect(zone().contains(document.activeElement)).toBe(false)
 })
 
-it('030-B rejects previous-to-current dragging and fill, allows previous internal fill, and locks logged days', async () => {
+it('030-C rejects cross-cycle movement, preserves source during cross-fill, and allows previous internal fill', async () => {
   const old = previous()
   old.weeks = blockWeeks(Array.from({ length: 5 }, () => [0]), 2)
   old.weeks[3].days[0].rows[0].hasLogs = true
@@ -412,4 +412,170 @@ it('030-B keeps previous submit disabled until current publication has finished'
   expect(button('更新上一周期').disabled).toBe(true)
   await act(async () => { finish(); await Promise.resolve() })
   expect(button('更新上一周期').disabled).toBe(false)
+})
+
+
+it.each(['by-week', 'by-day'] as const)('030-C fills current W1 through the drop week without changing previous: %s', async layout => {
+  const old = previous()
+  old.weeks[3].days[0].rows = [blockRow('cross-source', { name: '跨周期处方', serverRowId: 'old-row', hasLogs: true,
+    note: '源备注', opaqueSets: [{ set_number: 1, target_reps: 3, target_reps_max: null, intensity_mode: 'weight', target_value: '120', set_type: 'working', rest_seconds: 180, coach_note: '组备注' }] })]
+  const original = structuredClone(old.weeks)
+  const onSave = vi.fn(async (weeks: import('./types').Week[]) => ({ weeks, changedDays: 1, degradedRows: 0, skippedRows: 0 }))
+  const oldSave = vi.fn()
+  vi.spyOn(window, 'confirm').mockReturnValue(true)
+  render({ previousCycle: { ...old, onSave: oldSave }, onSave })
+  if (layout === 'by-day') click(host.querySelector('[aria-label="按天排"]')!)
+  click(zone().querySelector('[data-block-week="4"][data-dow="0"]')!); await blockKey('Escape')
+  const current = host.querySelector<HTMLElement>('[data-current-cycle]')!
+  const target = current.querySelector('[data-block-week="2"][data-dow="0"]')!
+  Object.defineProperty(document, 'elementFromPoint', { configurable: true, value: () => target })
+  act(() => zone().querySelector('.block-fill-handle')!.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, button: 0 })))
+  act(() => window.dispatchEvent(new MouseEvent('mousemove', { buttons: 1, clientY: 30 })))
+  expect(current.querySelectorAll('.fill-preview')).toHaveLength(2)
+  expect(current.querySelector('.block-fill-ghost')?.textContent).toContain('跨周期处方')
+  expect(zone().querySelector('.fill-preview')).toBeNull()
+  act(() => window.dispatchEvent(new MouseEvent('mouseup', { clientY: 30 })))
+  expect(current.querySelector('[data-block-week="1"][data-dow="0"]')!.textContent).toContain('跨周期处方')
+  expect(current.querySelector('[data-block-week="2"][data-dow="0"]')!.textContent).toContain('跨周期处方')
+  expect(current.querySelector('[data-block-week="3"][data-dow="0"]')!.textContent).toContain('w3-0-0')
+  expect(button('更新上一周期')).toBeUndefined()
+  await blockKey('z', { metaKey: true })
+  expect(current.querySelector('[data-block-week="1"][data-dow="0"]')!.textContent).toContain('w1-0-0')
+  await blockKey('z', { metaKey: true, shiftKey: true })
+  await blockKey('s', { metaKey: true })
+  const saved = onSave.mock.lastCall![0]
+  const copies = [saved[0].days[0].rows[0], saved[1].days[0].rows[0]]
+  for (const row of copies) {
+    expect(row.name).toBe('跨周期处方'); expect(row.hasLogs).toBe(false); expect(row.serverRowId).toBeNull()
+    expect(row.opaqueSets).toEqual(original[3].days[0].rows[0].opaqueSets)
+    expect(row.note).toBe('源备注')
+  }
+  expect(new Set(copies.map(row => row.id)).size).toBe(2)
+  expect(old.weeks).toEqual(original); expect(oldSave).not.toHaveBeenCalled()
+  expect(zone().querySelector('[data-block-week="5"][data-dow="0"]')!.textContent).toContain('w5-0-0')
+  Reflect.deleteProperty(document, 'elementFromPoint')
+})
+
+
+it.each(['published', 'completed', 'paused'] as const)('030-C copies the latest previous prescription with %s source status', async status => {
+  const old = previous(); old.plan.status = status
+  const save = vi.fn(async (weeks: import('./types').Week[]) => ({ weeks, changedDays: 1, degradedRows: 0, skippedRows: 0 }))
+  const oldSave = vi.fn()
+  vi.spyOn(window, 'confirm').mockReturnValue(true)
+  render({ previousCycle: { ...old, onSave: oldSave }, onSave: save })
+  if (status === 'published') editWeight(zone(), 5, '147.5')
+  click(zone().querySelector('[data-block-week="5"][data-dow="0"]')!); await blockKey('Escape')
+  const target = host.querySelector('[data-current-cycle] [data-block-week="1"][data-dow="0"]')!
+  Object.defineProperty(document, 'elementFromPoint', { configurable: true, value: () => target })
+  act(() => zone().querySelector('.block-fill-handle')!.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, button: 0 })))
+  act(() => window.dispatchEvent(new MouseEvent('mousemove', { buttons: 1 })))
+  act(() => window.dispatchEvent(new MouseEvent('mouseup')))
+  await blockKey('s', { metaKey: true })
+  expect(save.mock.lastCall![0][0].days[0].rows[0].boxes[0].val).toBe(status === 'published' ? '147.5' : '120')
+  expect(oldSave).not.toHaveBeenCalled()
+  Reflect.deleteProperty(document, 'elementFromPoint')
+})
+
+it.each(['reject-overwrite', 'escape', 'blur', 'outside', 'layout', 'unmount'] as const)('030-C cancels without modifying either cycle: %s', async action => {
+  const save = vi.fn(async (weeks: import('./types').Week[]) => ({ weeks, changedDays: 1, degradedRows: 0, skippedRows: 0 }))
+  const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
+  render({ onSave: save })
+  click(zone().querySelector('[data-block-week="5"][data-dow="0"]')!); await blockKey('Escape')
+  const current = host.querySelector<HTMLElement>('[data-current-cycle]')!
+  let target: Element | null = current.querySelector('[data-block-week="2"][data-dow="0"]')!
+  Object.defineProperty(document, 'elementFromPoint', { configurable: true, value: () => target })
+  act(() => zone().querySelector('.block-fill-handle')!.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, button: 0 })))
+  act(() => window.dispatchEvent(new MouseEvent('mousemove', { buttons: 1 })))
+  expect(current.querySelectorAll('.fill-preview')).toHaveLength(2)
+  if (action === 'escape') await blockKey('Escape')
+  if (action === 'blur') act(() => window.dispatchEvent(new Event('blur')))
+  if (action === 'outside') { target = null; act(() => window.dispatchEvent(new MouseEvent('mousemove', { buttons: 1 }))) }
+  if (action === 'layout') click(host.querySelector('[aria-label="按天排"]')!)
+  if (action === 'unmount') render({ onSave: save }, 'replacement')
+  act(() => window.dispatchEvent(new MouseEvent('mouseup')))
+  expect(host.querySelector('.fill-preview')).toBeNull()
+  expect(confirm).toHaveBeenCalledTimes(action === 'reject-overwrite' ? 1 : 0)
+  await blockKey('s', { metaKey: true })
+  expect(save.mock.lastCall![0][0].days[0].rows[0].name).toBe('w1-0-0')
+  expect(button('更新上一周期')).toBeUndefined()
+  Reflect.deleteProperty(document, 'elementFromPoint')
+})
+
+
+it('030-C targets the hovered column, skips logged days and preserves target dates and IDs', async () => {
+  const old = previous(), current = blockWeeks([[0,2], [0,2], [0,2]])
+  old.weeks[4].days[0].rows[0].name = '复制源'
+  current[0].days[2].rows[0].hasLogs = true
+  current[0].days[2].serverDayId = 'logged-day'
+  current[1].days[2].completedAt = '2026-11-24T10:00:00Z'
+  current[2].days[2].serverDayId = 'target-day'
+  const save = vi.fn(async (weeks: import('./types').Week[]) => ({ weeks, changedDays: 1, degradedRows: 0, skippedRows: 0 }))
+  vi.spyOn(window, 'confirm').mockReturnValue(true)
+  render({ previousCycle: old, initialWeeks: current, weeksCount: 3, onSave: save })
+  click(zone().querySelector('[data-block-week="5"][data-dow="0"]')!); await blockKey('Escape')
+  const target = host.querySelector('[data-current-cycle] [data-block-week="3"][data-dow="2"]')!
+  const date = target.querySelector('.block-date')?.textContent
+  Object.defineProperty(document, 'elementFromPoint', { configurable: true, value: () => target })
+  act(() => zone().querySelector('.block-fill-handle')!.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, button: 0 })))
+  act(() => window.dispatchEvent(new MouseEvent('mousemove', { buttons: 1 })))
+  expect(host.querySelectorAll('.fill-preview')).toHaveLength(1)
+  act(() => window.dispatchEvent(new MouseEvent('mouseup')))
+  await blockKey('s', { metaKey: true })
+  const saved = save.mock.lastCall![0]
+  expect(saved[0].days[2]).toEqual(current[0].days[2])
+  expect(saved[1].days[2]).toEqual(current[1].days[2])
+  expect(saved[2].days[2]).toMatchObject({ serverDayId: 'target-day', rows: [{ name: '复制源' }] })
+  expect(target.querySelector('.block-date')?.textContent).toBe(date)
+  expect(saved[2].days[0].rows[0].name).toBe('w3-0-0')
+  Reflect.deleteProperty(document, 'elementFromPoint')
+})
+
+it.each(['completed', 'paused', 'ended'] as const)('030-C refuses a %s target without changing the source', async state => {
+  const old = previous(), save = vi.fn(), oldSave = vi.fn()
+  render({ previousCycle: { ...old, onSave: oldSave }, onSave: save, planStatus: state === 'ended' ? 'published' : state,
+    student: state === 'ended' ? { id: 'student', bond_status: 'ended' } as import('../../api/types').CoachStudent : undefined })
+  click(zone().querySelector('[data-block-week="5"][data-dow="0"]')!); await blockKey('Escape')
+  const handle = zone().querySelector('.block-fill-handle')
+  const target = host.querySelector('[data-current-cycle] [data-block-week="1"][data-dow="0"]')!
+  Object.defineProperty(document, 'elementFromPoint', { configurable: true, value: () => target })
+  if (handle) {
+    act(() => handle.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, button: 0 })))
+    act(() => window.dispatchEvent(new MouseEvent('mousemove', { buttons: 1 })))
+    act(() => window.dispatchEvent(new MouseEvent('mouseup')))
+  }
+  expect(host.querySelector('.fill-preview')).toBeNull()
+  expect(target.textContent).toContain('w1-0-0')
+  expect(button('更新上一周期')).toBeUndefined()
+  expect(save).not.toHaveBeenCalled(); expect(oldSave).not.toHaveBeenCalled()
+  Reflect.deleteProperty(document, 'elementFromPoint')
+})
+
+
+it.each([true, false])('030-C copies an explicit=%s rest day without changing previous', async explicit => {
+  const old = previous()
+  old.weeks[3].days[0] = { ...old.weeks[3].days[0], dayType: explicit ? 'rest' : undefined, rest: true, rows: [] }
+  const save = vi.fn(async (weeks: import('./types').Week[]) => ({ weeks, changedDays: 1, degradedRows: 0, skippedRows: 0 }))
+  const oldSave = vi.fn(async (weeks: import('./types').Week[]) => ({ weeks, changedDays: 1, degradedRows: 0, skippedRows: 0 }))
+  vi.spyOn(window, 'confirm').mockReturnValue(true)
+  render({ previousCycle: { ...old, restDaysEnabled: true, onSave: oldSave }, restDaysEnabled: true, onSave: save })
+  click(zone().querySelector('[data-block-week="4"][data-dow="0"]')!); await blockKey('Escape')
+  let target: Element = host.querySelector('[data-current-cycle] [data-block-week="1"][data-dow="0"]')!
+  Object.defineProperty(document, 'elementFromPoint', { configurable: true, value: () => target })
+  const start = () => act(() => zone().querySelector('.block-fill-handle')!.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, button: 0 })))
+  const move = () => act(() => window.dispatchEvent(new MouseEvent('mousemove', { buttons: 1 })))
+  start(); move()
+  act(() => window.dispatchEvent(new MouseEvent('mouseup')))
+  await blockKey('s', { metaKey: true })
+  expect(save.mock.lastCall![0][0].days[0]).toMatchObject({ dayType: explicit ? 'rest' : undefined, rest: true, rows: [] })
+  expect(button('更新上一周期')).toBeUndefined()
+  if (!explicit) { Reflect.deleteProperty(document, 'elementFromPoint'); return }
+  start(); move()
+  target = zone().querySelector('[data-block-week="5"][data-dow="0"]')!
+  move()
+  expect(host.querySelector('[data-current-cycle] .fill-preview')).toBeNull()
+  expect(zone().querySelector('.fill-preview')).not.toBeNull()
+  act(() => window.dispatchEvent(new MouseEvent('mouseup')))
+  await act(async () => { click(button('更新上一周期')); await Promise.resolve() })
+  if (explicit) expect(oldSave.mock.lastCall![0][4].days[0]).toMatchObject({ dayType: 'rest', rest: true, rows: [] })
+  Reflect.deleteProperty(document, 'elementFromPoint')
 })
