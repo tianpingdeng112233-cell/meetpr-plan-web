@@ -2,7 +2,7 @@ import { selectPreviousCycle } from './previousCycle'
 import { communicationDraftKey, type CommunicationDrafts } from '../chat/CommunicationComposer'
 import { registerReloadBlocker } from '../../reloadSafety'
 import type { ChatExerciseRefV1 } from '../../api/types'
-import type { ExerciseNoteHandle } from '../plan-editor/PlanEditor'
+import type { ExerciseNoteHandle, PlanEditorProps } from '../plan-editor/PlanEditor'
 import type { ImportedPlan } from '../plan-editor/import/ImportPlanDialog'
 import type { PlanAction } from '../plan-editor/components/TopBar'
 import { getOverviewAlerts, markPlanViewed } from '../../api/overviewAlerts'
@@ -176,11 +176,28 @@ export function PlanWorkspace({ onLogout, me }: Props) {
   }, [loaded?.plan.id, previousPlan?.id, previousAttempt])
   const previousFull = previousResult?.owner === loaded?.plan.id && previousResult?.id === previousPlan?.id ? previousResult : null
   const previousWeeks = useMemo(() => previousFull?.full && catalog ? mapPlanToWeeks(previousFull.full, catalog) : undefined, [previousFull?.full, catalog])
-  const previousCycle = previousPlan ? {
-    plan: previousFull?.full ?? previousPlan, weeks: previousWeeks,
+  const previousCycle: PlanEditorProps['previousCycle'] = previousPlan ? {
+    plan: { ...(previousFull?.full ?? previousPlan), name: previousPlan.name, status: previousPlan.status, pending_revision_saved_at: previousPlan.pending_revision_saved_at }, weeks: previousWeeks,
     restDaysEnabled: previousFull?.full?.rest_days_enabled === true,
     failed: previousFull?.failed,
     onRetry: () => setPreviousAttempt(attempt => attempt + 1),
+    onSave: previousPlan.status === 'published' && students.find(student => student.id === previousPlan.trainee_id)?.bond_status !== 'ended'
+      ? async (weeks, _start, _unused, onProgress, deletedDayIds) => {
+        const result = await saveBlockPlan(previousPlan.id, weeks, onProgress, { published: true, catalog: catalog ?? undefined, deletedDayIds })
+        if (result.planWeeks != null && result.planStartDate && result.planEndDate) {
+          const calendar = { plan_weeks: result.planWeeks, start_date: result.planStartDate, end_date: result.planEndDate }
+          updateStudentPlans(previousPlan.trainee_id, plans => plans.map(plan => plan.id === previousPlan.id ? { ...plan, ...calendar } : plan))
+          setPreviousResult(current => current?.id === previousPlan.id && current.full ? { ...current, full: { ...current.full, ...calendar } } : current)
+        }
+        return result
+      } : undefined,
+    onPlanRefreshed: plan => {
+      setPreviousResult(current => current?.id === plan.id ? { ...current, full: plan } : current)
+      updateStudentPlans(plan.trainee_id, plans => plans.map(item => item.id === plan.id ? plan : item))
+    },
+    onPendingRevisionSavedAtChange: savedAt => {
+      updateStudentPlans(previousPlan.trainee_id, plans => plans.map(plan => plan.id === previousPlan.id ? { ...plan, pending_revision_saved_at: savedAt } : plan))
+    },
   } : undefined
   const inboxRequest = useRef(0)
   const rosterBackgroundGeneration = useRef(0)

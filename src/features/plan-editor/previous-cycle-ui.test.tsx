@@ -34,7 +34,7 @@ it('030 shows Li Xiaolong previous W4–W5 above current W1 with independent dat
   expect(zone()).not.toBeNull()
   expect(numbers()).toEqual(['4', '5'])
   expect(zone().textContent).toContain('10/19 起 · 5 周 · 已发布')
-  expect(zone().textContent).toContain('只读 · 可以查看和复制')
+  expect(zone().textContent).not.toContain('只读 · 可以查看和复制')
   expect(zone().textContent).toContain('显示 W4–W5（最后 2 周）')
   expect(zone().querySelector('[data-wnum="5"] mark')?.textContent).toBe('当前周')
   expect(host.querySelector('[data-current-cycle]')?.textContent).toContain('当前周期备赛期')
@@ -108,6 +108,7 @@ it.each(['row', 'day'] as const)('030 copies previous %s into current through ex
 
 it('030 keeps previous read-only for keyboard and context menus and excludes it from issue counts', async () => {
   const old = previous()
+  old.plan.status = 'completed'
   old.weeks[4].days[0].rows = [blockRow('unbound-previous', { exerciseId: null, ku: false })]
   const onSave = vi.fn()
   render({ previousCycle: old, onSave })
@@ -115,7 +116,7 @@ it('030 keeps previous read-only for keyboard and context menus and excludes it 
   click(host.querySelector('[data-current-cycle] [data-rowid]')!)
   await blockKey('c', { metaKey: true })
   click(zone().querySelector('[data-rowid="unbound-previous"]')!)
-  for (const key of ['v', 'x', 'z', 'd', 's']) await blockKey(key, { metaKey: true })
+  for (const key of ['v', 'x', 'z', 'd']) await blockKey(key, { metaKey: true })
   await blockKey('Delete')
   act(() => zone().querySelector('[data-block-week="5"][data-dow="0"]')!.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true })))
   expect(zone().querySelector('input, select, .block-fill-handle, .block-insert-gap')).toBeNull()
@@ -206,7 +207,7 @@ it.each([
 ] as const)('030 renders the short previous block and cycle headings in %s', (locale, prev, current, label, readOnly) => {
   setLocale(locale)
   const old = previous()
-  old.plan.plan_weeks = 1; old.weeks = old.weeks.slice(0, 1)
+  old.plan.plan_weeks = 1; old.plan.status = 'completed'; old.weeks = old.weeks.slice(0, 1)
   render({ previousCycle: old })
   expect(numbers()).toEqual(['1'])
   expect(zone().textContent).toContain(prev)
@@ -214,4 +215,201 @@ it.each([
   expect(host.querySelector('[data-plan-menu-trigger] small')?.textContent).toBe(label)
   expect(zone().textContent).toContain(readOnly)
   expect(zone().querySelectorAll('.cycle-actions button')).toHaveLength(1)
+})
+
+it('030-B edits previous W5 independently and submits every previous week from its heading', async () => {
+  const savePrevious = vi.fn(async (weeks: import('./types').Week[]) => ({ weeks, changedDays: 1, degradedRows: 0, skippedRows: 0 }))
+  const saveCurrent = vi.fn()
+  const old = { ...previous(), onSave: savePrevious }
+  vi.spyOn(window, 'confirm').mockReturnValue(true)
+  render({ previousCycle: old, onSave: saveCurrent })
+  const top = host.querySelector('.block-topbar')!
+  const before = top.textContent
+  click(zone().querySelector('[data-block-week="5"][data-dow="0"]')!)
+  const weight = zone().querySelector<HTMLInputElement>('[data-c="weight"] input')
+  expect(weight).not.toBeNull()
+  act(() => {
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(weight, '135')
+    weight!.dispatchEvent(new Event('input', { bubbles: true }))
+  })
+  expect(zone().textContent).toContain('未更新 · 学员还看不到这些改动')
+  expect(top.textContent).toBe(before)
+  expect(button('↑ 再往前 1 周')).toBeUndefined()
+  await act(async () => { click(button('更新上一周期')); await Promise.resolve() })
+  expect(savePrevious).toHaveBeenCalledOnce()
+  expect(savePrevious.mock.calls[0][0]).toHaveLength(5)
+  expect(savePrevious.mock.calls[0][0][4].days[0].rows[0].boxes[0].val).toBe('135')
+  expect(savePrevious.mock.calls[0][0][0].days[0].rows[0].boxes[0].val).toBe('120')
+  expect(saveCurrent).not.toHaveBeenCalled()
+  expect(zone().textContent).not.toContain('未更新 · 学员还看不到这些改动')
+})
+
+function editWeight(area: HTMLElement, week: number, value: string) {
+  click(area.querySelector(`[data-block-week="${week}"][data-dow="0"]`)!)
+  const input = area.querySelector<HTMLInputElement>('[data-c="weight"] input')!
+  act(() => {
+    input.focus()
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, value)
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+    input.blur()
+  })
+}
+
+it('030-B undo and redo follow the active cycle while Cmd S always saves current', async () => {
+  const currentSave = vi.fn(async (weeks: import('./types').Week[]) => ({ weeks, changedDays: 1, degradedRows: 0, skippedRows: 0 }))
+  const oldSave = vi.fn(async (weeks: import('./types').Week[]) => ({ weeks, changedDays: 1, degradedRows: 0, skippedRows: 0 }))
+  vi.spyOn(window, 'confirm').mockReturnValue(true)
+  render({ onSave: currentSave, previousCycle: { ...previous(), onSave: oldSave } })
+  const current = host.querySelector<HTMLElement>('[data-current-cycle]')!
+  editWeight(current, 1, '145')
+  editWeight(zone(), 5, '135')
+  await blockKey('z', { metaKey: true })
+  expect(zone().querySelector<HTMLInputElement>('[data-c="weight"] input')?.value).toBe('120')
+  expect(current.querySelector<HTMLInputElement>('[data-c="weight"] input')?.value).toBe('145')
+  await blockKey('z', { metaKey: true, shiftKey: true })
+  expect(zone().querySelector<HTMLInputElement>('[data-c="weight"] input')?.value).toBe('135')
+  await blockKey('s', { metaKey: true })
+  expect(currentSave).toHaveBeenCalledOnce()
+  expect(oldSave).not.toHaveBeenCalled()
+})
+
+it.each([false, true])('030-B confirms current-only delivery with a dirty previous cycle: published=%s', async published => {
+  const saveCurrent = vi.fn(async (weeks: import('./types').Week[]) => ({ weeks, changedDays: 1, degradedRows: 0, skippedRows: 0 }))
+  const savePrevious = vi.fn()
+  const onPublish = vi.fn().mockResolvedValue(undefined)
+  vi.spyOn(window, 'confirm').mockReturnValue(true)
+  render({ initialPublished: published, onSave: saveCurrent, onPublish, previousCycle: { ...previous(), onSave: savePrevious } })
+  editWeight(zone(), 5, '135')
+  const status = host.querySelector('[data-testid="plan-save-status"]')!.textContent
+  click(host.querySelector('.block-topbar .block-primary')!)
+  const dialog = host.querySelector('[role="dialog"]')!
+  expect(dialog).not.toBeNull()
+  expect(dialog.textContent).toContain(`只${published ? '更新' : '发布'}当前周期「备赛期」`)
+  expect(dialog.textContent).toContain(`上一周期「力量基础」还有未更新的改动，这次不会一起提交。${published ? '更新' : '发布'}后可以在它的标题条上点「更新上一周期」。`)
+  expect(saveCurrent).not.toHaveBeenCalled()
+  click([...dialog.querySelectorAll('button')].find(b => b.textContent === '取消')!)
+  expect(host.querySelector('[role="dialog"]')).toBeNull()
+  expect(host.querySelector('[data-testid="plan-save-status"]')!.textContent).toBe(status)
+  click(host.querySelector('.block-topbar .block-primary')!)
+  await act(async () => { click(button(published ? '更新当前周期' : '发布当前周期')); await Promise.resolve() })
+  expect(saveCurrent).toHaveBeenCalledOnce()
+  expect(onPublish).toHaveBeenCalledTimes(published ? 0 : 1)
+  expect(savePrevious).not.toHaveBeenCalled()
+  expect(zone().textContent).toContain('未更新 · 学员还看不到这些改动')
+})
+
+it.each(['completed', 'paused', 'ended'] as const)('030-B keeps %s previous content read-only and copyable', async state => {
+  const old = previous()
+  if (state !== 'ended') old.plan.status = state
+  const onSave = vi.fn()
+  render({ previousCycle: { ...old, onSave }, student: state === 'ended' ? { id: 'student', bond_status: 'ended' } as import('../../api/types').CoachStudent : undefined })
+  expect(zone().textContent).toContain('只读 · 可以查看和复制')
+  click(zone().querySelector('[data-rowid]')!)
+  await blockKey('c', { metaKey: true })
+  const { clipboardStore } = await import('./clipboardStore')
+  expect(clipboardStore.read()?.text).toContain('w4-0-0')
+  for (const key of ['v', 'x', 'z', 'd']) await blockKey(key, { metaKey: true })
+  await blockKey('Delete')
+  expect(zone().querySelector('input, .block-fill-handle, .block-insert-gap')).toBeNull()
+  expect(onSave).not.toHaveBeenCalled()
+})
+
+it.each(['row', 'day'] as const)('030-B copies current %s back into previous without changing current', async kind => {
+  const save = vi.fn(async (weeks: import('./types').Week[]) => ({ weeks, changedDays: 1, degradedRows: 0, skippedRows: 0 }))
+  const current = blockWeeks([[0]])
+  current[0].days[0].rows = [blockRow('from-current', { boxes: [{ val: '145', empty: false }] })]
+  vi.spyOn(window, 'confirm').mockReturnValue(true)
+  render({ initialWeeks: current, weeksCount: 1, previousCycle: { ...previous(), onSave: save } })
+  click(host.querySelector(`[data-current-cycle] ${kind === 'row' ? '[data-rowid]' : '[data-block-week="1"][data-dow="0"]'}`)!)
+  await blockKey('c', { metaKey: true })
+  click(zone().querySelector('[data-block-week="5"][data-dow="0"]')!)
+  await blockKey('v', { metaKey: true }); await blockKey('Escape')
+  expect(zone().textContent).toContain('from-current')
+  await act(async () => { click(button('更新上一周期')); await Promise.resolve() })
+  expect(save.mock.calls[0][0][4].days[0].rows.some(row => row.name === 'from-current')).toBe(true)
+  expect(current[0].days[0].rows).toHaveLength(1)
+})
+
+it('030-B keeps the single history rail on the active previous selection while interacting with the rail', async () => {
+  const { getExerciseStats, getStudentSetLogs, getStudentFeedback } = await import('../../api/coach')
+  vi.mocked(getExerciseStats).mockResolvedValue({ recent_sessions: [], rep_prs: [], by_set_count: {}, e1rm: null, one_rm_reference: null })
+  vi.mocked(getStudentSetLogs).mockResolvedValue([])
+  vi.mocked(getStudentFeedback).mockResolvedValue([])
+  const old = previous()
+  old.weeks[4].days[0].rows = [blockRow('old-squat')]
+  render({ previousCycle: old, studentId: 'student' })
+  click(zone().querySelector('[data-block-week="5"][data-dow="0"]')!)
+  act(() => zone().querySelector<HTMLInputElement>('[data-c="reps"] input')!.focus())
+  await act(async () => { await Promise.resolve() })
+  expect(host.querySelectorAll('.block-history')).toHaveLength(1)
+  const history = host.querySelector('.block-history')!
+  expect(history.textContent).toContain('old-squat')
+  click(history)
+  expect(host.querySelector('.block-history')!.textContent).toContain('old-squat')
+})
+
+it('030-B keyboard cell navigation stays in current despite duplicate local row IDs', async () => {
+  render()
+  click(button('展开整份'))
+  editWeight(zone(), 1, '135')
+  const current = host.querySelector<HTMLElement>('[data-current-cycle]')!
+  editWeight(current, 1, '145')
+  const input = current.querySelector<HTMLInputElement>('[data-c="reps"] input')!
+  act(() => input.focus())
+  act(() => input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true })))
+  await act(async () => vi.advanceTimersByTime(0))
+  expect(current.contains(document.activeElement)).toBe(true)
+  expect(zone().contains(document.activeElement)).toBe(false)
+})
+
+it('030-B rejects previous-to-current dragging and fill, allows previous internal fill, and locks logged days', async () => {
+  const old = previous()
+  old.weeks = blockWeeks(Array.from({ length: 5 }, () => [0]), 2)
+  old.weeks[3].days[0].rows[0].hasLogs = true
+  const save = vi.fn(async (weeks: import('./types').Week[]) => ({ weeks, changedDays: 1, degradedRows: 0, skippedRows: 0 }))
+  vi.spyOn(window, 'confirm').mockReturnValue(true)
+  render({ previousCycle: { ...old, onSave: save } })
+  expect(zone().querySelector('[data-block-week="4"] [data-rowid]')?.getAttribute('data-drag-disabled')).toBe('true')
+  click(button('展开整份'))
+  const source = zone().querySelector<HTMLElement>('[data-block-week="1"] [data-rowid]')!
+  const target = host.querySelector<HTMLElement>('[data-current-cycle] [data-rowid]')!
+  Object.defineProperty(document, 'elementsFromPoint', { configurable: true, value: () => [target] })
+  act(() => source.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, button: 0, clientY: 0 })))
+  act(() => window.dispatchEvent(new MouseEvent('mousemove', { buttons: 1, clientY: 30 })))
+  expect(document.body.style.cursor).toBe('not-allowed')
+  act(() => window.dispatchEvent(new MouseEvent('mouseup', { clientY: 30 })))
+  await act(async () => vi.advanceTimersByTime(0))
+  click(zone().querySelector('[data-block-week="1"][data-dow="0"]')!); await blockKey('Escape')
+  let hit: Element = host.querySelector('[data-current-cycle] [data-block-week="12"][data-dow="0"]')!
+  Object.defineProperty(document, 'elementFromPoint', { configurable: true, value: () => hit })
+  const fill = () => {
+    act(() => zone().querySelector('.block-fill-handle')!.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, button: 0 })))
+    act(() => window.dispatchEvent(new MouseEvent('mousemove', { buttons: 1, clientY: 30 })))
+    act(() => window.dispatchEvent(new MouseEvent('mouseup', { clientY: 30 })))
+  }
+  fill()
+  expect(button('更新上一周期')).toBeUndefined()
+  hit = zone().querySelector('[data-block-week="5"][data-dow="0"]')!
+  fill()
+  await act(async () => { click(button('更新上一周期')); await Promise.resolve() })
+  expect(save.mock.calls[0][0]).toHaveLength(5)
+  expect(save.mock.calls[0][0][4].days[0].rows[0].name).toBe('w1-0-0')
+  expect(save.mock.calls[0][0][3].days[0].rows[0].name).toBe('w4-0-0')
+  expect(host.querySelector('[data-current-cycle] [data-block-week="1"]')!.textContent).toContain('w1-0-0')
+  Reflect.deleteProperty(document, 'elementsFromPoint'); Reflect.deleteProperty(document, 'elementFromPoint')
+})
+
+it('030-B keeps previous submit disabled until current publication has finished', async () => {
+  let finish!: () => void
+  const publish = vi.fn(() => new Promise<void>(resolve => { finish = resolve }))
+  const save = vi.fn(async (weeks: import('./types').Week[]) => ({ weeks, changedDays: 1, degradedRows: 0, skippedRows: 0 }))
+  vi.spyOn(window, 'confirm').mockReturnValue(true)
+  render({ onSave: save, onPublish: publish, previousCycle: { ...previous(), onSave: save } })
+  editWeight(zone(), 5, '135')
+  click(host.querySelector('.block-topbar .block-primary')!)
+  await act(async () => { click(button('发布当前周期')); await Promise.resolve() })
+  expect(publish).toHaveBeenCalledOnce()
+  expect(button('更新上一周期').disabled).toBe(true)
+  await act(async () => { finish(); await Promise.resolve() })
+  expect(button('更新上一周期').disabled).toBe(false)
 })

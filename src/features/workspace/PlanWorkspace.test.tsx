@@ -10,6 +10,8 @@ import exerciseFixture from '../chat/fixtures/exercise-note.json'
 
 const api = vi.hoisted(() => ({
   realEditor: false,
+  shiftPlan: vi.fn(), undoPlanShift: vi.fn(),
+  getPendingRevision: vi.fn(), putPendingRevision: vi.fn(), deletePendingRevision: vi.fn(),
   deletePlan: vi.fn(),
 
   publicInvite: vi.fn(),
@@ -56,11 +58,14 @@ const api = vi.hoisted(() => ({
   guardLeave: vi.fn(),
 }))
 
+vi.mock('../../api/pendingRevision', () => ({ getPendingRevision: api.getPendingRevision, putPendingRevision: api.putPendingRevision, deletePendingRevision: api.deletePendingRevision }))
+
 vi.mock('../../api/client', async importOriginal => ({ ...await importOriginal<typeof import('../../api/client')>(), request: api.meRequest }))
 vi.mock('../../api/onboarding', () => ({ getPublicInvite: api.publicInvite }))
 vi.mock('../../api/overviewAlerts', () => ({ getOverviewAlerts: api.getOverviewAlerts, markPlanViewed: api.markPlanViewed }))
 vi.mock('../../api/invite', async importOriginal => ({ ...await importOriginal<typeof import('../../api/invite')>(), getInviteCodes: api.getInviteCodes }))
 vi.mock('../../api/plans', () => ({
+  shiftPlan: api.shiftPlan, undoPlanShift: api.undoPlanShift,
   getStudentPlans: api.getStudentPlans,
   getPlan: api.getPlan,
   getStudentOnboarding: api.getStudentOnboarding,
@@ -734,6 +739,9 @@ describe('PlanWorkspace editor remount', () => {
   })
 
   beforeEach(() => {
+    api.getPendingRevision.mockResolvedValue(null)
+    api.putPendingRevision.mockImplementation(async (id, mirror) => ({ plan_id: id, version: 1, content_hash: mirror.contentHash, saved_at: new Date().toISOString() }))
+    api.deletePendingRevision.mockResolvedValue(undefined)
     api.realEditor = false
     api.getStudentSetLogs.mockResolvedValue([])
     api.markVideoViewed.mockResolvedValue(undefined)
@@ -901,6 +909,204 @@ describe('PlanWorkspace editor remount', () => {
     await act(async () => { await api.captureEditorProps.mock.lastCall![0].onCreateExercise({ name: '新动作' }); await settle() })
     expect(api.getPlan.mock.calls.map(call => call[0])).toEqual(['plan', 'previous'])
     expect(api.captureEditorProps.mock.lastCall![0].previousCycle.weeks).toHaveLength(1)
+  })
+
+  async function openEditableCycles() {
+    api.realEditor = true
+    vi.useFakeTimers(); vi.setSystemTime(new Date(2026, 10, 16, 12))
+    const current = { ...plan('current', 'published'), name: '备赛期', start_date: '2026-11-23' }
+    const previous = { ...plan('previous', 'published'), id: 'previous', name: '力量基础', start_date: '2026-10-19' }
+    previous.days[0] = { ...previous.days[0], id: 'old-day', plan_id: 'previous' }
+    previous.days[0].exercises = [{ ...previous.days[0].exercises[0], id: 'old-exercise', plan_day_id: 'old-day' }]
+    const trees = new Map([['plan', current], ['previous', previous]])
+    api.getStudentPlans.mockResolvedValue([current, previous])
+    api.getPlan.mockImplementation(async id => trees.get(id))
+    const realReconcile = await vi.importActual<typeof import('../plan-editor/reconcile')>('../plan-editor/reconcile')
+    api.reconcilePlan.mockImplementation(realReconcile.reconcilePlan)
+    api.batchDays.mockImplementation(async (id, body) => {
+      const tree = trees.get(id)!
+      const updated = { ...tree, days: body.upsert_days.map((day: any) => ({
+        ...day, id: `${id}-saved-day`, plan_id: id,
+        exercises: day.exercises.map((ex: any) => ({ ...ex, id: `${id}-saved-exercise`, plan_day_id: `${id}-saved-day`,
+          sets: ex.sets.map((set: any, i: number) => ({ ...set, id: `${id}-set-${i}`, plan_exercise_id: `${id}-saved-exercise` })) })),
+      })) }
+      trees.set(id, updated)
+      return updated
+    })
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    vi.spyOn(window, 'alert').mockImplementation(() => {})
+    await act(async () => { root.render(<PlanWorkspace me={me} onLogout={() => {}} />); await settle() })
+    return trees
+  }
+
+  async function changeCycleWeight(previous: boolean, value: string) {
+    const area = host.querySelector<HTMLElement>(previous ? '[data-previous-cycle]' : '[data-current-cycle]')!
+    await act(async () => { area.querySelector<HTMLElement>('[data-block-week="1"][data-dow="0"]')!.click(); await settle() })
+    await act(async () => {
+      const input = area.querySelector<HTMLInputElement>('[data-c="weight"] input')!
+      input.focus()
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, value)
+      input.dispatchEvent(new Event('input', { bubbles: true })); input.blur(); await settle()
+    })
+  }
+
+  it('030-B makes the loaded previous cycle read-only immediately after marking it completed', async () => {
+    const trees = await openEditableCycles()
+    api.patchPlan.mockResolvedValue({ ...trees.get('previous')!, status: 'completed' })
+    await act(async () => { host.querySelector<HTMLButtonElement>('[data-plan-menu-trigger]')!.click(); await settle() })
+    const row = [...document.querySelectorAll('.plan-menu-row')].find(item => item.textContent?.includes('力量基础'))!
+    await act(async () => { row.querySelector<HTMLButtonElement>('[aria-haspopup="menu"]')!.click(); await settle() })
+    await act(async () => { clickButton(document.querySelector('[data-plan-actions]') as HTMLElement, '标记完成'); await settle() })
+    await act(async () => { clickButton(host.querySelector('[aria-labelledby="complete-plan-title"]') as HTMLElement, '标记完成'); await settle() })
+    expect(api.patchPlan).toHaveBeenCalledWith('previous', { status: 'completed' })
+    const previous = host.querySelector<HTMLElement>('[data-previous-cycle]')!
+    expect(previous.textContent).toContain('只读 · 可以查看和复制')
+    await act(async () => { previous.querySelector<HTMLElement>('[data-block-week="1"][data-dow="0"]')!.click(); await settle() })
+    expect(previous.querySelector('[data-c="weight"] input')).toBeNull()
+    await act(async () => { await vi.advanceTimersByTimeAsync(5000); await settle() })
+    expect(api.batchDays).not.toHaveBeenCalled()
+    expect(api.putPendingRevision).not.toHaveBeenCalled()
+  })
+
+  it('030-B writes only the previous HTTP plan tree and leaves current content unchanged', async () => {
+    const trees = await openEditableCycles()
+    expect(api.getPlan.mock.calls.map(call => call[0])).toEqual(['plan', 'plan', 'previous'])
+    expect(api.getPendingRevision.mock.calls.map(call => call[0])).toEqual(['plan'])
+    await act(async () => { await vi.advanceTimersByTimeAsync(5000); await settle() })
+    expect(api.batchDays).not.toHaveBeenCalled()
+    expect(api.putPendingRevision).not.toHaveBeenCalled()
+    expect(api.deletePendingRevision).not.toHaveBeenCalled()
+    await changeCycleWeight(true, '135')
+    await act(async () => { clickButton(host, '更新上一周期'); await settle() })
+    expect(api.batchDays).toHaveBeenCalledOnce()
+    expect(api.batchDays.mock.calls[0][0]).toBe('previous')
+    expect(api.batchDays.mock.calls[0][1].upsert_days[0].exercises[0].sets[0].target_weight).toBe('135')
+    expect(trees.get('plan')!.days[0].exercises[0].sets[0].target_value).toBe('100')
+    expect(host.querySelector('[data-previous-cycle]')!.textContent).not.toContain('未更新 · 学员还看不到这些改动')
+  })
+
+  it('030-B guards workspace navigation and restores previous edits after refresh, including collapsed content', async () => {
+    api.refreshCoachStudents.mockResolvedValue([{ id: 'student', display_name: '学员', status: 'active', evaluation: null }, { id: 'second', display_name: '另一个学员', status: 'active', evaluation: null }])
+    await openEditableCycles()
+    await changeCycleWeight(true, '135')
+    await act(async () => { clickButton(host.querySelector('[data-previous-cycle]') as HTMLElement, '折叠'); await settle() })
+    expect(host.querySelector('[data-previous-cycle]')!.textContent).toContain('未更新 · 学员还看不到这些改动')
+    const unload = new Event('beforeunload', { cancelable: true })
+    await act(async () => { window.dispatchEvent(unload); await settle() })
+    expect(unload.defaultPrevented).toBe(true)
+    vi.mocked(window.confirm).mockReturnValue(false)
+    await act(async () => { clickNav(host, '总览'); await settle() })
+    expect(window.confirm).toHaveBeenCalled()
+    vi.mocked(window.confirm).mockClear()
+    await act(async () => { host.querySelector<HTMLButtonElement>('[data-plan-menu-trigger]')!.click(); await settle() })
+    const previousOption = [...document.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')].find(item => item.textContent?.includes('力量基础'))!
+    await act(async () => { previousOption.click(); await settle() })
+    expect(window.confirm).toHaveBeenCalledOnce()
+    vi.mocked(window.confirm).mockClear()
+    await act(async () => { window.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', metaKey: true, bubbles: true })); await settle() })
+    const search = host.querySelector<HTMLInputElement>('[aria-label="搜索命令"]')!
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(search, '另一个学员')
+      search.dispatchEvent(new Event('input', { bubbles: true })); await settle()
+    })
+    await act(async () => { search.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await settle() })
+    expect(window.confirm).toHaveBeenCalledOnce()
+    expect(host.querySelector('[data-previous-cycle]')).not.toBeNull()
+    expect(api.batchDays).not.toHaveBeenCalled()
+    await act(async () => { root.render(<PlanWorkspace key="refresh" me={me} onLogout={() => {}} />); await settle() })
+    const previous = host.querySelector('[data-previous-cycle]') as HTMLElement
+    expect(previous.querySelector('[data-testid="draft-mirror-banner"]')).not.toBeNull()
+    await act(async () => { clickButton(previous, '恢复'); clickButton(previous, '展开'); await settle() })
+    expect(previous.textContent).toContain('135')
+    expect(previous.textContent).toContain('未更新 · 学员还看不到这些改动')
+    expect(host.querySelector('[data-current-cycle]')!.textContent).toContain('100')
+    expect(api.batchDays).not.toHaveBeenCalled()
+  })
+
+  it.each([true, false])('030-B serializes both delivery directions and disables the other submit button: previousFirst=%s', async previousFirst => {
+    await openEditableCycles()
+    await changeCycleWeight(true, '135')
+    await changeCycleWeight(false, '145')
+    const batch = api.batchDays.getMockImplementation()!
+    let finish!: () => void
+    api.batchDays.mockImplementationOnce((...args) => new Promise(resolve => { finish = () => { void Promise.resolve(batch(...args)).then(resolve) } }))
+    await act(async () => {
+      if (previousFirst) clickButton(host, '更新上一周期')
+      else { host.querySelector<HTMLButtonElement>('.block-topbar .block-primary')!.click() }
+      await settle()
+    })
+    if (!previousFirst) await act(async () => { clickButton(host.querySelector('[role="dialog"]') as HTMLElement, '更新当前周期'); await settle() })
+    const otherButton = previousFirst ? host.querySelector<HTMLButtonElement>('.block-topbar .block-primary')!
+      : [...host.querySelectorAll<HTMLButtonElement>('[data-previous-cycle] button')].find(b => b.textContent === '更新上一周期')!
+    expect(otherButton.disabled).toBe(true)
+    expect(api.batchDays.mock.calls.map(call => call[0])).toEqual([previousFirst ? 'previous' : 'plan'])
+    await act(async () => { otherButton.click(); await settle() })
+    expect(api.batchDays).toHaveBeenCalledOnce()
+    await act(async () => { finish(); await settle() })
+    expect(otherButton.disabled).toBe(false)
+  })
+
+  it('030-B retries previous delivery once and reports failure without writing current', async () => {
+    await openEditableCycles()
+    await changeCycleWeight(true, '135')
+    api.batchDays.mockRejectedValue(new Error('offline'))
+    await act(async () => { clickButton(host, '更新上一周期'); await settle() })
+    expect(api.batchDays.mock.calls.map(call => call[0])).toEqual(['previous'])
+    expect(host.querySelector<HTMLButtonElement>('.block-topbar .block-primary')!.disabled).toBe(true)
+    await act(async () => { await vi.advanceTimersByTimeAsync(1500); await settle() })
+    expect(api.batchDays.mock.calls.map(call => call[0])).toEqual(['previous', 'previous'])
+    expect(window.alert).toHaveBeenCalledWith(expect.stringContaining('offline'))
+    expect(host.querySelector('[data-previous-cycle]')!.textContent).toContain('未更新 · 学员还看不到这些改动')
+    expect(host.querySelector('[data-current-cycle]')!.textContent).toContain('100')
+    expect(host.querySelector<HTMLButtonElement>('.block-topbar .block-primary')!.disabled).toBe(false)
+  })
+
+  it('030-B reads a remote previous snapshot only on explicit recovery, without opening writes', async () => {
+    const trees = await openEditableCycles()
+    const old = trees.get('previous')!
+    old.pending_revision_saved_at = '2026-11-16T11:00:00Z'
+    api.getStudentPlans.mockResolvedValue([trees.get('plan'), old])
+    await act(async () => { root.render(<PlanWorkspace key="remote-device" me={me} onLogout={() => {}} />); await settle() })
+    expect(api.getPendingRevision.mock.calls.some(call => call[0] === 'previous')).toBe(false)
+    expect(api.putPendingRevision).not.toHaveBeenCalled()
+    expect(api.deletePendingRevision).not.toHaveBeenCalled()
+    const { mapPlanToWeeks } = await import('../plan-editor/mapping')
+    const { createDraftMirror } = await import('../plan-editor/draftMirror')
+    const content = mapPlanToWeeks(old, new Map([['exercise', { name: '深蹲', custom: false }]]))
+    content[0].days[0].rows[0].boxes[0].val = '155'
+    const mirror = createDraftMirror('previous', { weeks: content, planStartDate: old.start_date, weeksCount: 1 })
+    api.getPendingRevision.mockResolvedValue({ plan_id: 'previous', version: mirror.version, content_hash: mirror.contentHash, content: mirror.content, saved_at: mirror.savedAt })
+    const area = host.querySelector('[data-previous-cycle]') as HTMLElement
+    await act(async () => { clickButton(area, '查看未提交的改动'); await settle() })
+    expect(api.getPendingRevision.mock.calls.filter(call => call[0] === 'previous')).toHaveLength(1)
+    await act(async () => { clickButton(area, '恢复'); await settle() })
+    expect(area.textContent).toContain('155')
+    expect(area.textContent).toContain('未更新 · 学员还看不到这些改动')
+    expect(api.batchDays).not.toHaveBeenCalled()
+  })
+
+  it('030-B shifts and undoes previous dates through its own HTTP plan without changing current', async () => {
+    const trees = await openEditableCycles()
+    const old = trees.get('previous')!
+    const latest = { batch_id: 'shift-old', actor_role: 'coach' as const, anchor_date: '2026-10-19', offset_days: 1, created_at: '2026-11-16T12:00:00Z' }
+    api.shiftPlan.mockImplementation(async () => {
+      trees.set('previous', { ...old, total_shift_days: 1, latest_shift: latest,
+        days: old.days.map(day => ({ ...day, shifted_to_date: '2026-10-20' })) })
+      return { ...latest, total_shift_days: 1, shifted_days: [{ day_id: 'old-day', shifted_to_date: '2026-10-20' }], skipped_completed_day_ids: [] }
+    })
+    api.undoPlanShift.mockImplementation(async () => { trees.set('previous', old) })
+    const area = host.querySelector('[data-previous-cycle]') as HTMLElement
+    await act(async () => { area.querySelector<HTMLElement>('[data-block-week="1"][data-dow="0"]')!.click(); await settle() })
+    await act(async () => { clickButton(area, '后移…'); await settle() })
+    await act(async () => { clickButton(document.querySelector('[data-plan-shift-panel]') as HTMLElement, '后移 1 天'); await settle() })
+    expect(api.shiftPlan).toHaveBeenCalledWith('previous', { anchor_date: '2026-10-19', offset_days: 1 })
+    expect(area.textContent).toContain('10/20')
+    expect(area.querySelector('[data-plan-shift-undo]')).not.toBeNull()
+    await act(async () => { area.querySelector<HTMLButtonElement>('[data-plan-shift-undo]')!.click(); await settle() })
+    expect(api.undoPlanShift).toHaveBeenCalledWith('previous')
+    expect(area.textContent).toContain('10/19')
+    expect(host.querySelector('[data-current-cycle]')!.textContent).toContain('11/23')
+    expect(api.batchDays).not.toHaveBeenCalled()
   })
 
   async function submitMondayPlan(): Promise<void> {

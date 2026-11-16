@@ -1,0 +1,36 @@
+
+ RUN  v2.1.9 /Users/david/Projects/apps/meetpr-plan-web-wt-030
+
+ ✓ src/features/workspace/PlanWorkspace.test.tsx (93 tests | 92 skipped) 82ms
+
+ Test Files  1 passed (1)
+      Tests  1 passed | 92 skipped (93)
+   Start at  05:49:53
+   Duration  1.48s (transform 695ms, setup 16ms, collect 947ms, tests 82ms, environment 157ms, prepare 77ms)
+
+
+
+ RUN  v2.1.9 /Users/david/Projects/apps/meetpr-plan-web-wt-030
+
+(node:71387) Warning: `--localstorage-file` was provided without a valid path
+(Use `node --trace-warnings ...` to show where the warning was created)
+ ✓ src/features/plan-editor/saveFailure-ui.test.tsx (17 tests) 155ms
+ ✓ src/features/workspace/PlanWorkspace.test.tsx (93 tests) 1132ms
+ ✓ src/features/plan-editor/previous-cycle-ui.test.tsx (24 tests) 1254ms
+
+ Test Files  3 passed (3)
+      Tests  134 passed (134)
+   Start at  05:51:11
+   Duration  2.17s (transform 705ms, setup 32ms, collect 1.79s, tests 2.54s, environment 404ms, prepare 80ms)
+
+
+
+ RUN  v2.1.9 /Users/david/Projects/apps/meetpr-plan-web-wt-030
+
+ ✓ src/features/workspace/PlanWorkspace.test.tsx (93 tests | 92 skipped) 178ms
+
+ Test Files  1 passed (1)
+      Tests  1 passed | 92 skipped (93)
+   Start at  05:52:46
+   Duration  2.34s (transform 1.15s, setup 39ms, collect 1.54s, tests 178ms, environment 269ms, prepare 51ms)
+

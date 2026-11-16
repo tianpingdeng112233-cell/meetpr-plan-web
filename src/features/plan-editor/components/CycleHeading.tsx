@@ -2,14 +2,14 @@ import type { PlanStatus } from '../../../api/types'
 import { S } from '../../../i18n/strings'
 import { addDays, mdLabel } from '../mapping'
 
-export function CycleHeading({ previous = false, name, start, count, status, collapsed = false }: {
-  previous?: boolean; name: string; start: string | null; count: number; status?: PlanStatus; collapsed?: boolean
+export function CycleHeading({ previous = false, readOnly = false, name, start, count, status, collapsed = false }: {
+  previous?: boolean; readOnly?: boolean; name: string; start: string | null; count: number; status?: PlanStatus; collapsed?: boolean
 }) {
   return <div className="cycle-heading">
     <span className={`cycle-label${previous ? ' previous' : ''}`}>{previous ? S.block.previousCycle : S.block.currentCycle}</span>
     <strong>{name}</strong>
     <span className="cycle-meta">{S.block.cycleMeta(start ? mdLabel(addDays(start, 0)) : '—', count, S.common[status ?? 'draft'])}{collapsed ? ` · ${S.block.cycleCollapsed}` : ''}</span>
-    {previous && <span className="cycle-readonly">{S.block.cycleReadOnly}</span>}
+    {previous && readOnly && <span className="cycle-readonly">{S.block.cycleReadOnly}</span>}
   </div>
 }
 

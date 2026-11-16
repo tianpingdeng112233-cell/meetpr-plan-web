@@ -1,0 +1,10 @@
+
+0 anti-patterns found.
+
+── Advisory (not counted as failures) ──
+
+/Users/david/Projects/apps/meetpr-plan-web-wt-030/src/features/plan-editor/components/block-grid.css
+  line 199: [codex-grid-background] two-axis grid-line gradient background
+    → A decorative grid or line-field background drawn with hairline linear-gradient layers tiled by a fixed pixel cell is a recurring generated-UI signature. Reserve grid overlays for actual canvas, map, blueprint, or measurement surfaces; elsewhere use product structure or a plain surface.
+
+1 advisory note. Suppress with --no-advisory.
