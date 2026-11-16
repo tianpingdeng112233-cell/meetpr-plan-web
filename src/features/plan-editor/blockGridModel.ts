@@ -160,11 +160,15 @@ export function fillBlockDays(weeks: Week[], source: BlockAddress, endWeek: numb
   const grid = buildBlockGrid(weeks, start, weekdays, extraWeekdays, showRestDays)
   const sourceDay = grid.rows.find(row => row.week.num === source.weekNumber)?.cells[source.dx]?.day
   if (!sourceDay) return weeks
-  return blockFillTargets(grid, source, endWeek)
-    .reduce((result, target) => {
-      const day = blockTargetDay(grid, target, start)
-      return day && (sourceDay.dayType !== 'rest' || !blockDayDeletionLocked(day)) ? writeDay(result, target.weekNumber, { ...replaceBlockDay(day, sourceDay.rows), dayType: sourceDay.dayType, rest: sourceDay.dayType === 'rest' || !isBlockTrainingDay(sourceDay) }) : result
-    }, weeks)
+  return fillBlockDaysFromSource(weeks, sourceDay, blockFillTargets(grid, source, endWeek), start, weekdays, extraWeekdays, showRestDays)
+}
+
+export function fillBlockDaysFromSource(weeks: Week[], sourceDay: DayCol, targets: BlockAddress[], start?: string | null, weekdays: readonly number[] = [], extraWeekdays: readonly number[] = [], showRestDays = false): Week[] {
+  const grid = buildBlockGrid(weeks, start, weekdays, extraWeekdays, showRestDays)
+  return targets.reduce((result, target) => {
+    const day = blockTargetDay(grid, target, start)
+    return day && (sourceDay.dayType !== 'rest' || !blockDayDeletionLocked(day)) ? writeDay(result, target.weekNumber, { ...replaceBlockDay(day, sourceDay.rows), dayType: sourceDay.dayType, rest: sourceDay.dayType === 'rest' || !isBlockTrainingDay(sourceDay) }) : result
+  }, weeks)
 }
 
 export function pasteBlockRows(weeks: Week[], target: BlockAddress, rows: ExerciseRow[], start?: string | null,

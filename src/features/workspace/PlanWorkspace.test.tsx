@@ -985,6 +985,35 @@ describe('PlanWorkspace editor remount', () => {
     expect(host.querySelector('[data-previous-cycle]')!.textContent).not.toContain('未更新 · 学员还看不到这些改动')
   })
 
+  it('030-C drag-fill saves only the current HTTP plan and never writes previous snapshots', async () => {
+    const trees = await openEditableCycles()
+    await changeCycleWeight(false, '105')
+    const previousTree = structuredClone(trees.get('previous'))
+    const previous = host.querySelector<HTMLElement>('[data-previous-cycle]')!
+    const current = host.querySelector<HTMLElement>('[data-current-cycle]')!
+    await act(async () => {
+      const source = previous.querySelector<HTMLElement>('[data-block-week="1"][data-dow="0"]')!
+      source.dispatchEvent(new MouseEvent('mousedown', { bubbles: true })); source.click()
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await settle()
+    })
+    const target = current.querySelector<HTMLElement>('[data-block-week="1"][data-dow="0"]')!
+    Object.defineProperty(document, 'elementFromPoint', { configurable: true, value: () => target })
+    await act(async () => {
+      previous.querySelector('.block-fill-handle')!.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, button: 0 }))
+      window.dispatchEvent(new MouseEvent('mousemove', { buttons: 1 })); await settle()
+    })
+    expect(current.querySelector('.fill-preview')).not.toBeNull()
+    await act(async () => { window.dispatchEvent(new MouseEvent('mouseup')); await settle() })
+    await act(async () => { host.querySelector<HTMLButtonElement>('.block-topbar .block-primary')!.click(); await settle() })
+    expect(api.batchDays).toHaveBeenCalledOnce()
+    expect(api.batchDays.mock.calls[0][0]).toBe('plan')
+    expect(api.batchDays.mock.calls[0][1].upsert_days[0].exercises[0].sets[0]).toMatchObject({ intensity_mode: 'weight', target_value: '100' })
+    expect(trees.get('previous')).toEqual(previousTree)
+    expect(api.putPendingRevision.mock.calls.every(call => call[0] === 'plan')).toBe(true)
+    expect(api.deletePendingRevision.mock.calls.every(call => call[0] === 'plan')).toBe(true)
+    Reflect.deleteProperty(document, 'elementFromPoint')
+  })
+
   it('030-B guards workspace navigation and restores previous edits after refresh, including collapsed content', async () => {
     api.refreshCoachStudents.mockResolvedValue([{ id: 'student', display_name: '学员', status: 'active', evaluation: null }, { id: 'second', display_name: '另一个学员', status: 'active', evaluation: null }])
     await openEditableCycles()

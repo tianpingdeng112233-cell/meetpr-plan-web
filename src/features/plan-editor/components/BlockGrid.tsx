@@ -14,7 +14,19 @@ import { createPortal } from 'react-dom'
 import type { FeedbackEntry } from '../feedbackModel'
 import { useVideoPlanScroll, type PlanPlayback } from '../useVideoPlanScroll'
 
+export interface CrossCycleFill {
+  preview: (source: DayCol, target: HTMLElement | null) => boolean
+  commit: (source: DayCol, target: HTMLElement) => void
+  cancel: () => void
+}
+
+export interface IncomingFill {
+  day: DayCol; targets: BlockAddress[]; endWeek: number
+}
+
 interface Props {
+  crossCycleFill?: CrossCycleFill
+  incomingFill?: IncomingFill | null
   comparisonRows?: readonly number[]
   showRestDays?: boolean
   playback?: PlanPlayback | null
@@ -99,6 +111,8 @@ export function BlockGrid(props: Props) {
     drop: { rowId: string; position: 'before' | 'after' } | null
   } | null>(null)
   const [fill, setFill] = useState<{ source: BlockAddress; endWeek: number } | null>(null)
+  const crossCycleFill = useRef(props.crossCycleFill)
+  crossCycleFill.current = props.crossCycleFill
   const fillTargets = fill ? blockFillTargets(grid, fill.source, fill.endWeek) : []
   const [rectangle, setRectangle] = useState<{ left: number; top: number; width: number; height: number } | null>(null)
   const [insertMenu, setInsertMenu] = useState<string | null>(null)
@@ -147,26 +161,31 @@ export function BlockGrid(props: Props) {
     target?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' })
   }, [props.highlightedDayId])
   const startFill = (event: React.MouseEvent, source: BlockAddress) => {
-    if (event.button !== 0 || props.readOnly) return
+    if (event.button !== 0 || (props.readOnly && !props.crossCycleFill)) return
     event.preventDefault(); event.stopPropagation()
     // Expose the later weeks before hit-testing a horizontal fill gesture.
     if (byDay) props.onClose()
+    const sourceDay = blockTargetDay(grid, source, props.startDate)
     let end = source.weekNumber
+    let crossTarget: HTMLElement | null = null
     const move = (e: MouseEvent) => {
       const target = document.elementFromPoint?.(e.clientX, e.clientY)?.closest<HTMLElement>('[data-block-week]')
-      end = target && ref.current?.contains(target) ? Math.max(source.weekNumber, Number(target.dataset.blockWeek)) : source.weekNumber
+      crossTarget = sourceDay && crossCycleFill.current?.preview(sourceDay, target ?? null) ? target! : null
+      end = !props.readOnly && target && ref.current?.contains(target) ? Math.max(source.weekNumber, Number(target.dataset.blockWeek)) : source.weekNumber
       setFill({ source, endWeek: end })
     }
     const finish = () => {
       cleanup.current?.()
       suppressClick.current = true
       window.setTimeout(() => { suppressClick.current = false }, 0)
-      if (end > source.weekNumber) props.onFill(source, end)
+      if (crossTarget && sourceDay) crossCycleFill.current?.commit(sourceDay, crossTarget)
+      else if (end > source.weekNumber) props.onFill(source, end)
     }
-    const cancel = () => { setFill(null); window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', finish); window.removeEventListener('blur', cancel); cleanup.current = null }
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.preventDefault(); e.stopImmediatePropagation(); cancel() } }
+    const cancel = () => { setFill(null); crossCycleFill.current?.cancel(); window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', finish); window.removeEventListener('blur', cancel); window.removeEventListener('keydown', onKey, true); cleanup.current = null }
     cleanup.current?.(); cleanup.current = cancel
     setFill({ source, endWeek: end })
-    window.addEventListener('mousemove', move); window.addEventListener('mouseup', finish); window.addEventListener('blur', cancel)
+    window.addEventListener('mousemove', move); window.addEventListener('mouseup', finish); window.addEventListener('blur', cancel); window.addEventListener('keydown', onKey, true)
   }
 
   const startBrickDrag = (event: React.MouseEvent, week: Week, day: DayCol, row: ExerciseRow) => {
@@ -317,12 +336,13 @@ export function BlockGrid(props: Props) {
           const covered = !!editingPosition && !!editColumns && position.row === editingPosition.row
             && position.column >= editColumns.start && position.column < editColumns.end && !editing
           const selected = !!day && props.selectedDays.has(planDayKey({ wnum: week.num, dow: day.dow }))
-          const preview = fill && fillTargets.some(target => target.weekNumber === week.num && target.dx === cell.dx)
+          const incoming = props.incomingFill?.targets.some(target => target.weekNumber === week.num && target.dx === cell.dx) ? props.incomingFill : null
+          const preview = incoming || (fill && fillTargets.some(target => target.weekNumber === week.num && target.dx === cell.dx))
           const resting = !!props.showRestDays && !!day && isRestDay(day)
           const rows = day && !resting ? orderRowsForDisplay(day.rows, props.rowTier) : []
           const dragLocked = rows.some(row => row.hasLogs)
           const selectedCount = rows.filter(row => props.selectedRows.has(row.id)).length
-          const fillRows = preview ? grid.rows.find(row => row.week.num === fill.source.weekNumber)?.cells[cell.dx]?.day?.rows ?? [] : []
+          const fillRows = incoming ? incoming.day.rows : fill && preview ? grid.rows.find(row => row.week.num === fill.source.weekNumber)?.cells[cell.dx]?.day?.rows ?? [] : []
           const playing = props.playback?.entry.inPlan && !!day && ((!!props.playback.entry.dayId && props.playback.entry.dayId === day.serverDayId) || day.rows.some(row => row.id === props.playback?.entry.rowId))
           return <div key={cell.dx} className={`block-cell${playing ? ' video-day-selected' : ''}${day?.serverDayId && props.highlightedDayId === day.serverDayId ? ' day-feedback-highlight' : ''}${!day ? ' is-blank' : ''}${resting ? ' is-rest' : ''}${selected ? ' is-selected' : ''}${editing ? ' is-editing' : ''}${preview ? ' fill-preview' : ''}`}
             onMouseEnter={() => props.onHoverDay?.(day?.serverDayId ?? null)} onMouseLeave={() => props.onHoverDay?.(null)}
@@ -365,10 +385,10 @@ export function BlockGrid(props: Props) {
                 <span>{props.exerciseName?.(added.exerciseId) ?? added.exerciseId} <small>{S.block.added}</small></span><div className="block-brick-summary"><code>{actualShorthand(null, added.sets)}</code><span className="block-brick-status"><span>✓</span>{props.addedVideoMarker?.(day.serverDayId, added.exerciseId)}</span></div>
               </div>)}
             </>}
-            {selected && !props.readOnly && <button type="button" className="block-fill-handle" aria-label={S.editor.blockFillHint} title={S.editor.blockFillHint}
+            {selected && (!props.readOnly || props.crossCycleFill) && <button type="button" className="block-fill-handle" aria-label={S.editor.blockFillHint} title={S.editor.blockFillHint}
               onMouseDown={event => startFill(event, cell)} onClick={event => event.stopPropagation()} />}
             {selectedCount > 1 && <div className="block-selection-hint">{S.editor.blockRowsSelected(selectedCount)}</div>}
-            {preview && <div className="block-fill-ghost" aria-hidden="true">{fillRows.map(row => <div key={row.id} className="block-brick">{fmt.exerciseName({ name: row.name, name_en: row.nameEn, custom: row.custom })} <code>{shorthand(row)}</code></div>)}<small>{S.editor.blockFillPreview(fill.source.weekNumber + 1, fill.endWeek, cell.dx + 1, fillRows.length)}</small></div>}
+            {preview && <div className="block-fill-ghost" aria-hidden="true">{fillRows.map(row => <div key={row.id} className="block-brick">{fmt.exerciseName({ name: row.name, name_en: row.nameEn, custom: row.custom })} <code>{shorthand(row)}</code></div>)}<small>{S.editor.blockFillPreview(incoming ? 1 : fill!.source.weekNumber + 1, incoming?.endWeek ?? fill!.endWeek, cell.dx + 1, fillRows.length)}</small></div>}
           </div>
         })}
         {insertGaps.map(({ before, after, dates }) => {
