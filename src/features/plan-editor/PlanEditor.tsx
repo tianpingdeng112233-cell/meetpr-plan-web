@@ -1,3 +1,5 @@
+import { PreviousCycle } from './components/PreviousCycle'
+import { CycleHeading, CycleComparison } from './components/CycleHeading'
 import type { CommunicationContext } from '../chat/EditorChat'
 import type { PreparedAnnotation } from '../chat/CommunicationComposer'
 import type { ChatExerciseRefV1 } from '../../api/types'
@@ -131,6 +133,7 @@ export interface ExerciseNoteHandle {
   open: (target: ChatExerciseRefV1) => boolean
 }
 export interface PlanEditorProps {
+  previousCycle?: { plan: import('../../api/types').PlanResponse; weeks?: Week[]; restDaysEnabled?: boolean; failed?: boolean; onRetry: () => void }
   restDaysEnabled?: boolean
   renderCommunication?: (context: CommunicationContext) => React.ReactNode
   communicationOpen?: boolean
@@ -598,10 +601,20 @@ export function PlanEditor(props: PlanEditorProps) {
   lastBlockWeekdays.current = blockWeekdays
 
 
+  // Share presentation rows only; each grid retains its own storage coordinates.
+  const comparisonRows = props.previousCycle ? (() => {
+    const current = buildBlockGrid(weeks, planStartDate, blockWeekdays, extraWeekdays, showRestDays)
+    const previous = buildBlockGrid(props.previousCycle.weeks ?? [], props.previousCycle.plan.start_date)
+    return Array.from({ length: 7 }, (_, weekday) => Array.from({ length: Math.max(1,
+      current.columns.filter(column => column.weekday === weekday).length,
+      previous.columns.filter(column => column.weekday === weekday).length) }, () => weekday)).flat()
+  })() : undefined
+
   // Kept with the import token so an autosave retry reuses the coach's explicit
   // answer rather than prompting again or silently changing historical data.
   const [colW, setColW] = useState<ColWidths[]>(() => Array.from({ length: 7 }, () => ({ ...COL_DEFAULTS })))
   const [blockLayout, setBlockLayout] = useBlockLayout()
+  const [previousActive, setPreviousActive] = useState(false)
   const [editingDay, setEditingDay] = useState<Sel | null>(null)
   const handledDayIntent = useRef<number | null>(null)
   useEffect(() => {
@@ -626,14 +639,32 @@ export function PlanEditor(props: PlanEditorProps) {
   const [setLogs, setSetLogs] = useState<StudentSetLog[]>([])
   const [actualsByExercise, setActualsByExercise] = useState<Map<string, ActualSet[]>>(() => new Map())
   const [studentAddedByDay, setStudentAddedByDay] = useState<Map<string, StudentAddedExercise[]>>(() => new Map())
+  const actualsPreferenceKey = `meetpr:show-actuals:${props.coachId ?? 'local'}`
+  const [showActuals, setShowActuals] = useState(() => { try { return localStorage.getItem(actualsPreferenceKey) === 'true' } catch { return false } })
+  const toggleActuals = () => {
+    const next = !showActuals
+    setShowActuals(next)
+    try { localStorage.setItem(actualsPreferenceKey, String(next)) } catch { /* Session preference still works. */ }
+  }
   const hasServerDay = weeks.some((week) => week.days.some((day) => !!day.serverDayId))
   const anyRowHasLogs = weeks.some((week) => week.days.some((day) => day.rows.some((row) => row.hasLogs)))
+  const logsToday = isoDate(new Date())
+  const hasCompletedDay = weeks.some(week => week.days.some(day => day.completedAt))
+  const currentLogsFrom = hasCompletedDay && planStartDate && planStartDate > logsToday ? logsToday : planStartDate
+  const currentNeedsLogs = !!currentLogsFrom && currentLogsFrom <= logsToday && (anyRowHasLogs || hasServerDay)
+  // Reuse the current request with a wider range. A future, untouched block
+  // must not add a logs request merely by opening the read-only comparison.
+  const previousLogsStart = props.previousCycle ? [props.previousCycle.plan.start_date,
+    ...(props.previousCycle.weeks ?? []).flatMap(week => week.days.flatMap(day => day.completedAt ? [isoDate(new Date(day.completedAt))] : [])),
+  ].sort()[0] : null
+  const waitingPrevious = props.previousCycle && !props.previousCycle.weeks && !props.previousCycle.failed
+  const logsFrom = !waitingPrevious && (currentNeedsLogs || (showActuals && props.previousCycle))
+    ? props.previousCycle ? [previousLogsStart!, currentLogsFrom ?? logsToday].sort()[0] : currentLogsFrom
+    : null
   useEffect(() => {
     const studentId = props.studentId
-    const today = isoDate(new Date())
-    const hasCompletedDay = weeks.some(week => week.days.some(day => day.completedAt))
-    const from = hasCompletedDay && planStartDate && planStartDate > today ? today : planStartDate
-    if (!studentId || !from || (!anyRowHasLogs && !hasServerDay) || from > today) return
+    const from = logsFrom, today = logsToday
+    if (!studentId || !from || from > today) return
     let cancelled = false
     setSetLogsFailed(false)
     const applyLogs = (logs: StudentSetLog[]) => {
@@ -656,14 +687,7 @@ export function PlanEditor(props: PlanEditorProps) {
       })
       .catch(() => { if (!cancelled) setSetLogsFailed(true) })
     return () => { cancelled = true }
-  }, [props.studentId, planStartDate, anyRowHasLogs, hasServerDay, setLogsRetry])
-  const actualsPreferenceKey = `meetpr:show-actuals:${props.coachId ?? 'local'}`
-  const [showActuals, setShowActuals] = useState(() => { try { return localStorage.getItem(actualsPreferenceKey) === 'true' } catch { return false } })
-  const toggleActuals = () => {
-    const next = !showActuals
-    setShowActuals(next)
-    try { localStorage.setItem(actualsPreferenceKey, String(next)) } catch { /* Session preference still works. */ }
-  }
+  }, [props.studentId, planStartDate, anyRowHasLogs, hasServerDay, logsFrom, logsToday, setLogsRetry])
   const studentFeedback = useStudentFeedback(props.studentId)
   const dayFeedback = useMemo(() => deriveDayFeedback(displayWeeks, setLogs, studentFeedback.items ?? [], props.videos ?? [], planStartDate), [displayWeeks, setLogs, studentFeedback.items, studentFeedback.failed, props.videos, planStartDate])
   const videoFeedback = useMemo(() => deriveVideoFeedback(displayWeeks, props.videos ?? [], setLogs, planStartDate), [displayWeeks, props.videos, setLogs, planStartDate])
@@ -2052,7 +2076,7 @@ export function PlanEditor(props: PlanEditorProps) {
   }
 
   useGlobalKeyboardHandler(({ event: e, editable }) => {
-    if (suspendedRef.current) return false
+    if (suspendedRef.current || previousActive) return false
     const target = e.target instanceof HTMLElement ? e.target : null
     if (target?.closest('.block-history,[role="dialog"],[role="menu"],.block-topbar')) return false
     const gridInput = !!target?.closest('[data-plan-cell-key]')
@@ -2686,7 +2710,7 @@ export function PlanEditor(props: PlanEditorProps) {
       const cell = empty[index - cur.length]
       handleSelect(cell.weekNumber, cell.day!.dow)
       setEditingDay({ wnum: cell.weekNumber, dow: cell.day!.dow })
-      window.requestAnimationFrame(() => rootRef.current?.querySelector(`[data-block-week="${cell.weekNumber}"][data-dow="${cell.day!.dow}"]`)?.scrollIntoView?.({ block: 'center', inline: blockLayout === 'by-day' ? 'nearest' : 'center' }))
+      window.requestAnimationFrame(() => weeksRef.current?.querySelector(`[data-block-week="${cell.weekNumber}"][data-dow="${cell.day!.dow}"]`)?.scrollIntoView?.({ block: 'center', inline: blockLayout === 'by-day' ? 'nearest' : 'center' }))
       return
     }
     const issue = cur[index]
@@ -3043,8 +3067,10 @@ export function PlanEditor(props: PlanEditorProps) {
   }
 
   return (
-    <div ref={rootRef} data-row-drag={rowDragState ?? undefined} onMouseDownCapture={event => {
+    <div ref={rootRef} onClickCapture={event => setPreviousActive(!!(event.target as HTMLElement).closest('[data-previous-cycle]'))}
+      onFocusCapture={event => setPreviousActive(!!event.target.closest('[data-previous-cycle]'))} data-row-drag={rowDragState ?? undefined} onMouseDownCapture={event => {
       const target = event.target as HTMLElement
+      setPreviousActive(!!target.closest('[data-previous-cycle]'))
       if (!target.closest('.block-layout-switch,.show-actuals,.feedback-toggle,.block-history,.block-cell,.block-context-menu,.ex-popover,[data-popover],[role="dialog"]')) {
         closeBlockEditor(); setBlockMenu(null)
       }
@@ -3116,8 +3142,17 @@ export function PlanEditor(props: PlanEditorProps) {
       <div className="plan-with-rail block-layout">
         <div className="scroller" ref={scrollerRef} aria-readonly={readOnly || undefined}>
           {readOnly && <div role="status" className="block-readonly">{studentEnded ? <><button disabled>{S.editor.newPlan}</button><button disabled>{S.workspace.studentRail.import}</button><span>{S.workspace.studentRail.readOnlyHint}</span></> : S.editor.historyReadOnlyBanner}</div>}
-          <div ref={weeksRef}>
-            <BlockGrid showRestDays={showRestDays} layout={blockLayout} onLayout={setBlockLayout} onConfirmWeekImport={num => setWeeksWithHistory(prev => prev.map(week => week.num === num ? { ...week, importDoubts: undefined } : week))} weeks={weeks} startDate={planStartDate} weekdays={blockWeekdays} extraWeekdays={extraWeekdays} editing={editingDay}
+          <CycleComparison enabled={!!props.previousCycle} layout={blockLayout} rows={comparisonRows?.length ?? 7}>
+          {props.previousCycle && <PreviousCycle key={props.previousCycle.plan.id} showActuals={showActuals} actualsForRow={actualsForRow} studentAddedByDay={studentAddedByDay}
+            exerciseName={id => { const names = props.exerciseIndex?.namesById(id); return names ? fmt.exerciseName(names) : id }}
+            active={previousActive} onCopy={(rows, day) => {
+              const text = day ? serializeDayForClipboard(day) : serializeRowsForClipboard(rows)
+              clipboardStore.write(day ? { kind: 'day', text, ...cloneDayClipboard(day) } : { kind: 'row', text, rows: cloneRows(rows, 'clip-row') })
+              void navigator.clipboard?.writeText(text).catch(() => { /* Internal clipboard still works. */ })
+            }} comparisonRows={comparisonRows} coachId={props.coachId} cycle={props.previousCycle} layout={blockLayout} onLayout={setBlockLayout} rowTier={rowTier} />}
+          <div ref={weeksRef} data-current-cycle={props.previousCycle ? '' : undefined}>
+            {props.previousCycle && <header className="cycle-bar"><CycleHeading name={props.planName} start={planStartDate} count={weeks.length} status={props.planStatus} /></header>}
+            <BlockGrid comparisonRows={comparisonRows} showRestDays={showRestDays} layout={blockLayout} onLayout={setBlockLayout} onConfirmWeekImport={num => setWeeksWithHistory(prev => prev.map(week => week.num === num ? { ...week, importDoubts: undefined } : week))} weeks={weeks} startDate={planStartDate} weekdays={blockWeekdays} extraWeekdays={extraWeekdays} editing={editingDay}
               selectedDays={daySelection.days} selectedRows={selectedRowIds} readOnly={readOnly}
               rowTier={rowTier} onClose={closeBlockEditor} onReorderRow={reorderRow} onRowDragState={setRowDragState}
               showActuals={showActuals} actualsForRow={actualsForRow} studentAddedByDay={studentAddedByDay}
@@ -3249,6 +3284,7 @@ export function PlanEditor(props: PlanEditorProps) {
               )}
             />
           </div>
+          </CycleComparison>
         </div>
         <BlockHistory renderCommunication={props.renderCommunication} communicationOpen={props.communicationOpen} onCommunicationOpenChange={props.onCommunicationOpenChange} onAnnotationPrepared={props.onAnnotationPrepared} feedbackItems={studentFeedback.items} student={props.student} onStudentChanged={props.onStudentChanged} onBeforeUnbind={confirmLeave} readOnly={studentEnded} datesFailed={setLogsFailed} onRetryDates={() => setSetLogsRetry(value => value + 1)} days={dayFeedback.days} feedbackFailed={studentFeedback.failed} feedbackLoaded={!!studentFeedback.items && !studentFeedback.failed}
           onRetryFeedback={studentFeedback.refresh} onFeedbackSent={item => { studentFeedback.append(item); if (studentFeedback.failed) void studentFeedback.refresh() }} onRefreshFeedback={studentFeedback.refresh}

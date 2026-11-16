@@ -229,3 +229,32 @@
 
 .block-grid[data-video-plan-scroll] .block-cell:not(.is-editing) { cursor: grab; }
 .scroller.panning .block-grid, .scroller.panning .block-cell { cursor: grabbing; }
+
+/* 030: The preceding block is a separate read-only source, never editor state. */
+.cycle-comparison { min-width: 950px; }
+.previous-cycle { background: var(--bd); border-radius: 10px; }
+.cycle-bar { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; padding: 12px 16px; }
+.cycle-heading { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.cycle-label { padding: 3px 9px; border-radius: 6px; background: var(--ink); color: var(--card-bg); font-size: 12px; font-weight: 600; }
+.cycle-label.previous { background: var(--sec); }
+.cycle-heading strong { font-size: 14px; }
+.cycle-meta, .cycle-range { color: var(--mut); font-size: 12px; }
+.cycle-range { margin-left: auto; }
+.cycle-readonly { padding: 3px 8px; background: var(--card-bg); color: var(--sec); border-radius: 6px; font-size: 12px; }
+.previous-cycle .block-capacity { display: none; }
+.previous-cycle .block-column, .previous-cycle .block-layout-switch { background: var(--bd); box-shadow: none; }
+.cycle-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-left: auto; }
+.cycle-actions button { padding: 5px 10px; border: 1px solid var(--faint); border-radius: 6px; background: var(--card-bg); color: var(--txt); font: inherit; font-size: 12px; cursor: pointer; }
+.cycle-actions button:hover { border-color: var(--ink); }
+.cycle-actions button:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+.cycle-comparison[data-cycle-layout="by-day"] { display: grid; grid-template-columns: max-content max-content; grid-template-rows: auto 54px repeat(7, auto); gap: 0 12px; width: max-content; min-width: 100%; }
+.cycle-comparison[data-cycle-layout="by-day"] > section,
+.cycle-comparison[data-cycle-layout="by-day"] > [data-current-cycle] { display: grid; grid-template-rows: subgrid; grid-row: 1 / span var(--cycle-rows); min-width: 0; }
+.cycle-comparison[data-cycle-layout="by-day"] > section { grid-column: 1; }
+.cycle-comparison[data-cycle-layout="by-day"] > [data-current-cycle] { grid-column: 2; }
+.cycle-comparison[data-cycle-layout="by-day"] .cycle-bar { grid-row: 1; max-width: 720px; align-content: start; }
+.cycle-comparison[data-cycle-layout="by-day"] .block-grid { grid-row: 2 / -1; grid-template-rows: subgrid; min-width: 0; padding-top: 0; padding-bottom: 14px; }
+.cycle-comparison[data-cycle-layout="by-day"] .block-cell { margin-bottom: 10px; }
+.cycle-comparison[data-cycle-layout="by-day"] .block-column { position: static; }
+.cycle-message { padding: 16px; color: var(--sec); }
+.cycle-message button { margin-left: 8px; color: var(--ink); text-decoration: underline; cursor: pointer; }

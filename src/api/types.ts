@@ -336,6 +336,8 @@ export type MessagesQuery =
   | { mode: 'before'; seq: number; limit?: number }
 
 export interface PlanResponse {
+  /** Optional on older servers; breaks ties between blocks with the same start date. */
+  published_at?: string | null
   id: string
   coach_id: string | null
   trainee_id: string

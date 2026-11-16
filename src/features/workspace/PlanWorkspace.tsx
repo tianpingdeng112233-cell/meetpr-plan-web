@@ -1,3 +1,4 @@
+import { selectPreviousCycle } from './previousCycle'
 import { communicationDraftKey, type CommunicationDrafts } from '../chat/CommunicationComposer'
 import { registerReloadBlocker } from '../../reloadSafety'
 import type { ChatExerciseRefV1 } from '../../api/types'
@@ -153,6 +154,34 @@ export function PlanWorkspace({ onLogout, me }: Props) {
   // quickly. A single generation covers both levels so an old response can
   // never pair one student's label with another student's editable plan.
   const loadGeneration = useRef(0)
+  const previousPlan = loaded ? selectPreviousCycle(plans, loaded.plan) : null
+  const [previousResult, setPreviousResult] = useState<{
+    owner: string; id: string; full?: PlanWithChildren; failed?: boolean
+  } | null>(null)
+  const [previousAttempt, setPreviousAttempt] = useState(0)
+  useEffect(() => {
+    if (!loaded || !previousPlan) return
+    const generation = loadGeneration.current
+    const owner = loaded.plan.id, id = previousPlan.id
+    let cancelled = false
+    setPreviousResult({ owner, id })
+    void getPlan(id).then(plan => {
+      if (!cancelled && generation === loadGeneration.current) {
+        setPreviousResult({ owner, id, full: plan })
+      }
+    }).catch(() => {
+      if (!cancelled && generation === loadGeneration.current) setPreviousResult({ owner, id, failed: true })
+    })
+    return () => { cancelled = true }
+  }, [loaded?.plan.id, previousPlan?.id, previousAttempt])
+  const previousFull = previousResult?.owner === loaded?.plan.id && previousResult?.id === previousPlan?.id ? previousResult : null
+  const previousWeeks = useMemo(() => previousFull?.full && catalog ? mapPlanToWeeks(previousFull.full, catalog) : undefined, [previousFull?.full, catalog])
+  const previousCycle = previousPlan ? {
+    plan: previousFull?.full ?? previousPlan, weeks: previousWeeks,
+    restDaysEnabled: previousFull?.full?.rest_days_enabled === true,
+    failed: previousFull?.failed,
+    onRetry: () => setPreviousAttempt(attempt => attempt + 1),
+  } : undefined
   const inboxRequest = useRef(0)
   const rosterBackgroundGeneration = useRef(0)
   const rosterVersion = useRef(0)
@@ -1196,6 +1225,7 @@ export function PlanWorkspace({ onLogout, me }: Props) {
     {view === 'editor' && hasStudents && <div ref={editorShellRef} style={{ position: 'relative', height: '100%' }}>
       <PlanEditor
         key={planId || `empty-${studentId}`}
+        previousCycle={previousCycle}
         dayIntent={dayIntent}
         exerciseNoteRef={exerciseNoteRef}
         coachId={me.id} videos={videosByStudent[studentId]} onRefreshVideos={refreshStudentVideos} onVideoViewed={markEditorVideoViewed}
