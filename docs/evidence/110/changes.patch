@@ -1,0 +1,1420 @@
+diff --git a/src/api/plans.ts b/src/api/plans.ts
+index f2a76b9..7d171b3 100644
+--- a/src/api/plans.ts
++++ b/src/api/plans.ts
+@@ -3,7 +3,7 @@ import type {
+   CoachStudent, StudentOnboardingProfile, PlanResponse, PlanWithChildren, PlanStatus,
+   CreatePlanBody, CreatePlanExerciseBody, CreatePlanSetBody,
+   BatchPlanDaysBody, PlanExerciseResponse, PlanSetResponse,
+-  ShiftPlanResponse,
++  ShiftPlanResponse, PlanHandoffResponse,
+ } from './types'
+ 
+ export const getCoachStudents = () =>
+@@ -17,6 +17,9 @@ export const getStudentPlans = (studentId: string, status?: PlanStatus[]) => {
+   return api.get<{ plans: PlanResponse[] }>(`/students/${studentId}/plans${q}`).then((r) => r.plans)
+ }
+ 
++export const getStudentPlanHandoff = (studentId: string) =>
++  api.get<PlanHandoffResponse>(`/students/${studentId}/plan-handoff`)
++
+ export const getPlan = (planId: string) => api.get<PlanWithChildren>(`/plans/${planId}?include_rest_days=true`)
+ 
+ export const createPlan = (body: CreatePlanBody) => api.post<PlanResponse>('/plans', body)
+diff --git a/src/api/types.ts b/src/api/types.ts
+index 61f0096..58a59f0 100644
+--- a/src/api/types.ts
++++ b/src/api/types.ts
+@@ -592,3 +592,13 @@ export interface ApiError {
+   error: string
+   issues?: { path: (string | number)[]; message: string }[]
+ }
++
++/** Server-derived student progression, independent of the coach's open editor. */
++export interface PlanHandoffResponse {
++  current_plan_id: string | null
++  plans: (PlanResponse & {
++    completed_training_days: number
++    total_training_days: number
++    handoff_status: 'current' | 'upcoming' | 'past'
++  })[]
++}
+diff --git a/src/features/plan-editor/PlanEditor.tsx b/src/features/plan-editor/PlanEditor.tsx
+index c0996c5..bf087be 100644
+--- a/src/features/plan-editor/PlanEditor.tsx
++++ b/src/features/plan-editor/PlanEditor.tsx
+@@ -1,3 +1,4 @@
++import { planOverlapMessage } from './planOverlap'
+ import { createPortal } from 'react-dom'
+ import { PreviousCycle } from './components/PreviousCycle'
+ import { CycleHeading, CycleComparison } from './components/CycleHeading'
+@@ -190,7 +191,7 @@ export interface PlanEditorProps {
+   /** Completed/paused historical plans render as a true non-persisting viewer. */
+   readOnly?: boolean
+   /** Real publish call; when omitted the button just toggles locally (sample mode). */
+-  onPublish?: () => Promise<void>
++  onPublish?: () => Promise<string | void>
+   onBackfillAfterPublish?: () => Promise<void>
+   /** Save current edits back to the backend; resolves with how many contentful rows were skipped. */
+   onSave?: (
+@@ -212,6 +213,10 @@ export interface PlanEditorProps {
+   currentStudentId?: string
+   onSwitchStudent?: (id: string) => void | Promise<void>
+   plans?: Switcher[]
++  studentProgress?: string
++  onOpenStudentCurrent?: () => Promise<void>
++  handoffLabel?: string
++  onRetryHandoff?: () => void
+   currentPlanId?: string
+   onSwitchPlan?: (id: string) => void | Promise<void>
+   onPlanAction?: (id: string, action: PlanAction) => void | Promise<void>
+@@ -835,9 +840,11 @@ export function PlanEditor(props: PlanEditorProps) {
+     ? (studentEnded ? S.workspace.studentRail.readOnly : S.editor.readOnlyStatus(props.planStatus === 'completed' ? S.common.completed : S.common.paused))
+     : initialPublished ? S.editor.publishedTo(studentName) : S.editor.draftSavedInitial)
+   const [pasteNotice, setPasteNotice] = useState(false)
++  const [publicationNotice, setPublicationNotice] = useState<string | null>(null)
+   const setStatusText = useCallback((text: string, isPasteNotice = false) => {
+     setStatusTextValue(text)
+     setPasteNotice(isPasteNotice)
++    setPublicationNotice(null)
+   }, [])
+   const undoShiftInFlight = useRef(false)
+   const [undoingShift, setUndoingShift] = useState(false)
+@@ -998,8 +1005,10 @@ export function PlanEditor(props: PlanEditorProps) {
+       }
+       await refreshShiftPlan()
+       setStatusText(S.editor.undoShiftSucceeded)
+-    } catch {
+-      setStatusText(undone ? S.editor.undoShiftRefreshFailed : S.editor.undoShiftFailed)
++    } catch (error) {
++      const overlap = planOverlapMessage(error)
++      if (overlap) window.alert(overlap)
++      setStatusText(overlap ?? (undone ? S.editor.undoShiftRefreshFailed : S.editor.undoShiftFailed))
+     } finally {
+       undoShiftInFlight.current = false
+       setUndoingShift(false)
+@@ -2411,7 +2420,7 @@ export function PlanEditor(props: PlanEditorProps) {
+       }
+       setStatusText(S.editor.startDateUpdated(published ? S.common.published : S.common.draft, nextStart))
+     } catch (error) {
+-      setStatusText(S.editor.startDateUpdateFailed)
++      setStatusText(planOverlapMessage(error) ?? S.editor.startDateUpdateFailed)
+       throw error
+     } finally {
+       setSaving(false)
+@@ -2546,6 +2555,8 @@ export function PlanEditor(props: PlanEditorProps) {
+     applyReconciledWeeks(res.weeks, sameContent, res.planWeeks ?? res.weeks.length)
+   }
+   const applySaveFailure = (error: unknown): string | null => {
++    const overlap = planOverlapMessage(error)
++    if (overlap) return overlap
+     if (error instanceof ReconcileConflict) {
+       applyReconciledWeeks(error.weeks)
+       unsavedRef.current = true
+@@ -2987,7 +2998,7 @@ export function PlanEditor(props: PlanEditorProps) {
+         ? lastSavedDraftContent.current
+         : mirrorContent(latestWeeks.current, currentPlanStart.current)
+       setStatusText(S.editor.publishing)
+-      if (onPublish) await runWrite(onPublish)
++      const publicationMessage = onPublish ? await runWrite(onPublish) : undefined
+       // Draft calendar history stops at publication. Keep prescription undo/redo,
+       // but anchor every snapshot to the exact calendar that was just published.
+       applyScheduleUpdate((snapshot) => projectWeekSchedule(
+@@ -3017,13 +3028,18 @@ export function PlanEditor(props: PlanEditorProps) {
+         !== draftContentHash(publishedBaseline)
+       setStatusText(hasUnpublishedEdits
+         ? S.editor.publishedDirty(studentName)
+-        : S.editor.publishedTo(studentName))
++        : publicationMessage ?? S.editor.publishedTo(studentName))
++      // Mirror progress must not hide the publication outcome when edits arrived in flight.
++      setPublicationNotice(publicationMessage || null)
+     } catch (e) {
+       // The status line gets repainted by later saves — a publish failure must explain itself
+       // in a dialog the coach actually reads, in coach language, not a machine code.
+       const code = e instanceof ApiException ? e.code : ''
+       const detail = e instanceof ApiException ? e.details : {}
+-      if (code === 'PLAN_PUBLISH_INCOMPLETE') {
++      const overlap = planOverlapMessage(e)
++      if (overlap) {
++        window.alert(overlap)
++      } else if (code === 'PLAN_PUBLISH_INCOMPLETE') {
+         const n = Number(detail.empty_exercise_count ?? 0) || S.editor.several
+         window.alert(S.editor.publishEmptyExercises(n))
+       } else if (code === 'PLAN_DAYS_EXCEED_WEEKS') {
+@@ -3035,7 +3051,7 @@ export function PlanEditor(props: PlanEditorProps) {
+       } else {
+         window.alert(S.editor.publishFailedAlert(code))
+       }
+-      setStatusText(S.editor.publishFailedRetry)
++      setStatusText(overlap ?? S.editor.publishFailedRetry)
+     } finally {
+       setPublishingVisible(false)
+       publishing.current = false // always unlatch so 更新计划 / autosave work afterwards
+@@ -3060,8 +3076,8 @@ export function PlanEditor(props: PlanEditorProps) {
+           ? S.editor.degradedSavedLocal(degradedSaveStatus.base, degradedSaveStatus.count)
+           : S.editor.degradedSavedStashing(degradedSaveStatus.base, degradedSaveStatus.count)
+       : statusText
+-  const visibleStatusText = published && publishedDirty && pasteNotice
+-    ? `${statusText} · ${saveStatusText}`
++  const visibleStatusText = published && publishedDirty && (publicationNotice || pasteNotice)
++    ? `${publicationNotice ?? statusText} · ${saveStatusText}`
+     : saveStatusText
+   const moveStateForDay = (wnum: number, dow: number): 'source' | 'target' | 'invalid' | undefined => {
+     if (!dayMoveVisual) return undefined
+@@ -3181,6 +3197,8 @@ export function PlanEditor(props: PlanEditorProps) {
+         } : undefined}
+         onNewPlan={studentEnded ? undefined : guardLeave(props.onNewPlan)}
+         onBackToBoard={props.onBackToBoard}
++        studentProgress={props.studentProgress} onOpenStudentCurrent={guardLeave(props.onOpenStudentCurrent)}
++        handoffLabel={props.handoffLabel} onRetryHandoff={props.onRetryHandoff}
+         currentPlanStatus={props.planStatus ?? (published ? 'published' : 'draft')}
+         onDeleteCurrentDraft={guardLeave(props.onDeleteCurrentDraft)}
+         onMarkComplete={props.onMarkComplete}
+diff --git a/src/features/plan-editor/components/DayColumn.tsx b/src/features/plan-editor/components/DayColumn.tsx
+index fc46501..ce42e7a 100644
+--- a/src/features/plan-editor/components/DayColumn.tsx
++++ b/src/features/plan-editor/components/DayColumn.tsx
+@@ -1,3 +1,4 @@
++import { planOverlapMessage } from '../planOverlap'
+ import { WeightModeSelect } from './WeightModeSelect'
+ import { activeImportDoubts } from '../import/doubts'
+ import { useLayoutEffect, useRef, useState } from 'react'
+@@ -280,7 +281,7 @@ function PlanShiftControl({ control, dayName }: {
+                       const code = typeof caught === 'object' && caught !== null && 'code' in caught
+                         ? String(Reflect.get(caught, 'code'))
+                         : ''
+-                      setError(code === 'SHIFT_NO_TARGET_DAYS' ? S.editor.shiftNoTargetDays : S.editor.shiftFailed)
++                      setError(planOverlapMessage(caught) ?? (code === 'SHIFT_NO_TARGET_DAYS' ? S.editor.shiftNoTargetDays : S.editor.shiftFailed))
+                     })
+                     .finally(() => setApplying(false))
+                 }}
+diff --git a/src/features/plan-editor/components/TopBar.tsx b/src/features/plan-editor/components/TopBar.tsx
+index e6aa645..daf3852 100644
+--- a/src/features/plan-editor/components/TopBar.tsx
++++ b/src/features/plan-editor/components/TopBar.tsx
+@@ -27,6 +27,10 @@ interface Props {
+   currentStudentId?: string
+   onSwitchStudent?: (id: string) => void | Promise<void>
+   plans?: Option[]
++  studentProgress?: string
++  onOpenStudentCurrent?: () => Promise<void>
++  handoffLabel?: string
++  onRetryHandoff?: () => void
+   currentPlanId?: string
+   onSwitchPlan?: (id: string) => void | Promise<void>
+   weeksCount?: number
+@@ -91,6 +95,11 @@ export function TopBar(p: Props) {
+       <img src="/meetpr-icon-64.png" alt="MeetPR" width="30" height="30" /><b className="block-brand">MeetPR</b><span className="plan-context-divider" />
+       <span className="block-student-name"><small>{S.block.student}</small> {p.studentName}</span>
+       <button ref={planAnchor} data-plan-menu-trigger="" aria-expanded={menu === 'plan'} aria-haspopup="menu" onClick={() => setMenu(menu === 'plan' ? null : 'plan')}><small>{S.block.cycle}</small> {p.planName}{p.planStartDate ? ` · ${mmdd(p.planStartDate)}` : ''}{p.weeksCount ? ` · ${S.common.countWeeks(p.weeksCount)}` : ''} ▾</button>
++      {p.handoffLabel && <small role="status" data-plan-handoff="">{p.handoffLabel}</small>}
++      {p.studentProgress && <button type="button" data-student-progress="" disabled={!p.onOpenStudentCurrent} onClick={() => void p.onOpenStudentCurrent?.()} title={S.workspace.handoff.openCurrent}>
++        {p.studentProgress}{p.studentPlanCursor?.kind === 'day' ? ` · W${p.studentPlanCursor.weekNumber}D${p.studentPlanCursor.dayOrdinal}` : ''}
++      </button>}
++      {p.onRetryHandoff && <button type="button" onClick={p.onRetryHandoff}>{S.workspace.handoff.retry}</button>}
+       <span className="plan-context-spacer" />
+       {(p.issueCount ?? 0) > 0 && <button title={p.issueHint} onClick={p.onJumpIssue}>{S.editor.issuesToReview(p.issueCount!)}</button>}
+       <button type="button" className="feedback-toggle" data-feedback-toggle="" aria-label={S.block.feedback} aria-pressed={p.feedbackOpen ?? false} onClick={p.onToggleFeedback}>
+diff --git a/src/features/plan-editor/mapping.ts b/src/features/plan-editor/mapping.ts
+index 70fda0e..9986abb 100644
+--- a/src/features/plan-editor/mapping.ts
++++ b/src/features/plan-editor/mapping.ts
+@@ -272,10 +272,11 @@ export function deriveStudentPlanCursor(
+   plan: PlanWithChildren,
+   localToday = isoDate(new Date()),
+ ): StudentPlanCursor | null {
+-  if (plan.status !== 'published' || plan.days.length === 0) return null
+-  if (plan.days.some((day) => !Object.hasOwn(day, 'completed_at'))) return null
++  const trainingDays = plan.days.filter(day => !day.is_rest)
++  if (plan.status !== 'published' || trainingDays.length === 0) return null
++  if (trainingDays.some((day) => !Object.hasOwn(day, 'completed_at'))) return null
+ 
+-  const ordered = plan.days
++  const ordered = trainingDays
+     .map((day, stableIndex) => ({ day, stableIndex }))
+     .sort((a, b) => (
+       a.day.week_number - b.day.week_number
+@@ -285,7 +286,7 @@ export function deriveStudentPlanCursor(
+   const pending = ordered.find(({ day }) => day.completed_at == null)?.day
+   if (!pending) return { kind: 'completed' }
+ 
+-  const weekDows = plan.days
++  const weekDows = trainingDays
+     .filter((day) => day.week_number === pending.week_number)
+     .map((day) => day.day_of_week - 1)
+   const dayOrdinal = trainingDayOrdinalFromDows(weekDows, pending.day_of_week - 1)
+diff --git a/src/features/plan-editor/reconcile.ts b/src/features/plan-editor/reconcile.ts
+index 7d41880..192f0d5 100644
+--- a/src/features/plan-editor/reconcile.ts
++++ b/src/features/plan-editor/reconcile.ts
+@@ -1,3 +1,4 @@
++import { planOverlapMessage } from './planOverlap'
+ // Save write-back for draft and published plans.
+ //
+ // Days without history keep the legacy whole-day replacement behavior. A day with
+@@ -503,9 +504,9 @@ function merge409(
+     }
+   }
+ 
+-  const topMessage = error.code === 'PLAN_HISTORY_IMMUTABLE'
++  const topMessage = planOverlapMessage(error) ?? (error.code === 'PLAN_HISTORY_IMMUTABLE'
+     ? S.editor.calendarHasLogs
+-    : null
++    : null)
+   return new ReconcileConflict(error.code, syncPlanScheduleToWeeks(merged, fresh), topMessage)
+ }
+ 
+@@ -890,7 +891,10 @@ async function reconcileFromBaseline(
+     }
+   } catch (error) {
+     if (error instanceof ApiException && error.status === 409) {
+-      const fresh = await getPlan(planId)
++      const fresh = await getPlan(planId).catch(refreshError => {
++        // A failed refresh must not hide the actionable overlap response.
++        throw planOverlapMessage(error) ? error : refreshError
++      })
+       throw merge409(weeks, fresh, error, options)
+     }
+     throw error
+diff --git a/src/features/workspace/PlanDialogs.tsx b/src/features/workspace/PlanDialogs.tsx
+index 882ed67..4df8a04 100644
+--- a/src/features/workspace/PlanDialogs.tsx
++++ b/src/features/workspace/PlanDialogs.tsx
+@@ -1,3 +1,4 @@
++import { planOverlapMessage } from '../plan-editor/planOverlap'
+ import { WeekdayPicker } from '../plan-editor/import/WeekdayPicker'
+ import { getImportStatus, type ImportStatus } from '../../api/planImports'
+ import { ImportPlanDialog, type ImportedPlan } from '../plan-editor/import/ImportPlanDialog'
+@@ -115,7 +116,7 @@ export function NewPlanDialog({ open, studentName, onClose, onCreate, settings,
+         if (!valid || creating) return
+         setCreating(true); setError('')
+         void onCreate(name.trim(), weeks, startDate, weekdayIndex(startDate) + 1, ordered).catch((reason: unknown) => {
+-          setError(reason instanceof Error && reason.message === 'PATTERN_CONFLICT' ? S.block.patternConflict : reason instanceof Error && reason.message === 'PATTERN_STORAGE_FAILED' ? S.block.patternFailed : settings ? S.block.settingsFailed : S.workspace.dialogs.createFailed)
++          setError(planOverlapMessage(reason) ?? (reason instanceof Error && reason.message === 'PATTERN_CONFLICT' ? S.block.patternConflict : reason instanceof Error && reason.message === 'PATTERN_STORAGE_FAILED' ? S.block.patternFailed : settings ? S.block.settingsFailed : S.workspace.dialogs.createFailed))
+         }).finally(() => setCreating(false))
+       }} style={{ ...panel, width: importStatus?.enabled ? 620 : 540, borderRadius: 14 }}>
+       <div className="import-title"><h3 style={{ margin: 0, fontSize: 20 }}>{title}</h3>{tabs}</div>
+diff --git a/src/features/workspace/PlanWorkspace.test.tsx b/src/features/workspace/PlanWorkspace.test.tsx
+index a0371c6..210f84a 100644
+--- a/src/features/workspace/PlanWorkspace.test.tsx
++++ b/src/features/workspace/PlanWorkspace.test.tsx
+@@ -1,4 +1,5 @@
+ import { setLocale } from '../../i18n/strings'
++import { openBlockDay } from '../plan-editor/blockGridTestUtils'
+ import { act, useEffect } from 'react'
+ import { createRoot, type Root } from 'react-dom/client'
+ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+@@ -6,6 +7,11 @@ import type { AuthUser, ChatConversation, ChatMessage, CoachBindRequest, Exercis
+ import { ApiException } from '../../api/client'
+ import type { Week } from '../plan-editor/types'
+ import { setRefFirstLine } from '../chat/setRef'
++import abandonedFixture from './fixtures/plan-handoff/abandoned-tail.json'
++import completedFixture from './fixtures/plan-handoff/all-completed.json'
++import emptyFixture from './fixtures/plan-handoff/no-plans.json'
++import threeFixture from './fixtures/plan-handoff/three-consecutive.json'
++import handoffFixture from './fixtures/plan-handoff/feedback.json'
+ import exerciseFixture from '../chat/fixtures/exercise-note.json'
+ 
+ const api = vi.hoisted(() => ({
+@@ -21,6 +27,7 @@ const api = vi.hoisted(() => ({
+   markPlanViewed: vi.fn(),
+   getStudentSetLogs: vi.fn(),
+   markVideoViewed: vi.fn(),
++  getStudentPlanHandoff: vi.fn(),
+   getStudentPlans: vi.fn(),
+   getPlan: vi.fn(),
+   publishPlan: vi.fn(),
+@@ -66,6 +73,7 @@ vi.mock('../../api/overviewAlerts', () => ({ getOverviewAlerts: api.getOverviewA
+ vi.mock('../../api/invite', async importOriginal => ({ ...await importOriginal<typeof import('../../api/invite')>(), getInviteCodes: api.getInviteCodes }))
+ vi.mock('../../api/plans', () => ({
+   shiftPlan: api.shiftPlan, undoPlanShift: api.undoPlanShift,
++  getStudentPlanHandoff: api.getStudentPlanHandoff,
+   getStudentPlans: api.getStudentPlans,
+   getPlan: api.getPlan,
+   getStudentOnboarding: api.getStudentOnboarding,
+@@ -770,6 +778,7 @@ describe('PlanWorkspace editor remount', () => {
+     api.listExercises.mockResolvedValue([exercise])
+     api.getExerciseUsageStats.mockResolvedValue([])
+     api.refreshCoachStudents.mockResolvedValue([{ id: 'student', display_name: '学员', status: 'active', evaluation: null }])
++    api.getStudentPlanHandoff.mockResolvedValue({ current_plan_id: null, plans: [] })
+     api.getStudentPlans.mockResolvedValue([plan('加载时快照')])
+     api.getStudentOnboarding.mockResolvedValue(null)
+     api.publishPlan.mockResolvedValue(plan('发布完成'))
+@@ -970,7 +979,7 @@ describe('PlanWorkspace editor remount', () => {
+ 
+   it('030-B writes only the previous HTTP plan tree and leaves current content unchanged', async () => {
+     const trees = await openEditableCycles()
+-    expect(api.getPlan.mock.calls.map(call => call[0])).toEqual(['plan', 'plan', 'previous'])
++    expect(api.getPlan.mock.calls.map(call => call[0])).toEqual(['plan', 'previous'])
+     expect(api.getPendingRevision.mock.calls.map(call => call[0])).toEqual(['plan'])
+     await act(async () => { await vi.advanceTimersByTimeAsync(5000); await settle() })
+     expect(api.batchDays).not.toHaveBeenCalled()
+@@ -1817,6 +1826,7 @@ describe('PlanWorkspace editor remount', () => {
+         }],
+       }],
+     })
++    api.getStudentPlanHandoff.mockResolvedValue({ current_plan_id: summary.id, plans: [{ ...summary, handoff_status: 'current' }] })
+     const oldPlan = tonnagePlan('50')
+     const freshPlan = tonnagePlan('100')
+     let resolveOldTonnage!: (value: PlanWithChildren) => void
+@@ -2378,4 +2388,224 @@ describe('PlanWorkspace editor remount', () => {
+     expect(api.captureEditorProps.mock.calls.at(-1)![0].currentPlanId).toBe('next-plan')
+   })
+ 
++  it('110 follows the server current plan even while the coach views the newer published plan', async () => {
++    const [oldSummary, nextSummary] = handoffFixture.plans
++    const old = { ...plan('old', 'published'), ...oldSummary, trainee_id: 'student', status: 'published' as const, days: plan('old').days.map(day => ({ ...day, id: 'old-cursor', completed_at: null })) }
++    const next = { ...plan('next', 'published'), ...nextSummary, trainee_id: 'student', status: 'published' as const, days: [] }
++    api.getStudentPlanHandoff.mockResolvedValue(handoffFixture)
++    api.getStudentPlans.mockResolvedValue([next, old])
++    api.getPlan.mockImplementation(async (id: string) => id === old.id ? old : next)
++    await act(async () => { root.render(<PlanWorkspace onLogout={vi.fn()} me={me} />); await settle() })
++    const props = api.captureEditorProps.mock.calls.at(-1)![0]
++    expect(props.currentPlanId).toBe(next.id)
++    expect(props.studentPlanCursor?.dayId).toBe('old-cursor')
++    expect(props.plans.find((p: { id: string }) => p.id === old.id).tag).toContain('学员正在练')
++    expect(props.plans.find((p: { id: string }) => p.id === next.id).tag).toContain('待接续')
++    expect(api.publishPlan).not.toHaveBeenCalled()
++    expect(api.patchPlan).not.toHaveBeenCalled()
++  })
++
++  it('110 shows unknown on handoff failure and retries without changing the editor selection', async () => {
++    api.realEditor = true
++    const old = { ...plan('old', 'published'), id: 'old', days: plan('old').days.map(day => ({ ...day, completed_at: null })) }
++    const next = { ...plan('next', 'published'), id: 'next', name: 'Future plan' }
++    api.getStudentPlans.mockResolvedValue([next, old])
++    api.getPlan.mockImplementation(async (id: string) => id === 'old' ? old : next)
++    api.getStudentPlanHandoff.mockRejectedValue(new Error('offline'))
++    await act(async () => { root.render(<PlanWorkspace onLogout={vi.fn()} me={me} />); await settle() })
++    expect(host.textContent).toContain('学员接续状态未知')
++    expect(api.captureEditorProps.mock.calls.at(-1)![0].studentPlanCursor).toBeNull()
++    api.getStudentPlanHandoff.mockResolvedValue({ current_plan_id: 'old', plans: [{ ...old, handoff_status: 'current' }, { ...next, handoff_status: 'upcoming' }] })
++    await act(async () => { clickButton(host, '重试接续状态'); await settle() })
++    expect(host.textContent).toContain('待接续')
++    expect(host.textContent).not.toContain('学员接续状态未知')
++    expect(api.captureEditorProps.mock.calls.at(-1)![0].currentPlanId).toBe('next')
++  })
++
++  it.each(['upcoming', 'current'] as const)('110 publication reports the server handoff outcome: %s', async status => {
++    api.realEditor = true
++    const draft = { ...plan('publish'), start_date: '2027-01-04', end_date: '2027-01-10' }
++    api.getStudentPlans.mockResolvedValue([draft])
++    api.getPlan.mockResolvedValue(draft)
++    api.publishPlan.mockResolvedValue({ ...draft, status: 'published' })
++    api.getStudentPlanHandoff.mockResolvedValue({ current_plan_id: status === 'current' ? draft.id : 'old', plans: [{ ...draft, status: 'published', handoff_status: status }] })
++    await act(async () => { root.render(<PlanWorkspace onLogout={vi.fn()} me={me} />); await settle() })
++    await act(async () => { clickButton(host, '发布给学员'); await settle() })
++    expect(api.publishPlan).toHaveBeenCalledWith(draft.id)
++    const message = host.querySelector('[data-testid="plan-save-status"]')?.textContent
++    expect(message).toBe(status === 'upcoming' ? '已发布，学员练完当前计划后自动接续' : '已发布给 学员')
++  })
++
++  it('110 keeps the upcoming publication result alongside edits made while publishing', async () => {
++    api.realEditor = true
++    const draft = { ...plan('publish'), start_date: '2027-01-04', end_date: '2027-01-10' }
++    api.getStudentPlans.mockResolvedValue([draft]); api.getPlan.mockResolvedValue(draft)
++    let resolvePublish!: (value: PlanResponse) => void
++    api.publishPlan.mockImplementation(() => new Promise<PlanResponse>(resolve => { resolvePublish = resolve }))
++    api.getStudentPlanHandoff.mockResolvedValue({ current_plan_id: 'old', plans: [{ ...draft, status: 'published', handoff_status: 'upcoming' }] })
++    await act(async () => { root.render(<PlanWorkspace onLogout={vi.fn()} me={me} />); await settle() })
++    await act(async () => { clickButton(host, '发布给学员'); await settle() })
++    expect(api.publishPlan).toHaveBeenCalledWith(draft.id)
++    openBlockDay(host)
++    const input = host.querySelector<HTMLInputElement>('[data-c="weight"] input')!
++    act(() => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, '125'); input.dispatchEvent(new Event('input', { bubbles: true })) })
++    await act(async () => { resolvePublish({ ...draft, status: 'published' }); await settle() })
++    const message = host.querySelector('[data-testid="plan-save-status"]')?.textContent
++    expect(message).toContain('已发布，学员练完当前计划后自动接续')
++    expect(message).toContain('有未推送修改')
++    expect(host.querySelector<HTMLInputElement>('[data-c="weight"] input')?.value).toBe('125')
++  })
++
++  it('110 publish overlap names every conflicting plan and its dates', async () => {
++    api.realEditor = true
++    const draft = { ...plan('overlap'), start_date: '2027-01-04', end_date: '2027-01-10' }
++    api.getStudentPlans.mockResolvedValue([draft]); api.getPlan.mockResolvedValue(draft)
++    api.publishPlan.mockRejectedValue(new ApiException(409, 'PLAN_DATES_OVERLAP', { conflicts: [
++      { id: 'old', name: '旧周期', start_date: '2026-12-21', end_date: '2027-01-06' },
++      { id: 'next', name: '下一周期', start_date: '2027-01-07', end_date: '2027-02-03' },
++    ] }))
++    const alert = vi.spyOn(window, 'alert').mockImplementation(() => {})
++    await act(async () => { root.render(<PlanWorkspace onLogout={vi.fn()} me={me} />); await settle() })
++    await act(async () => { clickButton(host, '发布给学员'); await settle() })
++    expect(alert.mock.calls.at(-1)?.[0]).toContain('旧周期（2026-12-21 — 2027-01-06）')
++    expect(alert.mock.calls.at(-1)?.[0]).toContain('下一周期（2027-01-07 — 2027-02-03）')
++    expect(host.querySelector('[data-testid="plan-save-status"]')?.textContent).toContain('日期重叠')
++  })
++
++  it.each(['date', 'weeks'] as const)('110 settings show date overlap details: %s', async path => {
++    api.realEditor = true
++    const draft = { ...plan('settings'), start_date: '2027-01-04', end_date: '2027-01-10' }
++    api.getStudentPlans.mockResolvedValue([draft]); api.getPlan.mockResolvedValue(draft)
++    const conflict = new ApiException(409, 'PLAN_DATES_OVERLAP', { conflicts: [{ id: 'old', name: '冲突周期', start_date: '2027-01-11', end_date: '2027-02-07' }] })
++    api.patchPlan.mockRejectedValue(conflict); api.resizeServerPlanWeeks.mockRejectedValue(conflict)
++    await act(async () => { root.render(<PlanWorkspace onLogout={vi.fn()} me={me} />); await settle() })
++    await act(async () => { await api.captureEditorProps.mock.calls.at(-1)![0].onPlanAction('plan', 'settings'); await settle() })
++    const dialog = host.querySelector<HTMLElement>('[role="dialog"]')!
++    act(() => {
++      if (path === 'date') {
++        const input = dialog.querySelector<HTMLInputElement>('input[type="date"]')!
++        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, '2027-01-11')
++        input.dispatchEvent(new Event('change', { bubbles: true }))
++      } else clickButton(dialog, '3')
++    })
++    await act(async () => { dialog.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })); await settle() })
++    expect(path === 'date' ? api.patchPlan : api.resizeServerPlanWeeks).toHaveBeenCalled()
++    expect(dialog.querySelector('[role="alert"]')?.textContent).toContain('冲突周期（2027-01-11 — 2027-02-07）')
++  })
++
++  it('110 shift overlap explains the next plan dates and required shift without writing that plan', async () => {
++    api.realEditor = true
++    const current = { ...plan('shift', 'published'), days: plan('shift').days.map(day => ({ ...day, completed_at: null })) }
++    api.getStudentPlans.mockResolvedValue([current]); api.getPlan.mockResolvedValue(current)
++    api.shiftPlan.mockRejectedValue(new ApiException(409, 'PLAN_DATES_OVERLAP', { conflicts: [{ id: 'next', name: '下一周期', start_date: '2026-01-12', end_date: '2026-02-08' }], required_shift_days: 3 }))
++    await act(async () => { root.render(<PlanWorkspace onLogout={vi.fn()} me={me} />); await settle() })
++    openBlockDay(host)
++    const monday = host.querySelector<HTMLElement>('.day[data-dow="0"]')!
++    act(() => monday.click())
++    act(() => clickButton(monday, '后移…'))
++    const panel = document.body.querySelector<HTMLElement>('[data-plan-shift-panel]')!
++    await act(async () => { clickButton(panel, '后移 1 天'); await settle() })
++    expect(panel.querySelector('[role="alert"]')?.textContent).toContain('下一周期（2026-01-12 — 2026-02-08）')
++    expect(panel.textContent).toContain('下一份计划需顺延 3 天')
++    expect(api.shiftPlan.mock.calls).toEqual([['plan', { anchor_date: '2026-01-05', offset_days: 1 }]])
++    expect(api.patchPlan).not.toHaveBeenCalled()
++  })
++
++  it('110 new plan from the top bar starts the day after the latest plan ends', async () => {
++    const current = plan('old')
++    const last = { ...plan('last', 'published'), id: 'last', end_date: '2026-12-31', updated_at: '2025-01-01T00:00:00Z' }
++    api.getStudentPlans.mockResolvedValue([current, last]); api.getPlan.mockResolvedValue(current)
++    await act(async () => { root.render(<PlanWorkspace onLogout={vi.fn()} me={me} />); await settle() })
++    await act(async () => { await api.captureEditorProps.mock.calls.at(-1)![0].onNewPlan(); await settle() })
++    expect(host.querySelector<HTMLInputElement>('[role="dialog"] input[type="date"]')?.value).toBe('2027-01-01')
++  })
++
++  it('110 shows server progress and jumps to the current training day, skipping rest days', async () => {
++    api.realEditor = true
++    const [oldSummary, nextSummary] = handoffFixture.plans
++    const old = { ...plan('old', 'published'), ...oldSummary, trainee_id: 'student', status: 'published' as const, days: [
++      { ...plan('old').days[0], id: 'rest', is_rest: true, week_number: 4, completed_at: null, exercises: [] },
++      { ...plan('old').days[0], id: 'old-cursor', week_number: 5, completed_at: null },
++    ] }
++    const next = { ...plan('next', 'published'), ...nextSummary, trainee_id: 'student', status: 'published' as const }
++    api.getStudentPlans.mockResolvedValue([next, old]); api.getStudentPlanHandoff.mockResolvedValue(handoffFixture)
++    api.getPlan.mockImplementation(async (id: string) => id === old.id ? old : next)
++    await act(async () => { root.render(<PlanWorkspace onLogout={vi.fn()} me={me} />); await settle() })
++    expect(host.querySelector('[data-student-progress]')?.textContent).toContain('16/20')
++    expect(host.querySelector('[data-student-progress]')?.textContent).toContain('W5D1')
++    expect(api.captureEditorProps.mock.calls.at(-1)![0].currentPlanId).toBe(next.id)
++    await act(async () => { host.querySelector<HTMLButtonElement>('[data-student-progress]')!.click(); await settle() })
++    expect(api.captureEditorProps.mock.calls.at(-1)![0].currentPlanId).toBe(old.id)
++    expect(api.captureEditorProps.mock.calls.at(-1)![0].dayIntent.planDayId).toBe('old-cursor')
++    expect(api.patchPlan).not.toHaveBeenCalled(); expect(api.publishPlan).not.toHaveBeenCalled()
++  })
++
++  it('110 training-day update retains overlap details through reconciliation and preserves edits', async () => {
++    api.realEditor = true
++    const current = plan('update', 'published')
++    api.getStudentPlans.mockResolvedValue([current]); api.getPlan.mockResolvedValue(current)
++    const realReconcile = await vi.importActual<typeof import('../plan-editor/reconcile')>('../plan-editor/reconcile')
++    api.reconcilePlan.mockImplementation(realReconcile.reconcilePlan)
++    api.batchDays.mockRejectedValue(new ApiException(409, 'PLAN_DATES_OVERLAP', { conflicts: [{ id: 'next', name: '后续周期', start_date: '2026-01-12', end_date: '2026-02-08' }] }))
++    vi.spyOn(window, 'confirm').mockReturnValue(true)
++    const alert = vi.spyOn(window, 'alert').mockImplementation(() => {})
++    await act(async () => { root.render(<PlanWorkspace onLogout={vi.fn()} me={me} />); await settle() })
++    openBlockDay(host)
++    const input = host.querySelector<HTMLInputElement>('[data-c="weight"] input')!
++    act(() => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, '125'); input.dispatchEvent(new Event('input', { bubbles: true })) })
++    await act(async () => { clickButton(host, '更新计划'); await settle() })
++    expect(api.batchDays).toHaveBeenCalledTimes(1)
++    expect(alert.mock.calls.at(-1)?.[0]).toContain('后续周期（2026-01-12 — 2026-02-08）')
++    expect(host.querySelector<HTMLInputElement>('[data-c="weight"] input')?.value).toBe('125')
++  })
++
++  it('110 refreshes student progression without replacing unsaved future-plan edits', async () => {
++    api.realEditor = true
++    Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' })
++    const old = { ...plan('old', 'published'), id: 'old', name: 'Old cycle' }
++    const next = { ...plan('next', 'published'), id: 'next', name: 'Future cycle' }
++    api.getStudentPlans.mockResolvedValue([next, old]); api.getPlan.mockImplementation(async (id: string) => id === 'old' ? old : next)
++    api.getStudentPlanHandoff.mockResolvedValue({ current_plan_id: 'old', plans: [{ ...old, handoff_status: 'current', completed_training_days: 1, total_training_days: 2 }, { ...next, handoff_status: 'upcoming', completed_training_days: 0, total_training_days: 1 }] })
++    await act(async () => { root.render(<PlanWorkspace onLogout={vi.fn()} me={me} />); await settle() })
++    openBlockDay(host)
++    const input = host.querySelector<HTMLInputElement>('[data-c="weight"] input')!
++    act(() => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, '125'); input.dispatchEvent(new Event('input', { bubbles: true })) })
++    api.getStudentPlanHandoff.mockResolvedValue({ current_plan_id: 'next', plans: [{ ...old, handoff_status: 'past', completed_training_days: 2, total_training_days: 2 }, { ...next, handoff_status: 'current', completed_training_days: 0, total_training_days: 1 }] })
++    await act(async () => { document.dispatchEvent(new Event('visibilitychange')); await settle() })
++    expect(host.querySelector('[data-plan-handoff]')?.textContent).toBe('学员正在练')
++    expect(host.querySelector<HTMLInputElement>('[data-c="weight"] input')).toBe(input)
++    expect(input.value).toBe('125')
++    expect(api.captureEditorProps.mock.calls.at(-1)![0].currentPlanId).toBe('next')
++    expect(api.patchPlan).not.toHaveBeenCalled(); expect(api.publishPlan).not.toHaveBeenCalled(); expect(api.reconcilePlan).not.toHaveBeenCalled()
++  })
++
++  it.each([
++    ['feedback', handoffFixture, 'Cycle 1', 1],
++    ['abandoned tail', abandonedFixture, 'Cycle 2', 1],
++    ['all completed', completedFixture, 'Cycle 2', 0],
++    ['three consecutive', threeFixture, 'Cycle 1', 2],
++    ['no plans', emptyFixture, undefined, 0],
++  ] as const)('110 consumes the shared backend fixture: %s', async (_name, fixture, currentName, upcomingCount) => {
++    api.getStudentPlanHandoff.mockResolvedValue(fixture)
++    const plans = fixture.plans.map(summary => ({ ...plan('fixture', 'published'), ...summary, trainee_id: 'student', status: 'published' as const }))
++    api.getStudentPlans.mockResolvedValue(plans)
++    api.getPlan.mockImplementation(async (id: string) => plans.find(plan => plan.id === id))
++    await act(async () => { root.render(<PlanWorkspace onLogout={vi.fn()} me={me} />); await settle() })
++    const options = api.captureEditorProps.mock.calls.at(-1)![0].plans as { label: string; tag: string }[]
++    expect(options.find(option => option.tag.includes('学员正在练'))?.label).toBe(currentName)
++    expect(options.filter(option => option.tag.includes('待接续'))).toHaveLength(upcomingCount)
++  })
++
++  it('110 overview tonnage uses the old current plan even with a newer published plan', async () => {
++    vi.useFakeTimers(); vi.setSystemTime(new Date('2026-10-19T12:00:00Z'))
++    const [oldSummary, nextSummary] = handoffFixture.plans
++    const old = { ...plan('old', 'published'), ...oldSummary, trainee_id: 'student', status: 'published' as const }
++    const next = { ...plan('next', 'published'), ...nextSummary, trainee_id: 'student', status: 'published' as const }
++    api.getStudentPlanHandoff.mockResolvedValue(handoffFixture)
++    api.getStudentPlans.mockResolvedValue([next, old]); api.getPlan.mockImplementation(async (id: string) => id === old.id ? old : next)
++    await act(async () => { root.render(<PlanWorkspace onLogout={vi.fn()} me={me} />); await settle() })
++    await act(async () => { clickButton(host, '总览'); await settle() })
++    expect(host.querySelector('[data-student-id="student"] .roster-number')?.textContent).toBe('0.5t')
++  })
++
+ })
+diff --git a/src/features/workspace/PlanWorkspace.tsx b/src/features/workspace/PlanWorkspace.tsx
+index 6f0c7d8..db285f6 100644
+--- a/src/features/workspace/PlanWorkspace.tsx
++++ b/src/features/workspace/PlanWorkspace.tsx
+@@ -15,9 +15,9 @@ import { markVideoViewed } from '../../api/markers'
+ import type { FeedbackSession, EditorFeedbackHandle } from '../plan-editor/feedbackSession'
+ import { saveBlockWeekdays } from './blockPlanSettings'
+ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+-import type { AuthUser, ChatConversation, ChatReadState, CoachBindRequest, CoachStudent, ExerciseResponse, ExerciseStatsOverview, PlanResponse, PlanWithChildren, StudentOnboardingProfile, StudentVideo } from '../../api/types'
++import type { PlanHandoffResponse, AuthUser, ChatConversation, ChatReadState, CoachBindRequest, CoachStudent, ExerciseResponse, ExerciseStatsOverview, PlanResponse, PlanWithChildren, StudentOnboardingProfile, StudentVideo } from '../../api/types'
+ import {
+-  getStudentPlans, getPlan, publishPlan, createPlan, batchDays, patchPlan, getStudentOnboarding,
++  getStudentPlanHandoff, getStudentPlans, getPlan, publishPlan, createPlan, batchDays, patchPlan, getStudentOnboarding,
+   markImportedHistory, deletePlan,
+ } from '../../api/plans'
+ import { createCustomExercise, deleteCustomExercise, getExerciseUsageStats, listExercises, updateCustomExercise } from '../../api/exercises'
+@@ -122,6 +122,7 @@ export function PlanWorkspace({ onLogout, me }: Props) {
+   const [chatDrafts, setChatDrafts] = useState<Record<string, string>>({})
+   const [commandExerciseId, setCommandExerciseId] = useState<string | null>(null)
+   const [plans, setPlans] = useState<PlanResponse[]>([])
++  const [handoffByStudent, setHandoffByStudent] = useState<Record<string, PlanHandoffResponse | null | undefined>>({})
+   const [plansByStudent, setPlansByStudent] = useState<Record<string, PlanResponse[]>>({})
+   const [rosterDataByStudent, setRosterDataByStudent] = useState<RosterDataByStudent>({})
+   // Same three-state convention as TrackingDashboard:
+@@ -406,48 +407,55 @@ export function PlanWorkspace({ onLogout, me }: Props) {
+ 
+   const fetchRosterWeekTonnage = useCallback(async (
+     id: string,
+-    studentPlans: PlanResponse[],
+     canApply: () => boolean = () => true,
+   ) => {
+     const key = `week-tonnage:${id}`
+     const version = rosterDataRequestVersions.current.issue(key)
+-    const current = [...studentPlans]
+-      .filter((plan) => plan.status === 'published')
+-      .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())[0]
++    let handoff: PlanHandoffResponse | null = null
+     let weekTonnageKg: RosterDataByStudent[string]['weekTonnageKg'] = null
+     let planCursor: RosterDataByStudent[string]['planCursor'] = null
+-    if (current) {
+-      try {
+-        const plan = await getPlan(current.id)
++    try {
++      handoff = await getStudentPlanHandoff(id)
++      if (handoff.current_plan_id) {
++        const plan = await getPlan(handoff.current_plan_id)
+         weekTonnageKg = currentPublishedWeekTonnage(plan)
+         planCursor = deriveStudentPlanCursor(plan)
+-      } catch {
+-        weekTonnageKg = FAILED_ROSTER_DATUM
+-        planCursor = null
+       }
++    } catch {
++      weekTonnageKg = FAILED_ROSTER_DATUM
+     }
+-    if (!canApply() || !rosterDataRequestVersions.current.isLatest(key, version)) return
++    if (!canApply() || !rosterDataRequestVersions.current.isLatest(key, version)) return handoff
++    setHandoffByStudent(current => ({ ...current, [id]: handoff }))
+     updateRosterData(id, { weekTonnageKg, planCursor })
++    return handoff
+   }, [updateRosterData])
+ 
++  // Refresh only progression metadata; never remount or replace the coach's editor.
++  useVisiblePolling(async () => {
++    if (studentId) await fetchRosterWeekTonnage(studentId)
++  }, REQUEST_POLL_INTERVAL_MS, {
++    enabled: !sessionDead && activeStudents.some(student => student.id === studentId),
++    immediate: false,
++  })
++
+   const refreshRosterWeekTonnage = useCallback((
+     id: string,
+-    studentPlans: PlanResponse[],
+     showLoadingState = false,
+   ) => {
+     const key = `week-tonnage:${id}`
+     rosterDataRequestVersions.current.invalidate(key)
++    if (showLoadingState) setHandoffByStudent(current => ({ ...current, [id]: undefined }))
+     if (showLoadingState || isFailedRosterDatum(rosterDataByStudentRef.current[id]?.weekTonnageKg)) {
+       updateRosterData(id, { weekTonnageKg: undefined, planCursor: undefined })
+     }
+-    void fetchRosterWeekTonnage(id, studentPlans)
++    return fetchRosterWeekTonnage(id)
+   }, [fetchRosterWeekTonnage, updateRosterData])
+ 
+   const refreshRosterPlans = useCallback((id: string) => {
+     updateRosterData(id, { plansError: false })
+     void fetchStudentPlans(id).then((studentPlans) => {
+       if (studentPlans && rosterDataByStudentRef.current[id]?.weekTonnageKg === undefined) {
+-        void fetchRosterWeekTonnage(id, studentPlans)
++        void fetchRosterWeekTonnage(id)
+       }
+     }).catch(() => undefined)
+   }, [fetchRosterWeekTonnage, fetchStudentPlans, updateRosterData])
+@@ -467,7 +475,7 @@ export function PlanWorkspace({ onLogout, me }: Props) {
+     }
+     plansByStudentRef.current = next
+     setPlansByStudent(next)
+-    refreshRosterWeekTonnage(id, studentPlans)
++    return refreshRosterWeekTonnage(id)
+   }, [refreshRosterWeekTonnage])
+ 
+   const loadPlan = useCallback(async (id: string, cat: Catalog, generation = ++loadGeneration.current, newDraftWeekdays?: number[]) => {
+@@ -615,7 +623,6 @@ export function PlanWorkspace({ onLogout, me }: Props) {
+       if (studentPlans) {
+         await fetchRosterWeekTonnage(
+           student.id,
+-          studentPlans,
+           () => generation === rosterBackgroundGeneration.current,
+         )
+       }
+@@ -790,7 +797,10 @@ export function PlanWorkspace({ onLogout, me }: Props) {
+   }
+   const newPlan = () => {
+     if (!catalog || !studentId || students.find(student => student.id === studentId)?.bond_status === 'ended') return
+-    setNewPlanStart(undefined)
++    const lastEnd = plans.map(plan => plan.end_date).sort().at(-1)
++    const start = lastEnd ? new Date(`${lastEnd}T12:00:00Z`) : null
++    if (start) start.setUTCDate(start.getUTCDate() + 1)
++    setNewPlanStart(start?.toISOString().slice(0, 10))
+     setNewPlanOpen(true)
+   }
+   const createNewPlan = async (name: string, weeks: number, startDate: string, anchorWeekday: number, weekdays: number[]) => {
+@@ -1185,20 +1195,27 @@ export function PlanWorkspace({ onLogout, me }: Props) {
+   // "M/D 起 · N 周" so same-named plans stay tellable-apart in the switcher.
+   const fmtStart = (iso: string) => { const [y, m, d] = iso.split('-').map(Number); return fmt.monthDay(new Date(y, m - 1, d), () => `${m}/${d}`) }
+   const statusTag = (status: PlanResponse['status']) => ({ draft: S.common.draft, published: S.common.published, completed: S.common.completed, paused: S.common.paused })[status]
++  const handoff = handoffByStudent[studentId]
++  const handoffTag = (plan: PlanResponse) => {
++    if (plan.status !== 'published') return ''
++    if (!handoff) return S.workspace.handoff.unknown
++    const status = handoff.plans.find(item => item.id === plan.id)?.handoff_status
++    return status === 'current' ? S.workspace.handoff.current : status === 'upcoming' ? S.workspace.handoff.upcoming : ''
++  }
+   const planOpts = plans.map((p) => ({
+     id: p.id,
+     label: p.name,
+     status: p.status,
+     startDate: p.start_date,
+     sub: S.workspace.plan.startSummary(fmtStart(p.start_date), p.plan_weeks),
+-    tag: `${statusTag(p.status)}${p.pending_revision_saved_at ? ` · ${S.common.pendingChanges}` : ''}`,
++    tag: [statusTag(p.status), handoffTag(p), p.pending_revision_saved_at ? S.common.pendingChanges : ''].filter(Boolean).join(' · '),
+   }))
+   const historicalReadOnly = loaded?.plan.status === 'completed' || loaded?.plan.status === 'paused'
+   const planContentEditable = !studentEnded && (loaded?.plan.status === 'draft' || loaded?.plan.status === 'published')
+-  const activePublishedPlanId = plans.find((plan) => plan.status === 'published')?.id
+-  const studentPlanCursor = loaded?.plan.trainee_id === studentId && loaded.plan.id === activePublishedPlanId
+-    ? deriveStudentPlanCursor(loaded.plan)
+-    : rosterDataByStudent[studentId]?.planCursor
++  const currentStudentPlan = handoff?.plans.find(plan => plan.id === handoff.current_plan_id)
++  const studentPlanCursor = handoff?.current_plan_id
++    ? rosterDataByStudent[studentId]?.planCursor
++    : null
+ 
+   return (
+     <CoachShell
+@@ -1259,15 +1276,35 @@ export function PlanWorkspace({ onLogout, me }: Props) {
+         planStartDate={loaded?.plan.start_date}
+         planUpdatedAt={loaded?.plan.updated_at}
+         planStatus={loaded?.plan.status}
++        handoffLabel={handoff === null ? S.workspace.handoff.unknown : loaded ? handoffTag(loaded.plan) : undefined}
++        onRetryHandoff={handoff === null || isFailedRosterDatum(rosterDataByStudent[studentId]?.weekTonnageKg) ? () => refreshRosterWeekTonnage(studentId, true) : undefined}
+         restDaysEnabled={loaded?.plan.rest_days_enabled === true}
+         totalShiftDays={loaded?.plan.total_shift_days}
+         latestShift={loaded?.plan.latest_shift}
+         onPlanRefreshed={catalog ? (plan) => {
++          updateStudentPlans(plan.trainee_id, plans => plans.map(item => item.id === plan.id ? plan : item))
+           setLoaded((current) => current?.plan.id === plan.id
+             ? { plan, weeks: mapPlanToWeeks(plan, catalog), weeksCount: plan.plan_weeks }
+             : current)
+         } : undefined}
+         studentPlanCursor={studentPlanCursor}
++        studentProgress={currentStudentPlan ? S.workspace.handoff.progress(currentStudentPlan.completed_training_days, currentStudentPlan.total_training_days) : undefined}
++        onOpenStudentCurrent={currentStudentPlan && !studentEnded ? async () => {
++          if (!catalog) return
++          const id = currentStudentPlan.id
++          const cursor = studentPlanCursor
++          cancelEditorIntent()
++          const sequence = intentSequence.current
++          if (id !== planId) {
++            try { if (!(await loadPlan(id, catalog))) return }
++            catch (e) {
++              const fallback = S.workspace.plan.openPlanFailed
++              setError({ message: errText(e, fallback), retry: { kind: 'plan', id, fallback } })
++              return
++            }
++          }
++          if (sequence === intentSequence.current && cursor?.kind === 'day') setDayIntent({ token: sequence, planDayId: cursor.dayId })
++        } : undefined}
+         readOnly={historicalReadOnly || studentEnded}
+         student={selectedStudent}
+         onStudentChanged={updated => {
+@@ -1281,11 +1318,12 @@ export function PlanWorkspace({ onLogout, me }: Props) {
+         onBackfillAfterPublish={loaded ? async () => { await markImportedHistory(loaded.plan.id) } : undefined}
+         onPublish={!studentEnded && loaded?.plan.status === 'draft' ? async () => {
+           const updated = await publishPlan(loaded.plan.id)
+-          // Reflect the now-live status in the parent-owned list + loaded plan, so the plan
+-          // switcher's「草稿/已发布」tag can't contradict the editor — no UI shows「草稿」for a
+-          // plan the student is already seeing. (publishPlan returns the updated plan.)
+-          updateStudentPlans(updated.trainee_id, (prev) => prev.map((p) => (p.id === updated.id ? updated : p)))
++          const refreshed = updateStudentPlans(updated.trainee_id, (prev) => prev.map((p) => (p.id === updated.id ? updated : p)))
+           setLoaded((prev) => (prev && prev.plan.id === updated.id ? { ...prev, plan: { ...prev.plan, ...updated } } : prev))
++          const result = await refreshed
++          if (result?.plans.find(plan => plan.id === updated.id)?.handoff_status === 'upcoming') {
++            return S.workspace.handoff.publishedUpcoming
++          }
+         } : undefined}
+         onSave={loaded && planContentEditable ? async (weeks, importStart, _unused, onProgress, deletedDayIds) => {
+           const reconcileOptions = {
+@@ -1315,7 +1353,6 @@ export function PlanWorkspace({ onLogout, me }: Props) {
+           } else {
+             refreshRosterWeekTonnage(
+               loaded.plan.trainee_id,
+-              plansByStudentRef.current[loaded.plan.trainee_id] ?? [],
+             )
+           }
+           return result
+@@ -1472,7 +1509,7 @@ export function PlanWorkspace({ onLogout, me }: Props) {
+           onSelect={selectBoardStudent} onOpen={(id) => { void openStudentEditor(id) }}
+           videosByStudent={videosByStudent} onOpenTag={(id, tag) => { void openOverviewTag(id, tag) }}
+           onRetryOverview={refreshRosterOverview} onRetryProfile={refreshRosterProfile}
+-          onRetryWeekTonnage={(id) => refreshRosterWeekTonnage(id, plansByStudentRef.current[id] ?? [], true)}
++          onRetryWeekTonnage={(id) => refreshRosterWeekTonnage(id, true)}
+           onRetryPlans={refreshRosterPlans}
+         /> : <div className="empty-page">{S.workspace.overview.empty}</div>}
+     </div>}
+diff --git a/src/features/workspace/StudentPlanCapacityCard.tsx b/src/features/workspace/StudentPlanCapacityCard.tsx
+index 6291345..bed609f 100644
+--- a/src/features/workspace/StudentPlanCapacityCard.tsx
++++ b/src/features/workspace/StudentPlanCapacityCard.tsx
+@@ -1,15 +1,16 @@
+ import { useEffect, useState } from 'react'
+-import { getPlan, getStudentPlans } from '../../api/plans'
++import { getPlan, getStudentPlanHandoff } from '../../api/plans'
+ import type { LiftFamily } from '../../api/types'
+ import { ExerciseIndex } from '../plan-editor/exerciseIndex'
+ import { isoDate, mapPlanToWeeks, type Catalog } from '../plan-editor/mapping'
+ import { summarizeWeek, type WeekSummary } from '../plan-editor/weeklySummary'
+-import { latestCapacityPlan, locateCapacityWeek } from './studentPlanCapacity'
++import { locateCapacityWeek } from './studentPlanCapacity'
+ import { S } from '../../i18n/strings'
+ 
+ type CapacityState =
+   | { kind: 'loading' }
+   | { kind: 'empty' }
++  | { kind: 'failed' }
+   | { kind: 'ready'; planName: string; weekNumber: number; summary: WeekSummary }
+ 
+ const LIFTS: { family: LiftFamily; short: string; sets: keyof Pick<WeekSummary, 'squatSets' | 'benchSets' | 'deadliftSets'> }[] = [
+@@ -36,6 +37,7 @@ export function StudentPlanCapacityCard({ studentId, catalog, index }: {
+   catalog?: Catalog | null
+   index?: ExerciseIndex | null
+ }) {
++  const [attempt, setAttempt] = useState(0)
+   const [capacity, setCapacity] = useState<CapacityState>({ kind: 'loading' })
+ 
+   useEffect(() => {
+@@ -48,13 +50,12 @@ export function StudentPlanCapacityCard({ studentId, catalog, index }: {
+ 
+     void (async () => {
+       try {
+-        const plans = await getStudentPlans(studentId)
+-        const selected = latestCapacityPlan(plans)
+-        if (!selected) {
++        const handoff = await getStudentPlanHandoff(studentId)
++        if (!handoff.current_plan_id) {
+           if (alive) setCapacity({ kind: 'empty' })
+           return
+         }
+-        const full = await getPlan(selected.id)
++        const full = await getPlan(handoff.current_plan_id)
+         const weeks = mapPlanToWeeks(full, catalog)
+         const week = locateCapacityWeek(weeks, full.start_date, isoDate(new Date()))
+         if (!week) {
+@@ -66,12 +67,12 @@ export function StudentPlanCapacityCard({ studentId, catalog, index }: {
+           setCapacity({ kind: 'ready', planName: full.name, weekNumber: week.num, summary })
+         }
+       } catch {
+-        if (alive) setCapacity({ kind: 'empty' })
++        if (alive) setCapacity({ kind: 'failed' })
+       }
+     })()
+ 
+     return () => { alive = false }
+-  }, [studentId, catalog, index])
++  }, [studentId, catalog, index, attempt])
+ 
+   return (
+     <article className="student-capacity-card" data-testid="student-plan-capacity">
+@@ -79,6 +80,7 @@ export function StudentPlanCapacityCard({ studentId, catalog, index }: {
+         <div><h3>{S.stats.capacity.title}</h3>{capacity.kind === 'ready' && <small>{S.stats.capacity.subtitle(capacity.planName, capacity.weekNumber)}</small>}</div>
+       </header>
+       {capacity.kind === 'loading' && <p>{S.stats.capacity.loading}</p>}
++      {capacity.kind === 'failed' && <p role="status">{S.workspace.handoff.unknown} <button type="button" onClick={() => setAttempt(value => value + 1)}>{S.workspace.handoff.retry}</button></p>}
+       {capacity.kind === 'empty' && <p>{S.stats.capacity.empty}</p>}
+       {capacity.kind === 'ready' && (
+         <div className="student-capacity-lifts">
+diff --git a/src/features/workspace/rosterOverview.ts b/src/features/workspace/rosterOverview.ts
+index de19e9e..7c2862c 100644
+--- a/src/features/workspace/rosterOverview.ts
++++ b/src/features/workspace/rosterOverview.ts
+@@ -172,16 +172,6 @@ export function filterRosterRows(rows: readonly RosterOverviewRow[], tab: Roster
+   return [...rows]
+ }
+ 
+-export function findCurrentPublishedPlan(
+-  plans: readonly PlanResponse[],
+-  reference = new Date(),
+-): PlanResponse | null {
+-  const today = isoDate(reference)
+-  return [...plans]
+-    .filter((plan) => plan.status === 'published' && plan.start_date <= today && plan.end_date >= today)
+-    .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())[0] ?? null
+-}
+-
+ /** Planned kg tonnage for the calendar week containing `reference`. */
+ export function currentPublishedWeekTonnage(plan: PlanWithChildren, reference = new Date()): number | null {
+   const today = isoDate(reference)
+diff --git a/src/features/workspace/student-plan-capacity-ui.test.tsx b/src/features/workspace/student-plan-capacity-ui.test.tsx
+index a9897ed..9eb7325 100644
+--- a/src/features/workspace/student-plan-capacity-ui.test.tsx
++++ b/src/features/workspace/student-plan-capacity-ui.test.tsx
+@@ -6,6 +6,7 @@ import { ExerciseIndex } from '../plan-editor/exerciseIndex'
+ import type { Catalog } from '../plan-editor/mapping'
+ 
+ const api = vi.hoisted(() => ({
++  getStudentPlanHandoff: vi.fn(),
+   getStudentPlans: vi.fn(),
+   getPlan: vi.fn(),
+   getStudentOnboarding: vi.fn(),
+@@ -14,6 +15,7 @@ const api = vi.hoisted(() => ({
+ }))
+ 
+ vi.mock('../../api/plans', () => ({
++  getStudentPlanHandoff: api.getStudentPlanHandoff,
+   getStudentPlans: api.getStudentPlans,
+   getPlan: api.getPlan,
+   getStudentOnboarding: api.getStudentOnboarding,
+@@ -127,6 +129,7 @@ describe('StudentDetail plan capacity card', () => {
+     host = document.createElement('div')
+     document.body.appendChild(host)
+     root = createRoot(host)
++    api.getStudentPlanHandoff.mockResolvedValue({ current_plan_id: null, plans: [] })
+     api.getStudentOnboarding.mockResolvedValue(null)
+     api.getExerciseStatsOverview.mockResolvedValue({
+       exercises: [],
+@@ -168,6 +171,7 @@ describe('StudentDetail plan capacity card', () => {
+ 
+   it('renders plain S/B/D set tiles for the located current week', async () => {
+     const plan = publishedPlan()
++    api.getStudentPlanHandoff.mockResolvedValue({ current_plan_id: plan.id, plans: [plan] })
+     api.getStudentPlans.mockResolvedValue([plan])
+     api.getPlan.mockResolvedValue(plan)
+     await renderDetail()
+@@ -220,4 +224,25 @@ describe('StudentDetail plan capacity card', () => {
+     expect(host.textContent).toContain('222深蹲')
+     expect(host.textContent).not.toContain('111深蹲')
+   })
++  it('110 capacity follows server current rather than the newest published plan', async () => {
++    const current = publishedPlan()
++    const next = { ...current, id: 'future', name: 'Future cycle', updated_at: '2026-01-03T00:00:00Z' }
++    api.getStudentPlans.mockResolvedValue([next, current])
++    api.getStudentPlanHandoff.mockResolvedValue({ current_plan_id: current.id, plans: [current, next] })
++    api.getPlan.mockImplementation(async (id: string) => id === current.id ? current : next)
++    await renderDetail()
++    expect(host.querySelector('[data-testid="student-plan-capacity"]')?.textContent).toContain('力量周期')
++    expect(host.querySelector('[data-testid="student-plan-capacity"]')?.textContent).not.toContain('Future cycle')
++  })
++
++  it('110 capacity reports unknown and retries the handoff request', async () => {
++    api.getStudentPlanHandoff.mockRejectedValueOnce(new Error('offline')).mockResolvedValue({ current_plan_id: 'plan-capacity', plans: [publishedPlan()] })
++    api.getPlan.mockResolvedValue(publishedPlan())
++    await renderDetail()
++    const card = host.querySelector<HTMLElement>('[data-testid="student-plan-capacity"]')!
++    expect(card.textContent).toContain('学员接续状态未知')
++    await act(async () => { card.querySelector<HTMLButtonElement>('button')!.click(); await settle() })
++    expect(card.textContent).toContain('力量周期')
++  })
++
+ })
+diff --git a/src/features/workspace/studentPlanCapacity.test.ts b/src/features/workspace/studentPlanCapacity.test.ts
+index 751a58e..770a8ae 100644
+--- a/src/features/workspace/studentPlanCapacity.test.ts
++++ b/src/features/workspace/studentPlanCapacity.test.ts
+@@ -1,7 +1,6 @@
+ import { describe, expect, it } from 'vitest'
+-import type { PlanResponse } from '../../api/types'
+ import type { Week } from '../plan-editor/types'
+-import { latestCapacityPlan, locateCapacityWeek } from './studentPlanCapacity'
++import { locateCapacityWeek } from './studentPlanCapacity'
+ 
+ function week(num: number, content = true): Week {
+   return {
+@@ -37,27 +36,6 @@ function week(num: number, content = true): Week {
+   }
+ }
+ 
+-function plan(id: string, status: PlanResponse['status'], updatedAt: string): PlanResponse {
+-  return {
+-    id,
+-    coach_id: 'coach',
+-    trainee_id: 'student',
+-    name: id,
+-    start_date: '2026-01-05',
+-    end_date: '2026-01-25',
+-    plan_weeks: 3,
+-    source: 'coach',
+-    source_template_id: null,
+-    status,
+-    kind: 'regular',
+-    created_at: updatedAt,
+-    updated_at: updatedAt,
+-    total_shift_days: 0,
+-    latest_shift_created_at: null,
+-    latest_shift: null,
+-  }
+-}
+-
+ describe('student plan capacity selection', () => {
+   it('uses the calendar week while the plan is in progress', () => {
+     expect(locateCapacityWeek([week(1), week(2), week(3)], '2026-01-05', '2026-01-15')?.num).toBe(2)
+@@ -79,15 +57,4 @@ describe('student plan capacity selection', () => {
+     expect(locateCapacityWeek([week(1, false), week(2, false)], '2026-01-05', '2026-01-08')).toBeNull()
+   })
+ 
+-  it('prefers the latest published plan, then falls back to the latest plan', () => {
+-    expect(latestCapacityPlan([
+-      plan('new-draft', 'draft', '2026-03-01T00:00:00Z'),
+-      plan('old-live', 'published', '2026-01-01T00:00:00Z'),
+-      plan('new-live', 'published', '2026-02-01T00:00:00Z'),
+-    ])?.id).toBe('new-live')
+-    expect(latestCapacityPlan([
+-      plan('old-draft', 'draft', '2026-01-01T00:00:00Z'),
+-      plan('new-completed', 'completed', '2026-02-01T00:00:00Z'),
+-    ])?.id).toBe('new-completed')
+-  })
+ })
+diff --git a/src/features/workspace/studentPlanCapacity.ts b/src/features/workspace/studentPlanCapacity.ts
+index ae8bda3..607c413 100644
+--- a/src/features/workspace/studentPlanCapacity.ts
++++ b/src/features/workspace/studentPlanCapacity.ts
+@@ -1,20 +1,5 @@
+-import type { PlanResponse } from '../../api/types'
+ import type { Week } from '../plan-editor/types'
+ 
+-function updatedAt(plan: PlanResponse): number {
+-  const value = new Date(plan.updated_at).getTime()
+-  return Number.isFinite(value) ? value : 0
+-}
+-
+-/** Prefer the most recently updated live plan; fall back to the latest plan of any status. */
+-export function latestCapacityPlan(plans: PlanResponse[]): PlanResponse | null {
+-  const published = plans.filter((plan) => plan.status === 'published')
+-  const candidates = published.length > 0 ? published : plans
+-  return candidates.reduce<PlanResponse | null>((latest, plan) => (
+-    !latest || updatedAt(plan) > updatedAt(latest) ? plan : latest
+-  ), null)
+-}
+-
+ function isoDay(iso: string): number | null {
+   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso)
+   if (!match) return null
+diff --git a/src/i18n/strings-workspace.ts b/src/i18n/strings-workspace.ts
+index ba09c6a..f57122b 100644
+--- a/src/i18n/strings-workspace.ts
++++ b/src/i18n/strings-workspace.ts
+@@ -2,6 +2,15 @@ import type { Translations } from './types'
+ import { countUnit } from './plural'
+ 
+ export const zhWorkspace = {
++  handoff: {
++    progress: (done: number, total: number) => `学员进度 ${done}/${total}`,
++    openCurrent: '查看学员正在练的计划',
++    overlap: '计划日期重叠，请调整日期后重试：',
++    conflict: (name: string, start: string, end: string) => `${name}（${start} — ${end}）`,
++    requiredShift: (days: number) => `下一份计划需顺延 ${days} 天。尚未顺延，请先调整下一份计划的日期。`,
++    publishedUpcoming: '已发布，学员练完当前计划后自动接续',
++    current: '学员正在练', upcoming: '待接续', unknown: '学员接续状态未知', retry: '重试接续状态',
++  },
+   serviceTerm: {
+     set: '设置服务期', label: '服务至', optional: '服务至（选填）', edit: '修改', clear: '清除服务期',
+     remaining: (n: number) => `服务剩 ${n} 天`, today: '服务今天到期', expired: (n: number) => `服务已过期 ${n} 天`,
+@@ -134,6 +143,15 @@ export const zhWorkspace = {
+ } as const
+ 
+ export const enWorkspace = {
++  handoff: {
++    progress: (done, total) => `Student progress ${done}/${total}`,
++    openCurrent: 'View the plan the student is training',
++    overlap: 'Plan dates overlap. Adjust the dates and try again:',
++    conflict: (name, start, end) => `${name} (${start} — ${end})`,
++    requiredShift: (days) => `The next plan needs to move by ${days} days. It has not been moved; adjust its dates first.`,
++    publishedUpcoming: 'Published. The student will continue with this plan after finishing their current plan.',
++    current: 'Student training now', upcoming: 'Up next', unknown: 'Student progression unknown', retry: 'Retry progression',
++  },
+   serviceTerm: {
+     set: 'Set coaching term', label: 'Coaching until', optional: 'Coaching until (optional)', edit: 'Edit', clear: 'Clear term',
+     remaining: (n) => `${n} days left`, today: 'Ends today', expired: (n) => `Ended ${n} days ago`,
+diff --git a/src/i18n/strings-zh-hant.ts b/src/i18n/strings-zh-hant.ts
+index 87a7b96..c1f39a3 100644
+--- a/src/i18n/strings-zh-hant.ts
++++ b/src/i18n/strings-zh-hant.ts
+@@ -881,6 +881,15 @@ const hantVideo = {
+ } as const satisfies Translations<typeof zhVideo>
+ 
+ const hantWorkspace = {
++    handoff: {
++        progress: (done: number, total: number) => `\u5B78\u54E1\u9032\u5EA6 ${done}/${total}`,
++        openCurrent: "\u6AA2\u8996\u5B78\u54E1\u6B63\u5728\u7DF4\u7684\u8AB2\u8868",
++        overlap: "\u8AB2\u8868\u65E5\u671F\u91CD\u758A\uFF0C\u8ACB\u8ABF\u6574\u65E5\u671F\u5F8C\u91CD\u8A66\uFF1A",
++        conflict: (name: string, start: string, end: string) => `${name}\uFF08${start} \u2014 ${end}\uFF09`,
++        requiredShift: (days: number) => `\u4E0B\u4E00\u4EFD\u8AB2\u8868\u9700\u9806\u5EF6 ${days} \u5929\u3002\u5C1A\u672A\u9806\u5EF6\uFF0C\u8ACB\u5148\u8ABF\u6574\u4E0B\u4E00\u4EFD\u8AB2\u8868\u7684\u65E5\u671F\u3002`,
++        publishedUpcoming: "\u5DF2\u767C\u5E03\uFF0C\u5B78\u54E1\u7DF4\u5B8C\u7576\u524D\u8AB2\u8868\u5F8C\u81EA\u52D5\u63A5\u7E8C",
++        current: "\u5B78\u54E1\u6B63\u5728\u7DF4", upcoming: "\u5F85\u63A5\u7E8C", unknown: "\u5B78\u54E1\u63A5\u7E8C\u72C0\u614B\u672A\u77E5", retry: "\u91CD\u8A66\u63A5\u7E8C\u72C0\u614B",
++    },
+     serviceTerm: {
+         set: "\u8A2D\u5B9A\u670D\u52D9\u671F", label: "\u670D\u52D9\u81F3", optional: "\u670D\u52D9\u81F3\uFF08\u9078\u586B\uFF09", edit: "\u4FEE\u6539", clear: "\u6E05\u9664\u670D\u52D9\u671F",
+         remaining: (n: number) => `\u670D\u52D9\u5269 ${n} \u5929`, today: "\u670D\u52D9\u4ECA\u5929\u5230\u671F", expired: (n: number) => `\u670D\u52D9\u5DF2\u904E\u671F ${n} \u5929`,
+diff --git a/src/features/plan-editor/planOverlap.ts b/src/features/plan-editor/planOverlap.ts
+new file mode 100644
+index 0000000..55f41e9
+--- /dev/null
++++ b/src/features/plan-editor/planOverlap.ts
+@@ -0,0 +1,18 @@
++import { ApiException } from '../../api/client'
++import { S } from '../../i18n/strings'
++
++/** Only render the public conflict fields, never arbitrary error payloads. */
++export function planOverlapMessage(error: unknown): string | null {
++  if (!(error instanceof ApiException) || error.status !== 409 || error.code !== 'PLAN_DATES_OVERLAP') return null
++  const conflicts = Array.isArray(error.details.conflicts) ? error.details.conflicts : []
++  const names = conflicts.flatMap((conflict: unknown) => {
++    if (!conflict || typeof conflict !== 'object') return []
++    const { name, start_date, end_date } = conflict as Record<string, unknown>
++    if (typeof name !== 'string' || typeof start_date !== 'string' || typeof end_date !== 'string') return []
++    return [S.workspace.handoff.conflict(name, start_date, end_date)]
++  })
++  const days = error.details.required_shift_days
++  return [S.workspace.handoff.overlap, ...names,
++    ...(typeof days === 'number' && Number.isInteger(days) && days > 0 ? [S.workspace.handoff.requiredShift(days)] : []),
++  ].join('\n')
++}
+diff --git a/src/features/workspace/fixtures/plan-handoff/abandoned-tail.json b/src/features/workspace/fixtures/plan-handoff/abandoned-tail.json
+new file mode 100644
+index 0000000..5ef0290
+--- /dev/null
++++ b/src/features/workspace/fixtures/plan-handoff/abandoned-tail.json
+@@ -0,0 +1,77 @@
++{
++  "current_plan_id": "10000000-0000-4000-8000-000000000002",
++  "plans": [
++    {
++      "id": "10000000-0000-4000-8000-000000000001",
++      "coach_id": "10000000-0000-4000-8000-000000000001",
++      "trainee_id": "10000000-0000-4000-8000-000000000003",
++      "name": "Cycle 1",
++      "start_date": "2026-10-19",
++      "end_date": "2026-11-22",
++      "plan_weeks": 5,
++      "source": "coach",
++      "source_template_id": null,
++      "status": "published",
++      "kind": "regular",
++      "block_type": null,
++      "mesocycle_phase": null,
++      "training_max": null,
++      "tm_set_at": null,
++      "published_at": "2026-10-01T10:00:00.000Z",
++      "anchor_weekday": null,
++      "created_at": "2026-09-01T10:00:00.000Z",
++      "updated_at": "2026-10-01T10:00:00.000Z",
++      "completed_training_days": 16,
++      "total_training_days": 20,
++      "handoff_status": "past"
++    },
++    {
++      "id": "10000000-0000-4000-8000-000000000002",
++      "coach_id": "10000000-0000-4000-8000-000000000001",
++      "trainee_id": "10000000-0000-4000-8000-000000000003",
++      "name": "Cycle 2",
++      "start_date": "2026-11-23",
++      "end_date": "2026-12-20",
++      "plan_weeks": 4,
++      "source": "coach",
++      "source_template_id": null,
++      "status": "published",
++      "kind": "regular",
++      "block_type": null,
++      "mesocycle_phase": null,
++      "training_max": null,
++      "tm_set_at": null,
++      "published_at": "2026-10-02T10:00:00.000Z",
++      "anchor_weekday": null,
++      "created_at": "2026-09-02T10:00:00.000Z",
++      "updated_at": "2026-10-02T10:00:00.000Z",
++      "completed_training_days": 1,
++      "total_training_days": 4,
++      "handoff_status": "current"
++    },
++    {
++      "id": "10000000-0000-4000-8000-000000000003",
++      "coach_id": "10000000-0000-4000-8000-000000000001",
++      "trainee_id": "10000000-0000-4000-8000-000000000003",
++      "name": "Cycle 3",
++      "start_date": "2026-12-21",
++      "end_date": "2027-01-17",
++      "plan_weeks": 4,
++      "source": "coach",
++      "source_template_id": null,
++      "status": "published",
++      "kind": "regular",
++      "block_type": null,
++      "mesocycle_phase": null,
++      "training_max": null,
++      "tm_set_at": null,
++      "published_at": "2026-10-03T10:00:00.000Z",
++      "anchor_weekday": null,
++      "created_at": "2026-09-03T10:00:00.000Z",
++      "updated_at": "2026-10-03T10:00:00.000Z",
++      "completed_training_days": 0,
++      "total_training_days": 4,
++      "handoff_status": "upcoming"
++    }
++  ]
++}
+diff --git a/src/features/workspace/fixtures/plan-handoff/all-completed.json b/src/features/workspace/fixtures/plan-handoff/all-completed.json
+new file mode 100644
+index 0000000..7ecaf7c
+--- /dev/null
++++ b/src/features/workspace/fixtures/plan-handoff/all-completed.json
+@@ -0,0 +1,53 @@
++{
++  "current_plan_id": "10000000-0000-4000-8000-000000000002",
++  "plans": [
++    {
++      "id": "10000000-0000-4000-8000-000000000001",
++      "coach_id": "10000000-0000-4000-8000-000000000001",
++      "trainee_id": "10000000-0000-4000-8000-000000000003",
++      "name": "Cycle 1",
++      "start_date": "2026-10-19",
++      "end_date": "2026-11-22",
++      "plan_weeks": 5,
++      "source": "coach",
++      "source_template_id": null,
++      "status": "published",
++      "kind": "regular",
++      "block_type": null,
++      "mesocycle_phase": null,
++      "training_max": null,
++      "tm_set_at": null,
++      "published_at": "2026-10-01T10:00:00.000Z",
++      "anchor_weekday": null,
++      "created_at": "2026-09-01T10:00:00.000Z",
++      "updated_at": "2026-10-01T10:00:00.000Z",
++      "completed_training_days": 20,
++      "total_training_days": 20,
++      "handoff_status": "past"
++    },
++    {
++      "id": "10000000-0000-4000-8000-000000000002",
++      "coach_id": "10000000-0000-4000-8000-000000000001",
++      "trainee_id": "10000000-0000-4000-8000-000000000003",
++      "name": "Cycle 2",
++      "start_date": "2026-11-23",
++      "end_date": "2026-12-20",
++      "plan_weeks": 4,
++      "source": "coach",
++      "source_template_id": null,
++      "status": "published",
++      "kind": "regular",
++      "block_type": null,
++      "mesocycle_phase": null,
++      "training_max": null,
++      "tm_set_at": null,
++      "published_at": "2026-10-02T10:00:00.000Z",
++      "anchor_weekday": null,
++      "created_at": "2026-09-02T10:00:00.000Z",
++      "updated_at": "2026-10-02T10:00:00.000Z",
++      "completed_training_days": 4,
++      "total_training_days": 4,
++      "handoff_status": "current"
++    }
++  ]
++}
+diff --git a/src/features/workspace/fixtures/plan-handoff/feedback.json b/src/features/workspace/fixtures/plan-handoff/feedback.json
+new file mode 100644
+index 0000000..cb2f457
+--- /dev/null
++++ b/src/features/workspace/fixtures/plan-handoff/feedback.json
+@@ -0,0 +1,53 @@
++{
++  "current_plan_id": "10000000-0000-4000-8000-000000000001",
++  "plans": [
++    {
++      "id": "10000000-0000-4000-8000-000000000001",
++      "coach_id": "10000000-0000-4000-8000-000000000001",
++      "trainee_id": "10000000-0000-4000-8000-000000000003",
++      "name": "Cycle 1",
++      "start_date": "2026-10-19",
++      "end_date": "2026-11-22",
++      "plan_weeks": 5,
++      "source": "coach",
++      "source_template_id": null,
++      "status": "published",
++      "kind": "regular",
++      "block_type": null,
++      "mesocycle_phase": null,
++      "training_max": null,
++      "tm_set_at": null,
++      "published_at": "2026-10-01T10:00:00.000Z",
++      "anchor_weekday": null,
++      "created_at": "2026-09-01T10:00:00.000Z",
++      "updated_at": "2026-10-01T10:00:00.000Z",
++      "completed_training_days": 16,
++      "total_training_days": 20,
++      "handoff_status": "current"
++    },
++    {
++      "id": "10000000-0000-4000-8000-000000000002",
++      "coach_id": "10000000-0000-4000-8000-000000000001",
++      "trainee_id": "10000000-0000-4000-8000-000000000003",
++      "name": "Cycle 2",
++      "start_date": "2026-11-23",
++      "end_date": "2026-12-20",
++      "plan_weeks": 4,
++      "source": "coach",
++      "source_template_id": null,
++      "status": "published",
++      "kind": "regular",
++      "block_type": null,
++      "mesocycle_phase": null,
++      "training_max": null,
++      "tm_set_at": null,
++      "published_at": "2026-10-02T10:00:00.000Z",
++      "anchor_weekday": null,
++      "created_at": "2026-09-02T10:00:00.000Z",
++      "updated_at": "2026-10-02T10:00:00.000Z",
++      "completed_training_days": 0,
++      "total_training_days": 4,
++      "handoff_status": "upcoming"
++    }
++  ]
++}
+diff --git a/src/features/workspace/fixtures/plan-handoff/no-plans.json b/src/features/workspace/fixtures/plan-handoff/no-plans.json
+new file mode 100644
+index 0000000..7fdc012
+--- /dev/null
++++ b/src/features/workspace/fixtures/plan-handoff/no-plans.json
+@@ -0,0 +1,4 @@
++{
++  "current_plan_id": null,
++  "plans": []
++}
+diff --git a/src/features/workspace/fixtures/plan-handoff/three-consecutive.json b/src/features/workspace/fixtures/plan-handoff/three-consecutive.json
+new file mode 100644
+index 0000000..8743dfd
+--- /dev/null
++++ b/src/features/workspace/fixtures/plan-handoff/three-consecutive.json
+@@ -0,0 +1,77 @@
++{
++  "current_plan_id": "10000000-0000-4000-8000-000000000001",
++  "plans": [
++    {
++      "id": "10000000-0000-4000-8000-000000000001",
++      "coach_id": "10000000-0000-4000-8000-000000000001",
++      "trainee_id": "10000000-0000-4000-8000-000000000003",
++      "name": "Cycle 1",
++      "start_date": "2026-10-19",
++      "end_date": "2026-11-22",
++      "plan_weeks": 5,
++      "source": "coach",
++      "source_template_id": null,
++      "status": "published",
++      "kind": "regular",
++      "block_type": null,
++      "mesocycle_phase": null,
++      "training_max": null,
++      "tm_set_at": null,
++      "published_at": "2026-10-01T10:00:00.000Z",
++      "anchor_weekday": null,
++      "created_at": "2026-09-01T10:00:00.000Z",
++      "updated_at": "2026-10-01T10:00:00.000Z",
++      "completed_training_days": 16,
++      "total_training_days": 20,
++      "handoff_status": "current"
++    },
++    {
++      "id": "10000000-0000-4000-8000-000000000002",
++      "coach_id": "10000000-0000-4000-8000-000000000001",
++      "trainee_id": "10000000-0000-4000-8000-000000000003",
++      "name": "Cycle 2",
++      "start_date": "2026-11-23",
++      "end_date": "2026-12-20",
++      "plan_weeks": 4,
++      "source": "coach",
++      "source_template_id": null,
++      "status": "published",
++      "kind": "regular",
++      "block_type": null,
++      "mesocycle_phase": null,
++      "training_max": null,
++      "tm_set_at": null,
++      "published_at": "2026-10-02T10:00:00.000Z",
++      "anchor_weekday": null,
++      "created_at": "2026-09-02T10:00:00.000Z",
++      "updated_at": "2026-10-02T10:00:00.000Z",
++      "completed_training_days": 0,
++      "total_training_days": 4,
++      "handoff_status": "upcoming"
++    },
++    {
++      "id": "10000000-0000-4000-8000-000000000003",
++      "coach_id": "10000000-0000-4000-8000-000000000001",
++      "trainee_id": "10000000-0000-4000-8000-000000000003",
++      "name": "Cycle 3",
++      "start_date": "2026-12-21",
++      "end_date": "2027-01-17",
++      "plan_weeks": 4,
++      "source": "coach",
++      "source_template_id": null,
++      "status": "published",
++      "kind": "regular",
++      "block_type": null,
++      "mesocycle_phase": null,
++      "training_max": null,
++      "tm_set_at": null,
++      "published_at": "2026-10-03T10:00:00.000Z",
++      "anchor_weekday": null,
++      "created_at": "2026-09-03T10:00:00.000Z",
++      "updated_at": "2026-10-03T10:00:00.000Z",
++      "completed_training_days": 0,
++      "total_training_days": 4,
++      "handoff_status": "upcoming"
++    }
++  ]
++}

@@ -272,10 +272,11 @@ export function deriveStudentPlanCursor(
   plan: PlanWithChildren,
   localToday = isoDate(new Date()),
 ): StudentPlanCursor | null {
-  if (plan.status !== 'published' || plan.days.length === 0) return null
-  if (plan.days.some((day) => !Object.hasOwn(day, 'completed_at'))) return null
+  const trainingDays = plan.days.filter(day => !day.is_rest)
+  if (plan.status !== 'published' || trainingDays.length === 0) return null
+  if (trainingDays.some((day) => !Object.hasOwn(day, 'completed_at'))) return null
 
-  const ordered = plan.days
+  const ordered = trainingDays
     .map((day, stableIndex) => ({ day, stableIndex }))
     .sort((a, b) => (
       a.day.week_number - b.day.week_number
@@ -285,7 +286,7 @@ export function deriveStudentPlanCursor(
   const pending = ordered.find(({ day }) => day.completed_at == null)?.day
   if (!pending) return { kind: 'completed' }
 
-  const weekDows = plan.days
+  const weekDows = trainingDays
     .filter((day) => day.week_number === pending.week_number)
     .map((day) => day.day_of_week - 1)
   const dayOrdinal = trainingDayOrdinalFromDows(weekDows, pending.day_of_week - 1)

@@ -6,6 +6,7 @@ import { ExerciseIndex } from '../plan-editor/exerciseIndex'
 import type { Catalog } from '../plan-editor/mapping'
 
 const api = vi.hoisted(() => ({
+  getStudentPlanHandoff: vi.fn(),
   getStudentPlans: vi.fn(),
   getPlan: vi.fn(),
   getStudentOnboarding: vi.fn(),
@@ -14,6 +15,7 @@ const api = vi.hoisted(() => ({
 }))
 
 vi.mock('../../api/plans', () => ({
+  getStudentPlanHandoff: api.getStudentPlanHandoff,
   getStudentPlans: api.getStudentPlans,
   getPlan: api.getPlan,
   getStudentOnboarding: api.getStudentOnboarding,
@@ -127,6 +129,7 @@ describe('StudentDetail plan capacity card', () => {
     host = document.createElement('div')
     document.body.appendChild(host)
     root = createRoot(host)
+    api.getStudentPlanHandoff.mockResolvedValue({ current_plan_id: null, plans: [] })
     api.getStudentOnboarding.mockResolvedValue(null)
     api.getExerciseStatsOverview.mockResolvedValue({
       exercises: [],
@@ -168,6 +171,7 @@ describe('StudentDetail plan capacity card', () => {
 
   it('renders plain S/B/D set tiles for the located current week', async () => {
     const plan = publishedPlan()
+    api.getStudentPlanHandoff.mockResolvedValue({ current_plan_id: plan.id, plans: [plan] })
     api.getStudentPlans.mockResolvedValue([plan])
     api.getPlan.mockResolvedValue(plan)
     await renderDetail()
@@ -220,4 +224,25 @@ describe('StudentDetail plan capacity card', () => {
     expect(host.textContent).toContain('222深蹲')
     expect(host.textContent).not.toContain('111深蹲')
   })
+  it('110 capacity follows server current rather than the newest published plan', async () => {
+    const current = publishedPlan()
+    const next = { ...current, id: 'future', name: 'Future cycle', updated_at: '2026-01-03T00:00:00Z' }
+    api.getStudentPlans.mockResolvedValue([next, current])
+    api.getStudentPlanHandoff.mockResolvedValue({ current_plan_id: current.id, plans: [current, next] })
+    api.getPlan.mockImplementation(async (id: string) => id === current.id ? current : next)
+    await renderDetail()
+    expect(host.querySelector('[data-testid="student-plan-capacity"]')?.textContent).toContain('力量周期')
+    expect(host.querySelector('[data-testid="student-plan-capacity"]')?.textContent).not.toContain('Future cycle')
+  })
+
+  it('110 capacity reports unknown and retries the handoff request', async () => {
+    api.getStudentPlanHandoff.mockRejectedValueOnce(new Error('offline')).mockResolvedValue({ current_plan_id: 'plan-capacity', plans: [publishedPlan()] })
+    api.getPlan.mockResolvedValue(publishedPlan())
+    await renderDetail()
+    const card = host.querySelector<HTMLElement>('[data-testid="student-plan-capacity"]')!
+    expect(card.textContent).toContain('学员接续状态未知')
+    await act(async () => { card.querySelector<HTMLButtonElement>('button')!.click(); await settle() })
+    expect(card.textContent).toContain('力量周期')
+  })
+
 })

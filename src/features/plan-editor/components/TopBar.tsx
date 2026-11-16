@@ -27,6 +27,10 @@ interface Props {
   currentStudentId?: string
   onSwitchStudent?: (id: string) => void | Promise<void>
   plans?: Option[]
+  studentProgress?: string
+  onOpenStudentCurrent?: () => Promise<void>
+  handoffLabel?: string
+  onRetryHandoff?: () => void
   currentPlanId?: string
   onSwitchPlan?: (id: string) => void | Promise<void>
   weeksCount?: number
@@ -91,6 +95,11 @@ export function TopBar(p: Props) {
       <img src="/meetpr-icon-64.png" alt="MeetPR" width="30" height="30" /><b className="block-brand">MeetPR</b><span className="plan-context-divider" />
       <span className="block-student-name"><small>{S.block.student}</small> {p.studentName}</span>
       <button ref={planAnchor} data-plan-menu-trigger="" aria-expanded={menu === 'plan'} aria-haspopup="menu" onClick={() => setMenu(menu === 'plan' ? null : 'plan')}><small>{S.block.cycle}</small> {p.planName}{p.planStartDate ? ` · ${mmdd(p.planStartDate)}` : ''}{p.weeksCount ? ` · ${S.common.countWeeks(p.weeksCount)}` : ''} ▾</button>
+      {p.handoffLabel && <small role="status" data-plan-handoff="">{p.handoffLabel}</small>}
+      {p.studentProgress && <button type="button" data-student-progress="" disabled={!p.onOpenStudentCurrent} onClick={() => void p.onOpenStudentCurrent?.()} title={S.workspace.handoff.openCurrent}>
+        {p.studentProgress}{p.studentPlanCursor?.kind === 'day' ? ` · W${p.studentPlanCursor.weekNumber}D${p.studentPlanCursor.dayOrdinal}` : ''}
+      </button>}
+      {p.onRetryHandoff && <button type="button" onClick={p.onRetryHandoff}>{S.workspace.handoff.retry}</button>}
       <span className="plan-context-spacer" />
       {(p.issueCount ?? 0) > 0 && <button title={p.issueHint} onClick={p.onJumpIssue}>{S.editor.issuesToReview(p.issueCount!)}</button>}
       <button type="button" className="feedback-toggle" data-feedback-toggle="" aria-label={S.block.feedback} aria-pressed={p.feedbackOpen ?? false} onClick={p.onToggleFeedback}>

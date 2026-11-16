@@ -1,3 +1,4 @@
+import { planOverlapMessage } from '../planOverlap'
 import { WeightModeSelect } from './WeightModeSelect'
 import { activeImportDoubts } from '../import/doubts'
 import { useLayoutEffect, useRef, useState } from 'react'
@@ -280,7 +281,7 @@ function PlanShiftControl({ control, dayName }: {
                       const code = typeof caught === 'object' && caught !== null && 'code' in caught
                         ? String(Reflect.get(caught, 'code'))
                         : ''
-                      setError(code === 'SHIFT_NO_TARGET_DAYS' ? S.editor.shiftNoTargetDays : S.editor.shiftFailed)
+                      setError(planOverlapMessage(caught) ?? (code === 'SHIFT_NO_TARGET_DAYS' ? S.editor.shiftNoTargetDays : S.editor.shiftFailed))
                     })
                     .finally(() => setApplying(false))
                 }}

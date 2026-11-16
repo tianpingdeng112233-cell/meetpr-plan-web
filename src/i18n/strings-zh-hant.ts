@@ -881,6 +881,15 @@ const hantVideo = {
 } as const satisfies Translations<typeof zhVideo>
 
 const hantWorkspace = {
+    handoff: {
+        progress: (done: number, total: number) => `\u5B78\u54E1\u9032\u5EA6 ${done}/${total}`,
+        openCurrent: "\u6AA2\u8996\u5B78\u54E1\u6B63\u5728\u7DF4\u7684\u8AB2\u8868",
+        overlap: "\u8AB2\u8868\u65E5\u671F\u91CD\u758A\uFF0C\u8ACB\u8ABF\u6574\u65E5\u671F\u5F8C\u91CD\u8A66\uFF1A",
+        conflict: (name: string, start: string, end: string) => `${name}\uFF08${start} \u2014 ${end}\uFF09`,
+        requiredShift: (days: number) => `\u4E0B\u4E00\u4EFD\u8AB2\u8868\u9700\u9806\u5EF6 ${days} \u5929\u3002\u5C1A\u672A\u9806\u5EF6\uFF0C\u8ACB\u5148\u8ABF\u6574\u4E0B\u4E00\u4EFD\u8AB2\u8868\u7684\u65E5\u671F\u3002`,
+        publishedUpcoming: "\u5DF2\u767C\u5E03\uFF0C\u5B78\u54E1\u7DF4\u5B8C\u7576\u524D\u8AB2\u8868\u5F8C\u81EA\u52D5\u63A5\u7E8C",
+        current: "\u5B78\u54E1\u6B63\u5728\u7DF4", upcoming: "\u5F85\u63A5\u7E8C", unknown: "\u5B78\u54E1\u63A5\u7E8C\u72C0\u614B\u672A\u77E5", retry: "\u91CD\u8A66\u63A5\u7E8C\u72C0\u614B",
+    },
     serviceTerm: {
         set: "\u8A2D\u5B9A\u670D\u52D9\u671F", label: "\u670D\u52D9\u81F3", optional: "\u670D\u52D9\u81F3\uFF08\u9078\u586B\uFF09", edit: "\u4FEE\u6539", clear: "\u6E05\u9664\u670D\u52D9\u671F",
         remaining: (n: number) => `\u670D\u52D9\u5269 ${n} \u5929`, today: "\u670D\u52D9\u4ECA\u5929\u5230\u671F", expired: (n: number) => `\u670D\u52D9\u5DF2\u904E\u671F ${n} \u5929`,

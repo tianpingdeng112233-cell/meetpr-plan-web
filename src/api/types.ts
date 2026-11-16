@@ -592,3 +592,13 @@ export interface ApiError {
   error: string
   issues?: { path: (string | number)[]; message: string }[]
 }
+
+/** Server-derived student progression, independent of the coach's open editor. */
+export interface PlanHandoffResponse {
+  current_plan_id: string | null
+  plans: (PlanResponse & {
+    completed_training_days: number
+    total_training_days: number
+    handoff_status: 'current' | 'upcoming' | 'past'
+  })[]
+}

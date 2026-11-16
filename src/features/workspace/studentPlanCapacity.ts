@@ -1,19 +1,4 @@
-import type { PlanResponse } from '../../api/types'
 import type { Week } from '../plan-editor/types'
-
-function updatedAt(plan: PlanResponse): number {
-  const value = new Date(plan.updated_at).getTime()
-  return Number.isFinite(value) ? value : 0
-}
-
-/** Prefer the most recently updated live plan; fall back to the latest plan of any status. */
-export function latestCapacityPlan(plans: PlanResponse[]): PlanResponse | null {
-  const published = plans.filter((plan) => plan.status === 'published')
-  const candidates = published.length > 0 ? published : plans
-  return candidates.reduce<PlanResponse | null>((latest, plan) => (
-    !latest || updatedAt(plan) > updatedAt(latest) ? plan : latest
-  ), null)
-}
 
 function isoDay(iso: string): number | null {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso)

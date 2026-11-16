@@ -1,3 +1,4 @@
+import { planOverlapMessage } from './planOverlap'
 import { createPortal } from 'react-dom'
 import { PreviousCycle } from './components/PreviousCycle'
 import { CycleHeading, CycleComparison } from './components/CycleHeading'
@@ -191,7 +192,7 @@ export interface PlanEditorProps {
   /** Completed/paused historical plans render as a true non-persisting viewer. */
   readOnly?: boolean
   /** Real publish call; when omitted the button just toggles locally (sample mode). */
-  onPublish?: () => Promise<void>
+  onPublish?: () => Promise<string | void>
   onBackfillAfterPublish?: () => Promise<void>
   /** Save current edits back to the backend; resolves with how many contentful rows were skipped. */
   onSave?: (
@@ -213,6 +214,10 @@ export interface PlanEditorProps {
   currentStudentId?: string
   onSwitchStudent?: (id: string) => void | Promise<void>
   plans?: Switcher[]
+  studentProgress?: string
+  onOpenStudentCurrent?: () => Promise<void>
+  handoffLabel?: string
+  onRetryHandoff?: () => void
   currentPlanId?: string
   onSwitchPlan?: (id: string) => void | Promise<void>
   onPlanAction?: (id: string, action: PlanAction) => void | Promise<void>
@@ -838,9 +843,11 @@ export function PlanEditor(props: PlanEditorProps) {
     ? (studentEnded ? S.workspace.studentRail.readOnly : S.editor.readOnlyStatus(props.planStatus === 'completed' ? S.common.completed : S.common.paused))
     : initialPublished ? S.editor.publishedTo(studentName) : S.editor.draftSavedInitial)
   const [pasteNotice, setPasteNotice] = useState(false)
+  const [publicationNotice, setPublicationNotice] = useState<string | null>(null)
   const setStatusText = useCallback((text: string, isPasteNotice = false) => {
     setStatusTextValue(text)
     setPasteNotice(isPasteNotice)
+    setPublicationNotice(null)
   }, [])
   const undoShiftInFlight = useRef(false)
   const [undoingShift, setUndoingShift] = useState(false)
@@ -1001,8 +1008,10 @@ export function PlanEditor(props: PlanEditorProps) {
       }
       await refreshShiftPlan()
       setStatusText(S.editor.undoShiftSucceeded)
-    } catch {
-      setStatusText(undone ? S.editor.undoShiftRefreshFailed : S.editor.undoShiftFailed)
+    } catch (error) {
+      const overlap = planOverlapMessage(error)
+      if (overlap) window.alert(overlap)
+      setStatusText(overlap ?? (undone ? S.editor.undoShiftRefreshFailed : S.editor.undoShiftFailed))
     } finally {
       undoShiftInFlight.current = false
       setUndoingShift(false)
@@ -2414,7 +2423,7 @@ export function PlanEditor(props: PlanEditorProps) {
       }
       setStatusText(S.editor.startDateUpdated(published ? S.common.published : S.common.draft, nextStart))
     } catch (error) {
-      setStatusText(S.editor.startDateUpdateFailed)
+      setStatusText(planOverlapMessage(error) ?? S.editor.startDateUpdateFailed)
       throw error
     } finally {
       setSaving(false)
@@ -2549,6 +2558,8 @@ export function PlanEditor(props: PlanEditorProps) {
     applyReconciledWeeks(res.weeks, sameContent, res.planWeeks ?? res.weeks.length)
   }
   const applySaveFailure = (error: unknown): string | null => {
+    const overlap = planOverlapMessage(error)
+    if (overlap) return overlap
     if (error instanceof ReconcileConflict) {
       applyReconciledWeeks(error.weeks)
       unsavedRef.current = true
@@ -2990,7 +3001,7 @@ export function PlanEditor(props: PlanEditorProps) {
         ? lastSavedDraftContent.current
         : mirrorContent(latestWeeks.current, currentPlanStart.current)
       setStatusText(S.editor.publishing)
-      if (onPublish) await runWrite(onPublish)
+      const publicationMessage = onPublish ? await runWrite(onPublish) : undefined
       // Draft calendar history stops at publication. Keep prescription undo/redo,
       // but anchor every snapshot to the exact calendar that was just published.
       applyScheduleUpdate((snapshot) => projectWeekSchedule(
@@ -3020,13 +3031,18 @@ export function PlanEditor(props: PlanEditorProps) {
         !== draftContentHash(publishedBaseline)
       setStatusText(hasUnpublishedEdits
         ? S.editor.publishedDirty(studentName)
-        : S.editor.publishedTo(studentName))
+        : publicationMessage ?? S.editor.publishedTo(studentName))
+      // Mirror progress must not hide the publication outcome when edits arrived in flight.
+      setPublicationNotice(publicationMessage || null)
     } catch (e) {
       // The status line gets repainted by later saves — a publish failure must explain itself
       // in a dialog the coach actually reads, in coach language, not a machine code.
       const code = e instanceof ApiException ? e.code : ''
       const detail = e instanceof ApiException ? e.details : {}
-      if (code === 'PLAN_PUBLISH_INCOMPLETE') {
+      const overlap = planOverlapMessage(e)
+      if (overlap) {
+        window.alert(overlap)
+      } else if (code === 'PLAN_PUBLISH_INCOMPLETE') {
         const n = Number(detail.empty_exercise_count ?? 0) || S.editor.several
         window.alert(S.editor.publishEmptyExercises(n))
       } else if (code === 'PLAN_DAYS_EXCEED_WEEKS') {
@@ -3038,7 +3054,7 @@ export function PlanEditor(props: PlanEditorProps) {
       } else {
         window.alert(S.editor.publishFailedAlert(code))
       }
-      setStatusText(S.editor.publishFailedRetry)
+      setStatusText(overlap ?? S.editor.publishFailedRetry)
     } finally {
       setPublishingVisible(false)
       publishing.current = false // always unlatch so 更新计划 / autosave work afterwards
@@ -3063,8 +3079,8 @@ export function PlanEditor(props: PlanEditorProps) {
           ? S.editor.degradedSavedLocal(degradedSaveStatus.base, degradedSaveStatus.count)
           : S.editor.degradedSavedStashing(degradedSaveStatus.base, degradedSaveStatus.count)
       : statusText
-  const visibleStatusText = published && publishedDirty && pasteNotice
-    ? `${statusText} · ${saveStatusText}`
+  const visibleStatusText = published && publishedDirty && (publicationNotice || pasteNotice)
+    ? `${publicationNotice ?? statusText} · ${saveStatusText}`
     : saveStatusText
   const moveStateForDay = (wnum: number, dow: number): 'source' | 'target' | 'invalid' | undefined => {
     if (!dayMoveVisual) return undefined
@@ -3214,6 +3230,8 @@ export function PlanEditor(props: PlanEditorProps) {
         } : undefined}
         onNewPlan={studentEnded ? undefined : guardLeave(props.onNewPlan)}
         onBackToBoard={props.onBackToBoard}
+        studentProgress={props.studentProgress} onOpenStudentCurrent={guardLeave(props.onOpenStudentCurrent)}
+        handoffLabel={props.handoffLabel} onRetryHandoff={props.onRetryHandoff}
         currentPlanStatus={props.planStatus ?? (published ? 'published' : 'draft')}
         onDeleteCurrentDraft={guardLeave(props.onDeleteCurrentDraft)}
         onMarkComplete={props.onMarkComplete}

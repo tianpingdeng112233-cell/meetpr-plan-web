@@ -1,15 +1,16 @@
 import { useEffect, useState } from 'react'
-import { getPlan, getStudentPlans } from '../../api/plans'
+import { getPlan, getStudentPlanHandoff } from '../../api/plans'
 import type { LiftFamily } from '../../api/types'
 import { ExerciseIndex } from '../plan-editor/exerciseIndex'
 import { isoDate, mapPlanToWeeks, type Catalog } from '../plan-editor/mapping'
 import { summarizeWeek, type WeekSummary } from '../plan-editor/weeklySummary'
-import { latestCapacityPlan, locateCapacityWeek } from './studentPlanCapacity'
+import { locateCapacityWeek } from './studentPlanCapacity'
 import { S } from '../../i18n/strings'
 
 type CapacityState =
   | { kind: 'loading' }
   | { kind: 'empty' }
+  | { kind: 'failed' }
   | { kind: 'ready'; planName: string; weekNumber: number; summary: WeekSummary }
 
 const LIFTS: { family: LiftFamily; short: string; sets: keyof Pick<WeekSummary, 'squatSets' | 'benchSets' | 'deadliftSets'> }[] = [
@@ -36,6 +37,7 @@ export function StudentPlanCapacityCard({ studentId, catalog, index }: {
   catalog?: Catalog | null
   index?: ExerciseIndex | null
 }) {
+  const [attempt, setAttempt] = useState(0)
   const [capacity, setCapacity] = useState<CapacityState>({ kind: 'loading' })
 
   useEffect(() => {
@@ -48,13 +50,12 @@ export function StudentPlanCapacityCard({ studentId, catalog, index }: {
 
     void (async () => {
       try {
-        const plans = await getStudentPlans(studentId)
-        const selected = latestCapacityPlan(plans)
-        if (!selected) {
+        const handoff = await getStudentPlanHandoff(studentId)
+        if (!handoff.current_plan_id) {
           if (alive) setCapacity({ kind: 'empty' })
           return
         }
-        const full = await getPlan(selected.id)
+        const full = await getPlan(handoff.current_plan_id)
         const weeks = mapPlanToWeeks(full, catalog)
         const week = locateCapacityWeek(weeks, full.start_date, isoDate(new Date()))
         if (!week) {
@@ -66,12 +67,12 @@ export function StudentPlanCapacityCard({ studentId, catalog, index }: {
           setCapacity({ kind: 'ready', planName: full.name, weekNumber: week.num, summary })
         }
       } catch {
-        if (alive) setCapacity({ kind: 'empty' })
+        if (alive) setCapacity({ kind: 'failed' })
       }
     })()
 
     return () => { alive = false }
-  }, [studentId, catalog, index])
+  }, [studentId, catalog, index, attempt])
 
   return (
     <article className="student-capacity-card" data-testid="student-plan-capacity">
@@ -79,6 +80,7 @@ export function StudentPlanCapacityCard({ studentId, catalog, index }: {
         <div><h3>{S.stats.capacity.title}</h3>{capacity.kind === 'ready' && <small>{S.stats.capacity.subtitle(capacity.planName, capacity.weekNumber)}</small>}</div>
       </header>
       {capacity.kind === 'loading' && <p>{S.stats.capacity.loading}</p>}
+      {capacity.kind === 'failed' && <p role="status">{S.workspace.handoff.unknown} <button type="button" onClick={() => setAttempt(value => value + 1)}>{S.workspace.handoff.retry}</button></p>}
       {capacity.kind === 'empty' && <p>{S.stats.capacity.empty}</p>}
       {capacity.kind === 'ready' && (
         <div className="student-capacity-lifts">
