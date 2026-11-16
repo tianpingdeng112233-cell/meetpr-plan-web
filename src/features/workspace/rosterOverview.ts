@@ -172,16 +172,6 @@ export function filterRosterRows(rows: readonly RosterOverviewRow[], tab: Roster
   return [...rows]
 }
 
-export function findCurrentPublishedPlan(
-  plans: readonly PlanResponse[],
-  reference = new Date(),
-): PlanResponse | null {
-  const today = isoDate(reference)
-  return [...plans]
-    .filter((plan) => plan.status === 'published' && plan.start_date <= today && plan.end_date >= today)
-    .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())[0] ?? null
-}
-
 /** Planned kg tonnage for the calendar week containing `reference`. */
 export function currentPublishedWeekTonnage(plan: PlanWithChildren, reference = new Date()): number | null {
   const today = isoDate(reference)

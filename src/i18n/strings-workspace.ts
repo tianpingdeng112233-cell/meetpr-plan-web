@@ -2,6 +2,15 @@ import type { Translations } from './types'
 import { countUnit } from './plural'
 
 export const zhWorkspace = {
+  handoff: {
+    progress: (done: number, total: number) => `学员进度 ${done}/${total}`,
+    openCurrent: '查看学员正在练的计划',
+    overlap: '计划日期重叠，请调整日期后重试：',
+    conflict: (name: string, start: string, end: string) => `${name}（${start} — ${end}）`,
+    requiredShift: (days: number) => `下一份计划需顺延 ${days} 天。尚未顺延，请先调整下一份计划的日期。`,
+    publishedUpcoming: '已发布，学员练完当前计划后自动接续',
+    current: '学员正在练', upcoming: '待接续', unknown: '学员接续状态未知', retry: '重试接续状态',
+  },
   serviceTerm: {
     set: '设置服务期', label: '服务至', optional: '服务至（选填）', edit: '修改', clear: '清除服务期',
     remaining: (n: number) => `服务剩 ${n} 天`, today: '服务今天到期', expired: (n: number) => `服务已过期 ${n} 天`,
@@ -134,6 +143,15 @@ export const zhWorkspace = {
 } as const
 
 export const enWorkspace = {
+  handoff: {
+    progress: (done, total) => `Student progress ${done}/${total}`,
+    openCurrent: 'View the plan the student is training',
+    overlap: 'Plan dates overlap. Adjust the dates and try again:',
+    conflict: (name, start, end) => `${name} (${start} — ${end})`,
+    requiredShift: (days) => `The next plan needs to move by ${days} days. It has not been moved; adjust its dates first.`,
+    publishedUpcoming: 'Published. The student will continue with this plan after finishing their current plan.',
+    current: 'Student training now', upcoming: 'Up next', unknown: 'Student progression unknown', retry: 'Retry progression',
+  },
   serviceTerm: {
     set: 'Set coaching term', label: 'Coaching until', optional: 'Coaching until (optional)', edit: 'Edit', clear: 'Clear term',
     remaining: (n) => `${n} days left`, today: 'Ends today', expired: (n) => `Ended ${n} days ago`,

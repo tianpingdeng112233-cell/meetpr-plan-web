@@ -1,4 +1,5 @@
 import { setLocale } from '../../i18n/strings'
+import { openBlockDay } from '../plan-editor/blockGridTestUtils'
 import { act, useEffect } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -6,6 +7,11 @@ import type { AuthUser, ChatConversation, ChatMessage, CoachBindRequest, Exercis
 import { ApiException } from '../../api/client'
 import type { Week } from '../plan-editor/types'
 import { setRefFirstLine } from '../chat/setRef'
+import abandonedFixture from './fixtures/plan-handoff/abandoned-tail.json'
+import completedFixture from './fixtures/plan-handoff/all-completed.json'
+import emptyFixture from './fixtures/plan-handoff/no-plans.json'
+import threeFixture from './fixtures/plan-handoff/three-consecutive.json'
+import handoffFixture from './fixtures/plan-handoff/feedback.json'
 import exerciseFixture from '../chat/fixtures/exercise-note.json'
 
 const api = vi.hoisted(() => ({
@@ -21,6 +27,7 @@ const api = vi.hoisted(() => ({
   markPlanViewed: vi.fn(),
   getStudentSetLogs: vi.fn(),
   markVideoViewed: vi.fn(),
+  getStudentPlanHandoff: vi.fn(),
   getStudentPlans: vi.fn(),
   getPlan: vi.fn(),
   publishPlan: vi.fn(),
@@ -66,6 +73,7 @@ vi.mock('../../api/overviewAlerts', () => ({ getOverviewAlerts: api.getOverviewA
 vi.mock('../../api/invite', async importOriginal => ({ ...await importOriginal<typeof import('../../api/invite')>(), getInviteCodes: api.getInviteCodes }))
 vi.mock('../../api/plans', () => ({
   shiftPlan: api.shiftPlan, undoPlanShift: api.undoPlanShift,
+  getStudentPlanHandoff: api.getStudentPlanHandoff,
   getStudentPlans: api.getStudentPlans,
   getPlan: api.getPlan,
   getStudentOnboarding: api.getStudentOnboarding,
@@ -770,6 +778,7 @@ describe('PlanWorkspace editor remount', () => {
     api.listExercises.mockResolvedValue([exercise])
     api.getExerciseUsageStats.mockResolvedValue([])
     api.refreshCoachStudents.mockResolvedValue([{ id: 'student', display_name: '学员', status: 'active', evaluation: null }])
+    api.getStudentPlanHandoff.mockResolvedValue({ current_plan_id: null, plans: [] })
     api.getStudentPlans.mockResolvedValue([plan('加载时快照')])
     api.getStudentOnboarding.mockResolvedValue(null)
     api.publishPlan.mockResolvedValue(plan('发布完成'))
@@ -970,7 +979,7 @@ describe('PlanWorkspace editor remount', () => {
 
   it('030-B writes only the previous HTTP plan tree and leaves current content unchanged', async () => {
     const trees = await openEditableCycles()
-    expect(api.getPlan.mock.calls.map(call => call[0])).toEqual(['plan', 'plan', 'previous'])
+    expect(api.getPlan.mock.calls.map(call => call[0])).toEqual(['plan', 'previous'])
     expect(api.getPendingRevision.mock.calls.map(call => call[0])).toEqual(['plan'])
     await act(async () => { await vi.advanceTimersByTimeAsync(5000); await settle() })
     expect(api.batchDays).not.toHaveBeenCalled()
@@ -1846,6 +1855,7 @@ describe('PlanWorkspace editor remount', () => {
         }],
       }],
     })
+    api.getStudentPlanHandoff.mockResolvedValue({ current_plan_id: summary.id, plans: [{ ...summary, handoff_status: 'current' }] })
     const oldPlan = tonnagePlan('50')
     const freshPlan = tonnagePlan('100')
     let resolveOldTonnage!: (value: PlanWithChildren) => void
@@ -2405,6 +2415,226 @@ describe('PlanWorkspace editor remount', () => {
     expect(host.querySelector('[aria-labelledby=delete-plan-title]')).toBeNull()
     expect(host.textContent).not.toContain('Synthetic other')
     expect(api.captureEditorProps.mock.calls.at(-1)![0].currentPlanId).toBe('next-plan')
+  })
+
+  it('110 follows the server current plan even while the coach views the newer published plan', async () => {
+    const [oldSummary, nextSummary] = handoffFixture.plans
+    const old = { ...plan('old', 'published'), ...oldSummary, trainee_id: 'student', status: 'published' as const, days: plan('old').days.map(day => ({ ...day, id: 'old-cursor', completed_at: null })) }
+    const next = { ...plan('next', 'published'), ...nextSummary, trainee_id: 'student', status: 'published' as const, days: [] }
+    api.getStudentPlanHandoff.mockResolvedValue(handoffFixture)
+    api.getStudentPlans.mockResolvedValue([next, old])
+    api.getPlan.mockImplementation(async (id: string) => id === old.id ? old : next)
+    await act(async () => { root.render(<PlanWorkspace onLogout={vi.fn()} me={me} />); await settle() })
+    const props = api.captureEditorProps.mock.calls.at(-1)![0]
+    expect(props.currentPlanId).toBe(next.id)
+    expect(props.studentPlanCursor?.dayId).toBe('old-cursor')
+    expect(props.plans.find((p: { id: string }) => p.id === old.id).tag).toContain('学员正在练')
+    expect(props.plans.find((p: { id: string }) => p.id === next.id).tag).toContain('待接续')
+    expect(api.publishPlan).not.toHaveBeenCalled()
+    expect(api.patchPlan).not.toHaveBeenCalled()
+  })
+
+  it('110 shows unknown on handoff failure and retries without changing the editor selection', async () => {
+    api.realEditor = true
+    const old = { ...plan('old', 'published'), id: 'old', days: plan('old').days.map(day => ({ ...day, completed_at: null })) }
+    const next = { ...plan('next', 'published'), id: 'next', name: 'Future plan' }
+    api.getStudentPlans.mockResolvedValue([next, old])
+    api.getPlan.mockImplementation(async (id: string) => id === 'old' ? old : next)
+    api.getStudentPlanHandoff.mockRejectedValue(new Error('offline'))
+    await act(async () => { root.render(<PlanWorkspace onLogout={vi.fn()} me={me} />); await settle() })
+    expect(host.textContent).toContain('学员接续状态未知')
+    expect(api.captureEditorProps.mock.calls.at(-1)![0].studentPlanCursor).toBeNull()
+    api.getStudentPlanHandoff.mockResolvedValue({ current_plan_id: 'old', plans: [{ ...old, handoff_status: 'current' }, { ...next, handoff_status: 'upcoming' }] })
+    await act(async () => { clickButton(host, '重试接续状态'); await settle() })
+    expect(host.textContent).toContain('待接续')
+    expect(host.textContent).not.toContain('学员接续状态未知')
+    expect(api.captureEditorProps.mock.calls.at(-1)![0].currentPlanId).toBe('next')
+  })
+
+  it.each(['upcoming', 'current'] as const)('110 publication reports the server handoff outcome: %s', async status => {
+    api.realEditor = true
+    const draft = { ...plan('publish'), start_date: '2027-01-04', end_date: '2027-01-10' }
+    api.getStudentPlans.mockResolvedValue([draft])
+    api.getPlan.mockResolvedValue(draft)
+    api.publishPlan.mockResolvedValue({ ...draft, status: 'published' })
+    api.getStudentPlanHandoff.mockResolvedValue({ current_plan_id: status === 'current' ? draft.id : 'old', plans: [{ ...draft, status: 'published', handoff_status: status }] })
+    await act(async () => { root.render(<PlanWorkspace onLogout={vi.fn()} me={me} />); await settle() })
+    await act(async () => { clickButton(host, '发布给学员'); await settle() })
+    expect(api.publishPlan).toHaveBeenCalledWith(draft.id)
+    const message = host.querySelector('[data-testid="plan-save-status"]')?.textContent
+    expect(message).toBe(status === 'upcoming' ? '已发布，学员练完当前计划后自动接续' : '已发布给 学员')
+  })
+
+  it('110 keeps the upcoming publication result alongside edits made while publishing', async () => {
+    api.realEditor = true
+    const draft = { ...plan('publish'), start_date: '2027-01-04', end_date: '2027-01-10' }
+    api.getStudentPlans.mockResolvedValue([draft]); api.getPlan.mockResolvedValue(draft)
+    let resolvePublish!: (value: PlanResponse) => void
+    api.publishPlan.mockImplementation(() => new Promise<PlanResponse>(resolve => { resolvePublish = resolve }))
+    api.getStudentPlanHandoff.mockResolvedValue({ current_plan_id: 'old', plans: [{ ...draft, status: 'published', handoff_status: 'upcoming' }] })
+    await act(async () => { root.render(<PlanWorkspace onLogout={vi.fn()} me={me} />); await settle() })
+    await act(async () => { clickButton(host, '发布给学员'); await settle() })
+    expect(api.publishPlan).toHaveBeenCalledWith(draft.id)
+    openBlockDay(host)
+    const input = host.querySelector<HTMLInputElement>('[data-c="weight"] input')!
+    act(() => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, '125'); input.dispatchEvent(new Event('input', { bubbles: true })) })
+    await act(async () => { resolvePublish({ ...draft, status: 'published' }); await settle() })
+    const message = host.querySelector('[data-testid="plan-save-status"]')?.textContent
+    expect(message).toContain('已发布，学员练完当前计划后自动接续')
+    expect(message).toContain('有未推送修改')
+    expect(host.querySelector<HTMLInputElement>('[data-c="weight"] input')?.value).toBe('125')
+  })
+
+  it('110 publish overlap names every conflicting plan and its dates', async () => {
+    api.realEditor = true
+    const draft = { ...plan('overlap'), start_date: '2027-01-04', end_date: '2027-01-10' }
+    api.getStudentPlans.mockResolvedValue([draft]); api.getPlan.mockResolvedValue(draft)
+    api.publishPlan.mockRejectedValue(new ApiException(409, 'PLAN_DATES_OVERLAP', { conflicts: [
+      { id: 'old', name: '旧周期', start_date: '2026-12-21', end_date: '2027-01-06' },
+      { id: 'next', name: '下一周期', start_date: '2027-01-07', end_date: '2027-02-03' },
+    ] }))
+    const alert = vi.spyOn(window, 'alert').mockImplementation(() => {})
+    await act(async () => { root.render(<PlanWorkspace onLogout={vi.fn()} me={me} />); await settle() })
+    await act(async () => { clickButton(host, '发布给学员'); await settle() })
+    expect(alert.mock.calls.at(-1)?.[0]).toContain('旧周期（2026-12-21 — 2027-01-06）')
+    expect(alert.mock.calls.at(-1)?.[0]).toContain('下一周期（2027-01-07 — 2027-02-03）')
+    expect(host.querySelector('[data-testid="plan-save-status"]')?.textContent).toContain('日期重叠')
+  })
+
+  it.each(['date', 'weeks'] as const)('110 settings show date overlap details: %s', async path => {
+    api.realEditor = true
+    const draft = { ...plan('settings'), start_date: '2027-01-04', end_date: '2027-01-10' }
+    api.getStudentPlans.mockResolvedValue([draft]); api.getPlan.mockResolvedValue(draft)
+    const conflict = new ApiException(409, 'PLAN_DATES_OVERLAP', { conflicts: [{ id: 'old', name: '冲突周期', start_date: '2027-01-11', end_date: '2027-02-07' }] })
+    api.patchPlan.mockRejectedValue(conflict); api.resizeServerPlanWeeks.mockRejectedValue(conflict)
+    await act(async () => { root.render(<PlanWorkspace onLogout={vi.fn()} me={me} />); await settle() })
+    await act(async () => { await api.captureEditorProps.mock.calls.at(-1)![0].onPlanAction('plan', 'settings'); await settle() })
+    const dialog = host.querySelector<HTMLElement>('[role="dialog"]')!
+    act(() => {
+      if (path === 'date') {
+        const input = dialog.querySelector<HTMLInputElement>('input[type="date"]')!
+        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, '2027-01-11')
+        input.dispatchEvent(new Event('change', { bubbles: true }))
+      } else clickButton(dialog, '3')
+    })
+    await act(async () => { dialog.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })); await settle() })
+    expect(path === 'date' ? api.patchPlan : api.resizeServerPlanWeeks).toHaveBeenCalled()
+    expect(dialog.querySelector('[role="alert"]')?.textContent).toContain('冲突周期（2027-01-11 — 2027-02-07）')
+  })
+
+  it('110 shift overlap explains the next plan dates and required shift without writing that plan', async () => {
+    api.realEditor = true
+    const current = { ...plan('shift', 'published'), days: plan('shift').days.map(day => ({ ...day, completed_at: null })) }
+    api.getStudentPlans.mockResolvedValue([current]); api.getPlan.mockResolvedValue(current)
+    api.shiftPlan.mockRejectedValue(new ApiException(409, 'PLAN_DATES_OVERLAP', { conflicts: [{ id: 'next', name: '下一周期', start_date: '2026-01-12', end_date: '2026-02-08' }], required_shift_days: 3 }))
+    await act(async () => { root.render(<PlanWorkspace onLogout={vi.fn()} me={me} />); await settle() })
+    openBlockDay(host)
+    const monday = host.querySelector<HTMLElement>('.day[data-dow="0"]')!
+    act(() => monday.click())
+    act(() => clickButton(monday, '后移…'))
+    const panel = document.body.querySelector<HTMLElement>('[data-plan-shift-panel]')!
+    await act(async () => { clickButton(panel, '后移 1 天'); await settle() })
+    expect(panel.querySelector('[role="alert"]')?.textContent).toContain('下一周期（2026-01-12 — 2026-02-08）')
+    expect(panel.textContent).toContain('下一份计划需顺延 3 天')
+    expect(api.shiftPlan.mock.calls).toEqual([['plan', { anchor_date: '2026-01-05', offset_days: 1 }]])
+    expect(api.patchPlan).not.toHaveBeenCalled()
+  })
+
+  it('110 new plan from the top bar starts the day after the latest plan ends', async () => {
+    const current = plan('old')
+    const last = { ...plan('last', 'published'), id: 'last', end_date: '2026-12-31', updated_at: '2025-01-01T00:00:00Z' }
+    api.getStudentPlans.mockResolvedValue([current, last]); api.getPlan.mockResolvedValue(current)
+    await act(async () => { root.render(<PlanWorkspace onLogout={vi.fn()} me={me} />); await settle() })
+    await act(async () => { await api.captureEditorProps.mock.calls.at(-1)![0].onNewPlan(); await settle() })
+    expect(host.querySelector<HTMLInputElement>('[role="dialog"] input[type="date"]')?.value).toBe('2027-01-01')
+  })
+
+  it('110 shows server progress and jumps to the current training day, skipping rest days', async () => {
+    api.realEditor = true
+    const [oldSummary, nextSummary] = handoffFixture.plans
+    const old = { ...plan('old', 'published'), ...oldSummary, trainee_id: 'student', status: 'published' as const, days: [
+      { ...plan('old').days[0], id: 'rest', is_rest: true, week_number: 4, completed_at: null, exercises: [] },
+      { ...plan('old').days[0], id: 'old-cursor', week_number: 5, completed_at: null },
+    ] }
+    const next = { ...plan('next', 'published'), ...nextSummary, trainee_id: 'student', status: 'published' as const }
+    api.getStudentPlans.mockResolvedValue([next, old]); api.getStudentPlanHandoff.mockResolvedValue(handoffFixture)
+    api.getPlan.mockImplementation(async (id: string) => id === old.id ? old : next)
+    await act(async () => { root.render(<PlanWorkspace onLogout={vi.fn()} me={me} />); await settle() })
+    expect(host.querySelector('[data-student-progress]')?.textContent).toContain('16/20')
+    expect(host.querySelector('[data-student-progress]')?.textContent).toContain('W5D1')
+    expect(api.captureEditorProps.mock.calls.at(-1)![0].currentPlanId).toBe(next.id)
+    await act(async () => { host.querySelector<HTMLButtonElement>('[data-student-progress]')!.click(); await settle() })
+    expect(api.captureEditorProps.mock.calls.at(-1)![0].currentPlanId).toBe(old.id)
+    expect(api.captureEditorProps.mock.calls.at(-1)![0].dayIntent.planDayId).toBe('old-cursor')
+    expect(api.patchPlan).not.toHaveBeenCalled(); expect(api.publishPlan).not.toHaveBeenCalled()
+  })
+
+  it('110 training-day update retains overlap details through reconciliation and preserves edits', async () => {
+    api.realEditor = true
+    const current = plan('update', 'published')
+    api.getStudentPlans.mockResolvedValue([current]); api.getPlan.mockResolvedValue(current)
+    const realReconcile = await vi.importActual<typeof import('../plan-editor/reconcile')>('../plan-editor/reconcile')
+    api.reconcilePlan.mockImplementation(realReconcile.reconcilePlan)
+    api.batchDays.mockRejectedValue(new ApiException(409, 'PLAN_DATES_OVERLAP', { conflicts: [{ id: 'next', name: '后续周期', start_date: '2026-01-12', end_date: '2026-02-08' }] }))
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    const alert = vi.spyOn(window, 'alert').mockImplementation(() => {})
+    await act(async () => { root.render(<PlanWorkspace onLogout={vi.fn()} me={me} />); await settle() })
+    openBlockDay(host)
+    const input = host.querySelector<HTMLInputElement>('[data-c="weight"] input')!
+    act(() => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, '125'); input.dispatchEvent(new Event('input', { bubbles: true })) })
+    await act(async () => { clickButton(host, '更新计划'); await settle() })
+    expect(api.batchDays).toHaveBeenCalledTimes(1)
+    expect(alert.mock.calls.at(-1)?.[0]).toContain('后续周期（2026-01-12 — 2026-02-08）')
+    expect(host.querySelector<HTMLInputElement>('[data-c="weight"] input')?.value).toBe('125')
+  })
+
+  it('110 refreshes student progression without replacing unsaved future-plan edits', async () => {
+    api.realEditor = true
+    Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' })
+    const old = { ...plan('old', 'published'), id: 'old', name: 'Old cycle' }
+    const next = { ...plan('next', 'published'), id: 'next', name: 'Future cycle' }
+    api.getStudentPlans.mockResolvedValue([next, old]); api.getPlan.mockImplementation(async (id: string) => id === 'old' ? old : next)
+    api.getStudentPlanHandoff.mockResolvedValue({ current_plan_id: 'old', plans: [{ ...old, handoff_status: 'current', completed_training_days: 1, total_training_days: 2 }, { ...next, handoff_status: 'upcoming', completed_training_days: 0, total_training_days: 1 }] })
+    await act(async () => { root.render(<PlanWorkspace onLogout={vi.fn()} me={me} />); await settle() })
+    openBlockDay(host)
+    const input = host.querySelector<HTMLInputElement>('[data-c="weight"] input')!
+    act(() => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, '125'); input.dispatchEvent(new Event('input', { bubbles: true })) })
+    api.getStudentPlanHandoff.mockResolvedValue({ current_plan_id: 'next', plans: [{ ...old, handoff_status: 'past', completed_training_days: 2, total_training_days: 2 }, { ...next, handoff_status: 'current', completed_training_days: 0, total_training_days: 1 }] })
+    await act(async () => { document.dispatchEvent(new Event('visibilitychange')); await settle() })
+    expect(host.querySelector('[data-plan-handoff]')?.textContent).toBe('学员正在练')
+    expect(host.querySelector<HTMLInputElement>('[data-c="weight"] input')).toBe(input)
+    expect(input.value).toBe('125')
+    expect(api.captureEditorProps.mock.calls.at(-1)![0].currentPlanId).toBe('next')
+    expect(api.patchPlan).not.toHaveBeenCalled(); expect(api.publishPlan).not.toHaveBeenCalled(); expect(api.reconcilePlan).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    ['feedback', handoffFixture, 'Cycle 1', 1],
+    ['abandoned tail', abandonedFixture, 'Cycle 2', 1],
+    ['all completed', completedFixture, 'Cycle 2', 0],
+    ['three consecutive', threeFixture, 'Cycle 1', 2],
+    ['no plans', emptyFixture, undefined, 0],
+  ] as const)('110 consumes the shared backend fixture: %s', async (_name, fixture, currentName, upcomingCount) => {
+    api.getStudentPlanHandoff.mockResolvedValue(fixture)
+    const plans = fixture.plans.map(summary => ({ ...plan('fixture', 'published'), ...summary, trainee_id: 'student', status: 'published' as const }))
+    api.getStudentPlans.mockResolvedValue(plans)
+    api.getPlan.mockImplementation(async (id: string) => plans.find(plan => plan.id === id))
+    await act(async () => { root.render(<PlanWorkspace onLogout={vi.fn()} me={me} />); await settle() })
+    const options = api.captureEditorProps.mock.calls.at(-1)![0].plans as { label: string; tag: string }[]
+    expect(options.find(option => option.tag.includes('学员正在练'))?.label).toBe(currentName)
+    expect(options.filter(option => option.tag.includes('待接续'))).toHaveLength(upcomingCount)
+  })
+
+  it('110 overview tonnage uses the old current plan even with a newer published plan', async () => {
+    vi.useFakeTimers(); vi.setSystemTime(new Date('2026-10-19T12:00:00Z'))
+    const [oldSummary, nextSummary] = handoffFixture.plans
+    const old = { ...plan('old', 'published'), ...oldSummary, trainee_id: 'student', status: 'published' as const }
+    const next = { ...plan('next', 'published'), ...nextSummary, trainee_id: 'student', status: 'published' as const }
+    api.getStudentPlanHandoff.mockResolvedValue(handoffFixture)
+    api.getStudentPlans.mockResolvedValue([next, old]); api.getPlan.mockImplementation(async (id: string) => id === old.id ? old : next)
+    await act(async () => { root.render(<PlanWorkspace onLogout={vi.fn()} me={me} />); await settle() })
+    await act(async () => { clickButton(host, '总览'); await settle() })
+    expect(host.querySelector('[data-student-id="student"] .roster-number')?.textContent).toBe('0.5t')
   })
 
 })

@@ -1,3 +1,4 @@
+import { planOverlapMessage } from '../plan-editor/planOverlap'
 import { WeekdayPicker } from '../plan-editor/import/WeekdayPicker'
 import { getImportStatus, type ImportStatus } from '../../api/planImports'
 import { ImportPlanDialog, type ImportedPlan } from '../plan-editor/import/ImportPlanDialog'
@@ -115,7 +116,7 @@ export function NewPlanDialog({ open, studentName, onClose, onCreate, settings, 
         if (!valid || creating) return
         setCreating(true); setError('')
         void onCreate(name.trim(), weeks, startDate, weekdayIndex(startDate) + 1, ordered).catch((reason: unknown) => {
-          setError(reason instanceof Error && reason.message === 'PATTERN_CONFLICT' ? S.block.patternConflict : reason instanceof Error && reason.message === 'PATTERN_STORAGE_FAILED' ? S.block.patternFailed : settings ? S.block.settingsFailed : S.workspace.dialogs.createFailed)
+          setError(planOverlapMessage(reason) ?? (reason instanceof Error && reason.message === 'PATTERN_CONFLICT' ? S.block.patternConflict : reason instanceof Error && reason.message === 'PATTERN_STORAGE_FAILED' ? S.block.patternFailed : settings ? S.block.settingsFailed : S.workspace.dialogs.createFailed))
         }).finally(() => setCreating(false))
       }} style={{ ...panel, width: importStatus?.enabled ? 620 : 540, borderRadius: 14 }}>
       <div className="import-title"><h3 style={{ margin: 0, fontSize: 20 }}>{title}</h3>{tabs}</div>

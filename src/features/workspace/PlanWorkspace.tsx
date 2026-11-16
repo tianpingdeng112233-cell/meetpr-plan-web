@@ -15,9 +15,9 @@ import { markVideoViewed } from '../../api/markers'
 import type { FeedbackSession, EditorFeedbackHandle } from '../plan-editor/feedbackSession'
 import { saveBlockWeekdays } from './blockPlanSettings'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { AuthUser, ChatConversation, ChatReadState, CoachBindRequest, CoachStudent, ExerciseResponse, ExerciseStatsOverview, PlanResponse, PlanWithChildren, StudentOnboardingProfile, StudentVideo } from '../../api/types'
+import type { PlanHandoffResponse, AuthUser, ChatConversation, ChatReadState, CoachBindRequest, CoachStudent, ExerciseResponse, ExerciseStatsOverview, PlanResponse, PlanWithChildren, StudentOnboardingProfile, StudentVideo } from '../../api/types'
 import {
-  getStudentPlans, getPlan, publishPlan, createPlan, batchDays, patchPlan, getStudentOnboarding,
+  getStudentPlanHandoff, getStudentPlans, getPlan, publishPlan, createPlan, batchDays, patchPlan, getStudentOnboarding,
   markImportedHistory, deletePlan,
 } from '../../api/plans'
 import { createCustomExercise, deleteCustomExercise, getExerciseUsageStats, listExercises, updateCustomExercise } from '../../api/exercises'
@@ -122,6 +122,7 @@ export function PlanWorkspace({ onLogout, me }: Props) {
   const [chatDrafts, setChatDrafts] = useState<Record<string, string>>({})
   const [commandExerciseId, setCommandExerciseId] = useState<string | null>(null)
   const [plans, setPlans] = useState<PlanResponse[]>([])
+  const [handoffByStudent, setHandoffByStudent] = useState<Record<string, PlanHandoffResponse | null | undefined>>({})
   const [plansByStudent, setPlansByStudent] = useState<Record<string, PlanResponse[]>>({})
   const [rosterDataByStudent, setRosterDataByStudent] = useState<RosterDataByStudent>({})
   // Same three-state convention as TrackingDashboard:
@@ -406,48 +407,55 @@ export function PlanWorkspace({ onLogout, me }: Props) {
 
   const fetchRosterWeekTonnage = useCallback(async (
     id: string,
-    studentPlans: PlanResponse[],
     canApply: () => boolean = () => true,
   ) => {
     const key = `week-tonnage:${id}`
     const version = rosterDataRequestVersions.current.issue(key)
-    const current = [...studentPlans]
-      .filter((plan) => plan.status === 'published')
-      .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())[0]
+    let handoff: PlanHandoffResponse | null = null
     let weekTonnageKg: RosterDataByStudent[string]['weekTonnageKg'] = null
     let planCursor: RosterDataByStudent[string]['planCursor'] = null
-    if (current) {
-      try {
-        const plan = await getPlan(current.id)
+    try {
+      handoff = await getStudentPlanHandoff(id)
+      if (handoff.current_plan_id) {
+        const plan = await getPlan(handoff.current_plan_id)
         weekTonnageKg = currentPublishedWeekTonnage(plan)
         planCursor = deriveStudentPlanCursor(plan)
-      } catch {
-        weekTonnageKg = FAILED_ROSTER_DATUM
-        planCursor = null
       }
+    } catch {
+      weekTonnageKg = FAILED_ROSTER_DATUM
     }
-    if (!canApply() || !rosterDataRequestVersions.current.isLatest(key, version)) return
+    if (!canApply() || !rosterDataRequestVersions.current.isLatest(key, version)) return handoff
+    setHandoffByStudent(current => ({ ...current, [id]: handoff }))
     updateRosterData(id, { weekTonnageKg, planCursor })
+    return handoff
   }, [updateRosterData])
+
+  // Refresh only progression metadata; never remount or replace the coach's editor.
+  useVisiblePolling(async () => {
+    if (studentId) await fetchRosterWeekTonnage(studentId)
+  }, REQUEST_POLL_INTERVAL_MS, {
+    enabled: !sessionDead && activeStudents.some(student => student.id === studentId),
+    immediate: false,
+  })
 
   const refreshRosterWeekTonnage = useCallback((
     id: string,
-    studentPlans: PlanResponse[],
     showLoadingState = false,
   ) => {
     const key = `week-tonnage:${id}`
     rosterDataRequestVersions.current.invalidate(key)
+    if (showLoadingState) setHandoffByStudent(current => ({ ...current, [id]: undefined }))
     if (showLoadingState || isFailedRosterDatum(rosterDataByStudentRef.current[id]?.weekTonnageKg)) {
       updateRosterData(id, { weekTonnageKg: undefined, planCursor: undefined })
     }
-    void fetchRosterWeekTonnage(id, studentPlans)
+    return fetchRosterWeekTonnage(id)
   }, [fetchRosterWeekTonnage, updateRosterData])
 
   const refreshRosterPlans = useCallback((id: string) => {
     updateRosterData(id, { plansError: false })
     void fetchStudentPlans(id).then((studentPlans) => {
       if (studentPlans && rosterDataByStudentRef.current[id]?.weekTonnageKg === undefined) {
-        void fetchRosterWeekTonnage(id, studentPlans)
+        void fetchRosterWeekTonnage(id)
       }
     }).catch(() => undefined)
   }, [fetchRosterWeekTonnage, fetchStudentPlans, updateRosterData])
@@ -467,7 +475,7 @@ export function PlanWorkspace({ onLogout, me }: Props) {
     }
     plansByStudentRef.current = next
     setPlansByStudent(next)
-    refreshRosterWeekTonnage(id, studentPlans)
+    return refreshRosterWeekTonnage(id)
   }, [refreshRosterWeekTonnage])
 
   const loadPlan = useCallback(async (id: string, cat: Catalog, generation = ++loadGeneration.current, newDraftWeekdays?: number[]) => {
@@ -615,7 +623,6 @@ export function PlanWorkspace({ onLogout, me }: Props) {
       if (studentPlans) {
         await fetchRosterWeekTonnage(
           student.id,
-          studentPlans,
           () => generation === rosterBackgroundGeneration.current,
         )
       }
@@ -790,7 +797,10 @@ export function PlanWorkspace({ onLogout, me }: Props) {
   }
   const newPlan = () => {
     if (!catalog || !studentId || students.find(student => student.id === studentId)?.bond_status === 'ended') return
-    setNewPlanStart(undefined)
+    const lastEnd = plans.map(plan => plan.end_date).sort().at(-1)
+    const start = lastEnd ? new Date(`${lastEnd}T12:00:00Z`) : null
+    if (start) start.setUTCDate(start.getUTCDate() + 1)
+    setNewPlanStart(start?.toISOString().slice(0, 10))
     setNewPlanOpen(true)
   }
   const createNewPlan = async (name: string, weeks: number, startDate: string, anchorWeekday: number, weekdays: number[]) => {
@@ -1185,20 +1195,27 @@ export function PlanWorkspace({ onLogout, me }: Props) {
   // "M/D 起 · N 周" so same-named plans stay tellable-apart in the switcher.
   const fmtStart = (iso: string) => { const [y, m, d] = iso.split('-').map(Number); return fmt.monthDay(new Date(y, m - 1, d), () => `${m}/${d}`) }
   const statusTag = (status: PlanResponse['status']) => ({ draft: S.common.draft, published: S.common.published, completed: S.common.completed, paused: S.common.paused })[status]
+  const handoff = handoffByStudent[studentId]
+  const handoffTag = (plan: PlanResponse) => {
+    if (plan.status !== 'published') return ''
+    if (!handoff) return S.workspace.handoff.unknown
+    const status = handoff.plans.find(item => item.id === plan.id)?.handoff_status
+    return status === 'current' ? S.workspace.handoff.current : status === 'upcoming' ? S.workspace.handoff.upcoming : ''
+  }
   const planOpts = plans.map((p) => ({
     id: p.id,
     label: p.name,
     status: p.status,
     startDate: p.start_date,
     sub: S.workspace.plan.startSummary(fmtStart(p.start_date), p.plan_weeks),
-    tag: `${statusTag(p.status)}${p.pending_revision_saved_at ? ` · ${S.common.pendingChanges}` : ''}`,
+    tag: [statusTag(p.status), handoffTag(p), p.pending_revision_saved_at ? S.common.pendingChanges : ''].filter(Boolean).join(' · '),
   }))
   const historicalReadOnly = loaded?.plan.status === 'completed' || loaded?.plan.status === 'paused'
   const planContentEditable = !studentEnded && (loaded?.plan.status === 'draft' || loaded?.plan.status === 'published')
-  const activePublishedPlanId = plans.find((plan) => plan.status === 'published')?.id
-  const studentPlanCursor = loaded?.plan.trainee_id === studentId && loaded.plan.id === activePublishedPlanId
-    ? deriveStudentPlanCursor(loaded.plan)
-    : rosterDataByStudent[studentId]?.planCursor
+  const currentStudentPlan = handoff?.plans.find(plan => plan.id === handoff.current_plan_id)
+  const studentPlanCursor = handoff?.current_plan_id
+    ? rosterDataByStudent[studentId]?.planCursor
+    : null
 
   return (
     <CoachShell
@@ -1259,15 +1276,35 @@ export function PlanWorkspace({ onLogout, me }: Props) {
         planStartDate={loaded?.plan.start_date}
         planUpdatedAt={loaded?.plan.updated_at}
         planStatus={loaded?.plan.status}
+        handoffLabel={handoff === null ? S.workspace.handoff.unknown : loaded ? handoffTag(loaded.plan) : undefined}
+        onRetryHandoff={handoff === null || isFailedRosterDatum(rosterDataByStudent[studentId]?.weekTonnageKg) ? () => refreshRosterWeekTonnage(studentId, true) : undefined}
         restDaysEnabled={loaded?.plan.rest_days_enabled === true}
         totalShiftDays={loaded?.plan.total_shift_days}
         latestShift={loaded?.plan.latest_shift}
         onPlanRefreshed={catalog ? (plan) => {
+          updateStudentPlans(plan.trainee_id, plans => plans.map(item => item.id === plan.id ? plan : item))
           setLoaded((current) => current?.plan.id === plan.id
             ? { plan, weeks: mapPlanToWeeks(plan, catalog), weeksCount: plan.plan_weeks }
             : current)
         } : undefined}
         studentPlanCursor={studentPlanCursor}
+        studentProgress={currentStudentPlan ? S.workspace.handoff.progress(currentStudentPlan.completed_training_days, currentStudentPlan.total_training_days) : undefined}
+        onOpenStudentCurrent={currentStudentPlan && !studentEnded ? async () => {
+          if (!catalog) return
+          const id = currentStudentPlan.id
+          const cursor = studentPlanCursor
+          cancelEditorIntent()
+          const sequence = intentSequence.current
+          if (id !== planId) {
+            try { if (!(await loadPlan(id, catalog))) return }
+            catch (e) {
+              const fallback = S.workspace.plan.openPlanFailed
+              setError({ message: errText(e, fallback), retry: { kind: 'plan', id, fallback } })
+              return
+            }
+          }
+          if (sequence === intentSequence.current && cursor?.kind === 'day') setDayIntent({ token: sequence, planDayId: cursor.dayId })
+        } : undefined}
         readOnly={historicalReadOnly || studentEnded}
         student={selectedStudent}
         onStudentChanged={updated => {
@@ -1281,11 +1318,12 @@ export function PlanWorkspace({ onLogout, me }: Props) {
         onBackfillAfterPublish={loaded ? async () => { await markImportedHistory(loaded.plan.id) } : undefined}
         onPublish={!studentEnded && loaded?.plan.status === 'draft' ? async () => {
           const updated = await publishPlan(loaded.plan.id)
-          // Reflect the now-live status in the parent-owned list + loaded plan, so the plan
-          // switcher's「草稿/已发布」tag can't contradict the editor — no UI shows「草稿」for a
-          // plan the student is already seeing. (publishPlan returns the updated plan.)
-          updateStudentPlans(updated.trainee_id, (prev) => prev.map((p) => (p.id === updated.id ? updated : p)))
+          const refreshed = updateStudentPlans(updated.trainee_id, (prev) => prev.map((p) => (p.id === updated.id ? updated : p)))
           setLoaded((prev) => (prev && prev.plan.id === updated.id ? { ...prev, plan: { ...prev.plan, ...updated } } : prev))
+          const result = await refreshed
+          if (result?.plans.find(plan => plan.id === updated.id)?.handoff_status === 'upcoming') {
+            return S.workspace.handoff.publishedUpcoming
+          }
         } : undefined}
         onSave={loaded && planContentEditable ? async (weeks, importStart, _unused, onProgress, deletedDayIds) => {
           const reconcileOptions = {
@@ -1315,7 +1353,6 @@ export function PlanWorkspace({ onLogout, me }: Props) {
           } else {
             refreshRosterWeekTonnage(
               loaded.plan.trainee_id,
-              plansByStudentRef.current[loaded.plan.trainee_id] ?? [],
             )
           }
           return result
@@ -1472,7 +1509,7 @@ export function PlanWorkspace({ onLogout, me }: Props) {
           onSelect={selectBoardStudent} onOpen={(id) => { void openStudentEditor(id) }}
           videosByStudent={videosByStudent} onOpenTag={(id, tag) => { void openOverviewTag(id, tag) }}
           onRetryOverview={refreshRosterOverview} onRetryProfile={refreshRosterProfile}
-          onRetryWeekTonnage={(id) => refreshRosterWeekTonnage(id, plansByStudentRef.current[id] ?? [], true)}
+          onRetryWeekTonnage={(id) => refreshRosterWeekTonnage(id, true)}
           onRetryPlans={refreshRosterPlans}
         /> : <div className="empty-page">{S.workspace.overview.empty}</div>}
     </div>}

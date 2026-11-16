@@ -1,0 +1,681 @@
+
+=== 110-red-capacity-retry.log ===
+
+> meetpr-plan-web@0.1.0 test
+> vitest run src/features/workspace/student-plan-capacity-ui.test.tsx -t 110 capacity reports
+
+
+ RUN  v2.1.9 /Users/david/Projects/apps/meetpr-plan-web-wt-110
+
+ ❯ src/features/workspace/student-plan-capacity-ui.test.tsx (5 tests | 1 failed | 4 skipped) 17ms
+   × StudentDetail plan capacity card > 110 capacity reports unknown and retries the handoff request 17ms
+     → expected '本周计划容量暂无计划容量数据' to contain '学员接续状态未知'
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/features/workspace/student-plan-capacity-ui.test.tsx > StudentDetail plan capacity card > 110 capacity reports unknown and retries the handoff request
+AssertionError: expected '本周计划容量暂无计划容量数据' to contain '学员接续状态未知'
+
+Expected: "学员接续状态未知"
+Received: "本周计划容量暂无计划容量数据"
+
+ ❯ src/features/workspace/student-plan-capacity-ui.test.tsx:243:30
+    241|     await renderDetail()
+    242|     const card = host.querySelector<HTMLElement>('[data-testid="studen…
+    243|     expect(card.textContent).toContain('学员接续状态未知')
+       |                              ^
+    244|     await act(async () => { card.querySelector<HTMLButtonElement>('but…
+    245|     expect(card.textContent).toContain('力量周期')
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 4 skipped (5)
+   Start at  10:30:54
+   Duration  599ms (transform 167ms, setup 11ms, collect 232ms, tests 17ms, environment 113ms, prepare 29ms)
+
+
+
+=== 110-red-capacity.log ===
+
+> meetpr-plan-web@0.1.0 test
+> vitest run src/features/workspace/student-plan-capacity-ui.test.tsx -t 110 capacity
+
+
+ RUN  v2.1.9 /Users/david/Projects/apps/meetpr-plan-web-wt-110
+
+ ❯ src/features/workspace/student-plan-capacity-ui.test.tsx (4 tests | 1 failed | 3 skipped) 17ms
+   × StudentDetail plan capacity card > 110 capacity follows server current rather than the newest published plan 17ms
+     → expected '本周计划容量Future cycle · 第 1 周S2组B17组D4组' to contain '力量周期'
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/features/workspace/student-plan-capacity-ui.test.tsx > StudentDetail plan capacity card > 110 capacity follows server current rather than the newest published plan
+AssertionError: expected '本周计划容量Future cycle · 第 1 周S2组B17组D4组' to contain '力量周期'
+
+Expected: "力量周期"
+Received: "本周计划容量Future cycle · 第 1 周S2组B17组D4组"
+
+ ❯ src/features/workspace/student-plan-capacity-ui.test.tsx:234:86
+    232|     api.getPlan.mockImplementation(async (id: string) => id === curren…
+    233|     await renderDetail()
+    234|     expect(host.querySelector('[data-testid="student-plan-capacity"]')…
+       |                                                                                      ^
+    235|     expect(host.querySelector('[data-testid="student-plan-capacity"]')…
+    236|   })
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 3 skipped (4)
+   Start at  10:28:00
+   Duration  615ms (transform 169ms, setup 11ms, collect 238ms, tests 17ms, environment 115ms, prepare 34ms)
+
+
+
+=== 110-red-current.log ===
+
+> meetpr-plan-web@0.1.0 test
+> vitest run src/features/workspace/PlanWorkspace.test.tsx -t 110 follows
+
+
+ RUN  v2.1.9 /Users/david/Projects/apps/meetpr-plan-web-wt-110
+
+ ❯ src/features/workspace/PlanWorkspace.test.tsx (94 tests | 1 failed | 93 skipped) 52ms
+   × PlanWorkspace editor remount > 110 follows the server current plan even while the coach views the newer published plan 51ms
+     → expected undefined to be 'old-cursor' // Object.is equality
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/features/workspace/PlanWorkspace.test.tsx > PlanWorkspace editor remount > 110 follows the server current plan even while the coach views the newer published plan
+AssertionError: expected undefined to be 'old-cursor' // Object.is equality
+
+- Expected: 
+"old-cursor"
+
++ Received: 
+undefined
+
+ ❯ src/features/workspace/PlanWorkspace.test.tsx:2395:44
+    2393|     const props = api.captureEditorProps.mock.calls.at(-1)![0]
+    2394|     expect(props.currentPlanId).toBe(next.id)
+    2395|     expect(props.studentPlanCursor?.dayId).toBe('old-cursor')
+       |                                            ^
+    2396|     expect(props.plans.find((p: { id: string }) => p.id === old.id).ta…
+    2397|     expect(props.plans.find((p: { id: string }) => p.id === next.id).t…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 93 skipped (94)
+   Start at  10:25:29
+   Duration  4.85s (transform 2.09s, setup 58ms, collect 3.29s, tests 52ms, environment 661ms, prepare 54ms)
+
+
+
+=== 110-red-new.log ===
+
+> meetpr-plan-web@0.1.0 test
+> vitest run src/features/workspace/PlanWorkspace.test.tsx -t 110 new plan
+
+
+ RUN  v2.1.9 /Users/david/Projects/apps/meetpr-plan-web-wt-110
+
+ ❯ src/features/workspace/PlanWorkspace.test.tsx (102 tests | 1 failed | 101 skipped) 34ms
+   × PlanWorkspace editor remount > 110 new plan from the top bar starts the day after the latest plan ends 33ms
+     → expected '2026-11-16' to be '2027-01-01' // Object.is equality
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/features/workspace/PlanWorkspace.test.tsx > PlanWorkspace editor remount > 110 new plan from the top bar starts the day after the latest plan ends
+AssertionError: expected '2026-11-16' to be '2027-01-01' // Object.is equality
+
+Expected: "2027-01-01"
+Received: "2026-11-16"
+
+ ❯ src/features/workspace/PlanWorkspace.test.tsx:2495:95
+    2493|     await act(async () => { root.render(<PlanWorkspace onLogout={vi.fn…
+    2494|     await act(async () => { await api.captureEditorProps.mock.calls.at…
+    2495|     expect(host.querySelector<HTMLInputElement>('[role="dialog"] input…
+       |                                                                                               ^
+    2496|   })
+    2497| 
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 101 skipped (102)
+   Start at  10:28:52
+   Duration  1.26s (transform 567ms, setup 12ms, collect 774ms, tests 34ms, environment 187ms, prepare 30ms)
+
+
+
+=== 110-red-overlap-publish.log ===
+
+> meetpr-plan-web@0.1.0 test
+> vitest run src/features/workspace/PlanWorkspace.test.tsx -t 110 publish overlap
+
+
+ RUN  v2.1.9 /Users/david/Projects/apps/meetpr-plan-web-wt-110
+
+ ❯ src/features/workspace/PlanWorkspace.test.tsx (98 tests | 1 failed | 97 skipped) 84ms
+   × PlanWorkspace editor remount > 110 publish overlap names every conflicting plan and its dates 83ms
+     → expected '发布失败（PLAN_DATES_OVERLAP），请稍后重试。' to contain '旧周期（2026-12-21 — 2027-01-06）'
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/features/workspace/PlanWorkspace.test.tsx > PlanWorkspace editor remount > 110 publish overlap names every conflicting plan and its dates
+AssertionError: expected '发布失败（PLAN_DATES_OVERLAP），请稍后重试。' to contain '旧周期（2026-12-21 — 2027-01-06）'
+
+Expected: "旧周期（2026-12-21 — 2027-01-06）"
+Received: "发布失败（PLAN_DATES_OVERLAP），请稍后重试。"
+
+ ❯ src/features/workspace/PlanWorkspace.test.tsx:2444:42
+    2442|     await act(async () => { root.render(<PlanWorkspace onLogout={vi.fn…
+    2443|     await act(async () => { clickButton(host, '发布给学员'); await set…
+    2444|     expect(alert.mock.calls.at(-1)?.[0]).toContain('旧周期（2026-12-21…
+       |                                          ^
+    2445|     expect(alert.mock.calls.at(-1)?.[0]).toContain('下一周期（2027-01-…
+    2446|     expect(host.querySelector('[data-testid="plan-save-status"]')?.tex…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 97 skipped (98)
+   Start at  10:27:08
+   Duration  3.25s (transform 1.46s, setup 58ms, collect 2.02s, tests 84ms, environment 423ms, prepare 65ms)
+
+
+
+=== 110-red-progress.log ===
+
+> meetpr-plan-web@0.1.0 test
+> vitest run src/features/workspace/PlanWorkspace.test.tsx -t 110 shows server progress
+
+
+ RUN  v2.1.9 /Users/david/Projects/apps/meetpr-plan-web-wt-110
+
+ ❯ src/features/workspace/PlanWorkspace.test.tsx (103 tests | 1 failed | 102 skipped) 59ms
+   × PlanWorkspace editor remount > 110 shows server progress and jumps to the current training day, skipping rest days 59ms
+     → the given combination of arguments (undefined and string) is invalid for this assertion. You can use an array, a map, an object, a set, a string, or a weakset instead of a string
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/features/workspace/PlanWorkspace.test.tsx > PlanWorkspace editor remount > 110 shows server progress and jumps to the current training day, skipping rest days
+AssertionError: the given combination of arguments (undefined and string) is invalid for this assertion. You can use an array, a map, an object, a set, a string, or a weakset instead of a string
+ ❯ src/features/workspace/PlanWorkspace.test.tsx:2509:72
+    2507|     api.getPlan.mockImplementation(async (id: string) => id === old.id…
+    2508|     await act(async () => { root.render(<PlanWorkspace onLogout={vi.fn…
+    2509|     expect(host.querySelector('[data-student-progress]')?.textContent)…
+       |                                                                        ^
+    2510|     expect(host.querySelector('[data-student-progress]')?.textContent)…
+    2511|     expect(api.captureEditorProps.mock.calls.at(-1)![0].currentPlanId)…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 102 skipped (103)
+   Start at  10:29:21
+   Duration  1.20s (transform 553ms, setup 12ms, collect 753ms, tests 59ms, environment 117ms, prepare 29ms)
+
+
+
+=== 110-red-publish.log ===
+
+> meetpr-plan-web@0.1.0 test
+> vitest run src/features/workspace/PlanWorkspace.test.tsx -t 110 publication
+
+
+ RUN  v2.1.9 /Users/david/Projects/apps/meetpr-plan-web-wt-110
+
+ ❯ src/features/workspace/PlanWorkspace.test.tsx (97 tests | 1 failed | 95 skipped) 68ms
+   × PlanWorkspace editor remount > 110 publication reports the server handoff outcome: upcoming 50ms
+     → expected '已发布给 学员' to be '已发布，学员练完当前计划后自动接续' // Object.is equality
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/features/workspace/PlanWorkspace.test.tsx > PlanWorkspace editor remount > 110 publication reports the server handoff outcome: upcoming
+AssertionError: expected '已发布给 学员' to be '已发布，学员练完当前计划后自动接续' // Object.is equality
+
+Expected: "已发布，学员练完当前计划后自动接续"
+Received: "已发布给 学员"
+
+ ❯ src/features/workspace/PlanWorkspace.test.tsx:2430:21
+    2428|     expect(api.publishPlan).toHaveBeenCalledWith(draft.id)
+    2429|     const message = host.querySelector('[data-testid="plan-save-status…
+    2430|     expect(message).toBe(status === 'upcoming' ? '已发布，学员练完当前…
+       |                     ^
+    2431|   })
+    2432| 
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 1 passed | 95 skipped (97)
+   Start at  10:26:42
+   Duration  1.46s (transform 652ms, setup 12ms, collect 909ms, tests 68ms, environment 206ms, prepare 30ms)
+
+
+
+=== 110-red-refresh.log ===
+
+> meetpr-plan-web@0.1.0 test
+> vitest run src/features/workspace/PlanWorkspace.test.tsx -t 110 refreshes student
+
+
+ RUN  v2.1.9 /Users/david/Projects/apps/meetpr-plan-web-wt-110
+
+ ❯ src/features/workspace/PlanWorkspace.test.tsx (105 tests | 1 failed | 104 skipped) 67ms
+   × PlanWorkspace editor remount > 110 refreshes student progression without replacing unsaved future-plan edits 66ms
+     → expected '待接续' to be '学员正在练' // Object.is equality
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/features/workspace/PlanWorkspace.test.tsx > PlanWorkspace editor remount > 110 refreshes student progression without replacing unsaved future-plan edits
+AssertionError: expected '待接续' to be '学员正在练' // Object.is equality
+
+Expected: "学员正在练"
+Received: "待接续"
+
+ ❯ src/features/workspace/PlanWorkspace.test.tsx:2551:68
+
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 104 skipped (105)
+   Start at  10:31:23
+   Duration  1.30s (transform 591ms, setup 14ms, collect 784ms, tests 67ms, environment 191ms, prepare 30ms)
+
+
+
+=== 110-red-retry.log ===
+
+> meetpr-plan-web@0.1.0 test
+> vitest run src/features/workspace/PlanWorkspace.test.tsx -t 110 shows unknown
+
+
+ RUN  v2.1.9 /Users/david/Projects/apps/meetpr-plan-web-wt-110
+
+ ❯ src/features/workspace/PlanWorkspace.test.tsx (95 tests | 1 failed | 94 skipped) 95ms
+   × PlanWorkspace editor remount > 110 shows unknown on handoff failure and retries without changing the editor selection 94ms
+     → expected 'COACH / 计划编排跳转学员、屏幕、动作…⌘K教工作区‹总览1计划编排…' to contain '学员接续状态未知'
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/features/workspace/PlanWorkspace.test.tsx > PlanWorkspace editor remount > 110 shows unknown on handoff failure and retries without changing the editor selection
+AssertionError: expected 'COACH / 计划编排跳转学员、屏幕、动作…⌘K教工作区‹总览1计划编排…' to contain '学员接续状态未知'
+
+Expected: "学员接续状态未知"
+Received: "COACH / 计划编排跳转学员、屏幕、动作…⌘K教工作区‹总览1计划编排动作库1追踪本周 11-16 — 11-22已同步 10:25→今天休息学员休息日▸ 已解绑 · 0MeetPR学员 学员周期 Future plan · 01-05 · 1 周 ▾反馈显示实际已发布给 学员更新计划周一W11/5主项 1 组 · 辅项 0 组 · 总重 500 kg第 1 周容量明细主项：深蹲族 1组 · 卧推族 0组 · 硬拉族 0组 · 其他主项 0组辅助项：0组总组数：1组 吨位：500 kg 口径：组数按每行动作的组槽数计算（空公斤框、RPE、自重仍计组数）；吨位仅计入「kg 模式 + 重量可解析 + reps 可解析」的组，reps 取首个整数（如 8+ 取 8、6-8 取 6），reps 无数字（如 —）的行吨位记 0。D1 · 1/5深蹲1×5 · 100沟通历史学员›待看视频 0暂无符合条件的视频Enter 发送 · Shift Enter 换行发送 ▹学员修改学员备注备注只有你看得到，学员 App 里的名字不变设置服务期学员未填写画像—深蹲 e1RM—卧推 e1RM—硬拉 e1RM点开一天、选中一个动作，这里显示它的近 5 次记录；填了组数、次数会继续收窄。解绑未读 0⌥← / ⌥→ 翻周 · Tab / ⇧Tab 横移 · ↵ / ↑↓ 纵移 · ⌘D 向下填充 · ⌘C / ⌘V · ⌘Z"
+
+ ❯ src/features/workspace/PlanWorkspace.test.tsx:2410:30
+    2408|     api.getStudentPlanHandoff.mockRejectedValue(new Error('offline'))
+    2409|     await act(async () => { root.render(<PlanWorkspace onLogout={vi.fn…
+    2410|     expect(host.textContent).toContain('学员接续状态未知')
+       |                              ^
+    2411|     expect(api.captureEditorProps.mock.calls.at(-1)![0].studentPlanCur…
+    2412|     api.getStudentPlanHandoff.mockResolvedValue({ current_plan_id: 'ol…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 94 skipped (95)
+   Start at  10:25:42
+   Duration  2.62s (transform 1.31s, setup 56ms, collect 1.77s, tests 95ms, environment 234ms, prepare 47ms)
+
+
+
+=== 110-red-settings.log ===
+
+> meetpr-plan-web@0.1.0 test
+> vitest run src/features/workspace/PlanWorkspace.test.tsx -t 110 settings
+
+
+ RUN  v2.1.9 /Users/david/Projects/apps/meetpr-plan-web-wt-110
+
+ ❯ src/features/workspace/PlanWorkspace.test.tsx (100 tests | 2 failed | 98 skipped) 82ms
+   × PlanWorkspace editor remount > 110 settings show date overlap details: date 62ms
+     → expected '计划设置保存失败，请重试' to contain '冲突周期（2027-01-11 — 2027-02-07）'
+   × PlanWorkspace editor remount > 110 settings show date overlap details: weeks 20ms
+     → expected '计划设置保存失败，请重试' to contain '冲突周期（2027-01-11 — 2027-02-07）'
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/features/workspace/PlanWorkspace.test.tsx > PlanWorkspace editor remount > 110 settings show date overlap details: date
+ FAIL  src/features/workspace/PlanWorkspace.test.tsx > PlanWorkspace editor remount > 110 settings show date overlap details: weeks
+AssertionError: expected '计划设置保存失败，请重试' to contain '冲突周期（2027-01-11 — 2027-02-07）'
+
+Expected: "冲突周期（2027-01-11 — 2027-02-07）"
+Received: "计划设置保存失败，请重试"
+
+ ❯ src/features/workspace/PlanWorkspace.test.tsx:2467:65
+    2465|     await act(async () => { dialog.dispatchEvent(new Event('submit', {…
+    2466|     expect(path === 'date' ? api.patchPlan : api.resizeServerPlanWeeks…
+    2467|     expect(dialog.querySelector('[role="alert"]')?.textContent).toCont…
+       |                                                                 ^
+    2468|   })
+    2469| 
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ Test Files  1 failed (1)
+      Tests  2 failed | 98 skipped (100)
+   Start at  10:27:47
+   Duration  1.65s (transform 688ms, setup 18ms, collect 938ms, tests 82ms, environment 246ms, prepare 36ms)
+
+
+
+=== 110-red-shift.log ===
+
+> meetpr-plan-web@0.1.0 test
+> vitest run src/features/workspace/PlanWorkspace.test.tsx -t 110 shift overlap
+
+
+ RUN  v2.1.9 /Users/david/Projects/apps/meetpr-plan-web-wt-110
+
+ ❯ src/features/workspace/PlanWorkspace.test.tsx (101 tests | 1 failed | 100 skipped) 68ms
+   × PlanWorkspace editor remount > 110 shift overlap explains the next plan dates and required shift without writing that plan 68ms
+     → expected '后移失败 · 请重试' to contain '下一周期（2026-01-12 — 2026-02-08）'
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/features/workspace/PlanWorkspace.test.tsx > PlanWorkspace editor remount > 110 shift overlap explains the next plan dates and required shift without writing that plan
+AssertionError: expected '后移失败 · 请重试' to contain '下一周期（2026-01-12 — 2026-02-08）'
+
+Expected: "下一周期（2026-01-12 — 2026-02-08）"
+Received: "后移失败 · 请重试"
+
+ ❯ src/features/workspace/PlanWorkspace.test.tsx:2483:64
+    2481|     const panel = document.body.querySelector<HTMLElement>('[data-plan…
+    2482|     await act(async () => { clickButton(panel, '后移 1 天'); await set…
+    2483|     expect(panel.querySelector('[role="alert"]')?.textContent).toConta…
+       |                                                                ^
+    2484|     expect(panel.textContent).toContain('下一份计划需顺延 3 天')
+    2485|     expect(api.shiftPlan.mock.calls).toEqual([['plan', { anchor_date: …
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 100 skipped (101)
+   Start at  10:28:29
+   Duration  1.27s (transform 577ms, setup 12ms, collect 786ms, tests 68ms, environment 159ms, prepare 31ms)
+
+
+
+=== 110-red-training-day.log ===
+
+> meetpr-plan-web@0.1.0 test
+> vitest run src/features/workspace/PlanWorkspace.test.tsx -t 110 training-day
+
+
+ RUN  v2.1.9 /Users/david/Projects/apps/meetpr-plan-web-wt-110
+
+ ❯ src/features/workspace/PlanWorkspace.test.tsx (104 tests | 1 failed | 103 skipped) 73ms
+   × PlanWorkspace editor remount > 110 training-day update retains overlap details through reconciliation and preserves edits 72ms
+     → expected '更新计划没有完整成功，学员可能只收到部分修改，请不要把这次操作视为更新成功…' to contain '后续周期（2026-01-12 — 2026-02-08）'
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/features/workspace/PlanWorkspace.test.tsx > PlanWorkspace editor remount > 110 training-day update retains overlap details through reconciliation and preserves edits
+AssertionError: expected '更新计划没有完整成功，学员可能只收到部分修改，请不要把这次操作视为更新成功…' to contain '后续周期（2026-01-12 — 2026-02-08）'
+
+- Expected
++ Received
+
+- 后续周期（2026-01-12 — 2026-02-08）
++ 更新计划没有完整成功，学员可能只收到部分修改，请不要把这次操作视为更新成功。
++
++ 原因：学员刚打了卡；相关动作已锁定并还原，其余修改仍保留
++
++ 内容仍在页面上（尚未暂存到云端，请先不要关闭页面），请按提示修正后再次点「更新计划」，直到看到“已更新 学员 的计划”；如果反复失败请截图联系 David。
+
+ ❯ src/features/workspace/PlanWorkspace.test.tsx:2534:42
+    2532|     await act(async () => { clickButton(host, '更新计划'); await settl…
+    2533|     expect(api.batchDays).toHaveBeenCalledTimes(1)
+    2534|     expect(alert.mock.calls.at(-1)?.[0]).toContain('后续周期（2026-01-…
+       |                                          ^
+    2535|     expect(host.querySelector<HTMLInputElement>('[data-c="weight"] inp…
+    2536|   })
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 103 skipped (104)
+   Start at  10:30:25
+   Duration  1.34s (transform 631ms, setup 13ms, collect 836ms, tests 73ms, environment 120ms, prepare 24ms)
+
+
+
+=== 110-green-capacity-retry.log ===
+
+> meetpr-plan-web@0.1.0 test
+> vitest run src/features/workspace/student-plan-capacity-ui.test.tsx
+
+
+ RUN  v2.1.9 /Users/david/Projects/apps/meetpr-plan-web-wt-110
+
+ ✓ src/features/workspace/student-plan-capacity-ui.test.tsx (5 tests) 29ms
+
+ Test Files  1 passed (1)
+      Tests  5 passed (5)
+   Start at  10:31:02
+   Duration  610ms (transform 168ms, setup 11ms, collect 234ms, tests 29ms, environment 111ms, prepare 25ms)
+
+
+
+=== 110-green-current.log ===
+
+> meetpr-plan-web@0.1.0 test
+> vitest run src/features/workspace/PlanWorkspace.test.tsx -t 110 follows
+
+
+ RUN  v2.1.9 /Users/david/Projects/apps/meetpr-plan-web-wt-110
+
+ ✓ src/features/workspace/PlanWorkspace.test.tsx (94 tests | 93 skipped) 40ms
+
+ Test Files  1 passed (1)
+      Tests  1 passed | 93 skipped (94)
+   Start at  10:25:35
+   Duration  3.33s (transform 1.26s, setup 25ms, collect 1.87s, tests 40ms, environment 483ms, prepare 109ms)
+
+
+
+=== 110-green-new.log ===
+
+> meetpr-plan-web@0.1.0 test
+> vitest run src/features/workspace/PlanWorkspace.test.tsx -t 110 new plan
+
+
+ RUN  v2.1.9 /Users/david/Projects/apps/meetpr-plan-web-wt-110
+
+ ✓ src/features/workspace/PlanWorkspace.test.tsx (102 tests | 101 skipped) 29ms
+
+ Test Files  1 passed (1)
+      Tests  1 passed | 101 skipped (102)
+   Start at  10:29:00
+   Duration  1.15s (transform 562ms, setup 11ms, collect 767ms, tests 29ms, environment 111ms, prepare 23ms)
+
+
+
+=== 110-green-overlap-publish.log ===
+
+> meetpr-plan-web@0.1.0 test
+> vitest run src/features/workspace/PlanWorkspace.test.tsx -t 110 publish overlap
+
+
+ RUN  v2.1.9 /Users/david/Projects/apps/meetpr-plan-web-wt-110
+
+ ✓ src/features/workspace/PlanWorkspace.test.tsx (98 tests | 97 skipped) 204ms
+
+ Test Files  1 passed (1)
+      Tests  1 passed | 97 skipped (98)
+   Start at  10:27:30
+   Duration  3.72s (transform 1.83s, setup 34ms, collect 2.55s, tests 204ms, environment 381ms, prepare 49ms)
+
+
+
+=== 110-green-progress.log ===
+
+> meetpr-plan-web@0.1.0 test
+> vitest run src/features/workspace/PlanWorkspace.test.tsx -t 110 shows server progress
+
+
+ RUN  v2.1.9 /Users/david/Projects/apps/meetpr-plan-web-wt-110
+
+ ✓ src/features/workspace/PlanWorkspace.test.tsx (103 tests | 102 skipped) 88ms
+
+ Test Files  1 passed (1)
+      Tests  1 passed | 102 skipped (103)
+   Start at  10:29:48
+   Duration  1.26s (transform 567ms, setup 12ms, collect 770ms, tests 88ms, environment 191ms, prepare 31ms)
+
+
+
+=== 110-green-publish.log ===
+
+> meetpr-plan-web@0.1.0 test
+> vitest run src/features/workspace/PlanWorkspace.test.tsx -t 110 publication
+
+
+ RUN  v2.1.9 /Users/david/Projects/apps/meetpr-plan-web-wt-110
+
+ ✓ src/features/workspace/PlanWorkspace.test.tsx (97 tests | 95 skipped) 89ms
+
+ Test Files  1 passed (1)
+      Tests  2 passed | 95 skipped (97)
+   Start at  10:26:57
+   Duration  1.53s (transform 674ms, setup 13ms, collect 972ms, tests 89ms, environment 209ms, prepare 33ms)
+
+
+
+=== 110-green-refresh.log ===
+
+> meetpr-plan-web@0.1.0 test
+> vitest run src/features/workspace/PlanWorkspace.test.tsx -t 110 refreshes student
+
+
+ RUN  v2.1.9 /Users/david/Projects/apps/meetpr-plan-web-wt-110
+
+ ✓ src/features/workspace/PlanWorkspace.test.tsx (105 tests | 104 skipped) 84ms
+
+ Test Files  1 passed (1)
+      Tests  1 passed | 104 skipped (105)
+   Start at  10:31:34
+   Duration  2.46s (transform 1.24s, setup 22ms, collect 1.69s, tests 84ms, environment 240ms, prepare 38ms)
+
+
+
+=== 110-green-retry.log ===
+
+> meetpr-plan-web@0.1.0 test
+> vitest run src/features/workspace/PlanWorkspace.test.tsx -t 110 
+
+
+ RUN  v2.1.9 /Users/david/Projects/apps/meetpr-plan-web-wt-110
+
+ ✓ src/features/workspace/PlanWorkspace.test.tsx (95 tests | 93 skipped) 70ms
+
+ Test Files  1 passed (1)
+      Tests  2 passed | 93 skipped (95)
+   Start at  10:26:00
+   Duration  1.66s (transform 740ms, setup 16ms, collect 1.04s, tests 70ms, environment 181ms, prepare 44ms)
+
+
+
+=== 110-green-settings-capacity.log ===
+
+> meetpr-plan-web@0.1.0 test
+> vitest run src/features/workspace/PlanWorkspace.test.tsx src/features/workspace/student-plan-capacity-ui.test.tsx -t 110 
+
+
+ RUN  v2.1.9 /Users/david/Projects/apps/meetpr-plan-web-wt-110
+
+ ✓ src/features/workspace/student-plan-capacity-ui.test.tsx (4 tests | 3 skipped) 18ms
+ ✓ src/features/workspace/PlanWorkspace.test.tsx (100 tests | 93 skipped) 114ms
+
+ Test Files  2 passed (2)
+      Tests  8 passed | 96 skipped (104)
+   Start at  10:28:10
+   Duration  1.28s (transform 752ms, setup 35ms, collect 1.20s, tests 131ms, environment 266ms, prepare 65ms)
+
+
+
+=== 110-green-shift.log ===
+
+> meetpr-plan-web@0.1.0 test
+> vitest run src/features/workspace/PlanWorkspace.test.tsx -t 110 shift overlap
+
+
+ RUN  v2.1.9 /Users/david/Projects/apps/meetpr-plan-web-wt-110
+
+ ✓ src/features/workspace/PlanWorkspace.test.tsx (101 tests | 100 skipped) 56ms
+
+ Test Files  1 passed (1)
+      Tests  1 passed | 100 skipped (101)
+   Start at  10:28:36
+   Duration  1.28s (transform 575ms, setup 12ms, collect 783ms, tests 56ms, environment 160ms, prepare 31ms)
+
+
+
+=== 110-green-training-day.log ===
+
+> meetpr-plan-web@0.1.0 test
+> vitest run src/features/workspace/PlanWorkspace.test.tsx -t 110 training-day
+
+
+ RUN  v2.1.9 /Users/david/Projects/apps/meetpr-plan-web-wt-110
+
+ ✓ src/features/workspace/PlanWorkspace.test.tsx (104 tests | 103 skipped) 59ms
+
+ Test Files  1 passed (1)
+      Tests  1 passed | 103 skipped (104)
+   Start at  10:30:45
+   Duration  1.13s (transform 534ms, setup 11ms, collect 730ms, tests 59ms, environment 108ms, prepare 26ms)
+
+
+
+--- Independent Spec review correction: red ---
+
+ RUN  v2.1.9 /Users/david/Projects/apps/meetpr-plan-web-wt-110
+
+ ❯ src/features/workspace/PlanWorkspace.test.tsx (112 tests | 1 failed | 111 skipped) 76ms
+   × PlanWorkspace editor remount > 110 keeps the upcoming publication result alongside edits made while publishing 76ms
+     → expected '已发布给 学员 · 有未推送修改（暂存中…）' to contain '已发布，学员练完当前计划后自动接续'
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/features/workspace/PlanWorkspace.test.tsx > PlanWorkspace editor remount > 110 keeps the upcoming publication result alongside edits made while publishing
+AssertionError: expected '已发布给 学员 · 有未推送修改（暂存中…）' to contain '已发布，学员练完当前计划后自动接续'
+
+Expected: "已发布，学员练完当前计划后自动接续"
+Received: "已发布给 学员 · 有未推送修改（暂存中…）"
+
+ ❯ src/features/workspace/PlanWorkspace.test.tsx:2454:21
+    2452|     await act(async () => { resolvePublish({ ...draft, status: 'publis…
+    2453|     const message = host.querySelector('[data-testid="plan-save-status…
+    2454|     expect(message).toContain('已发布，学员练完当前计划后自动接续')
+       |                     ^
+    2455|     expect(message).toContain('有未推送修改')
+    2456|     expect(host.querySelector<HTMLInputElement>('[data-c="weight"] inp…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 111 skipped (112)
+   Start at  10:37:05
+   Duration  1.26s (transform 561ms, setup 12ms, collect 766ms, tests 76ms, environment 193ms, prepare 31ms)
+
+
+
+--- Independent Spec review correction: green ---
+
+ RUN  v2.1.9 /Users/david/Projects/apps/meetpr-plan-web-wt-110
+
+ ✓ src/features/workspace/PlanWorkspace.test.tsx (112 tests | 111 skipped) 69ms
+
+ Test Files  1 passed (1)
+      Tests  1 passed | 111 skipped (112)
+   Start at  10:37:18
+   Duration  1.13s (transform 522ms, setup 12ms, collect 716ms, tests 69ms, environment 111ms, prepare 26ms)
+

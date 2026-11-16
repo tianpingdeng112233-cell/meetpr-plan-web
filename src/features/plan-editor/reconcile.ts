@@ -1,3 +1,4 @@
+import { planOverlapMessage } from './planOverlap'
 // Save write-back for draft and published plans.
 //
 // Days without history keep the legacy whole-day replacement behavior. A day with
@@ -503,9 +504,9 @@ function merge409(
     }
   }
 
-  const topMessage = error.code === 'PLAN_HISTORY_IMMUTABLE'
+  const topMessage = planOverlapMessage(error) ?? (error.code === 'PLAN_HISTORY_IMMUTABLE'
     ? S.editor.calendarHasLogs
-    : null
+    : null)
   return new ReconcileConflict(error.code, syncPlanScheduleToWeeks(merged, fresh), topMessage)
 }
 
@@ -890,7 +891,10 @@ async function reconcileFromBaseline(
     }
   } catch (error) {
     if (error instanceof ApiException && error.status === 409) {
-      const fresh = await getPlan(planId)
+      const fresh = await getPlan(planId).catch(refreshError => {
+        // A failed refresh must not hide the actionable overlap response.
+        throw planOverlapMessage(error) ? error : refreshError
+      })
       throw merge409(weeks, fresh, error, options)
     }
     throw error

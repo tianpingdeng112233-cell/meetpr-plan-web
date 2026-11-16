@@ -3,7 +3,7 @@ import type {
   CoachStudent, StudentOnboardingProfile, PlanResponse, PlanWithChildren, PlanStatus,
   CreatePlanBody, CreatePlanExerciseBody, CreatePlanSetBody,
   BatchPlanDaysBody, PlanExerciseResponse, PlanSetResponse,
-  ShiftPlanResponse,
+  ShiftPlanResponse, PlanHandoffResponse,
 } from './types'
 
 export const getCoachStudents = () =>
@@ -16,6 +16,9 @@ export const getStudentPlans = (studentId: string, status?: PlanStatus[]) => {
   const q = status?.length ? `?status=${status.join(',')}` : ''
   return api.get<{ plans: PlanResponse[] }>(`/students/${studentId}/plans${q}`).then((r) => r.plans)
 }
+
+export const getStudentPlanHandoff = (studentId: string) =>
+  api.get<PlanHandoffResponse>(`/students/${studentId}/plan-handoff`)
 
 export const getPlan = (planId: string) => api.get<PlanWithChildren>(`/plans/${planId}?include_rest_days=true`)
 

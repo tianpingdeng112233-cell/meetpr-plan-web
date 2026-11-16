@@ -1,0 +1,1 @@
+2026-11-16：调用 cua.createBrowserTab("iab", "http://127.0.0.1:5180", { visible: true }) 返回 native pipe closed before response，未取得页面或截图。未进行真实 API / 浏览器验收；交收货方完成。未向线上写数据。
