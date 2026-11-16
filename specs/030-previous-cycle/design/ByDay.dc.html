@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>按天排 · 上一周期</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div style="width: 1440px; height: 820px; box-sizing: border-box; padding: 20px 16px; background: #F5F6F8; color: #111827; font-family: Inter, 'PingFang SC', 'Microsoft YaHei', sans-serif; font-size: 13px; display: flex; gap: 10px; overflow: hidden">
+  <div style="width: 48px; flex-shrink: 0; padding-top: 92px; display: flex; flex-direction: column; gap: 10px; color: #5C6371">
+    <span style="height: 148px">周一</span><span style="height: 148px">周二</span><span style="height: 148px">周三</span><span style="height: 148px">周四</span>
+  </div>
+  <sc-for list="{{zones}}" as="zone" hint-placeholder-count="2">
+    <section style="flex: {{zone.flex}}; min-width: 0; display: flex; flex-direction: column; gap: 10px; padding: 8px; border-radius: 12px; background: {{zone.bg}}">
+      <div style="display: flex; align-items: center; gap: 8px; height: 36px; white-space: nowrap; overflow: hidden">
+        <span style="padding: 3px 9px; border-radius: 6px; background: {{zone.chipBg}}; color: #FFFFFF; font-weight: 600; font-size: 12px">{{zone.chip}}</span>
+        <strong style="font-size: 14px">{{zone.title}}</strong>
+        <span style="color: #5C6371">{{zone.meta}}</span>
+        <span style="flex-grow: 1"></span>
+        <sc-if value="{{zone.isPrev}}" hint-placeholder-val="{{ true }}">
+          <span style="height: 28px; box-sizing: border-box; padding: 4px 9px; border: 1px solid #D1D5DB; border-radius: 7px; background: #FFFFFF">← 再往前 1 周</span>
+          <span style="height: 28px; box-sizing: border-box; padding: 4px 9px; border: 1px solid #D1D5DB; border-radius: 7px; background: #FFFFFF">折叠</span>
+        </sc-if>
+      </div>
+      <div style="display: flex; gap: 10px">
+        <sc-for list="{{zone.weeks}}" as="week" hint-placeholder-count="2">
+          <div style="flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; gap: 10px">
+            <div style="height: 22px; display: flex; align-items: baseline; gap: 8px"><strong style="font-family: 'JetBrains Mono', monospace; font-size: 14px">{{week.label}}</strong><span style="font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #5C6371">{{week.date}}</span>
+              <sc-if value="{{week.now}}" hint-placeholder-val="{{ false }}"><span style="padding: 1px 6px; border-radius: 4px; background: #FDF0C8; color: #6B4700; font-size: 11px">本周</span></sc-if>
+            </div>
+            <sc-for list="{{week.days}}" as="day" hint-placeholder-count="4">
+              <div style="height: 148px">
+                <sc-if value="{{day.rest}}" hint-placeholder-val="{{ false }}">
+                  <div style="height: 148px; box-sizing: border-box; padding: 10px; border: 1px dashed #D1D5DB; border-radius: 10px; display: flex; flex-direction: column; gap: 34px">
+                    <span style="font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #5C6371">{{day.head}}</span>
+                    <span style="text-align: center; color: #5C6371">休息日</span>
+                  </div>
+                </sc-if>
+                <sc-if value="{{day.train}}" hint-placeholder-val="{{ true }}">
+                  <div style="height: 148px; box-sizing: border-box; padding: 10px; border: 1px solid #E5E7EB; border-radius: 10px; background: #FFFFFF; display: flex; flex-direction: column; gap: 5px; overflow: hidden">
+                    <div style="display: flex; justify-content: space-between; font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #5C6371"><span>{{day.head}}</span><span>{{day.mark}}</span></div>
+                    <sc-for list="{{day.bricks}}" as="brick" hint-placeholder-count="3">
+                      <div style="display: flex; justify-content: space-between; gap: 6px; padding: 4px 8px; border-radius: 6px; background: #F3F4F6; font-size: 12px"><span style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{brick.name}}</span><span style="font-family: 'JetBrains Mono', monospace; white-space: nowrap">{{brick.rx}}</span></div>
+                    </sc-for>
+                  </div>
+                </sc-if>
+                <sc-if value="{{day.empty}}" hint-placeholder-val="{{ false }}">
+                  <div style="height: 148px; box-sizing: border-box; padding: 10px; border: 1px solid #E5E7EB; border-radius: 10px; background: #FFFFFF; display: flex; flex-direction: column; gap: 30px">
+                    <span style="font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #5C6371">{{day.head}}</span>
+                    <span style="align-self: center; padding: 5px 10px; border: 1px dashed #9CA3AF; border-radius: 7px; color: #4B5563">＋ 添加动作</span>
+                  </div>
+                </sc-if>
+              </div>
+            </sc-for>
+          </div>
+        </sc-for>
+      </div>
+      <span style="color: #5C6371">{{zone.foot}}</span>
+    </section>
+  </sc-for>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":820}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const PAT = { 0: 0, 2: 1, 4: 2, 5: 3 };
+    const DX = [
+      [['深蹲', '5×5', 140], ['暂停卧推', '4×6', 85], ['罗马尼亚硬拉', '3×8', 120]],
+      [['竞技卧推', '5×5', 95], ['高杠深蹲', '3×8', 115], ['杠铃划船', '4×8', 70]]
+    ];
+    const md = (t) => { const d = new Date(t); return (d.getUTCMonth() + 1) + '/' + d.getUTCDate(); };
+    const week = (start, w, o) => {
+      const t0 = start + (w - 1) * 7 * 864e5;
+      const done = w <= o.doneThrough;
+      const empty = w >= o.emptyFrom;
+      const days = [];
+      for (let i = 0; i < 4; i++) {
+        const k = PAT[i];
+        const date = md(t0 + i * 864e5);
+        if (k === undefined) { days.push({ rest: true, train: false, empty: false, head: date }); continue; }
+        days.push({
+          rest: false, train: !empty, empty: empty, head: 'D' + (k + 1) + ' · ' + date,
+          mark: done ? '✓ 已练' : '···',
+          bricks: DX[k].map((b) => ({ name: b[0], rx: b[1] + ' · ' + (b[2] + (w - 1) * 2.5 + o.bump) + (done ? ' ✓' : '') }))
+        });
+      }
+      return { label: 'W' + w, date: md(t0), now: w === o.now, days: days };
+    };
+    const prevStart = Date.UTC(2026, 9, 19), curStart = Date.UTC(2026, 10, 23);
+    return {
+      zones: [
+        { isPrev: true, flex: '2 1 0', chip: '上一周期', chipBg: '#4B5563', bg: '#E6E9EF', title: '力量基础', meta: '5 周 · 已发布', foot: '周五—周日继续向下……',
+          weeks: [4, 5].map((w) => week(prevStart, w, { doneThrough: 4, emptyFrom: 99, bump: 0, now: 5 })) },
+        { isPrev: false, flex: '3 1 0', chip: '当前周期', chipBg: '#111827', bg: 'transparent', title: '备赛期', meta: '11/23 起 · 12 周 · 草稿', foot: 'W4–W12 继续向右……',
+          weeks: [1, 2, 3].map((w) => week(curStart, w, { doneThrough: 0, emptyFrom: 2, bump: 12.5, now: 0 })) }
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>

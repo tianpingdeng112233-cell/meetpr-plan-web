@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>上一周期 · 操作流程</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div style="width: 1440px; height: 560px; box-sizing: border-box; padding: 32px 36px; background: #F5F6F8; color: #111827; font-family: Inter, 'PingFang SC', 'Microsoft YaHei', sans-serif; font-size: 14px; display: flex; flex-direction: column; gap: 22px">
+  <div style="display: flex; align-items: baseline; gap: 14px">
+    <h1 style="margin: 0; font-size: 22px">教练排下一个周期的流程</h1>
+    <span style="color: #5C6371">主线从左到右；下面一排是排的过程中随时可以做的事</span>
+  </div>
+
+  <div style="display: grid; grid-template-columns: minmax(0, 1fr) 28px minmax(0, 1fr) 28px minmax(0, 1fr) 28px minmax(0, 1fr); align-items: stretch">
+    <div style="padding: 16px; border: 1px solid #E5E7EB; border-radius: 12px; background: #FFFFFF; display: flex; flex-direction: column; gap: 8px">
+      <span style="font-family: 'JetBrains Mono', monospace; font-size: 12px; color: #5C6371">1 · 新建</span>
+      <strong style="font-size: 16px">新建周期</strong>
+      <span style="color: #4B5563; line-height: 1.55">顶栏「＋ 新建计划」，或总览里「计划快结束」标签。入口和对话框都不变。</span>
+    </div>
+    <svg aria-hidden="true" viewBox="0 0 28 28" style="align-self: center; width: 28px; height: 28px"><path d="M9 6l8 8-8 8" fill="none" stroke="#9CA3AF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    <div style="padding: 16px; border: 1px solid #111827; border-radius: 12px; background: #FFFFFF; display: flex; flex-direction: column; gap: 8px">
+      <span style="font-family: 'JetBrains Mono', monospace; font-size: 12px; color: #5C6371">2 · 打开</span>
+      <strong style="font-size: 16px">W1 之前自动带出上一周期</strong>
+      <span style="color: #4B5563; line-height: 1.55">默认是它的最后 2 周，带「上一周期」标题条和底色，和当前周期一眼分得开。</span>
+    </div>
+    <svg aria-hidden="true" viewBox="0 0 28 28" style="align-self: center; width: 28px; height: 28px"><path d="M9 6l8 8-8 8" fill="none" stroke="#9CA3AF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    <div style="padding: 16px; border: 1px solid #E5E7EB; border-radius: 12px; background: #FFFFFF; display: flex; flex-direction: column; gap: 8px">
+      <span style="font-family: 'JetBrains Mono', monospace; font-size: 12px; color: #5C6371">3 · 对照着排</span>
+      <strong style="font-size: 16px">看着上一周期排新的</strong>
+      <span style="color: #4B5563; line-height: 1.55">上一周期显示处方还是学员实际，跟顶栏「显示实际」开关走。</span>
+    </div>
+    <svg aria-hidden="true" viewBox="0 0 28 28" style="align-self: center; width: 28px; height: 28px"><path d="M9 6l8 8-8 8" fill="none" stroke="#9CA3AF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    <div style="padding: 16px; border: 1px solid #E5E7EB; border-radius: 12px; background: #FFFFFF; display: flex; flex-direction: column; gap: 8px">
+      <span style="font-family: 'JetBrains Mono', monospace; font-size: 12px; color: #5C6371">4 · 发布</span>
+      <strong style="font-size: 16px">发布当前周期</strong>
+      <span style="color: #4B5563; line-height: 1.55">顶栏主按钮只管当前周期。上一周期若还有未更新的改动，只提示，不连带提交。</span>
+    </div>
+  </div>
+
+  <div style="display: flex; flex-direction: column; gap: 10px">
+    <span style="color: #5C6371; font-weight: 600">第 3 步里可以做的事</span>
+    <div style="display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px">
+      <div style="padding: 14px; border-radius: 10px; background: #E6E9EF; display: flex; flex-direction: column; gap: 6px">
+        <strong>复制过来</strong>
+        <span style="color: #4B5563; line-height: 1.55">在上一周期选中动作或整天 ⌘C，到当前周期 ⌘V。拖动和跨周填充不能越过分界。</span>
+      </div>
+      <div style="padding: 14px; border-radius: 10px; background: #E6E9EF; display: flex; flex-direction: column; gap: 6px">
+        <strong>顺手改上一周期</strong>
+        <span style="color: #4B5563; line-height: 1.55">和平时一样直接改。它的标题条出现「未更新」，点「更新上一周期」学员才看得到。</span>
+      </div>
+      <div style="padding: 14px; border-radius: 10px; background: #E6E9EF; display: flex; flex-direction: column; gap: 6px">
+        <strong>多看几周，或收起</strong>
+        <span style="color: #4B5563; line-height: 1.55">「再往前 1 周」逐周加，「展开整份」看全部，「折叠」只留标题条。</span>
+      </div>
+      <div style="padding: 14px; border-radius: 10px; background: #E6E9EF; display: flex; flex-direction: column; gap: 6px">
+        <strong>上一周期只读时</strong>
+        <span style="color: #4B5563; line-height: 1.55">已完成或暂停的周期整份只读：能看、能复制，不能改。已打卡的天照旧不能拖排。</span>
+      </div>
+      <div style="padding: 14px; border-radius: 10px; background: #E6E9EF; display: flex; flex-direction: column; gap: 6px">
+        <strong>没有上一周期时</strong>
+        <span style="color: #4B5563; line-height: 1.55">学员的第一份计划，或前面只有草稿：不显示这一区，编辑器和现在完全一样。</span>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":560}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>
