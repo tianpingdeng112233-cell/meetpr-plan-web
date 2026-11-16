@@ -816,6 +816,93 @@ describe('PlanWorkspace editor remount', () => {
     vi.restoreAllMocks()
   })
 
+  it('030 loads only the previous block after current content, without writes or blocking editing', async () => {
+    const current = { ...plan('current'), start_date: '2026-11-23', plan_weeks: 12 }
+    const previous = { ...plan('previous', 'completed'), id: 'previous', start_date: '2026-10-19', plan_weeks: 5 }
+    api.getStudentPlans.mockResolvedValue([current, previous])
+    let resolvePrevious!: (plan: PlanWithChildren) => void
+    api.getPlan.mockImplementation((id: string) => id === 'previous'
+      ? new Promise(resolve => { resolvePrevious = resolve }) : Promise.resolve(current))
+    await act(async () => { root.render(<PlanWorkspace me={me} onLogout={() => {}} />); await settle() })
+    expect(host.querySelector('[data-testid="editor-note"]')?.textContent).toBe('current')
+    expect(api.getPlan.mock.calls.map(call => call[0])).toEqual(['plan', 'previous'])
+    await act(async () => { resolvePrevious(previous); await settle() })
+    const props = api.captureEditorProps.mock.lastCall![0]
+    expect(props.previousCycle).toMatchObject({ plan: { id: 'previous' }, weeks: expect.any(Array) })
+    expect(props.initialWeeks).toHaveLength(12)
+    expect(api.batchDays).not.toHaveBeenCalled()
+    expect(api.patchPlan).not.toHaveBeenCalled()
+    expect(api.reconcilePlan).not.toHaveBeenCalled()
+    expect(api.publishPlan).not.toHaveBeenCalled()
+  })
+
+  it('030 renders a retryable previous-block failure while current editing remains usable', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(new Date(2026, 10, 16, 12))
+    api.realEditor = true
+    const current = { ...plan('current'), name: '当前测试', start_date: '2026-11-23', plan_weeks: 12 }
+    const previous = { ...plan('previous', 'completed'), id: 'previous', name: '上一周期测试', start_date: '2026-10-19', plan_weeks: 5 }
+    api.getStudentPlans.mockResolvedValue([current, previous])
+    let attempts = 0
+    api.getPlan.mockImplementation(async (id: string) => {
+      if (id !== 'previous') return current
+      if (++attempts === 1) throw new Error('offline')
+      return previous
+    })
+    await act(async () => { root.render(<PlanWorkspace me={me} onLogout={() => {}} />); await settle() })
+    const zone = host.querySelector('[data-previous-cycle]')!
+    expect(zone.textContent).toContain('上一周期读取失败')
+    expect(api.getStudentSetLogs).not.toHaveBeenCalled()
+    await act(async () => { host.querySelector<HTMLElement>('[data-current-cycle] [data-block-week="1"][data-dow="0"]')!.click(); await settle() })
+    expect(host.querySelector('[data-current-cycle] input')).not.toBeNull()
+    await act(async () => { clickButton(zone as HTMLElement, '重试'); await settle() })
+    expect(zone.textContent).not.toContain('读取失败')
+    expect(zone.querySelectorAll('[data-week-slot]')).toHaveLength(2)
+    expect(api.getPlan.mock.calls.map(call => call[0])).toEqual(['plan', 'previous', 'previous'])
+    expect(api.reconcilePlan).not.toHaveBeenCalled()
+    expect(api.patchPlan).not.toHaveBeenCalled()
+  })
+
+  it.each(['only', 'draft-before', 'oldest'])('030 preserves the original grid and requests without a previous block: %s', async scenario => {
+    api.realEditor = true
+    const current = plan('current')
+    const other = { ...plan('other'), id: 'other', start_date: scenario === 'oldest' ? '2026-02-02' : '2025-12-01' }
+    api.getStudentPlans.mockResolvedValue(scenario === 'only' ? [current] : [current, other])
+    api.getPlan.mockResolvedValue(current)
+    await act(async () => { root.render(<PlanWorkspace me={me} onLogout={() => {}} />); await settle() })
+    expect(host.querySelector('[data-previous-cycle], [data-current-cycle], .cycle-comparison')).toBeNull()
+    expect(host.querySelectorAll('.block-grid')).toHaveLength(1)
+    expect(api.getPlan.mock.calls.map(call => call[0])).toEqual(['plan'])
+    expect(api.reconcilePlan).not.toHaveBeenCalled()
+  })
+
+  it('030 ignores a late previous-block response after switching cycles', async () => {
+    const current = { ...plan('current'), start_date: '2026-11-23' }
+    const previous = { ...plan('previous', 'completed'), id: 'previous', start_date: '2026-10-19' }
+    api.getStudentPlans.mockResolvedValue([current, previous])
+    let finishPrevious!: (plan: PlanWithChildren) => void
+    let count = 0
+    api.getPlan.mockImplementation((id: string) => id === 'plan' ? Promise.resolve(current)
+      : ++count === 1 ? new Promise(resolve => { finishPrevious = resolve }) : Promise.resolve(previous))
+    await act(async () => { root.render(<PlanWorkspace me={me} onLogout={() => {}} />); await settle() })
+    await act(async () => { await api.captureEditorProps.mock.lastCall![0].onSwitchPlan('previous'); await settle() })
+    await act(async () => { finishPrevious(previous); await settle() })
+    expect(api.captureEditorProps.mock.lastCall![0].currentPlanId).toBe('previous')
+    expect(api.captureEditorProps.mock.lastCall![0].previousCycle).toBeUndefined()
+    expect(api.getPlan.mock.calls.map(call => call[0])).toEqual(['plan', 'previous', 'previous'])
+  })
+
+  it('030 does not refetch previous content when the exercise catalog changes', async () => {
+    const current = { ...plan('current'), start_date: '2026-11-23' }
+    const previous = { ...plan('previous', 'completed'), id: 'previous', start_date: '2026-10-19' }
+    api.getStudentPlans.mockResolvedValue([current, previous])
+    api.getPlan.mockImplementation(async (id: string) => id === 'plan' ? current : previous)
+    api.createCustomExercise.mockResolvedValue({ ...exercise, id: 'custom', name: '新动作' })
+    await act(async () => { root.render(<PlanWorkspace me={me} onLogout={() => {}} />); await settle() })
+    await act(async () => { await api.captureEditorProps.mock.lastCall![0].onCreateExercise({ name: '新动作' }); await settle() })
+    expect(api.getPlan.mock.calls.map(call => call[0])).toEqual(['plan', 'previous'])
+    expect(api.captureEditorProps.mock.lastCall![0].previousCycle.weeks).toHaveLength(1)
+  })
+
   async function submitMondayPlan(): Promise<void> {
     await act(async () => {
       root.render(<PlanWorkspace onLogout={vi.fn()} me={me} />)

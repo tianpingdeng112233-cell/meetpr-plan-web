@@ -1,6 +1,12 @@
 import type { Translations } from './types'
 import { countUnit } from './plural'
 export const zhBlock = {
+  cycleLoadFailed: '上一周期读取失败',
+  cycleEarlier: '再往前 1 周', cycleExpandAll: '展开整份', cycleExpand: '展开', cycleCollapse: '折叠',
+  previousCycle: '上一周期', currentCycle: '当前周期', cycle: '周期',
+  cycleMeta: (start: string, count: number, status: string) => `${start} 起 · ${count} 周 · ${status}`,
+  cycleReadOnly: '只读 · 可以查看和复制', cycleCollapsed: '已折叠',
+  cycleRange: (first: number, last: number, count: number) => first === 1 ? `显示 整份 W1–W${last}` : `显示 W${first}–W${last}（最后 ${count} 周）`,
   finishAnnotation: '请先将标注放入输入区，或取消标注',
   enterHint: 'Enter 发送 · Shift Enter 换行',
   communication: '沟通', collapseCommunication: '收起侧栏', expandCommunication: '展开侧栏',
@@ -46,6 +52,12 @@ export const zhBlock = {
   patternLocal: '星期规律保存在本机', patternFailed: '无法在本机保存星期规律，请检查浏览器存储权限后重试',
 } as const
 export const enBlock: Translations<typeof zhBlock> = {
+  cycleLoadFailed: 'Could not load previous block',
+  cycleEarlier: 'One week earlier', cycleExpandAll: 'Expand entire block', cycleExpand: 'Expand', cycleCollapse: 'Collapse',
+  previousCycle: 'Previous block', currentCycle: 'Current block', cycle: 'Block',
+  cycleMeta: (start, count, status) => `${start} start · ${countUnit(count, 'week', 'weeks')} · ${status}`,
+  cycleReadOnly: 'Read only · View and copy', cycleCollapsed: 'Collapsed',
+  cycleRange: (first, last, count) => first === 1 ? `Showing entire block W1–W${last}` : `Showing W${first}–W${last} (last ${countUnit(count, 'week', 'weeks')})`,
   finishAnnotation: 'Add the annotation to the composer or cancel it first.',
   enterHint: 'Enter to send · Shift Enter for new line',
   communication: 'Communication', collapseCommunication: 'Collapse sidebar', expandCommunication: 'Expand sidebar',

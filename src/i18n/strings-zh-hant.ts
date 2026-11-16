@@ -148,6 +148,12 @@ const hantAuth = {
 } as const satisfies Translations<typeof zhAuth>
 
 const hantBlock = {
+    cycleLoadFailed: "\u4E0A\u4E00\u9031\u671F\u8B80\u53D6\u5931\u6557",
+    cycleEarlier: "\u518D\u5F80\u524D 1 \u9031", cycleExpandAll: "\u5C55\u958B\u6574\u4EFD", cycleExpand: "\u5C55\u958B", cycleCollapse: "\u647A\u758A",
+    previousCycle: "\u4E0A\u4E00\u9031\u671F", currentCycle: "\u7576\u524D\u9031\u671F", cycle: "\u9031\u671F",
+    cycleMeta: (start: string, count: number, status: string) => `${start} \u8D77 \u00B7 ${count} \u9031 \u00B7 ${status}`,
+    cycleReadOnly: "\u53EA\u8B80 \u00B7 \u53EF\u4EE5\u6AA2\u8996\u548C\u8907\u88FD", cycleCollapsed: "\u5DF2\u647A\u758A",
+    cycleRange: (first: number, last: number, count: number) => first === 1 ? `\u986F\u793A \u6574\u4EFD W1\u2013W${last}` : `\u986F\u793A W${first}\u2013W${last}\uFF08\u6700\u5F8C ${count} \u9031\uFF09`,
     finishAnnotation: "\u8ACB\u5148\u5C07\u6A19\u8A3B\u653E\u5165\u8F38\u5165\u5340\uFF0C\u6216\u53D6\u6D88\u6A19\u8A3B",
     enterHint: "Enter \u50B3\u9001 \u00B7 Shift Enter \u63DB\u884C",
     communication: "\u6E9D\u901A", collapseCommunication: "\u6536\u8D77\u5074\u6B04", expandCommunication: "\u5C55\u958B\u5074\u6B04",

@@ -15,6 +15,7 @@ import type { FeedbackEntry } from '../feedbackModel'
 import { useVideoPlanScroll, type PlanPlayback } from '../useVideoPlanScroll'
 
 interface Props {
+  comparisonRows?: readonly number[]
   showRestDays?: boolean
   playback?: PlanPlayback | null
   feedbackDayMarker?: (day: DayCol) => ReactNode
@@ -76,7 +77,12 @@ export function BlockGrid(props: Props) {
   const grid = buildBlockGrid(props.weeks, props.startDate, props.weekdays, props.extraWeekdays, props.showRestDays)
   const byDay = props.layout === 'by-day'
   const view = projectBlockGrid(grid, props.layout)
-  const positions = new Map(view.rows.flatMap((cells, row) => cells.map((cell, column) => [`${cell.weekNumber}:${cell.dx}`, { row, column }] as const)))
+  const alignedRow = (dx: number) => {
+    const weekday = grid.columns[dx].weekday
+    const occurrence = grid.columns.slice(0, dx).filter(column => column.weekday === weekday).length
+    return props.comparisonRows ? props.comparisonRows.indexOf(weekday) + occurrence : dx
+  }
+  const positions = new Map(view.rows.flatMap((cells, row) => cells.map((cell, column) => [`${cell.weekNumber}:${cell.dx}`, { row: byDay ? alignedRow(row) : row, column }] as const)))
   const editingCell = grid.rows.flatMap(row => row.cells).find(cell => cell.weekNumber === props.editing?.wnum
     && (cell.day ?? ((props.showRestDays || grid.columns[cell.dx].patternIndex !== null) ? blockTargetDay(grid, cell, props.startDate) : null))?.dow === props.editing?.dow)
   const editingPosition = editingCell ? positions.get(`${editingCell.weekNumber}:${editingCell.dx}`) : undefined
@@ -99,7 +105,7 @@ export function BlockGrid(props: Props) {
   const [columnEditor, setColumnEditor] = useState<number | null>(null)
   useEffect(() => () => cleanup.current?.(), [])
   useLayoutEffect(() => {
-    if (!byDay) return
+    if (!byDay || props.comparisonRows) return
     const scroller = ref.current?.closest<HTMLElement>('.scroller')
     if (!scroller) return
     const measure = () => setColumnWidth(Math.max(205, (scroller.clientWidth - 32 - 52 - Math.min(4, props.weeks.length) * 10) / Math.max(1, Math.min(4, props.weeks.length))))
@@ -109,7 +115,7 @@ export function BlockGrid(props: Props) {
     observer?.observe(scroller)
     scroller.addEventListener('scroll', onScroll)
     return () => { observer?.disconnect(); scroller.removeEventListener('scroll', onScroll) }
-  }, [byDay, props.weeks.length, columnWidth])
+  }, [byDay, props.weeks.length, columnWidth, props.comparisonRows])
   useEffect(() => { cleanup.current?.(); setInsertMenu(null); setColumnEditor(null) }, [props.layout])
   useEffect(() => {
     if (!props.editing) return
@@ -148,7 +154,7 @@ export function BlockGrid(props: Props) {
     let end = source.weekNumber
     const move = (e: MouseEvent) => {
       const target = document.elementFromPoint?.(e.clientX, e.clientY)?.closest<HTMLElement>('[data-block-week]')
-      if (target) end = Math.max(source.weekNumber, Number(target.dataset.blockWeek))
+      end = target && ref.current?.contains(target) ? Math.max(source.weekNumber, Number(target.dataset.blockWeek)) : source.weekNumber
       setFill({ source, endWeek: end })
     }
     const finish = () => {
@@ -181,7 +187,7 @@ export function BlockGrid(props: Props) {
         .find(el => el != null)
       const cell = target?.closest<HTMLElement>('[data-block-week]')
       const targetRow = day.rows.find(r => r.id === target?.dataset.rowid)
-      const sameDay = !!cell && Number(cell.dataset.blockWeek) === week.num && Number(cell.dataset.dow) === day.dow
+      const sameDay = !!cell && !!ref.current?.contains(cell) && Number(cell.dataset.blockWeek) === week.num && Number(cell.dataset.dow) === day.dow
       const crossSection = sameDay && !!targetRow && props.rowTier(targetRow) !== props.rowTier(row)
       drop = null
       if (target && sameDay && targetRow && targetRow.id !== row.id && !target.hasAttribute('data-student-added') && !crossSection) {
@@ -275,7 +281,7 @@ export function BlockGrid(props: Props) {
       </button>)}
     </div>{grid.columns.map(column => {
       const label = DOW_LABELS[column.weekday]
-      return <div className="block-column" key={column.dx} style={byDay ? { gridColumn: 1, gridRow: column.dx + 2 } : undefined}>
+      return <div className="block-column" key={column.dx} style={byDay ? { gridColumn: 1, gridRow: alignedRow(column.dx) + 2 } : undefined}>
         <button type="button" title={label} disabled={props.readOnly || !props.startDate} onClick={() => setColumnEditor(columnEditor === column.dx ? null : column.dx)}>
           <span>{label}</span>
         </button>
@@ -369,7 +375,7 @@ export function BlockGrid(props: Props) {
           const id = `${week.num}:${before?.day?.dow ?? 'start'}`
           const edge = before ? before.dx + 3 : (after?.dx ?? 0) + 2
           return <div key={id} className="block-insert-gap" data-insert-week={week.num} data-insert-before={before?.day?.dow ?? 'start'}
-            style={byDay ? { gridColumn: index + 2, gridRow: Math.min(edge, grid.columns.length + 1),
+            style={byDay ? { gridColumn: index + 2, gridRow: alignedRow(Math.min(edge - 2, grid.columns.length - 1)) + 2,
               alignSelf: edge > grid.columns.length + 1 ? 'end' : 'start', transform: edge > grid.columns.length + 1 ? 'translateY(50%)' : undefined }
               : { gridColumn: Math.min(edge, grid.columns.length + 1), gridRow: 1, justifySelf: edge > grid.columns.length + 1 ? 'end' : 'start' }}>
             <button type="button" aria-label={S.editor.blockInsertDay} aria-expanded={insertMenu === id}
