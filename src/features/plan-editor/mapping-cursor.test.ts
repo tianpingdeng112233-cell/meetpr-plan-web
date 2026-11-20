@@ -73,6 +73,19 @@ describe('deriveStudentPlanCursor', () => {
     })
   })
 
+  it('skips unplanned sessions in both the student cursor and its D ordinal', () => {
+    const placeholder = { ...day('placeholder', 1, 1, null), is_placeholder: true }
+    const rest = { ...day('rest', 1, 2, null), is_rest: true }
+    expect(deriveStudentPlanCursor(plan([placeholder, rest, day('ready', 1, 5, null)]))).toMatchObject({
+      dayId: 'ready', dayOrdinal: 1,
+    })
+    expect(deriveStudentPlanCursor(plan([placeholder, rest]))).toBeNull()
+    const historic = { ...day('historic', 1, 2, '2026-08-04T12:00:00Z'), is_placeholder: false }
+    expect(deriveStudentPlanCursor(plan([placeholder, historic, day('ready', 1, 5, null)]))).toMatchObject({
+      dayId: 'ready', dayOrdinal: 2,
+    })
+  })
+
   it('reports all completed and has no cursor without published days', () => {
     expect(deriveStudentPlanCursor(plan([
       day('one', 1, 1, '2026-08-03T10:00:00Z'),

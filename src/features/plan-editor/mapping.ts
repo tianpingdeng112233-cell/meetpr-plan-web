@@ -272,7 +272,7 @@ export function deriveStudentPlanCursor(
   plan: PlanWithChildren,
   localToday = isoDate(new Date()),
 ): StudentPlanCursor | null {
-  const trainingDays = plan.days.filter(day => !day.is_rest)
+  const trainingDays = plan.days.filter(day => !day.is_rest && !day.is_placeholder)
   if (plan.status !== 'published' || trainingDays.length === 0) return null
   if (trainingDays.some((day) => !Object.hasOwn(day, 'completed_at'))) return null
 

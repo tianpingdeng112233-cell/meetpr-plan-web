@@ -60,7 +60,7 @@ Codex 接手时按 `~/.codex/AGENTS.md` 与 `~/CodexConfig/docs/engineering-work
 - **保存有批量路径，仍需处理限流。** [`reconcile.ts`](src/features/plan-editor/reconcile.ts) 对无锁训练日使用 `POST /plans/:id/days/batch`，按有界批次顺序保存；不再把每次导入都拆成几百个 per-set 请求。`src/api/client.ts` 的 `rawRetrying` 仍按 `Retry-After` / `RateLimit-Reset` 对 429 做有上限退避，实际限额以所选后端配置为准。
 - **事务边界是一批请求。** 每个 batch 在后端原子执行；跨多个 batch，以及含已打卡动作的混合日逐动作 CRUD，不共享整份计划事务。后续请求失败时前面成功的批次可能已经生效，恢复路径必须以服务端重新读取的树为准。
 - **日程以服务端为准。** 已发布计划恢复快照或撤销内容历史，只恢复内容，不回滚 day ID、推荐日期和完成态；保存回包也要刷新这些字段。后移/撤销写成功但随后 GET 失败时，“重试”仅重拉计划，不重复 POST/DELETE。实现与回归入口见 `mapping.ts`、`draftMirror-ui.test.tsx`、`reconcile.test.ts` 和 `plan-shift-ui.test.tsx`；045 上线前置见 [`docs/specs/045-coach-plan-shift.md`](docs/specs/045-coach-plan-shift.md)。
-- **发布门禁 422 `PLAN_PUBLISH_INCOMPLETE`。** 后端拒绝发布「不完整」的计划：含零组动作、或空训练日等。前端目前对这个 422 的 UX 处理不完善（见 ⑤）。
+- **发布门禁 422 `PLAN_PUBLISH_INCOMPLETE`。** 计划须至少有一天排好训练，训练日中的动作须有组。空训练日保留在教练端供后续补课。前端目前对这个 422 的 UX 处理不完善（见 ⑤）。
 - **「≠」行 = 含 App 设定的逐组设置（休息/逐组次数/组备注）。** 网格表达不了这些字段，保存/更新时按行原样透传（`reconcile.ts` opaque 快照）：没改的行逐组原样回写；改过的行以网格为准、休息/备注按组序号保留、逐组不同的次数会被统一。别再引入「整份拒写」（PLAN_REQUIRES_NATIVE_EDITOR 已于 2026-09-02 删除，#99）。
 - **未绑定行静默跳过。** 填了动作名/重量但名字后没 ✓（没绑定到 catalog）的行，保存/发布时被跳过、不写入。前端会 `confirm` 提示行数并在状态栏报「N 行未绑定被跳过」，但很容易被忽略——排查「学员看不到某个动作」时先查这个。
 

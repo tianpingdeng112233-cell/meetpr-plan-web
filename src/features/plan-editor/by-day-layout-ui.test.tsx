@@ -232,10 +232,10 @@ it('reveals the previous week when moving left to an editor already inside the h
   expect(scroller.scrollLeft).toBe(264)
 })
 
-it.each(['row', 'empty day'])('keeps horizontal alignment when jumping to an issue (%s)', async kind => {
+it.each(['unbound', 'incomplete'])('keeps horizontal alignment when jumping to an issue (%s)', async kind => {
   const weeks = blockWeeks(Array.from({ length: 6 }, () => [0,2,4,5]))
-  if (kind === 'row') { weeks[2].days[0].rows[0].exerciseId = null; weeks[2].days[0].rows[0].ku = false }
-  else weeks[2].days[0].rows = []
+  if (kind === 'unbound') { weeks[2].days[0].rows[0].exerciseId = null; weeks[2].days[0].rows[0].ku = false }
+  else weeks[2].days[0].rows[0].boxes = []
   render({ initialWeeks: weeks, weeksCount: 6 })
   toggle()
   const scroll = vi.fn()

@@ -812,7 +812,7 @@ it('autosaves a draft empty-day insertion and deletion through the existing save
 })
 
 
-it.each([[false, 'zh'], [true, 'zh'], [false, 'en'], [true, 'en']] as const)('blocks empty training days before publishing or updating (published=%s, locale=%s), and cycles the review chip', async (published, locale) => {
+it.each([[false, 'zh'], [true, 'zh'], [false, 'en'], [true, 'en']] as const)('delivers scheduled sessions and retains empty training days (published=%s, locale=%s)', async (published, locale) => {
   vi.useFakeTimers()
   try {
     setLocale(locale)
@@ -825,22 +825,29 @@ it.each([[false, 'zh'], [true, 'zh'], [false, 'en'], [true, 'en']] as const)('bl
       click(host.querySelector(`[data-insert-week="${week}"][data-insert-before="2"] button`)!)
       click(host.querySelector(`[data-insert-date="2026-${week === 2 ? '10-29' : '11-05'}"]`)!)
     }
-    click(host.querySelector('.block-primary')!)
-    expect(alert).toHaveBeenCalledWith(locale === 'zh' ? 'W2 · D3（周四 10/29）还没有动作：先填动作或删除这天，再更新' : 'W2 · D3 (Thu Oct 29) has no exercises: add exercises or delete this day before updating')
-    expect(onSave).not.toHaveBeenCalled()
-    expect(onPublish).not.toHaveBeenCalled()
-    const chip = [...host.querySelectorAll('button')].find(button => button.textContent === (locale === 'zh' ? '! 2 处待核对' : '! 2 to review'))!
-    expect(chip).toBeTruthy()
-    click(chip)
-    expect(host.querySelector('.daygrid')?.closest('[data-block-week]')?.getAttribute('data-block-week')).toBe('2')
-    click(chip)
-    expect(host.querySelector('.daygrid')?.closest('[data-block-week]')?.getAttribute('data-block-week')).toBe('3')
-    if (!published) {
-      await act(async () => { await vi.advanceTimersByTimeAsync(4000) })
-      expect(onSave).toHaveBeenCalledTimes(1)
-      expect(onSave.mock.calls[0][0][1].days[3]).toMatchObject({ rest: false, rows: [] })
-    }
+    await act(async () => { click(host.querySelector('.block-primary')!) })
+    expect(alert).not.toHaveBeenCalled()
+    expect(onSave).toHaveBeenCalledOnce()
+    expect(onPublish).toHaveBeenCalledTimes(published ? 0 : 1)
+    expect(onSave.mock.lastCall![0][1].days[3]).toMatchObject({ rest: false, rows: [] })
+    expect([...host.querySelectorAll('button')].some(button => button.textContent?.includes(locale === 'zh' ? '处待核对' : 'to review'))).toBe(false)
   } finally { vi.useRealTimers() }
+})
+
+it.each([false, true])('requires at least one scheduled session even when a rest day retains exercises (published=%s)', async published => {
+  const weeks = fixture(1)
+  for (const day of weeks[0].days) {
+    if (day.dow === 0) Object.assign(day, { dayType: 'rest', rest: true })
+    else Object.assign(day, { dayType: 'training', rest: false, rows: [] })
+  }
+  const alert = vi.spyOn(window, 'alert').mockImplementation(() => {})
+  vi.spyOn(window, 'confirm').mockReturnValue(true)
+  const onPublish = vi.fn(), onSave = vi.fn()
+  await act(async () => root.render(<PlanEditor initialWeeks={weeks} weeksCount={1} studentName="学员" planName="计划" initialPublished={published} onSave={onSave} onPublish={onPublish} />))
+  await act(async () => { click(host.querySelector('.block-primary')!) })
+  expect(alert).toHaveBeenCalledWith('请至少为一个训练日排好动作和组数，再提交给学员。')
+  expect(onPublish).not.toHaveBeenCalled()
+  expect(onSave).not.toHaveBeenCalled()
 })
 
 it.each(['Delete', 'menu'])('passes only explicitly deleted server IDs to saving, with undo/redo (%s)', async gesture => {
