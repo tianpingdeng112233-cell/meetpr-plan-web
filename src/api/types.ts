@@ -413,6 +413,8 @@ export interface PlanExerciseResponse {
   sets: PlanSetResponse[]
 }
 export interface PlanDayResponse {
+  /** Coach-only slot reserved for future programming; absent on older servers. */
+  is_placeholder?: boolean
   is_rest?: boolean
   id: string
   plan_id: string
@@ -428,6 +430,8 @@ export interface PlanDayResponse {
 }
 export interface PlanWithChildren extends PlanResponse {
   rest_days_enabled?: boolean
+  /** Server keeps empty training days coach-only after publication; absent on older servers. */
+  partial_plan_publication_enabled?: boolean
   days: PlanDayResponse[]
 }
 

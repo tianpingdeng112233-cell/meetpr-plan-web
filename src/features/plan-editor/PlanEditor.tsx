@@ -244,11 +244,6 @@ export interface PlanEditorProps {
   onChangePlanWeeks?: (planWeeks: number) => Promise<void>
 }
 
-function emptyTrainingDays(weeks: Week[], start: string | null) {
-  return buildBlockGrid(weeks, start).rows.flatMap(row => row.cells)
-    .filter(cell => cell.day && !cell.day.rest && cell.day.rows.length === 0)
-}
-
 function mirrorContent(weeks: Week[], planStartDate: string | null, weeksCount = weeks.length): DraftMirrorContent {
   return { weeks: weeks.map(week => ({ ...week, days: week.days.map(day => (
     !day.dayType && day.rest && !day.rows.length ? { ...day, serverDayId: null } : day
@@ -2558,6 +2553,8 @@ export function PlanEditor(props: PlanEditorProps) {
     applyReconciledWeeks(res.weeks, sameContent, res.planWeeks ?? res.weeks.length)
   }
   const applySaveFailure = (error: unknown): string | null => {
+    if (error instanceof ApiException && error.code === 'PLAN_NOT_DRAFT') return S.editor.alreadyPublishedAlert
+    if (error instanceof ApiException && error.code === 'PARTIAL_PUBLICATION_UNAVAILABLE') return S.editor.partialPublicationUnavailable
     const overlap = planOverlapMessage(error)
     if (overlap) return overlap
     if (error instanceof ReconcileConflict) {
@@ -2762,7 +2759,6 @@ export function PlanEditor(props: PlanEditorProps) {
   // ---- ⚠ 待核对 chip: cycle through problem rows --------------------------------------------
   const issueCursor = useRef(0)
   const issues = findDetailedIssueRows(weeks)
-  const emptyDays = emptyTrainingDays(weeks, planStartDate)
   const issueHint = (() => {
     const unbound = issues.filter((i) => i.kind === 'unbound').length
     const inputIssues = issues.filter((i) => i.inputIssue != null)
@@ -2770,7 +2766,6 @@ export function PlanEditor(props: PlanEditorProps) {
     const invalid = inputIssues.filter((i) => (i.inputIssue?.reasons.length ?? 0) > 0).length
     const reasons = [...new Set(inputIssues.flatMap((i) => i.inputIssue?.reasons ?? []))]
     const parts = []
-    if (emptyDays.length) parts.push(S.editor.emptyDaysIssue(emptyDays.length))
     if (unbound) parts.push(S.editor.unboundIssue(unbound))
     if (incomplete) parts.push(S.editor.incompleteIssue(incomplete, published))
     if (invalid) parts.push(S.editor.invalidIssue(invalid, reasons.join(' / ')))
@@ -2778,18 +2773,8 @@ export function PlanEditor(props: PlanEditorProps) {
   })()
   const jumpToNextIssue = () => {
     const cur = findIssueRows(latestWeeks.current)
-    const empty = emptyTrainingDays(latestWeeks.current, currentPlanStart.current)
-    const count = cur.length + empty.length
-    if (count === 0) return
-    const index = issueCursor.current++ % count
-    if (index >= cur.length) {
-      const cell = empty[index - cur.length]
-      handleSelect(cell.weekNumber, cell.day!.dow)
-      setEditingDay({ wnum: cell.weekNumber, dow: cell.day!.dow })
-      window.requestAnimationFrame(() => weeksRef.current?.querySelector(`[data-block-week="${cell.weekNumber}"][data-dow="${cell.day!.dow}"]`)?.scrollIntoView?.({ block: 'center', inline: blockLayout === 'by-day' ? 'nearest' : 'center' }))
-      return
-    }
-    const issue = cur[index]
+    if (!cur.length) return
+    const issue = cur[issueCursor.current++ % cur.length]
     if (issue.rowId.startsWith('import-week-')) {
       jumpToWeek(Number(issue.rowId.slice('import-week-'.length)))
       return
@@ -2831,18 +2816,19 @@ export function PlanEditor(props: PlanEditorProps) {
     if (target) jumpToWeek(target.num)
   }
 
-  const blockEmptyDayDelivery = () => {
-    const first = emptyTrainingDays(latestWeeks.current, currentPlanStart.current)[0]
-    if (!first) return false
-    window.alert(S.editor.emptyDayDelivery(first.weekNumber, first.dayNumber!, `${first.day!.dowLabel} ${first.day!.dateLabel}`))
-    return true
+  const hasScheduledSession = () => {
+    if (latestWeeks.current.some(week => week.days.some(day =>
+      !isRestDay(day) && day.rows.some(row => row.exerciseId),
+    ))) return true
+    window.alert(S.editor.noScheduledSessions)
+    return false
   }
 
   const handleSave = async (currentConfirmed = false) => {
     if (!props.onSave || readOnly || saving || otherSaving || publishing.current) return
     if (published) {
       if (previousDirty && !currentConfirmed) { setCurrentDeliveryOpen(true); return }
-      if (blockEmptyDayDelivery()) return
+      if (!hasScheduledSession()) return
       if (!recoveryReady) {
         if (props.embedded) setEmbeddedRecoveryRequested(true)
         window.alert(S.editor.checkingRemoteBeforeUpdate)
@@ -2964,7 +2950,6 @@ export function PlanEditor(props: PlanEditorProps) {
     // saving 时也不发布:避免在后台 reconcile 半途翻页发布,发布按钮已 disabled,这里再兜底。
     if (readOnly || published || publishing.current || saving || otherSaving) return
     if (previousDirty && !currentConfirmed) { setCurrentDeliveryOpen(true); return }
-    if (blockEmptyDayDelivery()) return
     // Pre-flight: rows the publish would lose or that the backend will refuse. Zero-set bound
     // rows make the server reject with PLAN_PUBLISH_INCOMPLETE — block up front with a pointer
     // to the ⚠ chip instead of letting the coach discover it as an opaque failure.
@@ -2973,6 +2958,7 @@ export function PlanEditor(props: PlanEditorProps) {
       window.alert(S.editor.cannotPublishIncomplete(noSets))
       return
     }
+    if (!hasScheduledSession()) return
     // Publishing flushes the draft via saveNow below, which skips unbound rows just like a manual
     // save — but here the loss lands in the plan the student is about to see. Warn before latching.
     const unbound = countUnbound(latestWeeks.current)
@@ -3246,7 +3232,7 @@ export function PlanEditor(props: PlanEditorProps) {
         calendarLockedHint={calendarLocked ? calendarLockedHint : S.editor.calendarUnavailable}
         onChangeStartDate={planStartDate ? (props.onChangeStartDate ? handleChangeStartDate : async () => {}) : undefined}
         onNewExercise={!readOnly && props.onCreateExercise ? () => openCreateExercise() : undefined}
-        issueCount={readOnly ? 0 : issues.length + emptyDays.length} issueHint={issueHint} onJumpIssue={jumpToNextIssue}
+        issueCount={readOnly ? 0 : issues.length} issueHint={issueHint} onJumpIssue={jumpToNextIssue}
         totalShiftDays={totalShiftDays}
         latestShift={latestShift}
         undoingShift={undoingShift}

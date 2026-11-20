@@ -450,6 +450,7 @@ describe('PlanEditor local draft recovery', () => {
     const initial = weeks('retained partial value')
     initial[0].days[0].dayType = 'rest'
     initial[0].days[0].rest = true
+    Object.assign(initial[0].days[2], { dayType: 'training', rest: false, rows: [row('ready')] })
     saveDraftMirror('plan', { weeks: initial, planStartDate: '2026-01-01', weeksCount: 1 })
     const onSave = vi.fn(async (saved: Week[]) => ({ changedDays: 1, degradedRows: 1, skippedRows: 0, weeks: saved }))
     await act(async () => root.render(<PlanEditor initialWeeks={weeks('server')} weeksCount={1} planStartDate="2026-01-01"
@@ -1109,15 +1110,17 @@ describe('PlanEditor local draft recovery', () => {
     const candidate = structuredClone(initial)
     Object.assign(candidate[0].days[3], { serverDayId: null, rest: true })
     saveDraftMirror('foreign-deletion', { weeks: candidate, planStartDate: '2026-10-19', weeksCount: 1 })
-    const onSave = vi.fn()
-    const alert = vi.spyOn(window, 'alert').mockImplementation(() => {})
+    const onSave = vi.fn(async (saved: Week[], _start?: string | null, _past?: boolean, _progress?: unknown, _deleted?: readonly string[]) =>
+      ({ changedDays: 0, degradedRows: 0, skippedRows: 0, weeks: saved }))
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
     await act(async () => root.render(<PlanEditor initialWeeks={initial} weeksCount={1} planStartDate="2026-10-19"
       studentName="学员" planName="计划" currentPlanId="foreign-deletion" initialPublished onSave={onSave} />))
     act(() => click(host, '恢复'))
     expect(host.querySelector('[data-block-week="1"][data-dow="3"] .block-date')?.textContent).toBe('D2 · 10/22')
     await act(async () => click(host, '更新计划'))
-    expect(onSave).not.toHaveBeenCalled()
-    expect(alert).toHaveBeenCalledWith('W1 · D2（周四 10/22）还没有动作：先填动作或删除这天，再更新')
+    expect(onSave).toHaveBeenCalledOnce()
+    expect(onSave.mock.calls[0][0][0].days[3]).toMatchObject({ rest: false, rows: [], serverDayId: 'empty-day' })
+    expect(onSave.mock.calls[0][4]).toEqual([])
   })
 
   it('does not reuse discarded deletion evidence if the same remote snapshot is offered again', async () => {

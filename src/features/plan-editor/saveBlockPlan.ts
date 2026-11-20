@@ -1,3 +1,4 @@
+import { ApiException } from '../../api/client'
 import { batchDays, getPlan } from '../../api/plans'
 import type { BatchPlanDayBody, PlanWithChildren } from '../../api/types'
 import { syncPlanScheduleToWeeks } from './mapping'
@@ -15,14 +16,18 @@ export interface BlockSaveOptions extends ReconcileOptions {
  */
 export async function saveBlockPlan(planId: string, weeks: Week[], onProgress?: SaveProgress, options: BlockSaveOptions = {}): Promise<SaveResult> {
   const hasEmptyCard = weeks.some(week => week.days.some(day => !day.rows.length && !day.rest))
-  if (options.published && hasEmptyCard) throw new Error('EMPTY_TRAINING_DAY')
-  // The page may still show draft after another client has published it.
-  if (hasEmptyCard && (await getPlan(planId)).status === 'published') throw new Error('EMPTY_TRAINING_DAY')
+  if (hasEmptyCard) {
+    const fresh = await getPlan(planId)
+    // The page may still show draft after another client has published it.
+    if (!options.published && fresh.status === 'published') throw new ApiException(409, 'PLAN_NOT_DRAFT')
+    // An older server would deliver empty training days to the student; refuse before any write.
+    if (fresh.status === 'published' && !fresh.partial_plan_publication_enabled) throw new ApiException(409, 'PARTIAL_PUBLICATION_UNAVAILABLE')
+  }
   const result = await reconcilePlan(planId, weeks, onProgress, options)
   const hasSavedEmptyCard = result.weeks.some(week => week.days.some(day => !day.rows.length && day.serverDayId))
   if (!hasEmptyCard && !hasSavedEmptyCard && !options.deletedDayIds?.length) return result
   const server = await getPlan(planId)
-  if (hasEmptyCard && server.status === 'published') throw new Error('EMPTY_TRAINING_DAY')
+  if (hasEmptyCard && !options.published && server.status === 'published') throw new ApiException(409, 'PLAN_NOT_DRAFT')
   const upsertDays: BatchPlanDayBody[] = []
   for (const week of weeks) for (const day of week.days) {
     // A retained server identity can belong to a moved-away day; only an
@@ -50,8 +55,7 @@ export async function saveBlockPlan(planId: string, weeks: Week[], onProgress?: 
     weeks: syncEmptyCards(result.weeks, live) }
 }
 
-// A server empty day retained by the explicit-delete policy is still a real
-// card and must participate in review/publish checks after saving.
+// A retained server placeholder stays editable at its original calendar position.
 function syncEmptyCards(weeks: Week[], server: PlanWithChildren): Week[] {
   const emptyIds = new Set(server.days.filter(day => day.exercises.length === 0 && !day.is_rest).map(day => day.id))
   return syncPlanScheduleToWeeks(weeks, server).map(week => ({ ...week,

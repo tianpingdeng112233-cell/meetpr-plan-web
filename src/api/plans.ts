@@ -35,7 +35,7 @@ export const patchPlan = (
   },
 ) => api.patch<PlanResponse>(`/plans/${planId}`, body)
 export const deletePlan = (planId: string) => api.del<void>(`/plans/${planId}`)
-export const publishPlan = (planId: string) => api.post<PlanResponse>(`/plans/${planId}/publish`)
+export const publishPlan = (planId: string) => api.post<PlanResponse>(`/plans/${planId}/publish?allow_empty_training_days=true`)
 export const shiftPlan = (planId: string, body: { anchor_date: string; offset_days: number }) =>
   api.post<ShiftPlanResponse>(`/plans/${planId}/shift`, body)
 export const undoPlanShift = (planId: string) => api.del<void>(`/plans/${planId}/shift`)
@@ -56,7 +56,7 @@ export const markImportedHistory = (planId: string) =>
 // nested tree mutations
 export const deleteDay = (dayId: string) => api.del<void>(`/plans/days/${dayId}`)
 export const batchDays = (planId: string, body: BatchPlanDaysBody) =>
-  api.post<PlanWithChildren>(`/plans/${planId}/days/batch?include_rest_days=true`, body)
+  api.post<PlanWithChildren>(`/plans/${planId}/days/batch?include_rest_days=true&allow_empty_training_days=true`, body)
 
 export const createExercise = (dayId: string, body: CreatePlanExerciseBody) =>
   api.post<PlanExerciseResponse>(`/plans/days/${dayId}/exercises`, body)
