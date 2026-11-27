@@ -29,3 +29,9 @@ TopBar、CoachShell 顶栏、登录页和入驻页页头共用 `Wordmark`。图�
 - 读全量 diff：只换四处品牌位，SVG 与定稿逐字节一致（cmp）。
 - 本地 dev（5191）亲眼看四处：登录页、计划编辑顶栏（单行未溢出）、/coach 引导页、教练工作台顶栏（用临时 harness 渲染真实 CoachShell，已删）。实测字标 96.9×24。截图见 `wordmark-final-web-evidence/`。
 - 注意（未改，报 David）：网页 /coach 引导页文案含「内测入驻」「申请成为 MeetPR 内测教练」。
+
+## Revision 2026-11-27: David chose 18px after seeing 24px in context
+
+Wordmark 和 TopBar 的高度断言先在 24px 上失败。组件的 height 属性与内联样式改为 18px 后，定向测试 12 项全过。用 WebKit 离线渲染四处真实组件及构建样式，字标均为 72.7 × 18px，与相邻内容垂直居中。TopBar 保持 56px 单行，无需调整间距。
+
+`npx tsc --noEmit` 与 `npm run build` 通过（Vite 提示 JS chunk 超过 500 kB）。`npm test -- --no-file-parallelism` 首轮仅拼音性能用例超时（2124ms，阈值 1000ms），单跑 349ms 通过，再跑同一全量命令 128 个文件、1653 项全过。

@@ -119,7 +119,7 @@ describe('plan editor context bar', () => {
     for (const label of ['← 总览', '＋ 动作', '保存草稿', '学员曾顺延 3 天']) expect(bar.textContent).not.toContain(label)
     const wordmark = bar.querySelector('img')
     expect(wordmark?.getAttribute('src')).toBe('/meetpr-wordmark.svg')
-    expect(wordmark?.getAttribute('height')).toBe('24')
+    expect(wordmark?.getAttribute('height')).toBe('18')
     expect(wordmark?.alt).toBe('MeetPR')
     await act(async () => host.querySelector<HTMLButtonElement>('[data-plan-menu-trigger]')!.click())
     expect(document.querySelector('input[type=file]')).toBeNull()
