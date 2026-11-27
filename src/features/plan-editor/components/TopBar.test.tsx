@@ -107,7 +107,6 @@ describe('plan editor context bar', () => {
     expect(bar.style.flexWrap).toBe('nowrap')
     expect(bar.style.overflowX).toBe('auto')
     expect(bar.querySelector('br')).toBeNull()
-    expect(bar.textContent).toContain('MeetPR')
     expect(bar.textContent).not.toContain('COACH / 计划编排')
 
     const labels = ['王学员', '力量计划', '2 处待核对', '已自动保存', '发布给学员']
@@ -118,7 +117,10 @@ describe('plan editor context bar', () => {
       previous = position
     }
     for (const label of ['← 总览', '＋ 动作', '保存草稿', '学员曾顺延 3 天']) expect(bar.textContent).not.toContain(label)
-    expect(bar.querySelector('img')?.getAttribute('src')).toContain('meetpr-icon')
+    const wordmark = bar.querySelector('img')
+    expect(wordmark?.getAttribute('src')).toBe('/meetpr-wordmark.svg')
+    expect(wordmark?.getAttribute('height')).toBe('24')
+    expect(wordmark?.alt).toBe('MeetPR')
     await act(async () => host.querySelector<HTMLButtonElement>('[data-plan-menu-trigger]')!.click())
     expect(document.querySelector('input[type=file]')).toBeNull()
 

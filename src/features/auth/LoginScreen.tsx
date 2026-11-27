@@ -1,3 +1,4 @@
+import { Wordmark } from '../../components/Wordmark'
 import { useEffect, useState } from 'react'
 import { AuthRoleError, clearLoginNotice, emailLogin, login, peekLoginNotice } from '../../api/auth'
 import { ApiException } from '../../api/client'
@@ -93,8 +94,7 @@ export function LoginScreen({ onLogin, onSampleMode, coachOnboarding = false }: 
     <div style={{ height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--page-bg)' }}>
       <form onSubmit={submit} style={{ width: 360, padding: 32, background: 'var(--card-bg)', border: '1px solid var(--bd)', borderRadius: 'var(--r-lg)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
-          <span style={{ width: 28, height: 28, borderRadius: 'var(--r-sm)', display: 'grid', placeItems: 'center', fontFamily: 'var(--font-mono)', fontWeight: 700, fontSize: 13, color: 'var(--white)', background: 'var(--ink)' }}>M</span>
-          <span style={{ fontWeight: 700, fontSize: 15, color: 'var(--txt)' }}>MeetPR</span>
+          <Wordmark />
           <span className="t-mono-label" style={{ color: 'var(--ink)' }}>COACH</span>
         </div>
         <div style={{ color: 'var(--fg-tertiary)', fontSize: 13, marginBottom: 24 }}>{S.auth.title}</div>

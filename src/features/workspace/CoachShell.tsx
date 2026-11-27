@@ -1,3 +1,4 @@
+import { Wordmark } from '../../components/Wordmark'
 import { text } from '../onboarding/text'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { AuthUser } from '../../api/types'
@@ -215,7 +216,7 @@ function CoachTopBar({
 
   return (
     <header className="coach-topbar">
-      <img className="coach-mark" src="/meetpr-icon-64.png" alt="MeetPR" width="24" height="24" />
+      <Wordmark />
       <span className="coach-breadcrumb">COACH / {viewCrumbs()[view]}</span>
       <button ref={commandTriggerRef} className="coach-search-shell" type="button" aria-label={S.workspace.openCommandPalette} onClick={onOpenCommand}>
         <span className="coach-search-icon" aria-hidden="true" />

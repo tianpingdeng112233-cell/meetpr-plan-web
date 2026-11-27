@@ -42,7 +42,7 @@ it('never offers installation for a revoked invite', async () => {
   await act(async () => root.render(<InviteLandingPage code="ABCD234567" />))
   expect(host.textContent).toContain('这个邀请已经失效')
   expect(host.textContent).not.toContain('复制邀请码并去安装')
-  expect(host.querySelector('img')).toBeNull()
+  expect(host.querySelector('.onboarding-qr img')).toBeNull()
 })
 it('sets the password using a fragment token, signs in, and removes the token from the address', async () => {
   history.replaceState(null, '', `/coach/set-password#email=coach%40example.test&token=${'a'.repeat(64)}`)
@@ -120,7 +120,7 @@ it.each([
   ['Android', '复制邀请码并去安装', 0],
   ['Desktop', 'iPhone', 2],
   ['iPhone MicroMessenger', '在浏览器打开', 0],
-])('routes %s visitors without leaking other device buttons', async (ua, visible, images) => {
+])('routes %s visitors without leaking other device buttons', async (ua, visible, expectedQrCount) => {
   vi.spyOn(navigator, 'userAgent', 'get').mockReturnValue(ua)
   vi.stubEnv('VITE_CN_TESTFLIGHT_URL', 'https://example.test/ios')
   vi.stubEnv('VITE_CN_ANDROID_URL', 'https://example.test/android')
@@ -128,8 +128,9 @@ it.each([
   const { InviteLandingPage } = await import('./InviteLandingPage')
   await act(async () => root.render(<InviteLandingPage code="ABCD234567" />))
   expect(host.textContent).toContain(visible)
-  expect(host.querySelectorAll('img')).toHaveLength(images)
-  if (images === 2) expect(host.querySelectorAll('img')[0].src).not.toBe(host.querySelectorAll('img')[1].src)
+  const qrImages = host.querySelectorAll<HTMLImageElement>('.onboarding-qr img')
+  expect(qrImages).toHaveLength(expectedQrCount)
+  if (expectedQrCount === 2) expect(qrImages[0].src).not.toBe(qrImages[1].src)
   if (ua.includes('MicroMessenger')) expect(host.querySelector('button')).toBeNull()
 })
 it('still offers installation when the invite API is unreachable', async () => {
