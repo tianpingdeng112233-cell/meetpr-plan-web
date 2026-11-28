@@ -58,8 +58,6 @@
   --ink-soft:#4b5563; --border-strong:#e5e7eb; --fg-secondary:#4b5563; --fg-tertiary:#5c6371;
 }
 .block-topbar { background:#fff; gap:10px; padding:0 16px; }
-.block-topbar img { border-radius:7px; flex-shrink:0; }
-.block-brand { font-size:16px; }
 .block-topbar button { height:36px; border:1px solid #e5e7eb; border-radius:8px; background:white; color:#111827; padding:0 10px; font:600 14px var(--font-sans); cursor:pointer; flex-shrink:0; }
 .block-topbar small { color:#5c6371; font-size:12px; font-weight:400; }
 .block-topbar button[aria-expanded="true"] { border-color:#111827; }

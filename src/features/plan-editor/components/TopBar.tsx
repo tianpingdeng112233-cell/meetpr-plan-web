@@ -1,3 +1,4 @@
+import { Wordmark } from '../../../components/Wordmark'
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import type { PlanShiftSummary, PlanStatus } from '../../../api/types'
@@ -92,7 +93,7 @@ export function TopBar(p: Props) {
   return <>
     <div className="plan-context-bar block-topbar" data-plan-context-bar="" aria-label={S.editor.planContext}
       style={{ height:56, flex:'0 0 56px', flexWrap:'nowrap', overflowX:'auto', overflowY:'hidden', whiteSpace:'nowrap' }}>
-      <img src="/meetpr-icon-64.png" alt="MeetPR" width="30" height="30" /><b className="block-brand">MeetPR</b><span className="plan-context-divider" />
+      <Wordmark /><span className="plan-context-divider" />
       <span className="block-student-name"><small>{S.block.student}</small> {p.studentName}</span>
       <button ref={planAnchor} data-plan-menu-trigger="" aria-expanded={menu === 'plan'} aria-haspopup="menu" onClick={() => setMenu(menu === 'plan' ? null : 'plan')}><small>{S.block.cycle}</small> {p.planName}{p.planStartDate ? ` · ${mmdd(p.planStartDate)}` : ''}{p.weeksCount ? ` · ${S.common.countWeeks(p.weeksCount)}` : ''} ▾</button>
       {p.handoffLabel && <small role="status" data-plan-handoff="">{p.handoffLabel}</small>}

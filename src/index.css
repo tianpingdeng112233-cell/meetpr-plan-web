@@ -298,17 +298,6 @@ textarea {
   background: var(--card-bg);
   white-space: nowrap;
 }
-.coach-mark {
-  width: 24px;
-  height: 24px;
-  flex: 0 0 24px;
-  border-radius: var(--r-sm);
-  display: grid;
-  place-items: center;
-  color: var(--white);
-  background: var(--ink);
-  font: 700 12px var(--font-mono);
-}
 .coach-breadcrumb {
   flex: 0 0 auto;
   color: var(--mut);

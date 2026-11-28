@@ -1,3 +1,4 @@
+import { Wordmark } from '../../components/Wordmark'
 import { useState, type ReactNode, type FormEvent } from 'react'
 import { submitCoachApplication, resendCoachApplication, type ApplicationDevice } from '../../api/onboarding'
 import { text, errorText } from './text'
@@ -5,7 +6,7 @@ import './onboarding.css'
 import { trackOnboarding } from './telemetry'
 
 export function OnboardingFrame({ title, children }: { title: string; children: ReactNode }) {
-  return <main className="onboarding"><div className="onboarding-wrap"><header className="onboarding-brand"><a href="/">MeetPR</a><span>{text('内测入驻', 'Beta onboarding')}</span></header><h1>{title}</h1>{children}</div></main>
+  return <main className="onboarding"><div className="onboarding-wrap"><header className="onboarding-brand"><a href="/"><Wordmark /></a><span>{text('内测入驻', 'Beta onboarding')}</span></header><h1>{title}</h1>{children}</div></main>
 }
 export function CoachApplicationPage() {
   const [busy, setBusy] = useState(false)
